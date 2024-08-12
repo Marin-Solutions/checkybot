@@ -14,13 +14,24 @@ class WebsiteController extends Controller
 {
     /**
      * Display a listing of the resource.
+     *
+     *  include relationships in filter!!
+     *  this segment set a variable $includeCustomers with $request->query('includeCustomers')
+     *  if variable is true
+     *  then $website call method with() adding user relationships
      */
     public function index(Request $request)
     {
         $filter= new WebsiteFilter();
         $queryItems = $filter->transform($request);
 
+
+        $includeCustomers= $request->query('includeCustomers');
+
         $websites = Website::where($queryItems);
+        if($includeCustomers){
+            $websites=$websites->with('user');
+        }
 
         return new WebsiteCollection($websites->paginate()->appends($request->query()));
     }
