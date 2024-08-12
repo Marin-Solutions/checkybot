@@ -2,8 +2,9 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Spatie\Dns\Dns;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Website extends Model
 {
@@ -26,18 +27,19 @@ class Website extends Model
      */
     public function checkWebsiteExists(?string $url ): ?bool
     {
-        return true ;
+        $dns = new Dns();
+        $records = $dns->getRecords($url,'A');
+
+
+
+        if(count($records)>0){
+            return true;
+        }else{
+            return false;
+        }
+
     }
 
-    /**
-     * check if it is a valid url
-     *
-     * @return boolean
-     */
-    public function checkValidURL(): ?bool
-    {
-        return true ;
-    }
 
     /**
      * check if response is 200

@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers;
 
-use App\Filters\WebsiteFilter;
 use Spatie\Dns\Dns;
 use App\Models\Website;
 use Illuminate\Http\Request;
+use App\Filters\WebsiteFilter;
+use App\Http\Resources\WebsiteResource;
 use App\Http\Resources\WebsiteCollection;
 use App\Http\Requests\StoreWebsiteRequest;
 use App\Http\Requests\UpdateWebsiteRequest;
@@ -16,7 +17,7 @@ class WebsiteController extends Controller
      * Display a listing of the resource.
      *
      *  include relationships in filter!!
-     *  this segment set a variable $includeCustomers with $request->query('includeCustomers')
+     *  this segment set a variable $includeCustomer with $request->query('includeCustomers')
      *  if variable is true
      *  then $website call method with() adding user relationships
      */
@@ -26,7 +27,7 @@ class WebsiteController extends Controller
         $queryItems = $filter->transform($request);
 
 
-        $includeCustomers= $request->query('includeCustomers');
+        $includeCustomers= $request->query('includeCustomer');
 
         $websites = Website::where($queryItems);
         if($includeCustomers){
@@ -41,8 +42,7 @@ class WebsiteController extends Controller
      */
     public function create()
     {
-        $dns = new Dns();
-        $dns->getRecords('spatie.be');
+
     }
 
     /**
@@ -50,7 +50,27 @@ class WebsiteController extends Controller
      */
     public function store(StoreWebsiteRequest $request)
     {
-        //
+        $website= new Website();
+
+        $validated = $request->validated();
+        dd($validated );
+        if($validated){
+            $exists=$website->checkWebsiteExists($request->url);
+            if($exists){
+                $website = Website::firstOrNew([
+                    'url' => $request->input('url')
+                ]);
+
+                if ($website->exists) {
+                    return response()->json(['message' => __('Website exist in database, try again')], 406);
+                } else {
+                    return new WebsiteResource(Website::create($request->all()));
+                }
+            }else{
+                return response()->json(['message' => __('Website not Exists')], 406);
+            }
+        }
+
     }
 
     /**
@@ -58,7 +78,11 @@ class WebsiteController extends Controller
      */
     public function show(Website $website)
     {
-        //
+        $includeCustomers= request()->query('includeCustomer');
+
+        if($includeCustomers){
+            return new WebsiteResource($website->loadMissing('user'));
+        }
     }
 
     /**
