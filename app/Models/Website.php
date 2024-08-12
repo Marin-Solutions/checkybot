@@ -13,7 +13,9 @@ class Website extends Model
         'name',
         'url',
         'description',
-        'created_by'
+        'created_by',
+        'uptime_check',
+        'uptime_interval',
     ];
 
     /**
@@ -47,6 +49,9 @@ class Website extends Model
         return true ;
     }
 
-
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
 
 }

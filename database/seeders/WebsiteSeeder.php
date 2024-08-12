@@ -13,28 +13,8 @@ class WebsiteSeeder extends Seeder
      */
     public function run(): void
     {
-        $websitesData = [
-            [
-                'name' => 'Demo Website',
-                'url' => 'www.demowebsite.de',
-                'description' => 'demo free test',
-                'created_by' => 1,
-            ],
-            [
-                'name' => 'Spatie website',
-                'url' => 'www.spatie.be',
-                'description' => 'spatie test data',
-                'created_by' => 1,
-            ],
-        ];
-
-        foreach ($websitesData as $websiteData) {
-            $website = Website::create([
-                'name' => $websiteData['name'],
-                'url' => $websiteData['url'],
-                'description' => $websiteData['description'],
-                'created_by' => $websiteData['created_by'],
-            ]);
-        }
+        Website::factory()
+        ->count(30)
+        ->create();
     }
 }

@@ -2,18 +2,27 @@
 
 namespace App\Http\Controllers;
 
+use App\Filters\WebsiteFilter;
+use Spatie\Dns\Dns;
+use App\Models\Website;
+use Illuminate\Http\Request;
+use App\Http\Resources\WebsiteCollection;
 use App\Http\Requests\StoreWebsiteRequest;
 use App\Http\Requests\UpdateWebsiteRequest;
-use App\Models\Website;
 
 class WebsiteController extends Controller
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
-        //
+        $filter= new WebsiteFilter();
+        $queryItems = $filter->transform($request);
+
+        $websites = Website::where($queryItems);
+
+        return new WebsiteCollection($websites->paginate()->appends($request->query()));
     }
 
     /**
@@ -21,7 +30,8 @@ class WebsiteController extends Controller
      */
     public function create()
     {
-        //
+        $dns = new Dns();
+        $dns->getRecords('spatie.be');
     }
 
     /**
