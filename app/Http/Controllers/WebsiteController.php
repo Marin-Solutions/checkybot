@@ -52,25 +52,20 @@ class WebsiteController extends Controller
     {
         $website= new Website();
 
-        $validated = $request->validated();
-        dd($validated );
-        if($validated){
-            $exists=$website->checkWebsiteExists($request->url);
-            if($exists){
-                $website = Website::firstOrNew([
-                    'url' => $request->input('url')
-                ]);
+        $exists=$website->checkWebsiteExists($request->url);
+        if($exists){
+            $website = Website::firstOrNew([
+                'url' => $request->input('url')
+            ]);
 
-                if ($website->exists) {
-                    return response()->json(['message' => __('Website exist in database, try again')], 406);
-                } else {
-                    return new WebsiteResource(Website::create($request->all()));
-                }
-            }else{
-                return response()->json(['message' => __('Website not Exists')], 406);
+            if ($website->exists) {
+                return response()->json(['message' => __('Website exist in database, try again')], 406);
+            } else {
+                return new WebsiteResource(Website::create($request->all()));
             }
+        }else{
+            return response()->json(['message' => __('Website not Exists')], 406);
         }
-
     }
 
     /**

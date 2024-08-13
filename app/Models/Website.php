@@ -19,18 +19,18 @@ class Website extends Model
         'uptime_interval',
     ];
 
+
     /**
-     * Undocumented function
+     * Check website exists with look up dns spatie library
      *
-     * @param [string] $url
+     * @param [string] $url to check
      * @return boolean
      */
+
     public function checkWebsiteExists(?string $url ): ?bool
     {
         $dns = new Dns();
         $records = $dns->getRecords($url,'A');
-
-
 
         if(count($records)>0){
             return true;
@@ -40,16 +40,6 @@ class Website extends Model
 
     }
 
-
-    /**
-     * check if response is 200
-     *
-     * @return boolean
-     */
-    public function checkResponse(): ?bool
-    {
-        return true ;
-    }
 
     public function user()
     {

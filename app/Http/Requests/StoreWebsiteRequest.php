@@ -37,15 +37,14 @@ class StoreWebsiteRequest extends FormRequest
     public function messages()
     {
         return [
-            'name.required' => 'Required Name',
-            'url.required' => 'Required URL',
-            'url.url' => 'not valid URL',
-            'description.required' => 'Required',
-            'created_by.required' => 'Required',
-            'uptime_check.required' => 'Required',
-            'uptime_interval.required' => 'Required',
+            'name.required' => __('Required Name'),
+            'url.required' => __('Required URL'),
+            'url.url' => __('not valid URL, check if include https:// or http://'),
+            'description.required' => __('Required'),
+            'created_by.required' => __('Required'),
+            'uptime_check.required' => __('Required'),
+            'uptime_interval.required' => __('Required'),
         ];
     }
-
 
 }
