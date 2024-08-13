@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use Spatie\Dns\Dns;
 use App\Models\Website;
 use Illuminate\Http\Request;
 use App\Filters\WebsiteFilter;
@@ -11,17 +10,23 @@ use App\Http\Resources\WebsiteCollection;
 use App\Http\Requests\StoreWebsiteRequest;
 use App\Http\Requests\UpdateWebsiteRequest;
 
+
+
+
 class WebsiteController extends Controller
 {
+
     /**
-     * Display a listing of the resource.
+     * Display a lists of the resource.
      *
      *  include relationships in filter!!
      *  this segment set a variable $includeCustomer with $request->query('includeCustomers')
      *  if variable is true
      *  then $website call method with() adding user relationships
      */
-    public function index(Request $request)
+
+
+     public function index(Request $request)
     {
         $filter= new WebsiteFilter();
         $queryItems = $filter->transform($request);
@@ -45,9 +50,6 @@ class WebsiteController extends Controller
 
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
     public function store(StoreWebsiteRequest $request)
     {
         $website= new Website();
@@ -59,24 +61,25 @@ class WebsiteController extends Controller
             ]);
 
             if ($website->exists) {
-                return response()->json(['message' => __('Website exist in database, try again')], 406);
+                return response()->json(['message' => __('The website is already stored in the database, try again')], 409);
             } else {
-                return new WebsiteResource(Website::create($request->all()));
+                $resources  = new WebsiteResource(Website::create($request->all()));
+                return response()->json($resources, 200);
             }
         }else{
-            return response()->json(['message' => __('Website not Exists')], 406);
+            return response()->json(['message' => __('The website does not exist on the web')], 406);
         }
     }
 
-    /**
-     * Display the specified resource.
-     */
+
     public function show(Website $website)
     {
         $includeCustomers= request()->query('includeCustomer');
 
         if($includeCustomers){
             return new WebsiteResource($website->loadMissing('user'));
+        }else{
+            return new WebsiteResource($website);
         }
     }
 
