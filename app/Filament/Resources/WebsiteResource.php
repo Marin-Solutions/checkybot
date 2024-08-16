@@ -61,20 +61,8 @@ class WebsiteResource extends Resource
                             ->inline(false)
                             ->columnSpan('1')
                             ->live()
-                            ->afterStateUpdated(function ($state, $component) {
-                                if ($state) {
-                                    $component->afterStateUpdated(function ($state, $component) {
-                                        if ($state) {
-
-                                        } else {
-                                            $component->getNextComponent()->enable();
-                                        }
-                                    })->enable();
-                                } else {
-                                    $component->getNextComponent()->disable();
-                                }
-                            })
                             ->required(),
+                        Forms\Components\Hidden::make('created_by'),
                         Forms\Components\Select::make('uptime_interval')
                             ->options([
                                 '1' => '1 Minute',
