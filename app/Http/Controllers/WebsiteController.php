@@ -96,7 +96,18 @@ class WebsiteController extends Controller
      */
     public function update(UpdateWebsiteRequest $request, Website $website)
     {
-        //
+        //$website->update($request->all());
+    }
+
+    public function updateUptimeCheck(UpdateWebsiteRequest $request, Website $website)
+    {
+
+        //return $website->update($request->all());
+    }
+
+    public function updateUptimeInterval(UpdateWebsiteRequest $request, Website $website)
+    {
+        $website->update($request->all());
     }
 
     /**

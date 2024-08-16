@@ -13,7 +13,7 @@ class WebsitePolicy
      */
     public function viewAny(User $user): bool
     {
-        //
+        return $user->can('view_any_user');
     }
 
     /**
@@ -21,7 +21,7 @@ class WebsitePolicy
      */
     public function view(User $user, Website $website): bool
     {
-        //
+        return $user->can('view_any_user');
     }
 
     /**
@@ -29,7 +29,7 @@ class WebsitePolicy
      */
     public function create(User $user): bool
     {
-        //
+        return $user->can('view_user');
     }
 
     /**
@@ -37,7 +37,7 @@ class WebsitePolicy
      */
     public function update(User $user, Website $website): bool
     {
-        //
+        return $user->can('create_user');
     }
 
     /**
@@ -45,7 +45,7 @@ class WebsitePolicy
      */
     public function delete(User $user, Website $website): bool
     {
-        //
+       return $user->can('update_user');
     }
 
     /**
@@ -53,7 +53,7 @@ class WebsitePolicy
      */
     public function restore(User $user, Website $website): bool
     {
-        //
+        return $user->can('delete_user');
     }
 
     /**
@@ -61,6 +61,6 @@ class WebsitePolicy
      */
     public function forceDelete(User $user, Website $website): bool
     {
-        //
+        return false;
     }
 }
