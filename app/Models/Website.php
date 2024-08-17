@@ -3,8 +3,12 @@
 namespace App\Models;
 
 use Spatie\Dns\Dns;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Database\Eloquent\Model;
+use Filament\Notifications\Notification;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Ramsey\Uuid\Type\Integer;
 
 class Website extends Model
 {
@@ -27,7 +31,7 @@ class Website extends Model
      * @return boolean
      */
 
-    public function checkWebsiteExists(?string $url ): ?bool
+    public static function checkWebsiteExists(?string $url ): ?bool
     {
         $dns = new Dns();
         $records = $dns->getRecords($url,'A');
@@ -37,7 +41,31 @@ class Website extends Model
         }else{
             return false;
         }
+    }
 
+
+
+    /**
+     * Check website response code
+     *
+     * @param [string] $url to check
+     * @return array
+     */
+
+    public static function checkResponseCode(?string $url ): array
+    {
+        $dataResponse = array();
+        try {
+            $response = Http::get($url);
+        } catch (RequestException $e) {
+            $handlerContext = $e->getHandlerContext();
+            $dataResponse['code'] = $handlerContext['errno'];
+            $dataResponse['body'] = $handlerContext['error'];
+            return $dataResponse;
+        }
+        $dataResponse['code'] = $response->ok()?200:0;
+        $dataResponse['body'] = 1;
+        return $dataResponse;
     }
 
 
