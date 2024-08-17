@@ -19,7 +19,17 @@ class WebsiteResource extends Resource
 {
     protected static ?string $model = Website::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = 'heroicon-o-globe-europe-africa';
+    protected static ?string $navigationGroup = 'Operations';
+    protected static ?int $navigationSort = 1;
+    /**
+     * Get the navigation badge for the resource.
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        return number_format(static::getModel()::count());
+    }
+
 
     public static function form(Form $form): Form
     {
@@ -100,6 +110,23 @@ class WebsiteResource extends Resource
                     ->translateLabel()
                     ->numeric()
                     ->sortable(),
+                Tables\Columns\ToggleColumn::make('uptime_check')
+                    ->translateLabel(),
+                Tables\Columns\SelectColumn::make('uptime_interval')
+                    ->translateLabel()
+                    ->options([
+                        '1' => '1 Minute',
+                        '2' => '2 Minutes',
+                        '3' => '3 Minutes',
+                        '5' => '5 Minutes',
+                        '10' => '10 Minutes',
+                        '30' => '30 Minutes',
+                        '60' => '1 Hour',
+                        '360' => '6 Hours',
+                        '720' => '12 Hours',
+                        '1440' => '24 Hours',
+                    ])
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->translateLabel()
                     ->dateTime()
@@ -115,13 +142,6 @@ class WebsiteResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\IconColumn::make('uptime_check')
-                    ->translateLabel()
-                    ->boolean(),
-                Tables\Columns\TextColumn::make('uptime_interval')
-                    ->translateLabel()
-                    ->numeric()
-                    ->sortable(),
             ])
             ->filters([
                 //Tables\Filters\TrashedFilter::make(),
@@ -162,5 +182,14 @@ class WebsiteResource extends Resource
             ]);
     }
 
+    public static function getModelLabel(): string
+    {
+        return __('Website');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('Websites');
+    }
 
 }
