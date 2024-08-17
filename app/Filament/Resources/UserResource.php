@@ -34,7 +34,7 @@ class UserResource extends Resource
     /**
      * The settings navigation sort order.
      */
-    protected static ?int $navigationSort = 1;
+    protected static ?int $navigationSort = 19;
 
     /**
      * Get the navigation badge for the resource.
@@ -143,4 +143,14 @@ class UserResource extends Resource
             'index' => Pages\ListUsers::route('/'),
         ];
     }
+    public static function getModelLabel(): string
+    {
+        return __('User');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('Users');
+    }
 }
+

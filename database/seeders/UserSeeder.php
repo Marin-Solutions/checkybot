@@ -17,13 +17,13 @@ class UserSeeder extends Seeder
             [
                 'name' => 'Super Admin',
                 'email' => 'superadmin@nxtyou.de',
-                'password' => 'gVRDLfcOLzsHhsB',
+                'password' => 'password',
                 'role' => 'Super Admin',
             ],
             [
                 'name' => 'Admin',
                 'email' => 'admin@nxtyou.de',
-                'password' => '63R46ovCj30W',
+                'password' => 'password',
                 'role' => 'Admin',
             ],
         ];

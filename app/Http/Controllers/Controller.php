@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 /**
  * @OA\Info(
  *      version="1.0.0",
- *      title="API Documentation",
+ *      title="API Documentation for CHECKYBOT",
  *      description="API Documentation",
  *      @OA\License(
  *          name="Apache 2.0",
@@ -15,7 +15,7 @@ namespace App\Http\Controllers;
  *
  * @OA\Server(
  *      url=L5_SWAGGER_CONST_HOST,
- *      description="Wilmering API Server"
+ *      description="API Server"
  * )
  */
 abstract class Controller
