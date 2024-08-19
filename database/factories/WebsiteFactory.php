@@ -23,8 +23,7 @@ class WebsiteFactory extends Factory
             'created_by' => 1,
             'uptime_check' => 1,
             'uptime_interval' => 1,
-
-
+            'ssl_check' => 1,
         ];
     }
 }
