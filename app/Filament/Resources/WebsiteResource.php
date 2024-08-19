@@ -4,10 +4,14 @@ namespace App\Filament\Resources;
 
 use Filament\Forms;
 use Filament\Tables;
+use Nette\Utils\Html;
 use App\Models\Website;
 use Filament\Forms\Form;
 use Filament\Tables\Table;
 use Filament\Resources\Resource;
+use Filament\Forms\Components\View;
+use Filament\Forms\Components\Split;
+use Filament\Forms\ComponentContainer;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Fieldset;
 use Illuminate\Database\Eloquent\Builder;
@@ -65,31 +69,46 @@ class WebsiteResource extends Resource
                     Fieldset::make('Monitoring info')
                     ->translateLabel()
                     ->schema([
-                        Forms\Components\Toggle::make('uptime_check')
-                            ->translateLabel()
-                            ->onColor('success')
-                            ->inline(false)
-                            ->columnSpan('1')
-                            ->live()
-                            ->required(),
-                        Forms\Components\Hidden::make('created_by'),
-                        Forms\Components\Select::make('uptime_interval')
-                            ->options([
-                                '1' => '1 Minute',
-                                '2' => '2 Minutes',
-                                '3' => '3 Minutes',
-                                '5' => '5 Minutes',
-                                '10' => '10 Minutes',
-                                '30' => '30 Minutes',
-                                '60' => '1 Hour',
-                                '360' => '6 Hours',
-                                '720' => '12 Hours',
-                                '1440' => '24 Hours',
+                        Split::make([
+                            Section::make([
+                                Forms\Components\Toggle::make('uptime_check')
+                                    ->translateLabel()
+                                    ->onColor('success')
+                                    ->inline(false)
+                                    ->columnSpan('1')
+                                    ->live()
+                                    ->required(),
+                                Forms\Components\Hidden::make('created_by'),
+                                Forms\Components\Select::make('uptime_interval')
+                                    ->options([
+                                        '1' => '1 Minute',
+                                        '2' => '2 Minutes',
+                                        '3' => '3 Minutes',
+                                        '5' => '5 Minutes',
+                                        '10' => '10 Minutes',
+                                        '30' => '30 Minutes',
+                                        '60' => '1 Hour',
+                                        '360' => '6 Hours',
+                                        '720' => '12 Hours',
+                                        '1440' => '24 Hours',
+                                    ])
+                                    ->translateLabel()
+                                    ->required()
+                                    ->default(1),
+                            ])->columns(3),
+                            Section::make([
+                                Forms\Components\Toggle::make('ssl_check')
+                                    ->translateLabel()
+                                    ->onColor('success')
+                                    ->inline(false)
+                                    ->columnSpan(1)
+                                    ->live()
+                                    ->default(1)
+                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
+                                    ->required(),
                             ])
-                            ->translateLabel()
-                            ->required()
-                            ->default(1),
-                    ])->columns(5)
+                        ])
+                    ])->columns(1)
                 ])
             ]);
     }

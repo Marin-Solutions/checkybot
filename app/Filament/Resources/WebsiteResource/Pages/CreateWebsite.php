@@ -47,8 +47,8 @@ class CreateWebsite extends CreateRecord
                 $title ='URL Website Response error';
                 $body ='The website response is not 200!';
             }else{
-                $title = 'URL website a unknown error';
-                $body = 'code errno:'. $urlResponseCode;
+                $title = 'URL website a unknown error. try other url';
+                $body = $urlResponseCode['body']. ' code errno:'. $urlResponseCode['code'];
                 $responseStatus = true;
             }
         }
