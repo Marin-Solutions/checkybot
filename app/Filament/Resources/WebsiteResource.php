@@ -4,14 +4,12 @@ namespace App\Filament\Resources;
 
 use Filament\Forms;
 use Filament\Tables;
-use Nette\Utils\Html;
 use App\Models\Website;
 use Filament\Forms\Form;
 use Filament\Tables\Table;
 use Filament\Resources\Resource;
 use Filament\Forms\Components\View;
 use Filament\Forms\Components\Split;
-use Filament\Forms\ComponentContainer;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Fieldset;
 use Illuminate\Database\Eloquent\Builder;
@@ -39,9 +37,9 @@ class WebsiteResource extends Resource
     {
         return $form
             ->schema([
-                Section::make(__('Form'))
+                Section::make(__(''))
                 ->schema([
-                    Fieldset::make('Info')
+                    Fieldset::make('Website Info')
                     ->translateLabel()
                     ->schema([
                         Forms\Components\TextInput::make('name')
@@ -70,7 +68,8 @@ class WebsiteResource extends Resource
                     ->translateLabel()
                     ->schema([
                         Split::make([
-                            Section::make([
+                            fieldset::make('Uptime settings')
+                            ->schema([
                                 Forms\Components\Toggle::make('uptime_check')
                                     ->translateLabel()
                                     ->onColor('success')
@@ -96,7 +95,8 @@ class WebsiteResource extends Resource
                                     ->required()
                                     ->default(1),
                             ])->columns(3),
-                            Section::make([
+                            fieldset::make('SSL settings')
+                            ->schema([
                                 Forms\Components\Toggle::make('ssl_check')
                                     ->translateLabel()
                                     ->onColor('success')
@@ -146,6 +146,9 @@ class WebsiteResource extends Resource
                         '1440' => '24 Hours',
                     ])
                     ->sortable(),
+                Tables\Columns\ToggleColumn::make('ssl_check')
+                    ->translateLabel()
+                    ->disabled(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->translateLabel()
                     ->dateTime()
