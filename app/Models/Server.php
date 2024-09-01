@@ -17,4 +17,6 @@ class Server extends Model
         'created_by',
 
     ];
+
+    
 }

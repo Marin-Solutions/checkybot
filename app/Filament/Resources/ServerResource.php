@@ -2,16 +2,18 @@
 
 namespace App\Filament\Resources;
 
-use App\Filament\Resources\ServerResource\Pages;
-use App\Filament\Resources\ServerResource\RelationManagers;
-use App\Models\Server;
 use Filament\Forms;
-use Filament\Forms\Form;
-use Filament\Resources\Resource;
 use Filament\Tables;
+use App\Models\Server;
+use Filament\Forms\Form;
 use Filament\Tables\Table;
+use Filament\Resources\Resource;
+use Filament\Tables\Actions\Action;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\Resources\ServerResource\Pages;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use App\Filament\Resources\ServerResource\RelationManagers;
+use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class ServerResource extends Resource
 {
@@ -82,11 +84,11 @@ class ServerResource extends Resource
                 //Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                CopyAction::make()->copyable(fn (Server $record) => $record->ip),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make(),    
                     Tables\Actions\ForceDeleteBulkAction::make(),
                     Tables\Actions\RestoreBulkAction::make(),
                 ]),
