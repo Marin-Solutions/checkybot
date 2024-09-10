@@ -2,10 +2,15 @@
 
 namespace App\Models;
 
-use Illuminate\Http\JsonResponse;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+
+
+use App\Models\User;
 use Illuminate\Http\Response;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Model;
+use Filament\Notifications\Notification;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class ServerInformationHistory extends Model
 {
@@ -22,24 +27,31 @@ class ServerInformationHistory extends Model
         'disk_free_bytes'
     ];
 
-    public static function isValidToken($token)
+    public static function isValidToken()
     {
         return true;
     }
 
-    public static function doShellScript(int $server_id,string $token) :Response
+    public static function doShellScript(int $server_id, int $user) :Response
     {
         $sih = new ServerInformationHistory();
         $sih->server_id = $server_id;
-        $sih->token = $token;
+        $sih->user = $user;
+        $server = Server::where('id',$server_id)->first();
 
+        $sih->token = $server->token;
+        $serverOwner = $server->created_by;
+        if($sih->user == $serverOwner){
+            $content = $sih->contentShellScript();
+            $status= 200;
+        }else{
+            $content= "Error: Server Owner not match with user request, try with your server. thabk you";
+            $status= 401;
+        }
 
-        $content = $sih->contentShellScript();
-        // Crear una respuesta de tipo archivo
-        $response = response()->make($content, 200);
+        $response = response()->make($content, $status);
         $response->header('Content-Type', 'application/x-sh');
         $response->header('Content-Disposition', 'attachment; filename="reporter_server_info.sh"');
-
         return $response;
     }
 
@@ -59,24 +71,19 @@ class ServerInformationHistory extends Model
 
         $content.= "SERVER_ID='$server_id'\n";
 
-        // Get the IP address of the server
-        //$content.= "IP_SERVER=$(ip addr show | awk '/inet / {print $2}' | cut -d/ -f1)\n";
-
         // Get the RAM usage
-        $content.= "RAM_FREE_PERCENTAGE=$(free -h | awk '/Mem/ {print $7*100/$2\"%\"}' )\n";
-        $content.= "RAM_FREE=$(free -h | awk '/Mem/ {print $7}')\n";
+        $content.= "RAM_FREE_PERCENTAGE=$(free | awk '/Mem/ {print $7*100/$2\"%\"}' )\n";
+        $content.= "RAM_FREE=$(free | awk '/Mem/ {print $7}')\n";
 
         // Get the CPU usage
-        $content.= "CPU_LOAD=$(uptime | awk '{print $10}')\n";
-        //$content.= "CPU_LOAD_2=$(uptime | awk '{print $11}')\n";
-        //$content.= "CPU_LOAD_3=$(uptime | awk '{print $12}')\n";
+        $content.= "CPU_LOAD=$(uptime  | grep -oP '(?<=average:).*'|awk '{print $1}'|sed 's/,$//')\n";
 
         // Get the free disk
-        $content.= "DISK_FREE_PERCENTAGE=$(df -h --output=pcent / | awk 'NR==2{print 100-$1\"%\"}')\n";
-        $content.= "DISK_FREE_BYTES=$(df -h --output=avail / | awk 'NR==2{print $1}')\n";
+        $content.= "DISK_FREE_PERCENTAGE=$(df --output=pcent / | awk 'NR==2{print 100-$1\"%\"}')\n";
+        $content.= "DISK_FREE_BYTES=$(df --output=avail / | awk 'NR==2{print $1}')\n";
 
         // Send the request to the API endpoint
-        $content.= "curl -X POST \\\n";
+        $content.= "curl -s -X POST \\\n";
         $content.= ' $API_URL\\'."\n";
         $content.= ' -H \'Authorization: Bearer \'$TOKEN_ID \\'."\n" ;
         $content.= ' -H \'Content-Type: application/json\' \\'."\n";
@@ -86,6 +93,20 @@ class ServerInformationHistory extends Model
         $content.= ' "disk_free_percentage": "\'$DISK_FREE_PERCENTAGE\'", "disk_free_bytes": "\'$DISK_FREE_BYTES\'"} \' ';
 
         return $content;
+    }
+
+    /**
+     * copy command, that download a script for monitoring servers
+     *
+     * @return string
+     */
+    public static function copyCommand($server) :string
+    {
+        $user = Auth::user()->id;
+        $command  = "wget http://localhost/reporter/$server/$user -O reporter_server_info.sh ";
+        $command .= "&& chmod +x $(pwd)/reporter_server_info.sh";
+        $command .= "&& (crontab -l ; echo \"*/1 * * * * $(pwd)/reporter_server_info.sh\") | crontab -";
+        return $command;
     }
 }
 

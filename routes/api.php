@@ -12,6 +12,5 @@ use App\Http\Controllers\ServerInformationHistoryController;
 
 Route::group(['prefix'=> 'v1'],function(){
     Route::post('/server-history',[ServerInformationHistoryController::class, 'store']);
-//     Route::patch('/websites/{website}/uptime-check',[WebsiteController::class, 'updateUptimeCheck']);
 });
 

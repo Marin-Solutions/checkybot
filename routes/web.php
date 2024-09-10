@@ -9,11 +9,9 @@ Route::get('/', function () {
 });
 
 //get the script for connect to api server information
-Route::get('/reporter/{server_id}/{token}', function ($server_id, $token):Response {
-    if (!ServerInformationHistory::isValidToken($token)) {
-        return response(['error' => 'Invalid Token'], 401);
-    }else{
-        $response = ServerInformationHistory::doShellScript($server_id,$token);
+Route::get('/reporter/{server_id}/{user}', function ($server_id,$user):Response {
+        $response = ServerInformationHistory::doShellScript($server_id,$user);
         return $response;
-    }
 });
+
+

@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\ServerResource\Pages;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Filament\Resources\ServerResource\RelationManagers;
+use App\Models\ServerInformationHistory;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class ServerResource extends Resource
@@ -34,20 +35,14 @@ class ServerResource extends Resource
             ->schema([
                 Forms\Components\TextInput::make('ip')
                     ->required()
+                    ->ip()
                     ->maxLength(255),
                 Forms\Components\TextInput::make('hostname')
                     ->required()
                     ->maxLength(255),
-                Forms\Components\TextInput::make('enviroment')
-                    ->required()
-                    ->maxLength(255)
-                    ->default('production'),
                 Forms\Components\TextInput::make('description')
                     ->required()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('created_by')
-                    ->required()
-                    ->numeric(),
+                    ->maxLength(255)
             ]);
     }
 
@@ -59,12 +54,11 @@ class ServerResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('hostname')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('enviroment')
-                    ->searchable(),
                 Tables\Columns\TextColumn::make('description')
                     ->limit(50)
                     ->searchable(),
-                Tables\Columns\TextColumn::make('created_by')
+                Tables\Columns\TextColumn::make('user.name')
+                    ->label('Owner')
                     ->numeric()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
@@ -84,11 +78,13 @@ class ServerResource extends Resource
                 //Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
-                CopyAction::make()->copyable(fn (Server $record) => $record->ip),
+                CopyAction::make()
+                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
+                    ->label(__('Copy script')),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),    
+                    Tables\Actions\DeleteBulkAction::make(),
                     Tables\Actions\ForceDeleteBulkAction::make(),
                     Tables\Actions\RestoreBulkAction::make(),
                 ]),
@@ -106,8 +102,7 @@ class ServerResource extends Resource
     {
         return [
             'index' => Pages\ListServers::route('/'),
-            'create' => Pages\CreateServer::route('/create'),
-            'edit' => Pages\EditServer::route('/{record}/edit'),
+            'create' => Pages\CreateServer::route('/create')
         ];
     }
 
@@ -118,4 +113,24 @@ class ServerResource extends Resource
                 SoftDeletingScope::class,
             ]);
     }
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('edit')
+                ->url('localhsot'),
+            Action::make('delete')
+                ->requiresConfirmation()
+                ->action(fn () => $this->post->delete()),
+        ];
+    }
+    public static function getTableActions(): array
+    {
+        return [
+            Tables\Actions\EditAction::make(),
+            Tables\Actions\DeleteAction::make(),
+        ];
+    }
+
+
 }

@@ -34,27 +34,28 @@ class ServerInformationHistoryController extends Controller
         $ip =  $request->ip();
         $server  = new Server();
         $serverId = $request->s??false;
+        $token = $request->bearerToken();
 
         if(!$serverId==false){
             $dataServer= $server->find($serverId);
+
             if( $dataServer != null ){
-                if($dataServer->ip == $ip){
-                    $serverResource  = new ServerInfoHistoryResource(ServerInformationHistory::create($request->all()));
-                    return response()->json($serverResource, 200);
-
+                if($dataServer->token === $token ){
+                    if($dataServer->ip == $ip){
+                        $serverResource  = new ServerInfoHistoryResource(ServerInformationHistory::create($request->all()));
+                        return response()->json($serverResource, 200);
+                    }else{
+                        return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 406);
+                    }
                 }else{
-                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 406);
-
+                    return response()->json(['message' => __('Error: Unauthorized')], 401);
                 }
             }else{
                 return response()->json(['message' => __('Error: Server id not exists in database')], 406);
             }
-        //     }
         }else{
              return response()->json(['message' => __('The server id is not in this request,check data of reporter_server_info.sh ')], 406);
         }
-        //return response()->json($request,200);
-
     }
 
     /**
