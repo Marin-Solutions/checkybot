@@ -45,7 +45,7 @@ class ServerInformationHistory extends Model
             $content = $sih->contentShellScript();
             $status= 200;
         }else{
-            $content= "Error: Server Owner not match with user request, try with your server. thabk you";
+            $content= "Error: Server Owner not match with user request, try with your server. thank you";
             $status= 401;
         }
 

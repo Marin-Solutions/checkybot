@@ -54,7 +54,7 @@ class ServerInformationHistoryController extends Controller
                 return response()->json(['message' => __('Error: Server id not exists in database')], 406);
             }
         }else{
-             return response()->json(['message' => __('The server id is not in this request,check data of reporter_server_info.sh ')], 406);
+             return response()->json(['message' => __('The server id is not in this DB')], 406);
         }
     }
 
