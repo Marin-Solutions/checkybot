@@ -11,12 +11,14 @@
         "filament/filament": "^3.2",
         "jeffgreco13/filament-breezy": "^2.4",
         "laravel/framework": "^11.9",
+        "laravel/sanctum": "^4.0",
         "laravel/telescope": "^5.1",
         "laravel/tinker": "^2.9",
         "spatie/dns": "^2.6",
         "spatie/laravel-permission": "^6.9",
         "symfony/http-client": "^7.1",
-        "symfony/postmark-mailer": "^7.1"
+        "symfony/postmark-mailer": "^7.1",
+        "webbingbrasil/filament-copyactions": "^3.0"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",

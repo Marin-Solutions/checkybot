@@ -21,6 +21,7 @@ class Website extends Model
         'created_by',
         'uptime_check',
         'uptime_interval',
+        'ssl_check',
     ];
 
 

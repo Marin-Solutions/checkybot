@@ -2,12 +2,14 @@
 
 namespace Database\Factories;
 
+
+use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Website>
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Server>
  */
-class WebsiteFactory extends Factory
+class ServerFactory extends Factory
 {
     /**
      * Define the model's default state.
@@ -17,13 +19,11 @@ class WebsiteFactory extends Factory
     public function definition(): array
     {
         return [
-            'name' => $this->faker->name(),
-            'url' => $this->faker->url(),
+            'ip' => $this->faker->ipv4(),
+            'hostname' => $this->faker->domainName(),
             'description' => $this->faker->text(),
             'created_by' => 1,
-            'uptime_check' => 1,
-            'uptime_interval' => 1,
-            'ssl_check' => 1,
+            'token' => Str::random(40)
         ];
     }
 }
