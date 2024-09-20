@@ -2,13 +2,17 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Spatie\Dns\Dns;
+use Ramsey\Uuid\Type\Integer;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Database\Eloquent\Model;
 use Filament\Notifications\Notification;
+use Spatie\SslCertificate\SslCertificate;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection as Collection2;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Ramsey\Uuid\Type\Integer;
 
 class Website extends Model
 {
@@ -22,6 +26,7 @@ class Website extends Model
         'uptime_check',
         'uptime_interval',
         'ssl_check',
+        'ssl_expiry_date',
     ];
 
 
@@ -70,9 +75,24 @@ class Website extends Model
     }
 
 
+    /**
+     * Check website ssl expiry code
+     *
+     * @param [string] $url to check
+     * @return array
+     */
+
+    public static function sslExpiryDate(?string $url ): string
+     {
+        $certificate = SslCertificate::createForHostName($url);
+        $expiration_date= $certificate->expirationDate();
+
+        return $expiration_date;
+    }
+
+
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');
     }
-
 }

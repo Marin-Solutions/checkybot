@@ -26,6 +26,9 @@ class CreateWebsite extends CreateRecord
     {
         $user = Auth::user();
         $data['created_by'] =$user->id;
+        $sslExpiryDate = Website::sslExpiryDate($data['url']);
+        $data['ssl_expiry_date'] =$sslExpiryDate;
+
         return $data;
 
     }
