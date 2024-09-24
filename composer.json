@@ -15,6 +15,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/telescope": "^5.1",
         "laravel/tinker": "^2.9",
+        "predis/predis": "^2.0",
         "spatie/dns": "^2.6",
         "spatie/laravel-permission": "^6.9",
         "spatie/ssl-certificate": "^2.6",
