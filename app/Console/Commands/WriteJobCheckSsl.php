@@ -30,14 +30,9 @@ class WriteJobCheckSsl extends Command
     public function handle()
     {
         $websites = $this->sslExpiryDay();
-
-        echo $websites;
-
-
-        //$this->info("You writted this $websitesExpireIn14");
-        // CheckSslExpiryDateJob::dispatch($websitesExpire)->onQueue('14 Days');
-        // CheckSslExpiryDateJob::dispatch($websitesExpire)->onQueue('7 Days');
-        // CheckSslExpiryDateJob::dispatch($websitesExpire)->onQueue('5 Days');
+        if(count($websites)>0){
+            CheckSslExpiryDateJob::dispatch($websites);
+        }
         return Command::SUCCESS;
     }
 
