@@ -40,7 +40,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
         $dateExpiryWebsite = Carbon::parse($website['ssl_expiry_date']);
         $expiryDate = Carbon::parse($expiryDate);
-        if( !$expiryDate->gt($dateExpiryWebsite) ){
+        if( $expiryDate->gt($dateExpiryWebsite) ){
             Website::whereId($website['id'])->update(['ssl_expiry_date' =>  $expiryDate]);
         }else{
             //'SEND REMINDERS';
