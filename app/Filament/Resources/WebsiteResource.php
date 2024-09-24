@@ -61,7 +61,6 @@ class WebsiteResource extends Resource
                             ->maxLength(255),
                         Forms\Components\Textarea::make('description')
                             ->translateLabel()
-                            ->required()
                             ->columnSpanFull()
                     ]),
                     Fieldset::make('Monitoring info')
@@ -147,6 +146,10 @@ class WebsiteResource extends Resource
                     ])
                     ->sortable(),
                 Tables\Columns\ToggleColumn::make('ssl_check')
+                    ->label('SSL check')
+                    ->translateLabel(),
+                Tables\Columns\TextColumn::make('ssl_expiry_date')
+                    ->label('Ssl expiry date')
                     ->translateLabel()
                     ->disabled(),
                 Tables\Columns\TextColumn::make('created_at')
