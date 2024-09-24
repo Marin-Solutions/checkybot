@@ -31,7 +31,9 @@ class WriteJobCheckSsl extends Command
     {
         $websites = $this->sslExpiryDay();
         if(count($websites)>0){
-            CheckSslExpiryDateJob::dispatch($websites);
+            foreach ($websites as $key => $website) {
+                CheckSslExpiryDateJob::dispatch($website);
+            }
         }
         return Command::SUCCESS;
     }
