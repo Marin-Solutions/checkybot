@@ -53,7 +53,7 @@ class WriteJobCheckSsl extends Command
                 $expiryDate = Carbon::parse($web->ssl_expiry_date);
                 $diffInDays = $now->diffInDays($expiryDate, false);
 
-                if (in_array($diffInDays, $days)) {
+                if (in_array($diffInDays, $days) || $web->ssl_expiry_date == null) {
 
                     return [
                         'id' => $web->id,
