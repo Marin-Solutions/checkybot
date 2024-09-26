@@ -149,7 +149,7 @@ class WebsiteResource extends Resource
                     ->label('SSL check')
                     ->translateLabel(),
                 Tables\Columns\TextColumn::make('ssl_expiry_date')
-                    ->label('Ssl expiry date')
+                    ->label('SSL expiry date')
                     ->translateLabel()
                     ->disabled(),
                 Tables\Columns\TextColumn::make('created_at')

@@ -26,7 +26,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
     public function __construct(array $websites)
     {
-        $this->website= $websites;
+        $this->website = $websites;
     }
 
     /**
@@ -36,23 +36,28 @@ class CheckSslExpiryDateJob implements ShouldQueue
     {
         $website = $this->website;
         $certificate = SslCertificate::createForHostName($website['url']);
-        $expiryDate = $certificate->expirationDate();
+        $newExpiryDate = $certificate->expirationDate();
+        $currentExpiryDate = Carbon::parse($website['ssl_expiry_date']);
 
-        $dateExpiryWebsite = Carbon::parse($website['ssl_expiry_date']);
-        $expiryDate = Carbon::parse($expiryDate);
-        if( $expiryDate->gt($dateExpiryWebsite) ){
-            Website::whereId($website['id'])->update(['ssl_expiry_date' =>  $expiryDate]);
-        }else{
-            //'SEND REMINDERS';
-            $user = User::find(Website::whereId($website['id'])->get(['created_by']));
-            $daysLeft = $website['days_left'];
-            $emailData=[
-                'user' => $user,
-                'daysLeft' => $daysLeft,
-                'url' => $website['url']
-            ];
-            Mail::to($user)->send( new EmailReminderSsl($emailData));
+        if ($newExpiryDate->gt($currentExpiryDate)) {
+            Website::where('id', $website['id'])->update(['ssl_expiry_date' => $newExpiryDate]);
+            return;
         }
 
+        $user = User::find(Website::where('id', $website['id'])->value('created_by'));
+
+        if ($user) {
+            $emailData = [
+                'user' => $user,
+                'daysLeft' => $website['days_left'],
+                'url' => $website['url']
+            ];
+
+            Mail::to($user)->send(new EmailReminderSsl($emailData));
+
+            Log::info("SSL expiry reminder sent for website: {$website['url']}");
+        } else {
+            Log::warning("User not found for website: {$website['url']}");
+        }
     }
 }
