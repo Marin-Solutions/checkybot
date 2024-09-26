@@ -30,33 +30,56 @@ class WriteJobCheckSsl extends Command
     public function handle()
     {
         $websites = $this->sslExpiryDay();
-        if(count($websites)>0){
-            foreach ($websites as $key => $website) {
-                CheckSslExpiryDateJob::dispatch($website);
-            }
+
+        if ($websites->isNotEmpty()) {
+            $websites->each(function ($website) {
+                CheckSslExpiryDateJob::dispatch($website)->onQueue('ssl-check');
+            });
         }
+
+        $this->info('SSL check completed successfully.');
         return Command::SUCCESS;
     }
 
     protected function sslExpiryDay(): Collection
-     {
-        $days = [14,7,3,2,1];
-        $websites = Website::where('ssl_check','1')
-            ->get(['id','url','ssl_expiry_date'])
-            ->map(function(Website $web) use ($days){
-                $dateBd = Carbon::parse($web->ssl_expiry_date);
-                $now = Carbon::today();
-                $diffInDays = (int)$now->diffInDays($dateBd);
+    {
+        $days = [14, 7, 3, 2, 1];
+        $now = Carbon::today();
+
+        $websites = Website::where('ssl_check', '1')
+            ->get(['id', 'url', 'ssl_expiry_date'])
+            ->map(function (Website $web) use ($days, $now) {
+
+                $expiryDate = Carbon::parse($web->ssl_expiry_date);
+                $diffInDays = $now->diffInDays($expiryDate, false);
 
                 if (in_array($diffInDays, $days)) {
-                    return ['id'=>$web->id,'url'=>$web->url,'ssl_expiry_date'=>$web->ssl_expiry_date,'check'=>1,'expired'=>0,'days_left'=>$diffInDays];
-                }else if($diffInDays <0){
-                    return  ['id'=>$web->id,'url'=>$web->url,'ssl_expiry_date'=>$web->ssl_expiry_date,'check'=>0,'expired'=>1];
+
+                    return [
+                        'id' => $web->id,
+                        'url' => $web->url,
+                        'ssl_expiry_date' => $web->ssl_expiry_date,
+                        'check' => true,
+                        'expired' => false,
+                        'days_left' => $diffInDays
+                    ];
+                } elseif ($diffInDays < 0) {
+
+                    return [
+                        'id' => $web->id,
+                        'url' => $web->url,
+                        'ssl_expiry_date' => $web->ssl_expiry_date,
+                        'check' => false,
+                        'expired' => true,
+                        'days_left' => $diffInDays
+                    ];
                 }
 
-            })->filter();
+                return null;
+            })
+            ->filter()
+            ->values();
 
         return $websites;
     }
-
 }
