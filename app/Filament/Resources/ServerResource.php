@@ -37,7 +37,7 @@ class ServerResource extends Resource
                     ->required()
                     ->ip()
                     ->maxLength(255),
-                Forms\Components\TextInput::make('hostname')
+                Forms\Components\TextInput::make('name')
                     ->required()
                     ->maxLength(255),
                 Forms\Components\TextInput::make('description')
@@ -52,7 +52,7 @@ class ServerResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('ip')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('hostname')
+                Tables\Columns\TextColumn::make('name')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('description')
                     ->limit(50)

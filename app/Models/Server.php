@@ -11,7 +11,7 @@ class Server extends Model
 
     protected $fillable = [
         'ip',
-        'hostname',
+        'name',
         'description',
         'created_by',
         'token',

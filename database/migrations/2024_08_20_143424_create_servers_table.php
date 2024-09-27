@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('servers', function (Blueprint $table) {
             $table->id();
             $table->string('ip')->index()->unique();
-            $table->string('hostname');
+            $table->string('name');
             $table->string('enviroment')->default('production');
             $table->string('description');
             $table->unsignedInteger('created_by');
