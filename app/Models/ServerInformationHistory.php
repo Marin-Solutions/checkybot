@@ -83,7 +83,7 @@ class ServerInformationHistory extends Model
         $content .= "DISK_FREE_BYTES=$(df --output=avail / | awk 'NR==2{print $1}')\n";
 
         // Send the request to the API endpoint
-        $content .= "curl -s -X POST \\\n";
+        $content .= "curl -4 -s -X POST \\\n";
         $content .= ' $API_URL\\' . "\n";
         $content .= ' -H \'Authorization: Bearer \'$TOKEN_ID \\' . "\n";
         $content .= ' -H \'Content-Type: application/json\' \\' . "\n";
