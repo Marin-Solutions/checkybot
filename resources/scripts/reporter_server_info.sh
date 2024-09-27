@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Set the API endpoint URL
-API_URL="https://example.com/api/endpoint"
+API_URL="https://checkybot.com/api/v1/server-history"
 
 # Set the token-id variable
 TOKEN_ID="your_token_id"
