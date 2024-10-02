@@ -15,6 +15,7 @@
     use Filament\Tables;
     use Filament\Tables\Columns\TextColumn;
     use Filament\Tables\Table;
+    use Illuminate\Support\HtmlString;
 
     class NotificationChannelsResource extends Resource
     {
@@ -25,7 +26,7 @@
         protected static ?int $navigationSort = 3;
         protected static string $urlPattern = "/(?:\{message\}.*\{description\}|\{description\}.*\{message\})/";
 
-        public static function testWebhook(array $data): void
+        public static function testWebhook( array $data ): void
         {
             app('debugbar')->log($data);
         }
@@ -69,7 +70,15 @@
                                 }
 
                             }
-                        ]),
+                        ])
+                        ->helperText(function ( Get $get ) {
+                            $message = $get('method') === WebhookHttpMethod::POST->value
+                                ?
+                                "<b>{message}</b> and <b>{description}</b> placeholders can be in URL or request body (JSON)."
+                                :
+                                "URL must contain <b>{message}</b> and <b>{description}</b> placeholders.";
+                            return new HtmlString($message);
+                        }),
                     KeyValue::make('request_body')
                         ->columnSpanFull()
                         ->rules([
