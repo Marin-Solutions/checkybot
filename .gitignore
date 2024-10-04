@@ -24,3 +24,4 @@ public/js/filament/forms/components/rich-editor.js
 public/js/filament/forms/components/textarea.js
 public/vendor/telescope/app.js
 public/vendor/telescope/mix-manifest.json
+/storage/debugbar/
