@@ -10,3 +10,4 @@ use Illuminate\Support\Facades\Schedule;
 
 
 Schedule::command('ssl:check')->everyMinute();
+Schedule::command('website:log-uptime-ssl')->everyMinute();
