@@ -27,6 +27,12 @@ class ServerInformationHistory extends Model
         'disk_free_bytes'
     ];
 
+    protected $casts = [
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
+    ];
+
     public static function isValidToken()
     {
         return true;

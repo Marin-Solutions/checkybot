@@ -81,6 +81,10 @@ class ServerResource extends Resource
                 CopyAction::make()
                     ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
                     ->label(__('Copy script')),
+                Action::make('See log')
+                    ->url(fn( $record ) => ServerResource::getUrl('log', [ 'record' => $record->id ]))
+                    ->icon('heroicon-o-presentation-chart-line')
+                    ->color('warning')
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -102,7 +106,8 @@ class ServerResource extends Resource
     {
         return [
             'index' => Pages\ListServers::route('/'),
-            'create' => Pages\CreateServer::route('/create')
+            'create' => Pages\CreateServer::route('/create'),
+            'log' => Pages\LogServer::route('/{record}/log'),
         ];
     }
 
