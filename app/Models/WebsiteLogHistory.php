@@ -9,6 +9,8 @@ class WebsiteLogHistory extends Model
 {
     use HasFactory;
 
+    protected $table = 'website_log_history';
+
     protected $fillable = [
         'website_id',
         'ssl_expiry_date',
