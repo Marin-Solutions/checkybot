@@ -2,20 +2,25 @@
 
     namespace App\Filament\Resources\ServerResource\Widgets;
 
+    use App\Filament\Resources\ServerResource\Enums\TimeFrame;
     use App\Models\ServerInformationHistory;
     use Carbon\Carbon;
     use Filament\Widgets\ChartWidget;
+    use Illuminate\Support\Facades\DB;
+    use Livewire\Attributes\On;
 
     class CpuLoadChart extends ChartWidget
     {
         protected static ?string $heading = 'CPU Load';
         public $record;
+        public ?TimeFrame $timeFrame = null;
 
         protected function getData(): array
         {
-            app('debugbar')->log($this->record);
-            $data = ServerInformationHistory::query()
+            $timeFrame = $this->timeFrame ?? TimeFrame::getDefaultTimeframe();
+            $data      = ServerInformationHistory::query()
                 ->where('server_id', $this->record->id)
+                ->where('created_at', '>=', DB::raw('NOW() - INTERVAL ' . $timeFrame->value))
                 ->pluck('cpu_load', 'created_at')
             ;
 
@@ -41,4 +46,11 @@
         }
 
         protected static string $view = 'components/cpu-load-chart-widget';
+
+        #[On( 'updateTimeframe' )]
+        public function updateTimeframe( TimeFrame $timeFrame ): void
+        {
+            $this->timeFrame = $timeFrame;
+            $this->updateChartData();
+        }
     }
