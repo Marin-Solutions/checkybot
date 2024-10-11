@@ -18,6 +18,7 @@
         protected function getHeaderWidgets(): array
         {
             return [
+                ServerResource\Widgets\ServerLogTimeframe::class,
                 ServerResource\Widgets\CpuLoadChart::class,
                 ServerResource\Widgets\RamUsedChart::class,
                 ServerResource\Widgets\DiskUsedChart::class
