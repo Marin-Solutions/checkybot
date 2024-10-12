@@ -15,7 +15,6 @@
         case LAST_7_DAYS = '7 DAY';
         case LAST_14_DAYS = '14 DAY';
         case LAST_28_DAYS = '28 DAY';
-        case LAST_3_MONTHS = '3 MONTH';
 
         public function label(): string
         {
@@ -31,7 +30,6 @@
                 TimeFrame::LAST_7_DAYS => 'Last 7 Days',
                 TimeFrame::LAST_14_DAYS => 'Last 14 Days',
                 TimeFrame::LAST_28_DAYS => 'Last 28 Days',
-                TimeFrame::LAST_3_MONTHS => 'Last 3 Months',
             };
         }
 
