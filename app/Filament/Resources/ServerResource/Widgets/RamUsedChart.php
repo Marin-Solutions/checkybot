@@ -34,6 +34,7 @@
                                     'borderColor'     => 'rgba(0, 123, 255, 1)',
                                     'backgroundColor' => 'rgba(0, 123, 255, 0.2)',
                                     'borderWidth'     => 2,
+                                    'pointRadius'     => 0,
                                     'tension'         => 0.4,
                                     'fill'            => 'origin',
                                 ] ],

@@ -93,7 +93,9 @@
                                                 let value = context.raw;
                                                 return ' {{$heading}}: ' + value + '%';
                                             }
-                                        }
+                                        },
+                                        mode: 'index',
+                                        intersect: false
                                     }
                                 },
                                 elements: {
