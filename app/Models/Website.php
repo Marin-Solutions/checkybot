@@ -27,6 +27,11 @@ class Website extends Model
         'uptime_interval',
         'ssl_check',
         'ssl_expiry_date',
+        'last_outbound_checked_at'
+    ];
+
+    protected $casts = [
+        'last_outbound_checked_at' => 'datetime'
     ];
 
 
@@ -94,5 +99,17 @@ class Website extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function getBaseURL(): string
+    {
+        $parsedUrl = parse_url($this->url);
+        $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+
+        if (isset($parsedUrl['port'])) {
+            $baseUrl .= ':' . $parsedUrl['port'];
+        }
+
+        return $baseUrl;
     }
 }
