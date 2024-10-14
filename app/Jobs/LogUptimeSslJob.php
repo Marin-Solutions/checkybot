@@ -37,7 +37,7 @@
 
             /*Hit Website to get status code & speed*/
             $responseTimeStart = Carbon::now();
-            $response          = Http::get('https://example.com');
+            $response          = Http::get($this->website['url']);
             $responseTimeEnd   = Carbon::now();
             $log->http_status_code = $response->status();
             $log->speed            = $responseTimeEnd->diffInMilliseconds($responseTimeStart);
