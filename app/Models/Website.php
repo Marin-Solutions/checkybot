@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Enums\NotificationScopesEnum;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Spatie\Dns\Dns;
 use Ramsey\Uuid\Type\Integer;
 use Illuminate\Support\Facades\Http;
@@ -94,5 +96,10 @@ class Website extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function notificationChannels(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->websiteScope()->active();
     }
 }

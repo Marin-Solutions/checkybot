@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\NotificationSetting;
 use Carbon\Carbon;
 use App\Models\User;
 
@@ -22,9 +23,9 @@ class CheckSslExpiryDateJob implements ShouldQueue
 {
     use Queueable;
 
-    protected $website;
+    protected Website $website;
 
-    public function __construct(array $websites)
+    public function __construct(Website $websites)
     {
         $this->website = $websites;
     }
@@ -44,20 +45,41 @@ class CheckSslExpiryDateJob implements ShouldQueue
             return;
         }
 
-        $user = User::find(Website::where('id', $website['id'])->value('created_by'));
+        /* Individual website notification */
+        $individualNotifications = $website->notificationChannels;
 
-        if ($user) {
-            $emailData = [
-                'user' => $user,
-                'daysLeft' => $website['days_left'],
-                'url' => $website['url']
-            ];
+        if (!empty($individualNotifications)) {
+            $individualNotifications->each(function (NotificationSetting $notification) {
+                $notification->sendSslNotification();
+            });
+        }
 
-            Mail::to($user)->send(new EmailReminderSsl($emailData));
+        /* Global Notification */
+        $globalNotifications = $website->user->globalNotificationChannels;
+        if (!empty($globalNotifications)) {
+            $globalNotifications->each(function (NotificationSetting $notification) {
+                $notification->sendSslNotification();
+            });
 
             Log::info("SSL expiry reminder sent for website: {$website['url']}");
         } else {
-            Log::warning("User not found for website: {$website['url']}");
+
+            $user = User::find(Website::where('id', $website['id'])->value('created_by'));
+
+            if ($user) {
+                $emailData = [
+                    'user' => $user,
+                    'daysLeft' => $website['days_left'],
+                    'url' => $website['url']
+                ];
+
+                Mail::to($user)->send(new EmailReminderSsl($emailData));
+
+                Log::info("SSL expiry reminder sent for website: {$website['url']}");
+            } else {
+                Log::warning("User not found for website: {$website['url']}");
+            }
+
         }
     }
 }

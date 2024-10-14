@@ -73,4 +73,9 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
     {
         return $this->hasMany(Server::class,'created_by');
     }
+
+    public function globalNotificationChannels(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->globalScope()->active();
+    }
 }
