@@ -8,7 +8,7 @@
     use Illuminate\Support\Facades\Log;
     use Spatie\Crawler\Crawler;
 
-    class WebsiteCheckOutbondLinkJob implements ShouldQueue
+    class WebsiteCheckOutboundLinkJob implements ShouldQueue
     {
         use Queueable;
 
