@@ -68,7 +68,6 @@
                                 ->rules(function ( callable $get ) {
                                     return match ( $get('channel_type') ) {
                                         NotificationChannelTypesEnum::MAIL->name => [ 'required', 'email' ],
-                                        NotificationChannelTypesEnum::SMS->name => [ 'required', 'regex:/^\+?([0-9]{1,4})?([0-9]{10,15})$/' ],
                                         NotificationChannelTypesEnum::WEBHOOK->name => [ 'required', 'url' ],
                                     };
                                 })

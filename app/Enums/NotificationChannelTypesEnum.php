@@ -5,14 +5,12 @@
     enum NotificationChannelTypesEnum: string
     {
         case MAIL = "MAIL";
-        case SMS = "SMS";
         case WEBHOOK = "WEBHOOK";
 
         public function label(): string
         {
             return match ( $this ) {
                 self::MAIL => 'Email',
-                self::SMS => 'SMS',
                 self::WEBHOOK => 'Webhook',
             };
         }
