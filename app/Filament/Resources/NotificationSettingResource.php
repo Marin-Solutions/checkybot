@@ -60,13 +60,18 @@
                             Forms\Components\Select::make('channel_type')
                                 ->options(NotificationChannelTypesEnum::toArray())
                                 ->required()
-                                ->columnSpan(1)
-                            //                                ->disableOptionWhen(fn( string $value ): bool => $value !== NotificationChannelTypesEnum::MAIL->value)
-                            ,
+                                ->columnSpan(1),
                             Forms\Components\TextInput::make('address')
-                                ->label(new HtmlString("Address <b>(email/phone number/url)</b>"))
+                                ->label("Address (email/phone number/url)")
                                 ->required()
                                 ->columnSpan(2)
+                                ->rules(function ( callable $get ) {
+                                    return match ( $get('channel_type') ) {
+                                        NotificationChannelTypesEnum::MAIL->name => [ 'required', 'email' ],
+                                        NotificationChannelTypesEnum::SMS->name => [ 'required', 'regex:/^\+?([0-9]{1,4})?([0-9]{10,15})$/' ],
+                                        NotificationChannelTypesEnum::WEBHOOK->name => [ 'required', 'url' ],
+                                    };
+                                })
                         ])->columns(2),
                 ])
             ;

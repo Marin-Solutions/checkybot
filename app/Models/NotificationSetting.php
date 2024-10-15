@@ -9,8 +9,10 @@
     use Illuminate\Database\Eloquent\Builder;
     use Illuminate\Database\Eloquent\Factories\HasFactory;
     use Illuminate\Database\Eloquent\Model;
+    use Illuminate\Support\Facades\Http;
     use Illuminate\Support\Facades\Log;
     use Illuminate\Support\Facades\Mail;
+    use Illuminate\Support\Facades\Validator;
     use Vonage\Client;
     use Vonage\Client\Credentials\Basic;
 
@@ -74,11 +76,20 @@
         public function sendSslNotification( ?string $message = null, array $data = [] ): void
         {
             switch ( $this->channel_type ) {
-                case 'email':
+                case NotificationChannelTypesEnum::MAIL->name:
                     $this->sendEmail($data, EmailReminderSsl::class);
+
                     break;
-                case 'sms':
+                case NotificationChannelTypesEnum::SMS->name:
                     $this->sendSms('SMS with limited text length');
+
+                    break;
+                case NotificationChannelTypesEnum::WEBHOOK->name:
+                    $callWebhook = Http::get($this->address);
+                    if (!$callWebhook->ok()) {
+                        Log::error('Failed to hit Webhook SSL notification', [ 'url' => $this->address ]);
+                    }
+
                     break;
                 default:
                     Log::error("Unknown channel type: {$this->channel_type}");
