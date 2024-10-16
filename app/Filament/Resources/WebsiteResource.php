@@ -3,11 +3,7 @@
     namespace App\Filament\Resources;
 
     use App\Crawlers\WebsiteOutboundLinkCrawler;
-    use App\Enums\WebsiteServicesEnum;
-    use App\Jobs\WebsiteCheckOutbondLinkJob;
-    use App\Mail\EmailReminderSsl;
-    use App\Models\NotificationSetting;
-    use App\Models\User;
+    use App\Jobs\WebsiteCheckOutboundLinkJob;
     use Carbon\Carbon;
     use Filament\Forms;
     use Filament\Notifications\Notification;
@@ -24,10 +20,7 @@
     use App\Filament\Resources\WebsiteResource\Pages;
     use Illuminate\Database\Eloquent\SoftDeletingScope;
     use App\Filament\Resources\WebsiteResource\RelationManagers;
-    use Illuminate\Support\Facades\Log;
-    use Illuminate\Support\Facades\Mail;
     use Spatie\Crawler\Crawler;
-    use Spatie\SslCertificate\SslCertificate;
 
     class WebsiteResource extends Resource
     {
@@ -79,47 +72,62 @@
                             Fieldset::make('Monitoring info')
                                 ->translateLabel()
                                 ->schema([
-                                    Split::make([
-                                        fieldset::make('Uptime settings')
-                                            ->schema([
-                                                Forms\Components\Toggle::make('uptime_check')
-                                                    ->translateLabel()
-                                                    ->onColor('success')
-                                                    ->inline(false)
-                                                    ->columnSpan('1')
-                                                    ->live()
-                                                    ->required(),
-                                                Forms\Components\Hidden::make('created_by'),
-                                                Forms\Components\Select::make('uptime_interval')
-                                                    ->options([
-                                                        '1'    => '1 Minute',
-                                                        '2'    => '2 Minutes',
-                                                        '3'    => '3 Minutes',
-                                                        '5'    => '5 Minutes',
-                                                        '10'   => '10 Minutes',
-                                                        '30'   => '30 Minutes',
-                                                        '60'   => '1 Hour',
-                                                        '360'  => '6 Hours',
-                                                        '720'  => '12 Hours',
-                                                        '1440' => '24 Hours',
-                                                    ])
-                                                    ->translateLabel()
-                                                    ->required()
-                                                    ->default(1),
-                                            ])->columns(3),
-                                        fieldset::make('SSL settings')
-                                            ->schema([
-                                                Forms\Components\Toggle::make('ssl_check')
-                                                    ->translateLabel()
-                                                    ->onColor('success')
-                                                    ->inline(false)
-                                                    ->columnSpan(1)
-                                                    ->live()
-                                                    ->default(1)
-                                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
-                                                    ->required(),
-                                            ])
-                                    ])
+                                    Forms\Components\Grid::make()
+                                        ->columns([
+                                            'md' => 2,
+                                            'xl' => 3
+                                        ])
+                                        ->schema([
+                                            fieldset::make('Uptime settings')
+                                                ->schema([
+                                                    Forms\Components\Toggle::make('uptime_check')
+                                                        ->translateLabel()
+                                                        ->onColor('success')
+                                                        ->inline(false)
+                                                        ->columnSpan('1')
+                                                        ->live()
+                                                        ->required(),
+                                                    Forms\Components\Hidden::make('created_by'),
+                                                    Forms\Components\Select::make('uptime_interval')
+                                                        ->options([
+                                                            '1'    => '1 Minute',
+                                                            '2'    => '2 Minutes',
+                                                            '3'    => '3 Minutes',
+                                                            '5'    => '5 Minutes',
+                                                            '10'   => '10 Minutes',
+                                                            '30'   => '30 Minutes',
+                                                            '60'   => '1 Hour',
+                                                            '360'  => '6 Hours',
+                                                            '720'  => '12 Hours',
+                                                            '1440' => '24 Hours',
+                                                        ])
+                                                        ->translateLabel()
+                                                        ->required()
+                                                        ->default(1),
+                                                ])->columns(2)->columnSpan(1),
+                                            fieldset::make('SSL settings')
+                                                ->schema([
+                                                    Forms\Components\Toggle::make('ssl_check')
+                                                        ->translateLabel()
+                                                        ->onColor('success')
+                                                        ->inline(false)
+                                                        ->columnSpan(1)
+                                                        ->live()
+                                                        ->default(1)
+                                                        //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
+                                                        ->required(),
+                                                ])->columnSpan(1),
+                                            fieldset::make('Outbound settings')
+                                                ->schema([
+                                                    Forms\Components\Toggle::make('outbound_check')
+                                                        ->translateLabel()
+                                                        ->onColor('success')
+                                                        ->inline(false)
+                                                        ->live()
+                                                        //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
+                                                        ->required(),
+                                                ])->columnSpan(1),
+                                        ]),
                                 ])->columns(1)
                         ])
                 ])
@@ -166,12 +174,20 @@
                         ->label('SSL expiry date')
                         ->translateLabel()
                         ->disabled(),
+                    Tables\Columns\ToggleColumn::make('outbound_check')
+                        ->label('Outbound check')
+                        ->translateLabel(),
                     Tables\Columns\TextColumn::make('created_at')
                         ->translateLabel()
                         ->dateTime()
                         ->sortable()
                         ->toggleable(isToggledHiddenByDefault: true),
                     Tables\Columns\TextColumn::make('updated_at')
+                        ->translateLabel()
+                        ->dateTime()
+                        ->sortable()
+                        ->toggleable(isToggledHiddenByDefault: true),
+                    Tables\Columns\TextColumn::make('last_outbound_checked_at')
                         ->translateLabel()
                         ->dateTime()
                         ->sortable()
