@@ -1,79 +1,83 @@
 <?php
 
-namespace App\Jobs;
+    namespace App\Jobs;
 
-use App\Models\NotificationSetting;
-use Carbon\Carbon;
-use App\Models\User;
+    use App\Enums\WebsiteServicesEnum;
+    use App\Models\NotificationSetting;
+    use Carbon\Carbon;
+    use App\Models\User;
 
 
-use App\Models\Website;
-use App\Mail\EmailReminderSsl;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
-use Spatie\SslCertificate\SslCertificate;
-use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
+    use App\Models\Website;
+    use App\Mail\EmailReminderSsl;
+    use Illuminate\Support\Collection;
+    use Illuminate\Support\Facades\Log;
+    use Illuminate\Support\Facades\Mail;
+    use Illuminate\Queue\SerializesModels;
+    use Illuminate\Queue\InteractsWithQueue;
+    use Spatie\SslCertificate\SslCertificate;
+    use Illuminate\Foundation\Queue\Queueable;
+    use Illuminate\Contracts\Queue\ShouldQueue;
+    use Illuminate\Foundation\Bus\Dispatchable;
 
-class CheckSslExpiryDateJob implements ShouldQueue
-{
-    use Queueable;
-
-    protected Website $website;
-
-    public function __construct(Website $websites)
+    class CheckSslExpiryDateJob implements ShouldQueue
     {
-        $this->website = $websites;
-    }
+        use Queueable;
 
-    /**
-     * Execute the job.
-     */
-    public function handle(): void
-    {
-        $website = $this->website;
-        $certificate = SslCertificate::createForHostName($website['url']);
-        $newExpiryDate = $certificate->expirationDate();
-        $currentExpiryDate = Carbon::parse($website['ssl_expiry_date']);
+        protected Website $website;
 
-        if ($newExpiryDate->gt($currentExpiryDate)) {
-            Website::where('id', $website['id'])->update(['ssl_expiry_date' => $newExpiryDate]);
-            return;
+        public function __construct( Website $websites )
+        {
+            $this->website = $websites;
         }
 
-        /* Individual website notification */
-        $individualNotifications = $website->notificationChannels;
+        /**
+         * Execute the job.
+         */
+        public function handle(): void
+        {
+            $website           = $this->website;
+            $certificate       = SslCertificate::createForHostName($website[ 'url' ]);
+            $newExpiryDate     = $certificate->expirationDate();
+            $currentExpiryDate = Carbon::parse($website[ 'ssl_expiry_date' ]);
 
-        if (!empty($individualNotifications)) {
-            $individualNotifications->each(function (NotificationSetting $notification) {
-                $notification->sendSslNotification();
-            });
-        }
+            if ( $newExpiryDate->gt($currentExpiryDate) ) {
+                Website::where('id', $website[ 'id' ])->update([ 'ssl_expiry_date' => $newExpiryDate ]);
+                return;
+            }
 
-        /* Global Notification */
-        $globalNotifications = $website->user->globalNotificationChannels;
-        if (!empty($globalNotifications)) {
-            $globalNotifications->each(function (NotificationSetting $notification) {
-                $notification->sendSslNotification();
-            });
+            $user = User::find(Website::where('id', $website[ 'id' ])->value('created_by'));
 
-            Log::info("SSL expiry reminder sent for website: {$website['url']}");
-        } else {
-
-            $user = User::find(Website::where('id', $website['id'])->value('created_by'));
-
-            if ($user) {
-                $emailData = [
-                    'user' => $user,
-                    'daysLeft' => $website['days_left'],
-                    'url' => $website['url']
+            if ( $user ) {
+                $data = [
+                    'user'     => $user,
+                    'daysLeft' => $website[ 'days_left' ],
+                    'url'      => $website[ 'url' ]
                 ];
 
-                Mail::to($user)->send(new EmailReminderSsl($emailData));
+                /* Individual website notification */
+                $individualNotifications = $website->notificationChannels
+                    ->whereIn('inspection', [ WebsiteServicesEnum::SSL_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name ])
+                ;
+
+                if ( !empty($individualNotifications) ) {
+                    $individualNotifications->each(function ( NotificationSetting $notification ) use ( $user, $data ) {
+                        $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
+                    });
+                }
+
+                /* Global Notification */
+                $globalNotifications = $website->user->globalNotificationChannels
+                    ->whereIn('inspection', [ WebsiteServicesEnum::SSL_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name ])
+                ;
+
+                if ( !empty($globalNotifications) ) {
+                    $globalNotifications->each(function ( NotificationSetting $notification ) use ( $user, $data ) {
+                        $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
+                    });
+                } else {
+                    Mail::to($user)->send(new EmailReminderSsl($data));
+                }
 
                 Log::info("SSL expiry reminder sent for website: {$website['url']}");
             } else {
@@ -82,4 +86,3 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
         }
     }
-}

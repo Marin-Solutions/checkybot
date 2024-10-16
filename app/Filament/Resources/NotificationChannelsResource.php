@@ -36,6 +36,7 @@
 
             return $form
                 ->schema([
+                    TextInput::make('title')->required(),
                     Select::make('method')
                         ->required()
                         ->columns(2)
@@ -110,6 +111,7 @@
         {
             return $table
                 ->columns([
+                    TextColumn::make('title'),
                     TextColumn::make('method'),
                     TextColumn::make('url')->label('Webhook URL'),
                     TextColumn::make('request_body'),
