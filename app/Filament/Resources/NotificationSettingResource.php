@@ -15,6 +15,7 @@
     use Filament\Tables\Table;
     use Illuminate\Database\Eloquent\Builder;
     use Illuminate\Database\Eloquent\SoftDeletingScope;
+    use Illuminate\Support\Facades\Auth;
     use Illuminate\Support\HtmlString;
 
     class NotificationSettingResource extends Resource
@@ -60,17 +61,24 @@
                             Forms\Components\Select::make('channel_type')
                                 ->options(NotificationChannelTypesEnum::toArray())
                                 ->required()
+                                ->reactive()
                                 ->columnSpan(1),
                             Forms\Components\TextInput::make('address')
-                                ->label("Address (email/phone number/url)")
+                                ->label("Email")
                                 ->required()
-                                ->columnSpan(2)
+                                ->columnSpan(1)
                                 ->rules(function ( callable $get ) {
                                     return match ( $get('channel_type') ) {
                                         NotificationChannelTypesEnum::MAIL->name => [ 'required', 'email' ],
                                         NotificationChannelTypesEnum::WEBHOOK->name => [ 'required', 'url' ],
                                     };
                                 })
+                                ->hidden(fn( $get ) => $get("channel_type") !== NotificationChannelTypesEnum::MAIL->name),
+                            Forms\Components\Select::make('notification_channel_id')
+                                ->label('Notification Channel')
+                                ->required()
+                                ->options(\auth()->user()->webhookChannels()->pluck('title', 'id'))
+                                ->hidden(fn( callable $get ) => $get("channel_type") !== NotificationChannelTypesEnum::WEBHOOK->name)
                         ])->columns(2),
                 ])
             ;
@@ -81,10 +89,11 @@
             return $table
                 ->columns([
                     Tables\Columns\TextColumn::make('scope_value'),
-                    Tables\Columns\TextColumn::make('user.name')->toggleable(isToggledHiddenByDefault: true),
-                    Tables\Columns\TextColumn::make('website.name')->toggleable(isToggledHiddenByDefault: true),
                     Tables\Columns\TextColumn::make('inspection_value'),
                     Tables\Columns\TextColumn::make('channel_type_value'),
+                    Tables\Columns\TextColumn::make('website.name')->toggleable(isToggledHiddenByDefault: true),
+                    Tables\Columns\TextColumn::make('user.name')->toggleable(isToggledHiddenByDefault: true),
+                    Tables\Columns\TextColumn::make('channel.title')->label('Channel Name')->toggleable(isToggledHiddenByDefault: true),
                     Tables\Columns\TextColumn::make('address'),
                     Tables\Columns\ToggleColumn::make('flag_active')
                 ])

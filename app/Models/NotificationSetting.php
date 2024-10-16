@@ -28,6 +28,7 @@
             'scope',
             'inspection',
             'channel_type',
+            'notification_channel_id',
             'address',
             'data_path',
             'flag_active',
@@ -80,17 +81,23 @@
                     $this->sendEmail($data, EmailReminderSsl::class);
 
                     break;
-                case NotificationChannelTypesEnum::SMS->name:
-                    $this->sendSms('SMS with limited text length');
 
-                    break;
                 case NotificationChannelTypesEnum::WEBHOOK->name:
-                    $callWebhook = Http::get($this->address);
-                    if (!$callWebhook->ok()) {
-                        Log::error('Failed to hit Webhook SSL notification', [ 'url' => $this->address ]);
+                    $descriptionText = "Your SSL certificate for " . $data[ 'url' ] . " is nearing expiration in " . $data[ 'daysLeft' ] . " days. Please renew your SSL certificate as soon as possible to avoid security issues. Best regards, Your team " . config('app.name');
+
+                    $response = $this->channel->sendWebhookNotification([
+                        'message'     => 'Action Required: Renew Your SSL Certificate.',
+                        'description' => $descriptionText
+                    ]);
+
+                    if ( $response[ 'code' ] === 200 ) {
+                        Log::info('Webhook Notification successfully sent to ' . $response[ 'url' ]);
+                    } else {
+                        Log::error('Webhook Notification failed sent', [ 'url' => $response[ 'url' ] ]);
                     }
 
                     break;
+
                 default:
                     Log::error("Unknown channel type: {$this->channel_type}");
             }
@@ -101,20 +108,8 @@
             Mail::to($this->address)->send(new $MailClass($data));
         }
 
-        private function sendSms( $message ): void
+        public function channel(): \Illuminate\Database\Eloquent\Relations\BelongsTo
         {
-            $message = $message ?? 'Default SMS message';
-            $basic   = new Basic(env('vonage_key'), env('vonage_secret'));
-            $client  = new Client($basic);
-
-            $response = $client->message()->send([
-                'to'   => $this->phone_number,
-                'from' => env('vonage_sms_from'),
-                'text' => $message,
-            ]);
-
-            if ( $response->getMessages()[ 0 ][ 'status' ] !== '0' ) {
-                Log::error('Failed to send SMS: ' . $response->getMessages()[ 0 ][ 'error-text' ]);
-            }
+            return $this->belongsTo(NotificationChannels::class, 'notification_channel_id');
         }
     }

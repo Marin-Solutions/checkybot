@@ -13,6 +13,7 @@
         use HasFactory;
 
         protected $fillable = [
+            'title',
             'method',
             'url',
             'description',
@@ -56,7 +57,52 @@
                     default => Http::{$method}($url, $requestBody)
                 };
 
-                app('debugbar')->log($webhookCallback->json());
+                $responseData[ 'code' ] = $webhookCallback->ok() ? 200 : 0;
+                $responseData[ 'body' ] = $webhookCallback->json();
+                return $responseData;
+
+            } catch ( RequestException $exception ) {
+
+                $handlerContext         = $exception->getHandlerContext();
+                $responseData[ 'code' ] = $handlerContext[ 'errno' ];
+                $responseData[ 'body' ] = $handlerContext[ 'error' ];
+                return $responseData;
+
+            }
+        }
+
+        public function sendWebhookNotification( array $data ): array
+        {
+            $messageText     = @$data[ 'message' ] ?? "Hello, I'm from " . url('/');
+            $descriptionText = @$data[ 'description' ] ?? "Description Text";
+            $method          = $this->method;
+            $url             = $this->url;
+            $responseData    = [ 'url' => $url ];
+            $requestBody     = $this->request_body;
+
+            try {
+                if ( str_contains($url, '{message}') ) {
+                    $url = str_replace('{message}', $messageText, $url);
+                }
+                if ( str_contains($url, '{description}') ) {
+                    $url = str_replace('{description}', $descriptionText, $url);
+                }
+
+                if ( $method === WebhookHttpMethod::POST->value && count($requestBody) ) {
+                    foreach ( $requestBody as $key => $value ) {
+                        if ( $value === '{message}' ) {
+                            $requestBody[ $key ] = $messageText;
+                        }
+                        if ( $value === '{description}' ) {
+                            $requestBody[ $key ] = $descriptionText;
+                        }
+                    }
+                }
+
+                $webhookCallback = match ( $method ) {
+                    WebhookHttpMethod::GET->value => Http::{$method}($url),
+                    default => Http::{$method}($url, $requestBody)
+                };
 
                 $responseData[ 'code' ] = $webhookCallback->ok() ? 200 : 0;
                 $responseData[ 'body' ] = $webhookCallback->json();
