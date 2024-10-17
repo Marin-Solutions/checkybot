@@ -31,7 +31,7 @@
             $method       = $data[ 'method' ];
             $url          = $data[ 'url' ];
             $responseData = [];
-            $requestBody  = $data[ 'request_body' ];
+            $requestBody  = @$data[ 'request_body' ] ?? [];
 
             try {
                 if ( str_contains($url, '{message}') ) {
