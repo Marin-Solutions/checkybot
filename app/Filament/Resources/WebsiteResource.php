@@ -203,28 +203,6 @@
                 ])
                 ->actions([
                     Tables\Actions\EditAction::make(),
-                    //                Tables\Actions\Action::make('outbound_url_check')->label('Outbound URL check')
-                    //                    ->icon('heroicon-o-document-magnifying-glass')
-                    //                    ->action(
-                    //                        function ( Website $website ) {
-                    //                            if ( is_null($website->last_outbound_checked_at) || $website->last_outbound_checked_at->lt(Carbon::now()->subWeek()) ) {
-                    //                                WebsiteCheckOutbondLinkJob::dispatch($website)->onQueue('log-website');
-                    //                                Notification::make()
-                    //                                    ->success()
-                    //                                    ->title("Outbound link in progress")
-                    //                                    ->body("You will be notified if something goes wrong.")
-                    //                                    ->send()
-                    //                                ;
-                    //                            } else {
-                    //                                Notification::make()
-                    //                                    ->warning()
-                    //                                    ->title("Outbound link check can't be performed")
-                    //                                    ->body("Outgoing URL should only be checked once per week!")
-                    //                                    ->send()
-                    //                                ;
-                    //                            }
-                    //                        }
-                    //                    )
                 ])
                 ->bulkActions([
                     Tables\Actions\BulkActionGroup::make([

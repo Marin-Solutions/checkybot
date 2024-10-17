@@ -1,10 +1,7 @@
 <?php
 
-use App\Models\Website;
-use Illuminate\Http\Request;
+use App\Http\Controllers\ServerLogFileHistoryController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ServerController;
-use App\Http\Controllers\WebsiteController;
 use App\Http\Controllers\ServerInformationHistoryController;
 
 # API Endpoints
@@ -12,5 +9,6 @@ use App\Http\Controllers\ServerInformationHistoryController;
 
 Route::group(['prefix'=> 'v1'],function(){
     Route::post('/server-history',[ServerInformationHistoryController::class, 'store']);
+    Route::post('/server-log-history',[ ServerLogFileHistoryController::class, 'store']);
 });
 
