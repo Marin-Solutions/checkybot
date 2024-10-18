@@ -108,7 +108,7 @@ class Website extends Model
     {
         return $this->hasMany(NotificationSetting::class)->websiteScope()->active();
     }
-  
+
     public function getBaseURL(): string
     {
         $parsedUrl = parse_url($this->url);
@@ -119,5 +119,15 @@ class Website extends Model
         }
 
         return $baseUrl;
+    }
+
+    public function globalNotifications(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'user_id', 'created_by')->globalScope()->active();
+    }
+
+    public function individualNotifications(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'website_id')->websiteScope()->active();
     }
 }

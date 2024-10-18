@@ -18,7 +18,7 @@
     {
         protected static ?string $model = MonitorApis::class;
         protected static ?string $navigationGroup = 'Operations';
-        protected static ?int $navigationSort = 4;
+        protected static ?int $navigationSort = 3;
         protected static ?string $navigationLabel = 'Monitor APIs';
         protected static ?string $pluralLabel = 'Monitor APIs';
 
