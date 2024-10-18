@@ -178,9 +178,11 @@
                         ->label('Outbound check')
                         ->translateLabel(),
                     Tables\Columns\TextColumn::make('global_notifications_count')
+                        ->label('Global Notifications Channels')
                         ->counts('globalNotifications')
                         ->formatStateUsing(fn( $state ) => $state . '  🌍'),
                     Tables\Columns\TextColumn::make('individual_notifications_count')
+                        ->label('Individual Notifications Channels')
                         ->counts('individualNotifications')
                         ->formatStateUsing(fn( $state ) => $state . '  📌'),
                     Tables\Columns\TextColumn::make('created_at')
