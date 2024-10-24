@@ -23,7 +23,7 @@
 
         protected static ?string $navigationIcon = 'heroicon-o-bell-alert';
         protected static ?string $navigationGroup = 'Operations';
-        protected static ?int $navigationSort = 3;
+        protected static ?int $navigationSort = 4;
         protected static string $urlPattern = "/(?:\{message\}.*\{description\}|\{description\}.*\{message\})/";
 
         public static function testWebhook( array $data ): void

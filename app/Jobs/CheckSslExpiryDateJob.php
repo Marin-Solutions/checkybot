@@ -57,7 +57,7 @@
 
                 /* Individual website notification */
                 $individualNotifications = $website->notificationChannels
-                    ->whereIn('inspection', [ WebsiteServicesEnum::SSL_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name ])
+                    ->whereIn('inspection', [ WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name ])
                 ;
 
                 if ( !empty($individualNotifications) ) {
@@ -68,7 +68,7 @@
 
                 /* Global Notification */
                 $globalNotifications = $website->user->globalNotificationChannels
-                    ->whereIn('inspection', [ WebsiteServicesEnum::SSL_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name ])
+                    ->whereIn('inspection', [ WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name ])
                 ;
 
                 if ( !empty($globalNotifications) ) {
