@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Models\ServerLogFileHistory;
 use Filament\Forms;
 use Filament\Tables;
 use App\Models\Server;
@@ -81,6 +82,9 @@ class ServerResource extends Resource
                 CopyAction::make()
                     ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
                     ->label(__('Copy script')),
+                CopyAction::make()
+                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
+                    ->label(__('Copy log script')),
                 Tables\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
                     ->icon('heroicon-o-presentation-chart-line')
@@ -98,7 +102,7 @@ class ServerResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            RelationManagers\LogCategoriesRelationManager::class
         ];
     }
 

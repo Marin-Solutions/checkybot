@@ -22,4 +22,9 @@ class Server extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function logCategories(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(ServerLogCategory::class);
+    }
 }

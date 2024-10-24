@@ -29,4 +29,13 @@
         {
             return $form->schema([]);
         }
+
+        protected function getHeaderActions(): array
+        {
+            return [
+                Actions\Action::make('back')
+                    ->url(fn() => url()->previous() ?? $this->getResource()::getUrl('index'))
+                    ->color('secondary')
+            ];
+        }
     }
