@@ -26,12 +26,6 @@ class MonitorApis extends Model
 
         try {
             $request = Http::get($url);
-            $responseArray = $request->json();
-
-            app('debugbar')->log([
-                Arr::has($responseArray, '0.title'),
-                Arr::get($responseArray, '0.title')
-            ]);
 
             $responseData[ 'code' ] = $request->ok() ? 200 : 0;
             $responseData[ 'body' ] = $request->json();

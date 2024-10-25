@@ -26,11 +26,6 @@
         protected static ?int $navigationSort = 4;
         protected static string $urlPattern = "/(?:\{message\}.*\{description\}|\{description\}.*\{message\})/";
 
-        public static function testWebhook( array $data ): void
-        {
-            app('debugbar')->log($data);
-        }
-
         public static function form( Form $form ): Form
         {
 
