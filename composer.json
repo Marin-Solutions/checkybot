@@ -6,6 +6,7 @@
     "license": "proprietary",
     "require": {
         "php": "^8.2",
+        "ext-dom": "*",
         "bezhansalleh/filament-shield": "^3.2",
         "darkaonline/l5-swagger": "^8.6",
         "filament/filament": "^3.2",
@@ -17,6 +18,9 @@
         "laravel/telescope": "^5.1",
         "laravel/tinker": "^2.9",
         "laravel/vonage-notification-channel": "^3.3",
+        "league/flysystem-aws-s3-v3": "^3.0",
+        "league/flysystem-ftp": "^3.0",
+        "league/flysystem-sftp-v3": "^3.0",
         "predis/predis": "^2.0",
         "spatie/crawler": "^8.2",
         "spatie/dns": "^2.6",
@@ -24,8 +28,7 @@
         "spatie/ssl-certificate": "^2.6",
         "symfony/http-client": "^7.1",
         "symfony/postmark-mailer": "^7.1",
-        "webbingbrasil/filament-copyactions": "^3.0",
-        "ext-dom": "*"
+        "webbingbrasil/filament-copyactions": "^3.0"
     },
     "require-dev": {
         "barryvdh/laravel-debugbar": "^3.14",
