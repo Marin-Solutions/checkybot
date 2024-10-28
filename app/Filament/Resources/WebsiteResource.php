@@ -151,7 +151,8 @@
                         ->numeric()
                         ->sortable(),
                     Tables\Columns\ToggleColumn::make('uptime_check')
-                        ->translateLabel(),
+                        ->translateLabel()
+                        ->sortable(),
                     Tables\Columns\SelectColumn::make('uptime_interval')
                         ->translateLabel()
                         ->options([
@@ -169,22 +170,27 @@
                         ->sortable(),
                     Tables\Columns\ToggleColumn::make('ssl_check')
                         ->label('SSL check')
-                        ->translateLabel(),
+                        ->translateLabel()
+                        ->sortable(),
                     Tables\Columns\TextColumn::make('ssl_expiry_date')
                         ->label('SSL expiry date')
                         ->translateLabel()
-                        ->disabled(),
+                        ->disabled()
+                        ->sortable(),
                     Tables\Columns\ToggleColumn::make('outbound_check')
                         ->label('Outbound check')
-                        ->translateLabel(),
+                        ->translateLabel()
+                        ->sortable(),
                     Tables\Columns\TextColumn::make('global_notifications_count')
                         ->label('Global Notifications Channels')
                         ->counts('globalNotifications')
-                        ->formatStateUsing(fn( $state ) => $state . '  🌍'),
+                        ->formatStateUsing(fn( $state ) => $state . '  🌍')
+                        ->sortable(),
                     Tables\Columns\TextColumn::make('individual_notifications_count')
                         ->label('Individual Notifications Channels')
                         ->counts('individualNotifications')
-                        ->formatStateUsing(fn( $state ) => $state . '  📌'),
+                        ->formatStateUsing(fn( $state ) => $state . '  📌')
+                        ->sortable(),
                     Tables\Columns\TextColumn::make('created_at')
                         ->translateLabel()
                         ->dateTime()
