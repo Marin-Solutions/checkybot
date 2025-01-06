@@ -1,51 +1,50 @@
 <?php
 
-    namespace App\Jobs;
+namespace App\Jobs;
 
-    use App\Models\WebsiteLogHistory;
-    use Carbon\Carbon;
-    use Illuminate\Contracts\Queue\ShouldQueue;
-    use Illuminate\Foundation\Queue\Queueable;
-    use Illuminate\Support\Facades\Http;
-    use Illuminate\Support\Facades\Log;
-    use Spatie\SslCertificate\SslCertificate;
+use App\Models\WebsiteLogHistory;
+use Carbon\Carbon;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Spatie\SslCertificate\SslCertificate;
+use App\Models\Website;
 
-    class LogUptimeSslJob implements ShouldQueue
+class LogUptimeSslJob implements ShouldQueue
+{
+    use Queueable;
+
+    protected $website;
+
+    /**
+     * Create a new job instance.
+     */
+    public function __construct($website)
     {
-        use Queueable;
-
-        protected $website;
-
-        /**
-         * Create a new job instance.
-         */
-        public function __construct( $website )
-        {
-            $this->website = $website;
-        }
-
-        /**
-         * Execute the job.
-         */
-        public function handle(): void
-        {
-            $log = new WebsiteLogHistory;
-
-            /*Get SSL expiry date*/
-            $certificate          = SslCertificate::createForHostName($this->website[ 'url' ]);
-            $log->ssl_expiry_date = $certificate->expirationDate();
-
-            /*Hit Website to get status code & speed*/
-            $responseTimeStart = Carbon::now();
-            $response          = Http::get($this->website['url']);
-            $responseTimeEnd   = Carbon::now();
-            $log->http_status_code = $response->status();
-            $log->speed            = $responseTimeEnd->diffInMilliseconds($responseTimeStart);
-
-            /*Save log*/
-            $log->save();
-
-            /*Create system log*/
-            Log::info('Log created for website ' . $this->website[ 'url' ]);
-        }
+        $this->website = $website;
     }
+
+    /**
+     * Execute the job.
+     */
+    public function handle(): void
+    {
+        $website = Website::find($this->website['id']);
+        
+        if (!$website) {
+            Log::error("Website not found for ID: " . $this->website['id']);
+            return;
+        }
+
+        $websiteLogHistory = new WebsiteLogHistory();
+        $websiteLogHistory->website_id = $this->website['id'];
+        $websiteLogHistory->ssl_expiry_date = $this->ssl_expiry_date;
+        $websiteLogHistory->http_status_code = $this->http_status_code;
+        $websiteLogHistory->speed = $this->speed;
+        $websiteLogHistory->save();
+
+        /*Create system log*/
+        Log::info('Log created for website ' . $this->website['url']);
+    }
+}
