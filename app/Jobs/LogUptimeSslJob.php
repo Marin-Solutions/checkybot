@@ -43,12 +43,12 @@ class LogUptimeSslJob implements ShouldQueue
             $ssl_expiry_date = $certificate->expirationDate();
 
             // Get status code and speed
-            $responseTimeStart = Carbon::now();
+            $responseTimeStart = microtime(true);
             $response = Http::get($this->website['url']);
-            $responseTimeEnd = Carbon::now();
+            $responseTimeEnd = microtime(true);
             
             $http_status_code = $response->status();
-            $speed = $responseTimeEnd->diffInMilliseconds($responseTimeStart);
+            $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
 
             // Create and save the log
             $websiteLogHistory = new WebsiteLogHistory();
