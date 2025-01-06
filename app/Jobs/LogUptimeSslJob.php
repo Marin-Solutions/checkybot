@@ -37,14 +37,32 @@ class LogUptimeSslJob implements ShouldQueue
             return;
         }
 
-        $websiteLogHistory = new WebsiteLogHistory();
-        $websiteLogHistory->website_id = $this->website['id'];
-        $websiteLogHistory->ssl_expiry_date = $this->ssl_expiry_date;
-        $websiteLogHistory->http_status_code = $this->http_status_code;
-        $websiteLogHistory->speed = $this->speed;
-        $websiteLogHistory->save();
+        try {
+            // Get SSL expiry date
+            $certificate = SslCertificate::createForHostName($this->website['url']);
+            $ssl_expiry_date = $certificate->expirationDate();
 
-        /*Create system log*/
-        Log::info('Log created for website ' . $this->website['url']);
+            // Get status code and speed
+            $responseTimeStart = Carbon::now();
+            $response = Http::get($this->website['url']);
+            $responseTimeEnd = Carbon::now();
+            
+            $http_status_code = $response->status();
+            $speed = $responseTimeEnd->diffInMilliseconds($responseTimeStart);
+
+            // Create and save the log
+            $websiteLogHistory = new WebsiteLogHistory();
+            $websiteLogHistory->website_id = $this->website['id'];
+            $websiteLogHistory->ssl_expiry_date = $ssl_expiry_date;
+            $websiteLogHistory->http_status_code = $http_status_code;
+            $websiteLogHistory->speed = $speed;
+            $websiteLogHistory->save();
+
+            /*Create system log*/
+            Log::info('Log created for website ' . $this->website['url']);
+        } catch (\Exception $e) {
+            Log::error('Error creating log for website ' . $this->website['url'] . ': ' . $e->getMessage());
+            throw $e;
+        }
     }
 }
