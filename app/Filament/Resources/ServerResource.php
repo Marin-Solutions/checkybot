@@ -64,14 +64,25 @@ class ServerResource extends Resource
                             ->latest()
                             ->first();
                             
-                        if (!$latestInfo) return null;
+                        if (!$latestInfo) {
+                            return [
+                                'label' => 'Disk',
+                                'value' => 0,
+                                'tooltip' => "No data available"
+                            ];
+                        }
                         
-                        $usedPercentage = 100 - floatval(str_replace('%', '', $latestInfo->disk_free_percentage));
+                        // Debug the raw value
+                        \Log::info('Disk Free:', ['value' => $latestInfo->disk_free_percentage]);
+                        
+                        // Remove any % sign and convert to float
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->disk_free_percentage);
+                        $usedPercentage = 100 - $freePercentage;
                         
                         return [
                             'label' => 'Disk',
                             'value' => $usedPercentage,
-                            'tooltip' => "Used: {$usedPercentage}%\nFree: {$latestInfo->disk_free_percentage}"
+                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage)
                         ];
                     }),
                 UsageBarColumn::make('ram_usage')
@@ -82,14 +93,25 @@ class ServerResource extends Resource
                             ->latest()
                             ->first();
                             
-                        if (!$latestInfo) return null;
+                        if (!$latestInfo) {
+                            return [
+                                'label' => 'RAM',
+                                'value' => 0,
+                                'tooltip' => "No data available"
+                            ];
+                        }
                         
-                        $usedPercentage = 100 - floatval(str_replace('%', '', $latestInfo->ram_free_percentage));
+                        // Debug the raw value
+                        \Log::info('RAM Free:', ['value' => $latestInfo->ram_free_percentage]);
+                        
+                        // Remove any % sign and convert to float
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->ram_free_percentage);
+                        $usedPercentage = 100 - $freePercentage;
                         
                         return [
                             'label' => 'RAM',
                             'value' => $usedPercentage,
-                            'tooltip' => "Used: {$usedPercentage}%\nFree: {$latestInfo->ram_free_percentage}"
+                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage)
                         ];
                     }),
                 Tables\Columns\TextColumn::make('created_at')
