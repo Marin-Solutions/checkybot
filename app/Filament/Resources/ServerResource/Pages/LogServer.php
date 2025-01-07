@@ -40,17 +40,23 @@
                     ->label('Copy script')
                     ->color('gray')
                     ->icon('heroicon-m-clipboard')
-                    ->action(fn () => $this->copyToClipboard(
-                        ServerInformationHistory::copyCommand($this->record->id)
-                    )),
+                    ->extraAttributes([
+                        'x-data' => '',
+                        'x-on:click' => 'navigator.clipboard.writeText($event.target.getAttribute("data-command"))',
+                    ])
+                    ->setAttribute('data-command', fn() => ServerInformationHistory::copyCommand($this->record->id))
+                    ->action(fn() => Notification::make()->success()->title('Copied to clipboard')->send()),
                 
                 Actions\Action::make('copy_log_script')
                     ->label('Copy log script')
                     ->color('gray')
                     ->icon('heroicon-m-clipboard')
-                    ->action(fn () => $this->copyToClipboard(
-                        ServerLogFileHistory::copyCommand($this->record->id)
-                    )),
+                    ->extraAttributes([
+                        'x-data' => '',
+                        'x-on:click' => 'navigator.clipboard.writeText($event.target.getAttribute("data-command"))',
+                    ])
+                    ->setAttribute('data-command', fn() => ServerLogFileHistory::copyCommand($this->record->id))
+                    ->action(fn() => Notification::make()->success()->title('Copied to clipboard')->send()),
                 
                 Actions\DeleteAction::make()
                     ->modalHeading('Delete Server')
@@ -61,15 +67,5 @@
                     ->url(fn() => url()->previous() ?? $this->getResource()::getUrl('index'))
                     ->color('secondary')
             ];
-        }
-
-        protected function copyToClipboard(string $text): void
-        {
-            $this->dispatch('copy-to-clipboard', text: $text);
-            
-            Notification::make()
-                ->title('Copied to clipboard')
-                ->success()
-                ->send();
         }
     }
