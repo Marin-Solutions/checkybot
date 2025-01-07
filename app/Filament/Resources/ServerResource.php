@@ -60,6 +60,16 @@ class ServerResource extends Resource
                 UsageBarColumn::make('disk_usage')
                     ->label('Disk Usage')
                     ->translateLabel()
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        return $query
+                            ->orderBy(
+                                ServerInformationHistory::select('disk_free_percentage')
+                                    ->whereColumn('server_id', 'servers.id')
+                                    ->latest()
+                                    ->take(1),
+                                $direction
+                            );
+                    })
                     ->state(function (Server $record): array {
                         $latestInfo = $record->informationHistory()
                             ->orderBy('id', 'desc')
@@ -90,7 +100,17 @@ class ServerResource extends Resource
                 UsageBarColumn::make('ram_usage')
                     ->label('RAM Usage')
                     ->translateLabel()
-                    ->state(function (Server $record): ?array {
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        return $query
+                            ->orderBy(
+                                ServerInformationHistory::select('ram_free_percentage')
+                                    ->whereColumn('server_id', 'servers.id')
+                                    ->latest()
+                                    ->take(1),
+                                $direction
+                            );
+                    })
+                    ->state(function (Server $record): array {
                         $latestInfo = $record->informationHistory()
                             ->orderBy('id', 'desc')
                             ->first();
@@ -119,6 +139,16 @@ class ServerResource extends Resource
                 UsageBarColumn::make('cpu_usage')
                     ->label('CPU Load')
                     ->translateLabel()
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        return $query
+                            ->orderBy(
+                                ServerInformationHistory::select('cpu_load')
+                                    ->whereColumn('server_id', 'servers.id')
+                                    ->latest()
+                                    ->take(1),
+                                $direction
+                            );
+                    })
                     ->state(function (Server $record): array {
                         $latestInfo = $record->informationHistory()
                             ->orderBy('id', 'desc')
