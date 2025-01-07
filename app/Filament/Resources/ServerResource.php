@@ -61,9 +61,9 @@ class ServerResource extends Resource
                     ->translateLabel()
                     ->state(function (Server $record): ?array {
                         $latestInfo = $record->informationHistory()
-                            ->latest()
+                            ->orderBy('id', 'desc')
                             ->first();
-                            
+
                         if (!$latestInfo) {
                             return [
                                 'label' => 'Disk',
@@ -71,14 +71,14 @@ class ServerResource extends Resource
                                 'tooltip' => "No data available"
                             ];
                         }
-                        
+
                         // Debug the raw value
                         \Log::info('Disk Free:', ['value' => $latestInfo->disk_free_percentage]);
-                        
+
                         // Remove any % sign and convert to float
                         $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->disk_free_percentage);
                         $usedPercentage = 100 - $freePercentage;
-                        
+
                         return [
                             'label' => 'Disk',
                             'value' => $usedPercentage,
@@ -92,7 +92,7 @@ class ServerResource extends Resource
                         $latestInfo = $record->informationHistory()
                             ->latest()
                             ->first();
-                            
+
                         if (!$latestInfo) {
                             return [
                                 'label' => 'RAM',
@@ -100,14 +100,14 @@ class ServerResource extends Resource
                                 'tooltip' => "No data available"
                             ];
                         }
-                        
+
                         // Debug the raw value
                         \Log::info('RAM Free:', ['value' => $latestInfo->ram_free_percentage]);
-                        
+
                         // Remove any % sign and convert to float
                         $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->ram_free_percentage);
                         $usedPercentage = 100 - $freePercentage;
-                        
+
                         return [
                             'label' => 'RAM',
                             'value' => $usedPercentage,
