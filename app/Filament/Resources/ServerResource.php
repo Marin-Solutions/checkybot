@@ -59,28 +59,29 @@ class ServerResource extends Resource
                 UsageBarColumn::make('disk_usage')
                     ->label('Disk Usage')
                     ->translateLabel()
-                    ->state(function (Server $record): ?array {
+                    ->state(function (Server $record): array {
                         $latestInfo = $record->informationHistory()
                             ->orderBy('id', 'desc')
                             ->first();
-
+                            
                         if (!$latestInfo) {
                             return [
-                                'label' => 'Disk',
                                 'value' => 0,
                                 'tooltip' => "No data available"
                             ];
                         }
-
-                        // Debug the raw value
-                        \Log::info('Disk Free:', ['value' => $latestInfo->disk_free_percentage]);
-
-                        // Remove any % sign and convert to float
+                            
+                        // Debug log
+                        \Log::debug('Server disk info:', [
+                            'server_id' => $record->id,
+                            'raw_percentage' => $latestInfo->disk_free_percentage,
+                            'latest_info' => $latestInfo->toArray()
+                        ]);
+                            
                         $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->disk_free_percentage);
                         $usedPercentage = 100 - $freePercentage;
-
+                            
                         return [
-                            'label' => 'Disk',
                             'value' => $usedPercentage,
                             'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage)
                         ];
