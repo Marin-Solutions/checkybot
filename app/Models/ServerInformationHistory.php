@@ -15,17 +15,15 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 class ServerInformationHistory extends Model
 {
     use HasFactory;
-    
+
     protected $table = 'server_information_history';
-    
+
     var string $server_id;
     var string $token;
 
     protected $fillable = [
         'server_id',
         'cpu_load',
-        'cpu_cores',
-        'cpu_use',
         'ram_free_percentage',
         'ram_free',
         'disk_free_percentage',

@@ -52,7 +52,6 @@ class ServerInformationHistoryController extends Controller
                         $serverResource  = new ServerInfoHistoryResource(ServerInformationHistory::create([
                             'server_id' => $request->s,
                             'cpu_load' => $request->cpu_load,
-                            'cpu_use' => $request->cpu_use,
                             'ram_free_percentage' => $request->ram_free_percentage,
                             'ram_free' => $request->ram_free,
                             'disk_free_percentage' => $request->disk_free_percentage,
