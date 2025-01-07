@@ -1,4 +1,4 @@
-<div class="flex items-center w-full gap-2">
+<div class="flex items-center w-full">
     @php
         $state = $getState();
         $value = $state['value'] ?? 0;
@@ -10,16 +10,15 @@
     @endphp
 
     <div class="flex-1">
-        <div class="bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden" style="height: 8px;">
+        <div 
+            class="bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden" 
+            style="height: 8px;"
+            title="{{ number_format($value, 1) }}% {{ $state['tooltip'] ?? '' }}"
+        >
             <div 
                 class="{{ $color }} transition-all shadow-sm" 
                 style="width: {{ $value }}%; height: 8px;"
-                title="{{ $state['tooltip'] ?? '' }}"
             ></div>
         </div>
-    </div>
-
-    <div class="min-w-[3rem] text-sm text-end tabular-nums">
-        {{ number_format($value, 1) }}%
     </div>
 </div> 
