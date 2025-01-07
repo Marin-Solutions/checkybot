@@ -9,7 +9,7 @@
         };
     @endphp
 
-    <div class="flex-1">
+    <div class="flex-1 max-w-[200px]">
         <div 
             class="bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden" 
             style="height: 8px;"
