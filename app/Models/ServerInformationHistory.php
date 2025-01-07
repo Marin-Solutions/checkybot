@@ -82,12 +82,12 @@ class ServerInformationHistory extends Model
         $content .= "CPU_LOAD=$(uptime | grep -oP '(?<=average:).*' | awk '{print \$1}' | sed 's/,//')\n";
         $content .= "CPU_USE=$(awk \"BEGIN {printf \\\"%.2f\\\", (\$CPU_LOAD/\$CPU_CORES)*100}\")\n\n";
 
-        // Get RAM information
-        $content .= "RAM_FREE_PERCENTAGE=$(free | awk '/Mem/ {print \$7*100/\$2\"%\"}' )\n";
+        // Get RAM information - remove % sign
+        $content .= "RAM_FREE_PERCENTAGE=$(free | awk '/Mem/ {print \$7*100/\$2}' )\n";
         $content .= "RAM_FREE=$(free | awk '/Mem/ {print \$7}')\n\n";
 
-        // Get Disk information
-        $content .= "DISK_FREE_PERCENTAGE=$(df --output=pcent / | awk 'NR==2{print 100-\$1\"%\"}')\n";
+        // Get Disk information - remove % sign
+        $content .= "DISK_FREE_PERCENTAGE=$(df --output=pcent / | awk 'NR==2{print 100-\$1}')\n";
         $content .= "DISK_FREE_BYTES=$(df --output=avail / | awk 'NR==2{print \$1}')\n\n";
 
         // Send data to API
