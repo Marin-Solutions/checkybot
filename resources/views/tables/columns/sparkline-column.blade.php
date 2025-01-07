@@ -19,7 +19,7 @@
                     type: 'line',
                     height: 50,
                     sparkline: {
-                        enabled: false
+                        enabled: true
                     },
                     animations: {
                         enabled: false
