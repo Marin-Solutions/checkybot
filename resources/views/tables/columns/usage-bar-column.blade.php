@@ -1,4 +1,4 @@
-<div class="flex items-center w-full">
+<div class="flex items-center w-full px-4">
     @php
         $state = $getState();
         $value = $state['value'] ?? 0;
