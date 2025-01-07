@@ -40,27 +40,23 @@
                     ->label('Copy script')
                     ->color('gray')
                     ->icon('heroicon-m-clipboard')
-                    ->action(function () {
-                        $this->dispatch('clipboard', text: ServerInformationHistory::copyCommand($this->record->id));
-                        
-                        Notification::make()
-                            ->success()
-                            ->title('Script copied to clipboard')
-                            ->send();
-                    }),
+                    ->requiresConfirmation()
+                    ->modalHeading('Copy Installation Script')
+                    ->modalDescription('This will copy the installation script to your clipboard.')
+                    ->modalSubmitActionLabel('Copy')
+                    ->modalIcon('heroicon-o-clipboard')
+                    ->copyToClipboard(fn () => ServerInformationHistory::copyCommand($this->record->id)),
                 
                 Actions\Action::make('copy_log_script')
                     ->label('Copy log script')
                     ->color('gray')
                     ->icon('heroicon-m-clipboard')
-                    ->action(function () {
-                        $this->dispatch('clipboard', text: ServerLogFileHistory::copyCommand($this->record->id));
-                        
-                        Notification::make()
-                            ->success()
-                            ->title('Log script copied to clipboard')
-                            ->send();
-                    }),
+                    ->requiresConfirmation()
+                    ->modalHeading('Copy Log Script')
+                    ->modalDescription('This will copy the log script to your clipboard.')
+                    ->modalSubmitActionLabel('Copy')
+                    ->modalIcon('heroicon-o-clipboard')
+                    ->copyToClipboard(fn () => ServerLogFileHistory::copyCommand($this->record->id)),
                 
                 Actions\DeleteAction::make()
                     ->modalHeading('Delete Server')
