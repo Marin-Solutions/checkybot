@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateServerInformationHistoryRequest;
 use App\Http\Resources\ServerInfoHistoryResource;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
+use Illuminate\Http\Request;
 
 class ServerInformationHistoryController extends Controller
 {
@@ -29,7 +30,7 @@ class ServerInformationHistoryController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreServerInformationHistoryRequest $request)
+    public function store(Request $request)
     {
         $ip =  $request->ip();
         $server  = new Server();
@@ -42,7 +43,21 @@ class ServerInformationHistoryController extends Controller
             if( $dataServer != null ){
                 if($dataServer->token === $token ){
                     if($dataServer->ip == $ip){
-                        $serverResource  = new ServerInfoHistoryResource(ServerInformationHistory::create($request->all()));
+                        // Update CPU cores if changed
+                        if ($request->cpu_cores && $dataServer->cpu_cores != $request->cpu_cores) {
+                            $dataServer->update(['cpu_cores' => $request->cpu_cores]);
+                        }
+
+                        // Create history record
+                        $serverResource  = new ServerInfoHistoryResource(ServerInformationHistory::create([
+                            'server_id' => $request->s,
+                            'cpu_load' => $request->cpu_load,
+                            'cpu_use' => $request->cpu_use,
+                            'ram_free_percentage' => $request->ram_free_percentage,
+                            'ram_free' => $request->ram_free,
+                            'disk_free_percentage' => $request->disk_free_percentage,
+                            'disk_free_bytes' => $request->disk_free_bytes,
+                        ]));
                         return response()->json($serverResource, 200);
                     }else{
                         return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 406);

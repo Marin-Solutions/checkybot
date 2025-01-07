@@ -139,7 +139,7 @@ class ServerResource extends Resource
                             'tooltip' => sprintf(
                                 "CPU Usage: %.1f%%\nCores: %d", 
                                 $cpuUsage,
-                                $latestInfo->cpu_cores ?? 0
+                                $record->cpu_cores ?? 0
                             )
                         ];
                     }),

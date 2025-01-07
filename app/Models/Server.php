@@ -13,6 +13,7 @@ class Server extends Model
         'ip',
         'name',
         'description',
+        'cpu_cores',
         'created_by',
         'token',
 
