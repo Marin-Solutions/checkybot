@@ -130,4 +130,9 @@ class Website extends Model
     {
         return $this->hasMany(NotificationSetting::class, 'website_id')->websiteScope()->active();
     }
+
+    public function logHistory()
+    {
+        return $this->hasMany(WebsiteLogHistory::class);
+    }
 }

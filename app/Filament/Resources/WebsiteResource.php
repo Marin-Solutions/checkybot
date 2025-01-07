@@ -21,6 +21,7 @@
     use Illuminate\Database\Eloquent\SoftDeletingScope;
     use App\Filament\Resources\WebsiteResource\RelationManagers;
     use Spatie\Crawler\Crawler;
+    use App\Tables\Columns\SparklineColumn;
 
     class WebsiteResource extends Resource
     {
@@ -145,6 +146,20 @@
                         ->translateLabel()
                         ->limit(50)
                         ->searchable(),
+                    SparklineColumn::make('response_times')
+                        ->label('Response Time (24h)')
+                        ->translateLabel()
+                        ->state(function (Website $record): array {
+                            return $record->logHistory()
+                                ->where('created_at', '>=', now()->subHours(24))
+                                ->orderBy('created_at')
+                                ->get()
+                                ->map(fn ($log) => [
+                                    'date' => $log->created_at->format('M j, H:i'),
+                                    'value' => $log->speed
+                                ])
+                                ->toArray();
+                        }),
                     Tables\Columns\TextColumn::make('user.name')
                         ->label('Created By')
                         ->translateLabel()
