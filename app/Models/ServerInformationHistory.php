@@ -22,6 +22,7 @@ class ServerInformationHistory extends Model
         'server_id',
         'cpu_load',
         'cpu_cores',
+        'cpu_use',
         'ram_free_percentage',
         'ram_free',
         'disk_free_percentage',
@@ -97,7 +98,8 @@ class ServerInformationHistory extends Model
         $content .= " -d '{\n";
         $content .= "    \"cpu_load\": \"'\$CPU_LOAD'\",\n";
         $content .= "    \"cpu_cores\": \"'\$CPU_CORES'\",\n";
-        $content .= "    \"server_id\": \"'\$SERVER_ID'\",\n";
+        $content .= "    \"cpu_use\": \"'\$CPU_USE'\",\n";
+        $content .= "    \"s\": \"'\$SERVER_ID'\",\n";
         $content .= "    \"ram_free_percentage\": \"'\$RAM_FREE_PERCENTAGE'\",\n";
         $content .= "    \"ram_free\": \"'\$RAM_FREE'\",\n";
         $content .= "    \"disk_free_percentage\": \"'\$DISK_FREE_PERCENTAGE'\",\n";

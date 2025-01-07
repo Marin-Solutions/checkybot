@@ -124,24 +124,22 @@ class ServerResource extends Resource
                             ->orderBy('id', 'desc')
                             ->first();
                             
-                        if (!$latestInfo || !$latestInfo->cpu_cores) {
+                        if (!$latestInfo) {
                             return [
                                 'value' => 0,
                                 'tooltip' => "No data available"
                             ];
                         }
                         
-                        // Calculate CPU usage as percentage of total cores
-                        $cpuLoad = (float) str_replace(',', '.', $latestInfo->cpu_load);
-                        $cpuUsagePercentage = ($cpuLoad / $latestInfo->cpu_cores) * 100;
+                        // Get CPU usage directly from CPU_USE
+                        $cpuUsage = (float) str_replace(',', '.', $latestInfo->cpu_use);
                         
                         return [
-                            'value' => min(100, $cpuUsagePercentage), // Cap at 100%
+                            'value' => min(100, $cpuUsage), // Cap at 100%
                             'tooltip' => sprintf(
-                                "Load: %.2f\nCores: %d\nUsage: %.1f%%", 
-                                $cpuLoad, 
-                                $latestInfo->cpu_cores,
-                                $cpuUsagePercentage
+                                "CPU Usage: %.1f%%\nCores: %d", 
+                                $cpuUsage,
+                                $latestInfo->cpu_cores ?? 0
                             )
                         ];
                     }),
