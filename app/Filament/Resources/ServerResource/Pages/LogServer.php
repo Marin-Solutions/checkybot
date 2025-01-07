@@ -3,11 +3,14 @@
     namespace App\Filament\Resources\ServerResource\Pages;
 
     use App\Filament\Resources\ServerResource;
+    use App\Models\ServerInformationHistory;
+    use App\Models\ServerLogFileHistory;
     use Filament\Actions;
     use Filament\Forms\Form;
     use Filament\Infolists\Components\TextEntry;
     use Filament\Infolists\Infolist;
     use Filament\Resources\Pages\ViewRecord;
+    use Webbingbrasil\FilamentCopyActions\Actions\CopyAction;
 
     class LogServer extends ViewRecord
     {
@@ -33,6 +36,19 @@
         protected function getHeaderActions(): array
         {
             return [
+                CopyAction::make('copy_script')
+                    ->label('Copy script')
+                    ->copyable(fn() => ServerInformationHistory::copyCommand($this->record->id)),
+                
+                CopyAction::make('copy_log_script')
+                    ->label('Copy log script')
+                    ->copyable(fn() => ServerLogFileHistory::copyCommand($this->record->id)),
+                
+                Actions\DeleteAction::make()
+                    ->modalHeading('Delete Server')
+                    ->modalDescription('Are you sure you want to delete this server? This will delete all associated data.')
+                    ->successNotificationTitle('Server deleted successfully'),
+                
                 Actions\Action::make('back')
                     ->url(fn() => url()->previous() ?? $this->getResource()::getUrl('index'))
                     ->color('secondary')
