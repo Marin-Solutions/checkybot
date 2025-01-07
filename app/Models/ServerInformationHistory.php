@@ -117,9 +117,9 @@ class ServerInformationHistory extends Model
         $user = Auth::user()->id;
         $command  = "wget https://checkybot.com/reporter/$server/$user -O reporter_server_info.sh ";
         $command .= "&& chmod +x $(pwd)/reporter_server_info.sh ";
-        $command .= "&& CRON_JOB=\"*/1 * * * * $(pwd)/reporter_server_info.sh\" ";
-        $command .= "&& (crontab -l | grep -Fq \"$CRON_JOB\" || ";
-        $command .= "(crontab -l 2>/dev/null; echo \"$CRON_JOB\") | crontab -)";
+        $command .= "&& CRON_CMD=\"$(pwd)/reporter_server_info.sh\" ";
+        $command .= "&& (crontab -l | grep -Fq \"*/1 * * * * \$CRON_CMD\" || ";
+        $command .= "(crontab -l 2>/dev/null; echo \"*/1 * * * * \$CRON_CMD\") | crontab -)";
         return $command;
     }
 }
