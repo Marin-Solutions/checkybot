@@ -51,17 +51,10 @@ class ServerResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('ip')
+                Tables\Columns\TextColumn::make('IP')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('description')
-                    ->limit(50)
-                    ->searchable(),
-                Tables\Columns\TextColumn::make('user.name')
-                    ->label('Owner')
-                    ->numeric()
-                    ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -80,10 +73,10 @@ class ServerResource extends Resource
             ])
             ->actions([
                 CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
+                    ->copyable(fn(Server $record) => ServerInformationHistory::copyCommand($record->id))
                     ->label(__('Copy script')),
                 CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
+                    ->copyable(fn(Server $record) => ServerLogFileHistory::copyCommand($record->id))
                     ->label(__('Copy log script')),
                 Tables\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
@@ -130,7 +123,7 @@ class ServerResource extends Resource
                 ->url('localhsot'),
             Action::make('delete')
                 ->requiresConfirmation()
-                ->action(fn () => $this->post->delete()),
+                ->action(fn() => $this->post->delete()),
         ];
     }
     public static function getTableActions(): array
@@ -140,6 +133,4 @@ class ServerResource extends Resource
             Tables\Actions\DeleteAction::make(),
         ];
     }
-
-
 }
