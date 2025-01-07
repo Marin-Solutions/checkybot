@@ -9,8 +9,8 @@
     use Filament\Forms\Form;
     use Filament\Infolists\Components\TextEntry;
     use Filament\Infolists\Infolist;
+    use Filament\Notifications\Notification;
     use Filament\Resources\Pages\ViewRecord;
-    use Illuminate\Support\Facades\Notification;
 
     class LogServer extends ViewRecord
     {
