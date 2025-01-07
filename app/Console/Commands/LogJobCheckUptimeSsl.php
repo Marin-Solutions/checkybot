@@ -27,7 +27,12 @@
          */
         public function handle()
         {
-            $websites = Website::all();
+            $websites = Website::where('uptime_check', true)
+                ->where(function ($query) {
+                    $query->whereNull('last_checked_at')
+                        ->orWhere('last_checked_at', '<=', now()->subMinutes(10));
+                })
+                ->get();
 
             if ($websites->isNotEmpty()) {
                 $websites->each(function ($website) {

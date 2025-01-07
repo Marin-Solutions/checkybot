@@ -30,6 +30,7 @@
                     width: 2
                 },
                 tooltip: {
+                    theme: 'dark',
                     fixed: {
                         enabled: true
                     },
@@ -43,9 +44,29 @@
                         formatter: function(value) {
                             return value + 'ms';
                         }
-                    }
+                    },
+                    style: {
+                        fontSize: '12px',
+                        fontFamily: undefined
+                    },
+                    background: {
+                        enabled: true,
+                        foreColor: '#fff',
+                        borderColor: '#1f2937',
+                        borderRadius: 6,
+                        opacity: 0.9,
+                    },
                 },
-                colors: ['#3b82f6']
+                colors: ['#3b82f6'],
+                markers: {
+                    size: 3,
+                    colors: ['#3b82f6'],
+                    strokeColors: '#fff',
+                    strokeWidth: 2,
+                    hover: {
+                        size: 5
+                    }
+                }
             };
 
             const chart = new ApexCharts(document.querySelector("#chart-{{ $getRecord()->id }}"), options);
