@@ -10,10 +10,10 @@
     @endphp
 
     <div class="flex-1">
-        <div class="bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden h-2">
+        <div class="bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden" style="height: 8px;">
             <div 
-                class="{{ $color }} h-2 transition-all" 
-                style="width: {{ $value }}%"
+                class="{{ $color }} transition-all" 
+                style="width: {{ $value }}%; height: 8px;"
                 title="{{ $state['tooltip'] ?? '' }}"
             ></div>
         </div>
