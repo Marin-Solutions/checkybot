@@ -52,7 +52,8 @@ class ServerResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('IP')
+                Tables\Columns\TextColumn::make('ip')
+                    ->label('IP')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
