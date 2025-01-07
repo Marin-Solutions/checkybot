@@ -43,7 +43,7 @@
                     ->extraAttributes([
                         'x-data' => '',
                         'x-on:click' => 'navigator.clipboard.writeText($event.target.getAttribute("data-command"))',
-                        'data-command' => fn() => ServerInformationHistory::copyCommand($this->record->id)
+                        'data-command' => ServerInformationHistory::copyCommand($this->record->id)
                     ])
                     ->action(fn() => Notification::make()->success()->title('Copied to clipboard')->send()),
                 
@@ -54,7 +54,7 @@
                     ->extraAttributes([
                         'x-data' => '',
                         'x-on:click' => 'navigator.clipboard.writeText($event.target.getAttribute("data-command"))',
-                        'data-command' => fn() => ServerLogFileHistory::copyCommand($this->record->id)
+                        'data-command' => ServerLogFileHistory::copyCommand($this->record->id)
                     ])
                     ->action(fn() => Notification::make()->success()->title('Copied to clipboard')->send()),
                 
