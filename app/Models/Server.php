@@ -27,4 +27,9 @@ class Server extends Model
     {
         return $this->hasMany(ServerLogCategory::class);
     }
+
+    public function informationHistory()
+    {
+        return $this->hasMany(ServerInformationHistory::class);
+    }
 }

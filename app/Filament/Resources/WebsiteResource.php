@@ -22,7 +22,6 @@
     use App\Filament\Resources\WebsiteResource\RelationManagers;
     use Spatie\Crawler\Crawler;
     use App\Tables\Columns\SparklineColumn;
-    use App\Tables\Columns\UsageBarColumn;
 
     class WebsiteResource extends Resource
     {
@@ -239,42 +238,6 @@
                         ->dateTime()
                         ->sortable()
                         ->toggleable(isToggledHiddenByDefault: true),
-                    UsageBarColumn::make('disk_usage')
-                        ->label('Disk Usage')
-                        ->translateLabel()
-                        ->state(function (Website $record): ?array {
-                            $latestLog = $record->logHistory()
-                                ->latest()
-                                ->first();
-                                
-                            if (!$latestLog) return null;
-                            
-                            $usedPercentage = 100 - floatval(str_replace('%', '', $latestLog->disk_free_percentage));
-                            
-                            return [
-                                'label' => 'Disk',
-                                'value' => $usedPercentage,
-                                'tooltip' => "Used: {$usedPercentage}%\nFree: {$latestLog->disk_free_percentage}"
-                            ];
-                        }),
-                    UsageBarColumn::make('ram_usage')
-                        ->label('RAM Usage')
-                        ->translateLabel()
-                        ->state(function (Website $record): ?array {
-                            $latestLog = $record->logHistory()
-                                ->latest()
-                                ->first();
-                                
-                            if (!$latestLog) return null;
-                            
-                            $usedPercentage = 100 - floatval(str_replace('%', '', $latestLog->ram_free_percentage));
-                            
-                            return [
-                                'label' => 'RAM',
-                                'value' => $usedPercentage,
-                                'tooltip' => "Used: {$usedPercentage}%\nFree: {$latestLog->ram_free_percentage}"
-                            ];
-                        }),
                 ])
                 ->filters([
                     //Tables\Filters\TrashedFilter::make(),

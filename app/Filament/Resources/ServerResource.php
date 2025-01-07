@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Filament\Resources\ServerResource\RelationManagers;
 use App\Models\ServerInformationHistory;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
+use App\Tables\Columns\UsageBarColumn;
 
 class ServerResource extends Resource
 {
@@ -55,6 +56,42 @@ class ServerResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
+                UsageBarColumn::make('disk_usage')
+                    ->label('Disk Usage')
+                    ->translateLabel()
+                    ->state(function (Server $record): ?array {
+                        $latestInfo = $record->informationHistory()
+                            ->latest()
+                            ->first();
+                            
+                        if (!$latestInfo) return null;
+                        
+                        $usedPercentage = 100 - floatval(str_replace('%', '', $latestInfo->disk_free_percentage));
+                        
+                        return [
+                            'label' => 'Disk',
+                            'value' => $usedPercentage,
+                            'tooltip' => "Used: {$usedPercentage}%\nFree: {$latestInfo->disk_free_percentage}"
+                        ];
+                    }),
+                UsageBarColumn::make('ram_usage')
+                    ->label('RAM Usage')
+                    ->translateLabel()
+                    ->state(function (Server $record): ?array {
+                        $latestInfo = $record->informationHistory()
+                            ->latest()
+                            ->first();
+                            
+                        if (!$latestInfo) return null;
+                        
+                        $usedPercentage = 100 - floatval(str_replace('%', '', $latestInfo->ram_free_percentage));
+                        
+                        return [
+                            'label' => 'RAM',
+                            'value' => $usedPercentage,
+                            'tooltip' => "Used: {$usedPercentage}%\nFree: {$latestInfo->ram_free_percentage}"
+                        ];
+                    }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
