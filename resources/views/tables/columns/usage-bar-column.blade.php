@@ -3,16 +3,16 @@
         $state = $getState();
         $value = $state['value'] ?? 0;
         $color = match(true) {
-            $value >= 80 => 'bg-danger-500',
-            $value >= 70 => 'bg-warning-500',
-            default => 'bg-success-500'
+            $value >= 80 => 'bg-red-600',
+            $value >= 70 => 'bg-orange-500',
+            default => 'bg-emerald-500'
         };
     @endphp
 
     <div class="flex-1">
-        <div class="bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden" style="height: 8px;">
+        <div class="bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden" style="height: 8px;">
             <div 
-                class="{{ $color }} transition-all" 
+                class="{{ $color }} transition-all shadow-sm" 
                 style="width: {{ $value }}%; height: 8px;"
                 title="{{ $state['tooltip'] ?? '' }}"
             ></div>
