@@ -3,9 +3,9 @@
         $state = $getState();
         $value = $state['value'] ?? 0;
         $color = match(true) {
-            $value >= 80 => 'bg-red-600',
-            $value >= 70 => 'bg-orange-500',
-            default => 'bg-emerald-500'
+            $value >= 80 => 'bg-danger-500 dark:bg-danger-400',
+            $value >= 70 => 'bg-warning-500 dark:bg-warning-400',
+            default => 'bg-success-500 dark:bg-success-400'
         };
     @endphp
 
