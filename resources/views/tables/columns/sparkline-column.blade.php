@@ -19,10 +19,35 @@
                     type: 'line',
                     height: 50,
                     sparkline: {
-                        enabled: true
+                        enabled: false
                     },
                     animations: {
                         enabled: false
+                    }
+                },
+                grid: {
+                    show: false
+                },
+                xaxis: {
+                    labels: {
+                        show: false
+                    },
+                    axisBorder: {
+                        show: false
+                    },
+                    axisTicks: {
+                        show: false
+                    }
+                },
+                yaxis: {
+                    min: 0,
+                    labels: {
+                        show: true,
+                        style: {
+                            colors: '#9ca3af',
+                            fontSize: '10px'
+                        },
+                        formatter: (value) => `${Math.round(value)}ms`
                     }
                 },
                 stroke: {
