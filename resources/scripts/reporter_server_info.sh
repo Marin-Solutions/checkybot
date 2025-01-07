@@ -6,21 +6,31 @@ API_URL="https://checkybot.com/api/v1/server-history"
 # Set the token-id variable
 TOKEN_ID="your_token_id"
 
-# Get the IP address of the server
-IP_SERVER=$(ip addr show | awk '/inet / {print $2}' | cut -d/ -f1)
+# Get CPU information and calculate true usage percentage
+CPU_CORES=$(nproc)
+CPU_LOAD=$(uptime | grep -oP '(?<=average:).*' | awk '{print $1}' | sed 's/,//')
+CPU_USE=$(awk "BEGIN {printf \"%.2f\", ($CPU_LOAD/$CPU_CORES)*100}")
 
-# Get the RAM usage
-RAM_USE=$(free -h | awk '/Mem/ {print $3}' | sed 's/%//g')
+# Get RAM information
+RAM_FREE_PERCENTAGE=$(free | awk '/Mem/ {print $7*100/$2"%"}' )
+RAM_FREE=$(free | awk '/Mem/ {print $7}')
 
-# Get the CPU usage
-CPU_USE=$(top -b -n 1 | awk '/Cpu/ {print $2}' | sed 's/%//g')
+# Get Disk information
+DISK_FREE_PERCENTAGE=$(df --output=pcent / | awk 'NR==2{print 100-$1"%"}')
+DISK_FREE_BYTES=$(df --output=avail / | awk 'NR==2{print $1}')
 
-# Get the disk usage
-DISK_USE=$(df -h | awk '/\/$/ {print $5}' | sed 's/%//g')
-
-# Send the request to the API endpoint
-curl -X POST \
-  $API_URL \
-  -H 'Authorization: Bearer '$TOKEN_ID \
-  -H 'Content-Type: application/json' \
-  -d '{"ip_server": "'$IP_SERVER'", "ram_use": "'$RAM_USE'", "cpu_use": "'$CPU_USE'", "disk_use": "'$DISK_USE'"}'
+# Send data to API
+curl -s -X POST \
+ $API_URL \
+ -H 'Authorization: Bearer '$TOKEN_ID \
+ -H 'Content-Type: application/json' \
+ -H 'Accept: application/json' \
+ -d '{
+    "cpu_load": "'$CPU_LOAD'",
+    "cpu_cores": "'$CPU_CORES'",
+    "server_id": "'$SERVER_ID'",
+    "ram_free_percentage": "'$RAM_FREE_PERCENTAGE'",
+    "ram_free": "'$RAM_FREE'",
+    "disk_free_percentage": "'$DISK_FREE_PERCENTAGE'",
+    "disk_free_bytes": "'$DISK_FREE_BYTES'"
+}'

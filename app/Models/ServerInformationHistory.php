@@ -19,8 +19,9 @@ class ServerInformationHistory extends Model
     var string $token;
 
     protected $fillable = [
-        'cpu_load',
         'server_id',
+        'cpu_load',
+        'cpu_cores',
         'ram_free_percentage',
         'ram_free',
         'disk_free_percentage',

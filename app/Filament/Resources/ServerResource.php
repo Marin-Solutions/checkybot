@@ -116,6 +116,35 @@ class ServerResource extends Resource
                             'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage)
                         ];
                     }),
+                UsageBarColumn::make('cpu_usage')
+                    ->label('CPU Usage')
+                    ->translateLabel()
+                    ->state(function (Server $record): array {
+                        $latestInfo = $record->informationHistory()
+                            ->orderBy('id', 'desc')
+                            ->first();
+                            
+                        if (!$latestInfo || !$latestInfo->cpu_cores) {
+                            return [
+                                'value' => 0,
+                                'tooltip' => "No data available"
+                            ];
+                        }
+                        
+                        // Calculate CPU usage as percentage of total cores
+                        $cpuLoad = (float) str_replace(',', '.', $latestInfo->cpu_load);
+                        $cpuUsagePercentage = ($cpuLoad / $latestInfo->cpu_cores) * 100;
+                        
+                        return [
+                            'value' => min(100, $cpuUsagePercentage), // Cap at 100%
+                            'tooltip' => sprintf(
+                                "Load: %.2f\nCores: %d\nUsage: %.1f%%", 
+                                $cpuLoad, 
+                                $latestInfo->cpu_cores,
+                                $cpuUsagePercentage
+                            )
+                        ];
+                    }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
