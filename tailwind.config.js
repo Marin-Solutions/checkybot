@@ -1,22 +1,13 @@
-import preset from './vendor/filament/support/tailwind.config.preset'
-import colors from 'tailwindcss/colors'
-
+/** @type {import('tailwindcss').Config} */
 export default {
-    presets: [preset],
     content: [
-        './app/Filament/**/*.php',
-        './resources/views/**/*.blade.php',
-        './vendor/filament/**/*.blade.php',
+        "./app/**/*.php",
+        "./config/**/*.php",
+        "./resources/**/*.{php,js}",
+        "./storage/framework/views/*.php",
     ],
-    darkMode: 'class',
     theme: {
-        extend: {
-            colors: {
-                danger: colors.rose,
-                primary: colors.blue,
-                success: colors.emerald,
-                warning: colors.orange,
-            },
-        },
+        extend: {},
     },
-} 
+    plugins: [],
+};
