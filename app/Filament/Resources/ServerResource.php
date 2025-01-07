@@ -64,24 +64,24 @@ class ServerResource extends Resource
                         $latestInfo = $record->informationHistory()
                             ->orderBy('id', 'desc')
                             ->first();
-                            
+
                         // Debug output
                         \Log::info('Disk Usage Debug', [
                             'server_id' => $record->id,
                             'has_latest_info' => $latestInfo ? 'yes' : 'no',
                             'raw_data' => $latestInfo?->toArray()
                         ]);
-                            
+
                         if (!$latestInfo) {
                             return [
                                 'value' => 0,
                                 'tooltip' => "No data available"
                             ];
                         }
-                            
+
                         $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->disk_free_percentage);
                         $usedPercentage = 100 - $freePercentage;
-                            
+
                         return [
                             'value' => $usedPercentage,
                             'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage)
@@ -117,27 +117,27 @@ class ServerResource extends Resource
                         ];
                     }),
                 UsageBarColumn::make('cpu_usage')
-                    ->label('CPU Usage')
+                    ->label('CPU Load')
                     ->translateLabel()
                     ->state(function (Server $record): array {
                         $latestInfo = $record->informationHistory()
                             ->orderBy('id', 'desc')
                             ->first();
-                            
+
                         if (!$latestInfo) {
                             return [
                                 'value' => 0,
                                 'tooltip' => "No data available"
                             ];
                         }
-                        
-                        // Get CPU usage directly from CPU_USE
-                        $cpuUsage = (float) str_replace(',', '.', $latestInfo->cpu_use);
-                        
+
+                        // Get CPU usage directly from CPU_LOAD
+                        $cpuUsage = (float) str_replace(',', '.', $latestInfo->cpu_load);
+
                         return [
                             'value' => min(100, $cpuUsage), // Cap at 100%
                             'tooltip' => sprintf(
-                                "CPU Usage: %.1f%%\nCores: %d", 
+                                "CPU Load: %.1f%%\nCores: %d",
                                 $cpuUsage,
                                 $record->cpu_cores ?? 0
                             )
