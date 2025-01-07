@@ -64,40 +64,45 @@ class ServerInformationHistory extends Model
 
     protected function contentShellScript(): string
     {
-        $content = "#!/bin/bash \n";
+        $content = "#!/bin/bash \n\n";
 
         // Set the API endpoint URL
         $server_id = $this->server_id;
         $token = $this->token;
-        $url  = $_ENV['APP_URL'];
+        $url = $_ENV['APP_URL'];
 
         $content .= "API_URL='$url/api/v1/server-history' \n";
-
-        // Set the token-id variable
         $content .= "TOKEN_ID='$token'\n";
+        $content .= "SERVER_ID='$server_id'\n\n";
 
-        $content .= "SERVER_ID='$server_id'\n";
+        // Get CPU information and calculate true usage percentage
+        $content .= "CPU_CORES=$(nproc)\n";
+        $content .= "CPU_LOAD=$(uptime | grep -oP '(?<=average:).*' | awk '{print \$1}' | sed 's/,//')\n";
+        $content .= "CPU_USE=$(awk \"BEGIN {printf \\\"%.2f\\\", (\$CPU_LOAD/\$CPU_CORES)*100}\")\n\n";
 
-        // Get the RAM usage
-        $content .= "RAM_FREE_PERCENTAGE=$(free | awk '/Mem/ {print $7*100/$2\"%\"}' )\n";
-        $content .= "RAM_FREE=$(free | awk '/Mem/ {print $7}')\n";
+        // Get RAM information
+        $content .= "RAM_FREE_PERCENTAGE=$(free | awk '/Mem/ {print \$7*100/\$2\"%\"}' )\n";
+        $content .= "RAM_FREE=$(free | awk '/Mem/ {print \$7}')\n\n";
 
-        // Get the CPU usage
-        $content .= "CPU_LOAD=$(uptime  | grep -oP '(?<=average:).*'|awk '{print $1}'|sed 's/,$//')\n";
+        // Get Disk information
+        $content .= "DISK_FREE_PERCENTAGE=$(df --output=pcent / | awk 'NR==2{print 100-\$1\"%\"}')\n";
+        $content .= "DISK_FREE_BYTES=$(df --output=avail / | awk 'NR==2{print \$1}')\n\n";
 
-        // Get the free disk
-        $content .= "DISK_FREE_PERCENTAGE=$(df --output=pcent / | awk 'NR==2{print 100-$1\"%\"}')\n";
-        $content .= "DISK_FREE_BYTES=$(df --output=avail / | awk 'NR==2{print $1}')\n";
-
-        // Send the request to the API endpoint
-        $content .= "curl -4 -s -X POST \\\n";
-        $content .= ' $API_URL\\' . "\n";
-        $content .= ' -H \'Authorization: Bearer \'$TOKEN_ID \\' . "\n";
-        $content .= ' -H \'Content-Type: application/json\' \\' . "\n";
-        $content .= ' -H \'Accept: application/json\' \\' . "\n";
-        $content .= ' -d \'{"cpu_load": "\'$CPU_LOAD\'", ';
-        $content .= ' "s":"\'$SERVER_ID\'", "ram_free_percentage": "\'$RAM_FREE_PERCENTAGE\'", "ram_free": "\'$RAM_FREE\'", ';
-        $content .= ' "disk_free_percentage": "\'$DISK_FREE_PERCENTAGE\'", "disk_free_bytes": "\'$DISK_FREE_BYTES\'"} \' ';
+        // Send data to API
+        $content .= "curl -s -X POST \\\n";
+        $content .= " \$API_URL \\\n";
+        $content .= " -H 'Authorization: Bearer '\$TOKEN_ID \\\n";
+        $content .= " -H 'Content-Type: application/json' \\\n";
+        $content .= " -H 'Accept: application/json' \\\n";
+        $content .= " -d '{\n";
+        $content .= "    \"cpu_load\": \"'\$CPU_LOAD'\",\n";
+        $content .= "    \"cpu_cores\": \"'\$CPU_CORES'\",\n";
+        $content .= "    \"server_id\": \"'\$SERVER_ID'\",\n";
+        $content .= "    \"ram_free_percentage\": \"'\$RAM_FREE_PERCENTAGE'\",\n";
+        $content .= "    \"ram_free\": \"'\$RAM_FREE'\",\n";
+        $content .= "    \"disk_free_percentage\": \"'\$DISK_FREE_PERCENTAGE'\",\n";
+        $content .= "    \"disk_free_bytes\": \"'\$DISK_FREE_BYTES'\"\n";
+        $content .= "}'\n";
 
         return $content;
     }
@@ -112,7 +117,9 @@ class ServerInformationHistory extends Model
         $user = Auth::user()->id;
         $command  = "wget https://checkybot.com/reporter/$server/$user -O reporter_server_info.sh ";
         $command .= "&& chmod +x $(pwd)/reporter_server_info.sh ";
-        $command .= "&& (crontab -l ; echo \"*/1 * * * * $(pwd)/reporter_server_info.sh\") | crontab -";
+        $command .= "&& CRON_JOB=\"*/1 * * * * $(pwd)/reporter_server_info.sh\" ";
+        $command .= "&& (crontab -l | grep -Fq \"$CRON_JOB\" || ";
+        $command .= "(crontab -l 2>/dev/null; echo \"$CRON_JOB\") | crontab -)";
         return $command;
     }
 }
