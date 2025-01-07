@@ -1,4 +1,5 @@
 import preset from './vendor/filament/support/tailwind.config.preset'
+import colors from 'tailwindcss/colors'
 
 export default {
     presets: [preset],
@@ -7,6 +8,7 @@ export default {
         './resources/views/**/*.blade.php',
         './vendor/filament/**/*.blade.php',
     ],
+    darkMode: 'class',
     theme: {
         extend: {
             colors: {
