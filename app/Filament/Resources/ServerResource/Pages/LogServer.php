@@ -40,19 +40,27 @@
                     ->label('Copy script')
                     ->color('gray')
                     ->icon('heroicon-m-clipboard')
-                    ->copyable(function () {
-                        return ServerInformationHistory::copyCommand($this->record->id);
-                    })
-                    ->copyMessageOnSuccess('Script copied to clipboard'),
+                    ->action(function () {
+                        $this->dispatch('clipboard', text: ServerInformationHistory::copyCommand($this->record->id));
+                        
+                        Notification::make()
+                            ->success()
+                            ->title('Script copied to clipboard')
+                            ->send();
+                    }),
                 
                 Actions\Action::make('copy_log_script')
                     ->label('Copy log script')
                     ->color('gray')
                     ->icon('heroicon-m-clipboard')
-                    ->copyable(function () {
-                        return ServerLogFileHistory::copyCommand($this->record->id);
-                    })
-                    ->copyMessageOnSuccess('Log script copied to clipboard'),
+                    ->action(function () {
+                        $this->dispatch('clipboard', text: ServerLogFileHistory::copyCommand($this->record->id));
+                        
+                        Notification::make()
+                            ->success()
+                            ->title('Log script copied to clipboard')
+                            ->send();
+                    }),
                 
                 Actions\DeleteAction::make()
                     ->modalHeading('Delete Server')
