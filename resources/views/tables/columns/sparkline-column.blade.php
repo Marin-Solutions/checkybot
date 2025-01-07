@@ -59,12 +59,12 @@
                 },
                 colors: ['#3b82f6'],
                 markers: {
-                    size: 3,
+                    size: 0,
                     colors: ['#3b82f6'],
-                    strokeColors: '#fff',
+                    strokeColors: '#3b82f6',
                     strokeWidth: 2,
                     hover: {
-                        size: 5
+                        size: 3
                     }
                 }
             };
