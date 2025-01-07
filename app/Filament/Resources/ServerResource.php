@@ -90,7 +90,7 @@ class ServerResource extends Resource
                     ->translateLabel()
                     ->state(function (Server $record): ?array {
                         $latestInfo = $record->informationHistory()
-                            ->latest()
+                            ->orderBy('id', 'desc')
                             ->first();
 
                         if (!$latestInfo) {
