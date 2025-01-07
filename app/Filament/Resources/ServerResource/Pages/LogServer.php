@@ -10,7 +10,7 @@
     use Filament\Infolists\Components\TextEntry;
     use Filament\Infolists\Infolist;
     use Filament\Resources\Pages\ViewRecord;
-    use Webbingbrasil\FilamentCopyActions\Actions\CopyAction;
+    use Illuminate\Support\Facades\Notification;
 
     class LogServer extends ViewRecord
     {
@@ -36,13 +36,21 @@
         protected function getHeaderActions(): array
         {
             return [
-                CopyAction::make('copy_script')
+                Actions\Action::make('copy_script')
                     ->label('Copy script')
-                    ->copyable(fn() => ServerInformationHistory::copyCommand($this->record->id)),
+                    ->color('gray')
+                    ->icon('heroicon-m-clipboard')
+                    ->action(fn () => $this->copyToClipboard(
+                        ServerInformationHistory::copyCommand($this->record->id)
+                    )),
                 
-                CopyAction::make('copy_log_script')
+                Actions\Action::make('copy_log_script')
                     ->label('Copy log script')
-                    ->copyable(fn() => ServerLogFileHistory::copyCommand($this->record->id)),
+                    ->color('gray')
+                    ->icon('heroicon-m-clipboard')
+                    ->action(fn () => $this->copyToClipboard(
+                        ServerLogFileHistory::copyCommand($this->record->id)
+                    )),
                 
                 Actions\DeleteAction::make()
                     ->modalHeading('Delete Server')
@@ -53,5 +61,15 @@
                     ->url(fn() => url()->previous() ?? $this->getResource()::getUrl('index'))
                     ->color('secondary')
             ];
+        }
+
+        protected function copyToClipboard(string $text): void
+        {
+            $this->dispatch('copy-to-clipboard', text: $text);
+            
+            Notification::make()
+                ->title('Copied to clipboard')
+                ->success()
+                ->send();
         }
     }
