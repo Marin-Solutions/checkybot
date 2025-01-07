@@ -45,7 +45,11 @@
                     ->modalDescription('This will copy the installation script to your clipboard.')
                     ->modalSubmitActionLabel('Copy')
                     ->modalIcon('heroicon-o-clipboard')
-                    ->copyToClipboard(fn () => ServerInformationHistory::copyCommand($this->record->id)),
+                    ->action(function () {
+                        $script = ServerInformationHistory::copyCommand($this->record->id);
+                        $this->js("navigator.clipboard.writeText('{$script}')");
+                        Notification::make()->success()->title('Script copied to clipboard')->send();
+                    }),
                 
                 Actions\Action::make('copy_log_script')
                     ->label('Copy log script')
@@ -56,7 +60,11 @@
                     ->modalDescription('This will copy the log script to your clipboard.')
                     ->modalSubmitActionLabel('Copy')
                     ->modalIcon('heroicon-o-clipboard')
-                    ->copyToClipboard(fn () => ServerLogFileHistory::copyCommand($this->record->id)),
+                    ->action(function () {
+                        $script = ServerLogFileHistory::copyCommand($this->record->id);
+                        $this->js("navigator.clipboard.writeText('{$script}')");
+                        Notification::make()->success()->title('Log script copied to clipboard')->send();
+                    }),
                 
                 Actions\DeleteAction::make()
                     ->modalHeading('Delete Server')
