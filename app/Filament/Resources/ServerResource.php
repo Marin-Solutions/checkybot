@@ -64,19 +64,19 @@ class ServerResource extends Resource
                             ->orderBy('id', 'desc')
                             ->first();
                             
+                        // Debug output
+                        \Log::info('Disk Usage Debug', [
+                            'server_id' => $record->id,
+                            'has_latest_info' => $latestInfo ? 'yes' : 'no',
+                            'raw_data' => $latestInfo?->toArray()
+                        ]);
+                            
                         if (!$latestInfo) {
                             return [
                                 'value' => 0,
                                 'tooltip' => "No data available"
                             ];
                         }
-                            
-                        // Debug log
-                        \Log::debug('Server disk info:', [
-                            'server_id' => $record->id,
-                            'raw_percentage' => $latestInfo->disk_free_percentage,
-                            'latest_info' => $latestInfo->toArray()
-                        ]);
                             
                         $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->disk_free_percentage);
                         $usedPercentage = 100 - $freePercentage;
