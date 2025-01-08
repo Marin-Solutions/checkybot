@@ -28,6 +28,13 @@ class LogServer extends ViewRecord
         ];
     }
 
+    protected function getRelations(): array
+    {
+        return [
+            RelationManagers\RulesRelationManager::class,
+        ];
+    }
+
     public function form(Form $form): Form
     {
         return $form->schema([]);
