@@ -9,6 +9,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use App\Models\NotificationChannels;
 
 class RulesRelationManager extends RelationManager
 {
@@ -48,11 +49,11 @@ class RulesRelationManager extends RelationManager
                             ->maxValue(100),
                         Forms\Components\Select::make('channel')
                             ->required()
-                            ->options([
-                                'email' => 'Email',
-                                'slack' => 'Slack',
-                                'telegram' => 'Telegram',
-                            ]),
+                            ->label('Notification Channel')
+                            ->options(function () {
+                                return NotificationChannels::where('created_by', auth()->id())
+                                    ->pluck('title', 'id');
+                            }),
                     ]),
                 Forms\Components\Toggle::make('is_active')
                     ->label('Active')
@@ -81,7 +82,10 @@ class RulesRelationManager extends RelationManager
                     ->suffix('%'),
                 Tables\Columns\TextColumn::make('channel')
                     ->badge()
-                    ->color('success'),
+                    ->color('success')
+                    ->formatStateUsing(function ($state) {
+                        return NotificationChannels::find($state)?->title ?? $state;
+                    }),
                 Tables\Columns\ToggleColumn::make('is_active')
                     ->label('Active')
             ])
