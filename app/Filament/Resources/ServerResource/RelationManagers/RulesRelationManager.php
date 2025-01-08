@@ -11,9 +11,10 @@ use Filament\Tables\Table;
 class RulesRelationManager extends RelationManager
 {
     protected static string $relationship = 'rules';
+
+    protected static ?string $recordTitleAttribute = 'metric';
+
     protected static ?string $title = 'Monitoring Rules';
-    protected static ?string $modelLabel = 'monitoring rule';
-    protected static ?string $pluralModelLabel = 'monitoring rules';
 
     public function form(Form $form): Form
     {
@@ -62,6 +63,7 @@ class RulesRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->recordTitleAttribute('metric')
             ->columns([
                 Tables\Columns\TextColumn::make('metric')
                     ->badge()
