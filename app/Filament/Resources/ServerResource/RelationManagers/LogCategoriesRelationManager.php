@@ -7,12 +7,14 @@ use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class LogCategoriesRelationManager extends RelationManager
 {
     protected static string $relationship = 'logCategories';
 
-    protected static ?string $recordTitleAttribute = 'name';
+    protected static ?string $modelLabel = 'Log file Category';
 
     protected static ?string $title = 'Log File Categories';
 
@@ -26,34 +28,40 @@ class LogCategoriesRelationManager extends RelationManager
                 Forms\Components\TextInput::make('log_directory')
                     ->required()
                     ->maxLength(255),
-                Forms\Components\Toggle::make('should_collect')
-                    ->required(),
+                Forms\Components\Fieldset::make('Setting')
+                    ->schema([
+                        Forms\Components\Toggle::make('should_collect')
+                            ->required()
+                            ->onColor('success')
+                            ->default(true)
+                    ])
             ]);
     }
 
     public function table(Table $table): Table
     {
         return $table
+            ->recordTitleAttribute('name')
             ->columns([
                 Tables\Columns\TextColumn::make('name'),
                 Tables\Columns\TextColumn::make('log_directory'),
-                Tables\Columns\ToggleColumn::make('should_collect'),
+                Tables\Columns\ToggleColumn::make('should_collect')
             ])
             ->filters([
                 //
             ])
             ->headerActions([
-                Tables\Actions\CreateAction::make()
-                    ->label('New Log File Category'),
+                Tables\Actions\CreateAction::make()->authorize(true),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()->authorize(true),
                 Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+        ;
     }
 }
