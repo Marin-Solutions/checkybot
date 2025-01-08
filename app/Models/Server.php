@@ -33,4 +33,9 @@ class Server extends Model
     {
         return $this->hasMany(ServerInformationHistory::class);
     }
+
+    public function rules()
+    {
+        return $this->hasMany(ServerRule::class);
+    }
 }
