@@ -14,3 +14,4 @@ Schedule::command('website:log-uptime-ssl')->everyMinute();
 Schedule::command('server:purge-logs')->everyMinute();
 Schedule::command('website:scan-outbound-check')->daily();
 Schedule::command('telescope:prune --hours=24')->hourly();
+Schedule::command('server:check-rules')->everyMinute();
