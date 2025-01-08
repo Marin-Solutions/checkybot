@@ -1,13 +1,8 @@
 <?php
 
-use App\Http\Controllers\ServerLogFileHistoryController;
+use App\Http\Controllers\Api\V1\ServerController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ServerInformationHistoryController;
 
-# API Endpoints
-
-
-Route::group(['prefix' => 'v1'], function () {
-    Route::post('/server-history', [ServerInformationHistoryController::class, 'store']);
-    Route::post('/server-log-history', [ServerLogFileHistoryController::class, 'store']);
+Route::prefix('v1')->middleware(['api', 'api.key'])->group(function () {
+    Route::apiResource('servers', ServerController::class);
 });
