@@ -7,12 +7,14 @@ use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class RulesRelationManager extends RelationManager
 {
     protected static string $relationship = 'rules';
 
-    protected static ?string $recordTitleAttribute = 'metric';
+    protected static ?string $modelLabel = 'Monitoring Rule';
 
     protected static ?string $title = 'Monitoring Rules';
 
@@ -63,13 +65,14 @@ class RulesRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->recordTitleAttribute('metric')
             ->columns([
                 Tables\Columns\TextColumn::make('metric')
                     ->badge()
                     ->color('primary')
-                    ->formatStateUsing(fn (string $state): string => ucfirst(str_replace('_', ' ', $state))),
+                    ->formatStateUsing(fn(string $state): string => ucfirst(str_replace('_', ' ', $state))),
                 Tables\Columns\TextColumn::make('operator')
-                    ->formatStateUsing(fn (string $state): string => match($state) {
+                    ->formatStateUsing(fn(string $state): string => match ($state) {
                         '>' => 'Above',
                         '<' => 'Below',
                         '=' => 'Equals',
@@ -80,23 +83,23 @@ class RulesRelationManager extends RelationManager
                     ->badge()
                     ->color('success'),
                 Tables\Columns\ToggleColumn::make('is_active')
-                    ->label('Active'),
+                    ->label('Active')
             ])
             ->filters([
                 //
             ])
             ->headerActions([
-                Tables\Actions\CreateAction::make()
-                    ->label('New Monitoring Rule'),
+                Tables\Actions\CreateAction::make()->authorize(true),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                Tables\Actions\EditAction::make()->authorize(true),
                 Tables\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
-            ]);
+            ])
+        ;
     }
-} 
+}
