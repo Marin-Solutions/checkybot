@@ -82,6 +82,9 @@ class RulesRelationManager extends RelationManager
                 Tables\Columns\ToggleColumn::make('is_active')
                     ->label('Active'),
             ])
+            ->filters([
+                //
+            ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
                     ->label('New Monitoring Rule'),
