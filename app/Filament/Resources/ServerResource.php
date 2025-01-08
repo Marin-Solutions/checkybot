@@ -52,11 +52,15 @@ class ServerResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\TextColumn::make('id')
+                    ->label('ID')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('ip')
                     ->label('IP')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('name')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
                 UsageBarColumn::make('disk_usage')
                     ->label('Disk Usage')
                     ->translateLabel()
