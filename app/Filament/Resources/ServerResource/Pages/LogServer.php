@@ -31,6 +31,7 @@ class LogServer extends ViewRecord
     protected function getRelations(): array
     {
         return [
+            RelationManagers\LogCategoriesRelationManager::class,
             RelationManagers\RulesRelationManager::class,
         ];
     }
