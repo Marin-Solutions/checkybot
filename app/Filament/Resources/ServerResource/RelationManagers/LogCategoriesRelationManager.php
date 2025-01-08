@@ -39,12 +39,9 @@ class LogCategoriesRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('log_directory'),
                 Tables\Columns\ToggleColumn::make('should_collect'),
             ])
-            ->filters([
-                //
-            ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
-                    ->label('New Log file Category'),
+                    ->label('New Log File Category'),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),

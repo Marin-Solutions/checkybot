@@ -63,7 +63,6 @@ class RulesRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('metric')
             ->columns([
                 Tables\Columns\TextColumn::make('metric')
                     ->badge()
@@ -82,13 +81,6 @@ class RulesRelationManager extends RelationManager
                     ->color('success'),
                 Tables\Columns\ToggleColumn::make('is_active')
                     ->label('Active'),
-                Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
-            ])
-            ->filters([
-                //
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
