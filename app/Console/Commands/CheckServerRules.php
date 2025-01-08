@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Server;
 use App\Models\ServerRule;
 use App\Models\NotificationChannels;
+use App\Models\ServerInformationHistory;
 use Illuminate\Console\Command;
 
 class CheckServerRules extends Command
@@ -14,41 +15,37 @@ class CheckServerRules extends Command
 
     public function handle()
     {
-        $servers = Server::with([
-            'rules' => function ($query) {
-                $query->where('is_active', true);
-            },
-            'informationHistory' => function ($query) {
-                $query->latest()->limit(1);
-            }
-        ])->get();
+        // Get all active rules first
+        $rules = ServerRule::with(['server'])
+            ->where('is_active', true)
+            ->get();
 
-        foreach ($servers as $server) {
-            // Skip if no information history exists
-            if ($server->informationHistory->isEmpty()) {
-                $this->warn("No information history for server {$server->name}");
-                continue;
-            }
+        foreach ($rules as $rule) {
+            try {
+                // Get the latest information for this server
+                $latestInfo = ServerInformationHistory::where('server_id', $rule->server_id)
+                    ->latest()
+                    ->first();
 
-            $latestInfo = $server->informationHistory->first();
-
-            foreach ($server->rules as $rule) {
-                try {
-                    $currentValue = $this->getCurrentValue($latestInfo, $rule->metric);
-                    
-                    if ($currentValue === null) {
-                        $this->warn("Could not get current value for {$rule->metric} on server {$server->name}");
-                        continue;
-                    }
-
-                    if ($this->isConditionMet($currentValue, $rule->operator, $rule->value)) {
-                        $this->info("Rule condition met for server {$server->name}: {$rule->metric} = {$currentValue}");
-                        $this->sendNotification($server, $rule, $currentValue);
-                    }
-                } catch (\Exception $e) {
-                    $this->error("Error processing rule for server {$server->name}: " . $e->getMessage());
+                if (!$latestInfo) {
+                    $this->warn("No information history for server {$rule->server->name}");
                     continue;
                 }
+
+                $currentValue = $this->getCurrentValue($latestInfo, $rule->metric);
+                
+                if ($currentValue === null) {
+                    $this->warn("Could not get current value for {$rule->metric} on server {$rule->server->name}");
+                    continue;
+                }
+
+                if ($this->isConditionMet($currentValue, $rule->operator, $rule->value)) {
+                    $this->info("Rule condition met for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
+                    $this->sendNotification($rule->server, $rule, $currentValue);
+                }
+            } catch (\Exception $e) {
+                $this->error("Error processing rule: " . $e->getMessage());
+                continue;
             }
         }
     }
