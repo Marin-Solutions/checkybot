@@ -27,7 +27,7 @@
     {
         protected static ?string $model = Website::class;
 
-        protected static ?string $navigationIcon = 'heroicon-o-globe-europe-africa';
+        protected static ?string $navigationIcon = 'heroicon-o-globe-alt';
         protected static ?string $navigationGroup = 'Operations';
         protected static ?int $navigationSort = 1;
 
@@ -91,20 +91,18 @@
                                                     Forms\Components\Hidden::make('created_by'),
                                                     Forms\Components\Select::make('uptime_interval')
                                                         ->options([
-                                                            '1'    => '1 Minute',
-                                                            '2'    => '2 Minutes',
-                                                            '3'    => '3 Minutes',
-                                                            '5'    => '5 Minutes',
-                                                            '10'   => '10 Minutes',
-                                                            '30'   => '30 Minutes',
-                                                            '60'   => '1 Hour',
-                                                            '360'  => '6 Hours',
-                                                            '720'  => '12 Hours',
-                                                            '1440' => '24 Hours',
+                                                            1 => 'Every minute',
+                                                            5 => 'Every 5 minutes',
+                                                            10 => 'Every 10 minutes',
+                                                            15 => 'Every 15 minutes',
+                                                            30 => 'Every 30 minutes',
+                                                            60 => 'Every hour',
+                                                            360 => 'Every 6 hours',
+                                                            720 => 'Every 12 hours',
+                                                            1440 => 'Every 24 hours',
                                                         ])
                                                         ->translateLabel()
-                                                        ->required()
-                                                        ->default(1),
+                                                        ->required(),
                                                 ])->columns(2)->columnSpan(1),
                                             fieldset::make('SSL settings')
                                                 ->schema([
@@ -183,16 +181,15 @@
                     Tables\Columns\SelectColumn::make('uptime_interval')
                         ->translateLabel()
                         ->options([
-                            '1'    => '1 Minute',
-                            '2'    => '2 Minutes',
-                            '3'    => '3 Minutes',
-                            '5'    => '5 Minutes',
-                            '10'   => '10 Minutes',
-                            '30'   => '30 Minutes',
-                            '60'   => '1 Hour',
-                            '360'  => '6 Hours',
-                            '720'  => '12 Hours',
-                            '1440' => '24 Hours',
+                            1 => 'Every minute',
+                            5 => 'Every 5 minutes',
+                            10 => 'Every 10 minutes',
+                            15 => 'Every 15 minutes',
+                            30 => 'Every 30 minutes',
+                            60 => 'Every hour',
+                            360 => 'Every 6 hours',
+                            720 => 'Every 12 hours',
+                            1440 => 'Every 24 hours',
                         ])
                         ->sortable(),
                     Tables\Columns\ToggleColumn::make('ssl_check')

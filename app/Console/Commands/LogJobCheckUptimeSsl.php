@@ -22,25 +22,34 @@
          */
         protected $description = 'Log website uptime and SSL';
 
+        protected array $intervals = [1, 5, 10, 15, 30, 60, 360, 720, 1440];
+
         /**
          * Execute the console command.
          */
         public function handle()
         {
+            $currentMinute = now()->minute;
+            $matchingIntervals = array_filter($this->intervals, function($interval) use ($currentMinute) {
+                return $currentMinute % $interval === 0;
+            });
+
+            if (empty($matchingIntervals)) {
+                $this->info('No intervals match the current minute');
+                return Command::SUCCESS;
+            }
+
             $websites = Website::where('uptime_check', true)
-                ->where(function ($query) {
-                    $query->whereNull('last_checked_at')
-                        ->orWhere('last_checked_at', '<=', now()->subMinutes(10));
-                })
+                ->whereIn('uptime_interval', $matchingIntervals)
                 ->get();
 
             if ($websites->isNotEmpty()) {
                 $websites->each(function ($website) {
                     LogUptimeSslJob::dispatch($website)->onQueue('log-website');
                 });
+                $this->info("Processing " . $websites->count() . " websites for intervals: " . implode(', ', $matchingIntervals));
             }
 
-            $this->info('Websites Logging is in progress');
             return Command::SUCCESS;
         }
     }
