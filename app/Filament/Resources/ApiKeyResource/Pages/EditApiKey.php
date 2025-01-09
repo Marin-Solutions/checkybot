@@ -16,4 +16,9 @@ class EditApiKey extends EditRecord
             Actions\DeleteAction::make(),
         ];
     }
+
+    public function beforeEdit(): void
+    {
+        abort_unless($this->record->user_id === auth()->id(), 403);
+    }
 } 

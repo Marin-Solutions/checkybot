@@ -9,13 +9,18 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Support\Str;
+use Illuminate\Database\Eloquent\Builder;
 
 class ApiKeyResource extends Resource
 {
     protected static ?string $model = ApiKey::class;
     protected static ?string $navigationIcon = 'heroicon-o-key';
     protected static ?string $navigationGroup = 'Settings';
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->where('user_id', auth()->id());
+    }
 
     public static function form(Form $form): Form
     {
@@ -30,6 +35,7 @@ class ApiKeyResource extends Resource
                 Forms\Components\Toggle::make('is_active')
                     ->label('Active')
                     ->default(true),
+                // Hide user_id field as it will be set automatically
             ]);
     }
 
@@ -43,7 +49,8 @@ class ApiKeyResource extends Resource
                     ->searchable()
                     ->copyable()
                     ->copyMessage('API key copied')
-                    ->copyMessageDuration(1500),
+                    ->copyMessageDuration(1500)
+                    ->visible(fn ($record): bool => $record->user_id === auth()->id()),
                 Tables\Columns\TextColumn::make('last_used_at')
                     ->dateTime()
                     ->sortable(),
@@ -56,8 +63,10 @@ class ApiKeyResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\EditAction::make()
+                    ->visible(fn ($record): bool => $record->user_id === auth()->id()),
+                Tables\Actions\DeleteAction::make()
+                    ->visible(fn ($record): bool => $record->user_id === auth()->id()),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
