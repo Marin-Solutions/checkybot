@@ -49,8 +49,7 @@ class ApiKeyResource extends Resource
                     ->searchable()
                     ->copyable()
                     ->copyMessage('API key copied')
-                    ->copyMessageDuration(1500)
-                    ->visible(fn ($record): bool => $record->user_id === auth()->id()),
+                    ->copyMessageDuration(1500),
                 Tables\Columns\TextColumn::make('last_used_at')
                     ->dateTime()
                     ->sortable(),
@@ -64,9 +63,9 @@ class ApiKeyResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
-                    ->visible(fn ($record): bool => $record->user_id === auth()->id()),
+                    ->authorize(fn (?ApiKey $record) => $record?->user_id === auth()->id()),
                 Tables\Actions\DeleteAction::make()
-                    ->visible(fn ($record): bool => $record->user_id === auth()->id()),
+                    ->authorize(fn (?ApiKey $record) => $record?->user_id === auth()->id()),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
