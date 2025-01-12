@@ -39,6 +39,10 @@
             return number_format(static::getModel()::count());
         }
 
+        public static function canViewAny(): bool
+        {
+            return auth()->check();
+        }
 
         public static function form( Form $form ): Form
         {
@@ -271,6 +275,7 @@
         public static function getEloquentQuery(): Builder
         {
             return parent::getEloquentQuery()
+                ->where('created_by', auth()->id())
                 ->withoutGlobalScopes([
                     SoftDeletingScope::class,
                 ])
