@@ -26,9 +26,17 @@ class ServerResource extends Resource
     protected static ?string $navigationGroup = 'Operations';
     protected static ?int $navigationSort = 2;
 
+    /**
+     * Get the navigation badge for the resource.
+     */
     public static function getNavigationBadge(): ?string
     {
-        return number_format(static::getModel()::count());
+        return number_format(static::getModel()::where('created_by', auth()->id())->count());
+    }
+
+    public static function canViewAny(): bool
+    {
+        return auth()->check();
     }
 
     public static function form(Form $form): Form
