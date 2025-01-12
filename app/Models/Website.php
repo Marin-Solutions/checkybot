@@ -123,7 +123,7 @@ class Website extends Model
 
     public function globalNotifications(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
-        return $this->hasMany(NotificationSetting::class, 'user_id', 'created_by')->globalScope()->active();
+        return $this->hasMany(NotificationSetting::class, 'user_id', 'created_by')->where('inspection', 'WEBSITE_CHECK')->globalScope()->active();
     }
 
     public function individualNotifications(): \Illuminate\Database\Eloquent\Relations\HasMany
