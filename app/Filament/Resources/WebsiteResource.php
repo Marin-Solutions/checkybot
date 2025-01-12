@@ -36,7 +36,7 @@
          */
         public static function getNavigationBadge(): ?string
         {
-            return number_format(static::getModel()::where('user_id', auth()->id())->count());
+            return number_format(static::getModel()::where('created_by', auth()->id())->count());
         }
 
         public static function canViewAny(): bool
