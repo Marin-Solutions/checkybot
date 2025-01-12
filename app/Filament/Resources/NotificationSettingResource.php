@@ -75,9 +75,9 @@ class NotificationSettingResource extends Resource
                     ->label('Channel Type'),
                 Tables\Columns\TextColumn::make('channel.title')
                     ->label('Channel Name')
-                    ->visible(fn($record) => $record->channel_type === NotificationChannelTypesEnum::WEBHOOK->name),
+                    ->visible(fn($record) => $record && $record->channel_type === NotificationChannelTypesEnum::WEBHOOK->name),
                 Tables\Columns\TextColumn::make('address')
-                    ->visible(fn($record) => $record->channel_type === NotificationChannelTypesEnum::MAIL->name),
+                    ->visible(fn($record) => $record && $record->channel_type === NotificationChannelTypesEnum::MAIL->name),
                 Tables\Columns\ToggleColumn::make('flag_active')
                     ->label('Active'),
             ])
