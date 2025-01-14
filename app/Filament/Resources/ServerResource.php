@@ -17,6 +17,8 @@ use App\Filament\Resources\ServerResource\RelationManagers;
 use App\Models\ServerInformationHistory;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 use App\Tables\Columns\UsageBarColumn;
+use Filament\Tables\Columns\Layout\Stack;
+use Illuminate\Support\Carbon;
 
 class ServerResource extends Resource
 {
@@ -63,12 +65,33 @@ class ServerResource extends Resource
                 Tables\Columns\TextColumn::make('id')
                     ->label('ID')
                     ->sortable(),
+                Tables\Columns\TextColumn::make('name')
+                    ->searchable()
+                    ->sortable()
+                    ->formatStateUsing(function ($record) {
+                        $latestInfo = $record->informationHistory()
+                            ->latest()
+                            ->first();
+
+                        $statusColor = 'bg-danger-500';
+                        $title = 'Offline (No recent data)';
+                        
+                        if ($latestInfo && $latestInfo->created_at->diffInMinutes(now()) <= 2) {
+                            $statusColor = 'bg-success-500';
+                            $title = 'Online';
+                        }
+
+                        return new \Illuminate\Support\HtmlString("
+                            <div class='flex items-center gap-2'>
+                                <span class='flex-shrink-0 w-2 h-2 rounded-full {$statusColor}' title='{$title}'></span>
+                                <span>{$record->name}</span>
+                            </div>
+                        ");
+                    })
+                    ->html(),
                 Tables\Columns\TextColumn::make('ip')
                     ->label('IP')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('name')
-                    ->searchable()
-                    ->sortable(),
                 UsageBarColumn::make('disk_usage')
                     ->label('Disk Usage')
                     ->translateLabel()
