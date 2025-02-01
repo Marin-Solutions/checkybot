@@ -1,77 +1,97 @@
 <?php
 
-    namespace App\Traits;
+namespace App\Traits;
 
-    use Filament\Actions\Action;
-    use Filament\Notifications\Notification;
-    use Illuminate\Support\Arr;
+use Filament\Actions\Action;
+use Filament\Notifications\Notification;
+use Illuminate\Support\Arr;
 
-    trait MonitoringApis
+trait MonitoringApis
+{
+    public function callDoMonitoring($form): void
     {
-        public function callDoMonitoring( $form ): void
-        {
-            $validatedData = $form->getState();
+        $validatedData = $form->getState();
 
-            if ( $form->validate() ) {
-                $callback = \App\Models\MonitorApis::testApi($validatedData);
+        if ($form->validate()) {
+            $callback = \App\Models\MonitorApis::testApi($validatedData);
 
-                if ( $callback[ 'code' ] != 200 ) {
-                    $responseFail = 'danger';
-                    if ( $callback[ 'code' ] == 60 ) {
-                        $title = 'URL website, problem with certificate';
-                        $body  = $callback[ 'body' ];
-                    } else if ( $callback[ 'body' ] == 1 ) {
-                        $title = 'URL Website Response error';
-                        $body  = 'The website response is not 200!';
-                    } else {
-                        $title = 'URL website a unknown error. try other url';
-                        $body  = $callback[ 'body' ] . ' code errno:' . $callback[ 'code' ];
+            if ($callback['code'] != 200) {
+                $responseFail = 'danger';
+                if ($callback['code'] == 60) {
+                    $title = 'URL website, problem with certificate';
+                    $body  = $callback['body'];
+                } else if ($callback['body'] == 1) {
+                    $title = 'URL Website Response error';
+                    $body  = 'The website response is not 200!';
+                } else {
+                    $title = 'URL website a unknown error. try other url';
+                    $body  = $callback['body'] . ' code errno:' . $callback['code'];
+                }
+            } else {
+                // Initialize response type as success
+                $responseFail = 'success';
+                $title = "API response received";
+                $body = [];
+
+                // Check if we have any assertions to validate
+                if (!empty($callback['assertions'])) {
+                    $failedAssertions = array_filter($callback['assertions'], fn($assertion) => !$assertion['passed']);
+
+                    if (!empty($failedAssertions)) {
+                        $responseFail = 'warning';
+                        $title = "Some API assertions failed";
+                    }
+
+                    // Build the response message
+                    foreach ($callback['assertions'] as $assertion) {
+                        $icon = $assertion['passed'] ? '✓' : '✗';
+                        $path = $assertion['path'];
+                        $type = $assertion['type'] ?? 'exists';
+                        $message = $assertion['message'];
+
+                        $body[] = "{$icon} Path: {$path}" . ($type !== 'exists' ? " [{$type}]" : "") . " - {$message}";
                     }
                 } else {
-                    $responseFail = 'success';
-                    $title        = "API response is as expected";
-                    $body         = '"' . $validatedData[ 'data_path' ] . '" is contained in the response and the value is "' . Arr::get($callback[ 'body' ], $validatedData[ 'data_path' ]) . '"';
-
-                    if ( !Arr::has($callback[ 'body' ], $validatedData[ 'data_path' ]) ) {
-                        $responseFail = 'warning';
-                        $title        = "API response is not as expected";
-                        $body         = '"' . $validatedData[ 'data_path' ] . '" is not contained in the response';
-                    }
+                    $body[] = "No assertions configured for this API endpoint.";
                 }
 
-                Notification::make()
-                    ->{$responseFail}()
-                    ->title(__($title))
-                    ->body(__($body))
-                    ->send()
-                ;
-
-//                if ( $responseFail ) {
-//                    Notification::make()
-//                        ->danger()
-//                        ->title(__($title))
-//                        ->body(__($body))
-//                        ->send()
-//                    ;
-//                } else {
-//                    Notification::make()
-//                        ->success()
-//                        ->title(__($title))
-//                        ->body(__($body))
-//                        ->send()
-//                    ;
-//                }
+                // Join all messages with line breaks
+                $body = implode("\n", $body);
             }
-        }
 
-        public function doMonitorApiAction(): Action
-        {
-            return Action::make('check_api')
-                ->label('Check API')
-                ->color('warning')
-                ->button()
-                ->outlined()
-                ->action('doMonitoring')
+            Notification::make()
+                ->{$responseFail}()
+                ->title(__($title))
+                ->body(__($body))
+                ->send()
             ;
+
+            //                if ( $responseFail ) {
+            //                    Notification::make()
+            //                        ->danger()
+            //                        ->title(__($title))
+            //                        ->body(__($body))
+            //                        ->send()
+            //                    ;
+            //                } else {
+            //                    Notification::make()
+            //                        ->success()
+            //                        ->title(__($title))
+            //                        ->body(__($body))
+            //                        ->send()
+            //                    ;
+            //                }
         }
     }
+
+    public function doMonitorApiAction(): Action
+    {
+        return Action::make('check_api')
+            ->label('Check API')
+            ->color('warning')
+            ->button()
+            ->outlined()
+            ->action('doMonitoring')
+        ;
+    }
+}
