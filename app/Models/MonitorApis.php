@@ -26,6 +26,11 @@ class MonitorApis extends Model
             ->orderBy('sort_order');
     }
 
+    public function results(): HasMany
+    {
+        return $this->hasMany(MonitorApiResult::class, 'monitor_api_id');
+    }
+
     public static function testApi(array $data): array
     {
         $url = $data['url'];

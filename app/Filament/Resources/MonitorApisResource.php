@@ -75,6 +75,7 @@ class MonitorApisResource extends Resource
     {
         return [
             RelationManagers\AssertionsRelationManager::class,
+            RelationManagers\ResultsRelationManager::class,
         ];
     }
 
