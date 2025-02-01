@@ -100,15 +100,15 @@ class AssertionsRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('expected_type')
                     ->label('Expected Type')
-                    ->visible(fn($record) => $record->assertion_type === 'type_check'),
+                    ->visible(fn($record) => $record && $record->assertion_type === 'type_check'),
 
                 Tables\Columns\TextColumn::make('comparison_operator')
                     ->label('Operator')
-                    ->visible(fn($record) => in_array($record->assertion_type, ['value_compare', 'array_length'])),
+                    ->visible(fn($record) => $record && in_array($record->assertion_type, ['value_compare', 'array_length'])),
 
                 Tables\Columns\TextColumn::make('expected_value')
                     ->label('Expected Value')
-                    ->visible(fn($record) => in_array($record->assertion_type, ['value_compare', 'array_length'])),
+                    ->visible(fn($record) => $record && in_array($record->assertion_type, ['value_compare', 'array_length'])),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')
