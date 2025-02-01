@@ -14,6 +14,8 @@ class AssertionsRelationManager extends RelationManager
     protected static ?string $title = 'API Assertions';
     protected static ?string $recordTitleAttribute = 'data_path';
 
+    protected static ?string $inverseRelationship = 'monitorApi';
+
     public function form(Form $form): Form
     {
         return $form
@@ -120,6 +122,10 @@ class AssertionsRelationManager extends RelationManager
             ])
             ->defaultSort('sort_order')
             ->reorderable('sort_order')
+            ->headerActions([
+                Tables\Actions\CreateAction::make()
+                    ->label('Add Assertion'),
+            ])
             ->actions([
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
