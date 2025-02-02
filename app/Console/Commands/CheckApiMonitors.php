@@ -41,7 +41,7 @@ class CheckApiMonitors extends Command
 
                 // Check data path if specified
                 if ($monitor->data_path) {
-                    $data = json_decode($result['body'], true);
+                    $data = is_string($result['body']) ? json_decode($result['body'], true) : $result['body'];
                     $value = data_get($data, $monitor->data_path);
 
                     if ($value === null) {
