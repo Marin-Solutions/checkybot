@@ -25,10 +25,6 @@ class ResultsRelationManager extends RelationManager
                     ->trueColor('success')
                     ->falseColor('danger'),
 
-                Tables\Columns\TextColumn::make('consecutive_count')
-                    ->label('Consecutive Count')
-                    ->description(fn($record) => $record->is_success ? 'Successes' : 'Failures'),
-
                 Tables\Columns\TextColumn::make('response_time_ms')
                     ->label('Response Time')
                     ->formatStateUsing(fn($state) => "{$state}ms")
@@ -46,7 +42,7 @@ class ResultsRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('failed_assertions')
                     ->label('Failed Assertions')
-                    ->visible(fn($record) => !$record->is_success)
+                    ->visible(fn($record) => $record && !$record->is_success)
                     ->formatStateUsing(function ($state) {
                         if (empty($state)) return '-';
                         return collect($state)->map(function ($assertion) {
