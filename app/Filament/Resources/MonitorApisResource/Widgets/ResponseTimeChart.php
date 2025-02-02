@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MonitorApisResource\Widgets;
 
 use App\Models\MonitorApiResult;
+use App\Models\MonitorApis;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Carbon;
 
@@ -12,9 +13,11 @@ class ResponseTimeChart extends ChartWidget
     protected static ?string $maxHeight = '300px';
     protected static ?string $pollingInterval = '10s';
 
+    public MonitorApis $record;
+
     protected function getData(): array
     {
-        $results = MonitorApiResult::where('monitor_api_id', $this->ownerRecord->id)
+        $results = MonitorApiResult::where('monitor_api_id', $this->record->id)
             ->where('created_at', '>=', now()->subDay())
             ->orderBy('created_at')
             ->get();

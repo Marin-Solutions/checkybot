@@ -6,8 +6,6 @@ use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Filament\Widgets\ChartWidget;
-use Filament\Charts\ChartType;
 
 class ResultsRelationManager extends RelationManager
 {
@@ -16,10 +14,17 @@ class ResultsRelationManager extends RelationManager
     protected static ?string $recordTitleAttribute = 'created_at';
     protected static ?string $inverseRelationship = 'monitorApi';
 
-    public function getHeaderWidgets(): array
+    protected function getHeaderWidgetsData(): array
     {
         return [
-            ResponseTimeChart::class,
+            'record' => $this->getOwnerRecord(),
+        ];
+    }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            ResponseTimeChart::make(['record' => $this->getOwnerRecord()]),
         ];
     }
 
