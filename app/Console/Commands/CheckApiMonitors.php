@@ -3,10 +3,8 @@
 namespace App\Console\Commands;
 
 use App\Models\MonitorApis;
-use Illuminate\Console\Command;
 use App\Models\MonitorApiResult;
-use App\Enums\WebsiteServicesEnum;
-use App\Models\NotificationSetting;
+use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 
 class CheckApiMonitors extends Command
@@ -17,7 +15,6 @@ class CheckApiMonitors extends Command
     public function handle()
     {
         $this->info('Starting API monitoring checks...');
-
         $monitors = MonitorApis::with(['assertions', 'user'])->get();
         $count = 0;
 
@@ -26,7 +23,8 @@ class CheckApiMonitors extends Command
                 $startTime = microtime(true);
                 $result = MonitorApis::testApi([
                     'id' => $monitor->id,
-                    'url' => $monitor->url
+                    'url' => $monitor->url,
+                    'data_path' => $monitor->data_path
                 ]);
 
                 MonitorApiResult::recordResult($monitor, $result, $startTime);
@@ -45,7 +43,7 @@ class CheckApiMonitors extends Command
                 if ($monitor->data_path) {
                     $data = json_decode($result['body'], true);
                     $value = data_get($data, $monitor->data_path);
-                    
+
                     if ($value === null) {
                         $shouldNotify = true;
                         $message .= "Data path '{$monitor->data_path}' not found or null in response. ";
@@ -55,7 +53,7 @@ class CheckApiMonitors extends Command
                 // Check assertions if any
                 if (isset($result['assertions']) && count(array_filter($result['assertions'], function ($assertion) {
                     return !$assertion['passed'];
-                })) > 0)) {
+                })) > 0) {
                     $shouldNotify = true;
                     $failed = array_filter($result['assertions'], function ($a) {
                         return !$a['passed'];
@@ -67,17 +65,9 @@ class CheckApiMonitors extends Command
 
                 // Send notification if any check failed
                 if ($shouldNotify) {
-                    // Retrieve global notification channels for API monitors for the monitor's user
                     $globalChannels = $monitor->user->globalNotificationChannels()
-                        ->whereIn('inspection', [WebsiteServicesEnum::API_MONITOR->name, WebsiteServicesEnum::ALL_CHECK->name])
+                        ->whereIn('inspection', ['API_MONITOR', 'ALL_CHECK'])
                         ->get();
-
-                    Log::info("Retrieved notification channels", [
-                        'monitor_id' => $monitor->id,
-                        'user_id' => $monitor->user->id,
-                        'channel_count' => $globalChannels->count(),
-                        'channels' => $globalChannels->pluck('id')->toArray()
-                    ]);
 
                     foreach ($globalChannels as $notificationSetting) {
                         $channel = $notificationSetting->channel;
