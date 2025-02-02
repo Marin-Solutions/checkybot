@@ -5,67 +5,65 @@ namespace App\Console\Commands;
 use App\Models\MonitorApis;
 use App\Models\MonitorApiResult;
 use Illuminate\Console\Command;
+use App\Models\NotificationSetting;
 use App\Enums\WebsiteServicesEnum;
 
 class CheckApiMonitors extends Command
 {
     protected $signature = 'monitor:check-apis';
-    protected $description = 'Check API monitors and send notifications if necessary';
+    protected $description = 'Check all API monitors and record their results';
 
     public function handle()
     {
-        // Retrieve all API monitors along with the associated user.
-        $monitors = MonitorApis::with('user')->get();
+        $this->info('Starting API monitoring checks...');
+
+        $monitors = MonitorApis::with(['assertions', 'user'])->get();
+        $count = 0;
 
         foreach ($monitors as $monitor) {
-            $startTime = microtime(true);
-            $result = MonitorApis::testApi([
-                'id' => $monitor->id,
-                'url' => $monitor->url,
-                'data_path' => $monitor->data_path,
-            ]);
+            try {
+                $startTime = microtime(true);
+                $result = MonitorApis::testApi([
+                    'id' => $monitor->id,
+                    'url' => $monitor->url
+                ]);
 
-            // Record the API test result.
-            MonitorApiResult::recordResult($monitor, $result, $startTime);
+                MonitorApiResult::recordResult($monitor, $result, $startTime);
+                $count++;
 
-            // If the API response code is not 200 or any assertion fails, send notifications.
-            if (
-                $result['code'] != 200 ||
-                (isset($result['assertions']) && count(array_filter($result['assertions'], function ($a) {
-                    return !$a['passed'];
-                })) > 0)
-            ) {
-                $message = "API Monitor Alert for {$monitor->title} ({$monitor->url}): ";
-                if ($result['code'] != 200) {
-                    $message .= "HTTP Code: {$result['code']}. ";
-                }
-                if (isset($result['assertions'])) {
-                    $failed = array_filter($result['assertions'], function ($a) {
-                        return !$a['passed'];
-                    });
-                    foreach ($failed as $assertion) {
-                        $message .= "Assertion failed at {$assertion['path']}: {$assertion['message']}; ";
+                // If there's an error (HTTP code not 200) or any assertion is not met, send a notification
+                if ($result['code'] != 200 || (isset($result['assertions']) && count(array_filter($result['assertions'], function($assertion) {
+                    return !$assertion['passed'];
+                })) > 0)) {
+                    $message = "API Monitor Alert for {$monitor->title} ({$monitor->url}): ";
+                    if ($result['code'] != 200) {
+                        $message .= "HTTP Code: {$result['code']}. ";
                     }
-                }
+                    if (isset($result['assertions'])) {
+                        $failed = array_filter($result['assertions'], function($a) {
+                            return !$a['passed'];
+                        });
+                        foreach ($failed as $assertion) {
+                            $message .= "Assertion failed at {$assertion['path']}: {$assertion['message']}; ";
+                        }
+                    }
+                    // Retrieve global notification channels for API monitors for the monitor's user
+                    $globalChannels = $monitor->user->globalNotificationChannels()
+                        ->whereIn('inspection', [WebsiteServicesEnum::API_MONITOR->name, WebsiteServicesEnum::ALL_CHECK->name])
+                        ->get();
 
-                // Retrieve global notification settings for the API monitor.
-                $globalChannels = $monitor->user->globalNotificationChannels()
-                    ->whereIn('inspection', [
-                        WebsiteServicesEnum::API_MONITOR->name,
-                        WebsiteServicesEnum::ALL_CHECK->name
-                    ])
-                    ->get();
-
-                // Send notifications using the related notification channel.
-                foreach ($globalChannels as $channelSetting) {
-                    if ($channelSetting->channel) {
-                        $channelSetting->channel->sendWebhookNotification([
+                    foreach ($globalChannels as $channel) {
+                        $channel->sendWebhookNotification([
                             'message' => $message,
                             'description' => "API Monitor Error Notification"
                         ]);
                     }
                 }
+            } catch (\Exception $e) {
+                $this->error("Error checking monitor {$monitor->title}: " . $e->getMessage());
             }
         }
+
+        $this->info("Completed checking {$count} API monitors.");
     }
 }
