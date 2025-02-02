@@ -3,10 +3,11 @@
 namespace App\Console\Commands;
 
 use App\Models\MonitorApis;
-use App\Models\MonitorApiResult;
 use Illuminate\Console\Command;
-use App\Models\NotificationSetting;
+use App\Models\MonitorApiResult;
 use App\Enums\WebsiteServicesEnum;
+use App\Models\NotificationSetting;
+use Illuminate\Support\Facades\Log;
 
 class CheckApiMonitors extends Command
 {
@@ -32,7 +33,7 @@ class CheckApiMonitors extends Command
                 $count++;
 
                 // If there's an error (HTTP code not 200) or any assertion is not met, send a notification
-                if ($result['code'] != 200 || (isset($result['assertions']) && count(array_filter($result['assertions'], function($assertion) {
+                if ($result['code'] != 200 || (isset($result['assertions']) && count(array_filter($result['assertions'], function ($assertion) {
                     return !$assertion['passed'];
                 })) > 0)) {
                     $message = "API Monitor Alert for {$monitor->title} ({$monitor->url}): ";
@@ -40,7 +41,7 @@ class CheckApiMonitors extends Command
                         $message .= "HTTP Code: {$result['code']}. ";
                     }
                     if (isset($result['assertions'])) {
-                        $failed = array_filter($result['assertions'], function($a) {
+                        $failed = array_filter($result['assertions'], function ($a) {
                             return !$a['passed'];
                         });
                         foreach ($failed as $assertion) {
@@ -53,6 +54,7 @@ class CheckApiMonitors extends Command
                         ->get();
 
                     foreach ($globalChannels as $channel) {
+                        Log::info("Sending notification to channel {$channel->id} with message: {$message}");
                         $channel->sendWebhookNotification([
                             'message' => $message,
                             'description' => "API Monitor Error Notification"
