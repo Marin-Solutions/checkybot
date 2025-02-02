@@ -80,6 +80,13 @@ class NotificationChannels extends Model
         $requestBody     = $this->request_body;
 
         try {
+            Log::info("Preparing webhook notification", [
+                'channel_id' => $this->id,
+                'original_url' => $url,
+                'method' => $method,
+                'original_body' => $requestBody
+            ]);
+
             if (str_contains($url, '{message}')) {
                 $url = str_replace('{message}', $messageText, $url);
             }
@@ -98,6 +105,11 @@ class NotificationChannels extends Model
                 }
             }
 
+            Log::info("Sending webhook request", [
+                'final_url' => $url,
+                'final_body' => $requestBody
+            ]);
+
             $webhookCallback = match ($method) {
                 WebhookHttpMethod::GET->value => Http::{$method}($url),
                 default => Http::{$method}($url, $requestBody)
@@ -105,10 +117,20 @@ class NotificationChannels extends Model
 
             $responseData['code'] = $webhookCallback->ok() ? 200 : 0;
             $responseData['body'] = $webhookCallback->json();
+
+            Log::info("Webhook response received", [
+                'status_code' => $responseData['code'],
+                'response_body' => $responseData['body']
+            ]);
+
             return $responseData;
         } catch (RequestException $exception) {
-
-            Log::error($exception->getMessage());
+            Log::error("Webhook request failed", [
+                'error_message' => $exception->getMessage(),
+                'url' => $url,
+                'method' => $method,
+                'request_body' => $requestBody
+            ]);
 
             $handlerContext         = $exception->getHandlerContext();
             $responseData['code'] = $handlerContext['errno'];
