@@ -124,7 +124,7 @@ class CheckApiMonitors extends Command
                     }
 
                     $result = $channel->sendWebhookNotification([
-                        'message' => "Error checking API monitor {$monitor->title}: {$e->getMessage()}",
+                        'message' => "Error checking API monitor {$monitor->title}: Specified key not found in response",
                         'description' => "API Monitor System Error"
                     ]);
                 }
