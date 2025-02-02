@@ -32,22 +32,41 @@ class CheckApiMonitors extends Command
                 MonitorApiResult::recordResult($monitor, $result, $startTime);
                 $count++;
 
-                // If there's an error (HTTP code not 200) or any assertion is not met, send a notification
-                if ($result['code'] != 200 || (isset($result['assertions']) && count(array_filter($result['assertions'], function ($assertion) {
+                // Always check if the data path exists and has a value
+                $shouldNotify = false;
+                $message = "API Monitor Alert for {$monitor->title} ({$monitor->url}): ";
+
+                if ($result['code'] != 200) {
+                    $shouldNotify = true;
+                    $message .= "HTTP Code: {$result['code']}. ";
+                }
+
+                // Check data path if specified
+                if ($monitor->data_path) {
+                    $data = json_decode($result['body'], true);
+                    $value = data_get($data, $monitor->data_path);
+                    
+                    if ($value === null) {
+                        $shouldNotify = true;
+                        $message .= "Data path '{$monitor->data_path}' not found or null in response. ";
+                    }
+                }
+
+                // Check assertions if any
+                if (isset($result['assertions']) && count(array_filter($result['assertions'], function ($assertion) {
                     return !$assertion['passed'];
                 })) > 0)) {
-                    $message = "API Monitor Alert for {$monitor->title} ({$monitor->url}): ";
-                    if ($result['code'] != 200) {
-                        $message .= "HTTP Code: {$result['code']}. ";
+                    $shouldNotify = true;
+                    $failed = array_filter($result['assertions'], function ($a) {
+                        return !$a['passed'];
+                    });
+                    foreach ($failed as $assertion) {
+                        $message .= "Assertion failed at {$assertion['path']}: {$assertion['message']}; ";
                     }
-                    if (isset($result['assertions'])) {
-                        $failed = array_filter($result['assertions'], function ($a) {
-                            return !$a['passed'];
-                        });
-                        foreach ($failed as $assertion) {
-                            $message .= "Assertion failed at {$assertion['path']}: {$assertion['message']}; ";
-                        }
-                    }
+                }
+
+                // Send notification if any check failed
+                if ($shouldNotify) {
                     // Retrieve global notification channels for API monitors for the monitor's user
                     $globalChannels = $monitor->user->globalNotificationChannels()
                         ->whereIn('inspection', [WebsiteServicesEnum::API_MONITOR->name, WebsiteServicesEnum::ALL_CHECK->name])
