@@ -19,10 +19,11 @@ class MonitorApisResource extends Resource
     protected static ?string $model = MonitorApis::class;
     protected static ?string $navigationGroup = 'Operations';
     protected static ?int $navigationSort = 3;
-    protected static ?string $navigationLabel = 'Monitor APIs';
-    protected static ?string $pluralLabel = 'Monitor APIs';
+    protected static ?string $navigationLabel = 'API Monitors';
+    protected static ?string $modelLabel = 'API Monitor';
+    protected static ?string $pluralModelLabel = 'API Monitors';
 
-    protected static ?string $navigationIcon = 'heroicon-o-viewfinder-circle';
+    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
 
     public static function form(Form $form): Form
     {
@@ -30,14 +31,14 @@ class MonitorApisResource extends Resource
             ->schema([
                 Forms\Components\TextInput::make('title')
                     ->required()
-                    ->maxLength(150),
+                    ->maxLength(255),
                 Forms\Components\TextInput::make('url')
                     ->required()
                     ->url()
-                    ->unique(ignoreRecord: true),
+                    ->maxLength(255),
                 Forms\Components\TextInput::make('data_path')
-                    ->required()
-                    ->helperText('The path to the value in the JSON response (e.g. data.user.id)'),
+                    ->helperText('The path to the data in the JSON response (e.g. "data.items")')
+                    ->maxLength(255),
             ]);
     }
 
@@ -45,14 +46,26 @@ class MonitorApisResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('title'),
-                Tables\Columns\TextColumn::make('url'),
-                Tables\Columns\TextColumn::make('data_path'),
+                Tables\Columns\TextColumn::make('title')
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('url')
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('data_path')
+                    ->searchable(),
+                Tables\Columns\TextColumn::make('created_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('updated_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 //
             ])
             ->actions([
+                Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\Action::make('test')
                     ->label('Test API')
@@ -82,9 +95,10 @@ class MonitorApisResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListMonitorApis::route('/'),
+            'index' => Pages\ListMonitorApis::route('/'),
             'create' => Pages\CreateMonitorApis::route('/create'),
-            'edit'   => Pages\EditMonitorApis::route('/{record}/edit'),
+            'view' => Pages\ViewMonitorApis::route('/{record}'),
+            'edit' => Pages\EditMonitorApis::route('/{record}/edit'),
         ];
     }
 }

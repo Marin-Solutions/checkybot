@@ -13,10 +13,24 @@ class ResponseTimeChart extends ChartWidget
     protected static ?string $maxHeight = '300px';
     protected static ?string $pollingInterval = '10s';
 
-    public MonitorApis $record;
+    public ?MonitorApis $record = null;
 
     protected function getData(): array
     {
+        if (!$this->record) {
+            return [
+                'datasets' => [
+                    [
+                        'label' => 'Response Time (ms)',
+                        'data' => [],
+                        'borderColor' => '#10B981',
+                        'fill' => false,
+                    ],
+                ],
+                'labels' => [],
+            ];
+        }
+
         $results = MonitorApiResult::where('monitor_api_id', $this->record->id)
             ->where('created_at', '>=', now()->subDay())
             ->orderBy('created_at')
