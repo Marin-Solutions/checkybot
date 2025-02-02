@@ -27,6 +27,17 @@ class CheckApiMonitors extends Command
                     'data_path' => $monitor->data_path
                 ]);
 
+                // Add debug logging
+                Log::debug('API Monitor test result', [
+                    'monitor_id' => $monitor->id,
+                    'result' => $result
+                ]);
+
+                // Ensure result has all required keys
+                if (!isset($result['code']) || !isset($result['body'])) {
+                    throw new \Exception('Invalid API test result format - missing required keys');
+                }
+
                 MonitorApiResult::recordResult($monitor, $result, $startTime);
                 $count++;
 
