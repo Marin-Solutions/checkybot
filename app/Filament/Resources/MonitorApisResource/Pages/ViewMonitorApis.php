@@ -21,7 +21,7 @@ class ViewMonitorApis extends ViewRecord
     protected function getHeaderWidgets(): array
     {
         return [
-            MonitorApisResource\Widgets\ResponseTimeChart::class,
+            MonitorApisResource\Widgets\ResponseTimeChart::make(['record' => $this->record]),
         ];
     }
-} 
+}
