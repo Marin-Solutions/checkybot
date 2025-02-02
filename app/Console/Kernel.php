@@ -15,14 +15,7 @@ class Kernel extends ConsoleKernel
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
      */
-    protected function schedule(Schedule $schedule): void
-    {
-        // $schedule->command('inspire')->hourly();
-        $schedule->command('server:check-rules')->everyMinute();
-
-        // Run API monitoring checks every minute
-        $schedule->command('monitor:check-apis')->everyMinute();
-    }
+    protected function schedule(Schedule $schedule): void {}
 
     /**
      * Register the commands for your application.
