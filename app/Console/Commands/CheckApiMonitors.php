@@ -107,7 +107,27 @@ class CheckApiMonitors extends Command
                     }
                 }
             } catch (\Exception $e) {
-                $this->error("Error checking monitor {$monitor->title}: " . $e->getMessage());
+                // If we are here that means that the response does not contain the required keys
+                // We need to send a notification to the user that the monitor is not working
+
+                $globalChannels = $monitor->user->globalNotificationChannels()
+                    ->whereIn('inspection', ['API_MONITOR', 'ALL_CHECK'])
+                    ->get();
+
+                foreach ($globalChannels as $notificationSetting) {
+                    $channel = $notificationSetting->channel;
+                    if (!$channel) {
+                        Log::warning("No channel found for notification setting", [
+                            'setting_id' => $notificationSetting->id
+                        ]);
+                        continue;
+                    }
+
+                    $result = $channel->sendWebhookNotification([
+                        'message' => "Error checking API monitor {$monitor->title}: {$e->getMessage()}",
+                        'description' => "API Monitor System Error"
+                    ]);
+                }
             }
         }
 
