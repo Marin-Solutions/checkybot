@@ -2,9 +2,12 @@
 
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
+use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Widgets\ChartWidget;
+use Filament\Charts\ChartType;
 
 class ResultsRelationManager extends RelationManager
 {
@@ -12,6 +15,13 @@ class ResultsRelationManager extends RelationManager
     protected static ?string $title = 'Monitoring Results';
     protected static ?string $recordTitleAttribute = 'created_at';
     protected static ?string $inverseRelationship = 'monitorApi';
+
+    public function getHeaderWidgets(): array
+    {
+        return [
+            ResponseTimeChart::class,
+        ];
+    }
 
     public function table(Table $table): Table
     {
