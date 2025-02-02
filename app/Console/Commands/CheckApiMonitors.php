@@ -53,11 +53,28 @@ class CheckApiMonitors extends Command
                         ->whereIn('inspection', [WebsiteServicesEnum::API_MONITOR->name, WebsiteServicesEnum::ALL_CHECK->name])
                         ->get();
 
+                    Log::info("Retrieved notification channels", [
+                        'monitor_id' => $monitor->id,
+                        'user_id' => $monitor->user->id,
+                        'channel_count' => $globalChannels->count(),
+                        'channels' => $globalChannels->pluck('id')->toArray()
+                    ]);
+
                     foreach ($globalChannels as $channel) {
-                        Log::info("Sending notification to channel {$channel->id} with message: {$message}");
-                        $channel->sendWebhookNotification([
+                        Log::info("Attempting to send notification", [
+                            'channel_id' => $channel->id,
+                            'channel_url' => $channel->url,
+                            'channel_method' => $channel->method
+                        ]);
+
+                        $result = $channel->sendWebhookNotification([
                             'message' => $message,
                             'description' => "API Monitor Error Notification"
+                        ]);
+
+                        Log::info("Webhook notification attempt result", [
+                            'channel_id' => $channel->id,
+                            'result' => $result
                         ]);
                     }
                 }
