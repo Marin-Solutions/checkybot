@@ -12,7 +12,7 @@ class ResponseTimeChart extends ChartWidget
     protected static ?string $heading = 'Response Times';
     protected static ?string $maxHeight = '300px';
     protected static ?string $pollingInterval = '10s';
-    protected ?string $columnSpan = 'full';
+    public string|int|array $columnSpan = 'full';
 
     public ?MonitorApis $record = null;
 
