@@ -20,12 +20,13 @@ class CheckApiMonitors extends Command
 
         foreach ($monitors as $monitor) {
             try {
+                $startTime = microtime(true);
                 $result = MonitorApis::testApi([
                     'id' => $monitor->id,
                     'url' => $monitor->url
                 ]);
 
-                MonitorApiResult::recordResult($monitor, $result);
+                MonitorApiResult::recordResult($monitor, $result, $startTime);
                 $count++;
             } catch (\Exception $e) {
                 $this->error("Error checking monitor {$monitor->title}: " . $e->getMessage());
