@@ -60,7 +60,15 @@ class CheckApiMonitors extends Command
                         'channels' => $globalChannels->pluck('id')->toArray()
                     ]);
 
-                    foreach ($globalChannels as $channel) {
+                    foreach ($globalChannels as $notificationSetting) {
+                        $channel = $notificationSetting->channel;
+                        if (!$channel) {
+                            Log::warning("No channel found for notification setting", [
+                                'setting_id' => $notificationSetting->id
+                            ]);
+                            continue;
+                        }
+
                         Log::info("Attempting to send notification", [
                             'channel_id' => $channel->id,
                             'channel_url' => $channel->url,
