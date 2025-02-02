@@ -18,7 +18,7 @@ class EditMonitorApis extends EditRecord
         return $this->previousUrl ?? $this->getResource()::getUrl('index');
     }
     
-    protected function getHeaderWidgets(): array
+    protected function getFooterWidgets(): array
     {
         return [
             \App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart::make(['record' => $this->record]),
