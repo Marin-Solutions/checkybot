@@ -11,8 +11,6 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Illuminate\Support\HtmlString;
 
 class MonitorApisResource extends Resource
 {
@@ -24,6 +22,11 @@ class MonitorApisResource extends Resource
     protected static ?string $pluralModelLabel = 'API Monitors';
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()->with('results');
+    }
 
     public static function form(Form $form): Form
     {
@@ -52,6 +55,10 @@ class MonitorApisResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('data_path')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('average_response_time')
+                    ->label('Avg Response Time (ms)')
+                    ->getStateUsing(fn ($record) => $record->results->count() > 0 ? round($record->results->avg('response_time_ms')) : '-')
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable()
@@ -80,8 +87,7 @@ class MonitorApisResource extends Resource
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->emptyStateHeading("No APIs")
-        ;
+            ->emptyStateHeading("No APIs");
     }
 
     public static function getRelations(): array
