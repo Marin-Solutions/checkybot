@@ -55,6 +55,12 @@ class ResultsRelationManager extends RelationManager
                         default => 'gray'
                     }),
 
+                Tables\Columns\TextColumn::make('response_body')
+                    ->label('Response')
+                    ->copyable()
+                    ->limit(100)
+                    ->toggleable(isToggledHiddenByDefault: true),
+
                 Tables\Columns\TextColumn::make('failed_assertions')
                     ->label('Failed Assertions')
                     ->visible(fn($record) => $record && !$record->is_success)

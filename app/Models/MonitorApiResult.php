@@ -12,7 +12,8 @@ class MonitorApiResult extends Model
         'is_success',
         'response_time_ms',
         'http_code',
-        'failed_assertions'
+        'failed_assertions',
+        'response_body',
     ];
 
     protected $casts = [
@@ -55,7 +56,8 @@ class MonitorApiResult extends Model
             'is_success' => $isSuccess,
             'response_time_ms' => $responseTime,
             'http_code' => $testResult['code'],
-            'failed_assertions' => $failedAssertions
+            'failed_assertions' => $failedAssertions,
+            'response_body' => $testResult['body'],
         ]);
     }
 }
