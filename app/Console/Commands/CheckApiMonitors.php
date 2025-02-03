@@ -30,13 +30,11 @@ class CheckApiMonitors extends Command
                 ]);
 
                 if (!isset($result['code']) || !isset($result['body'])) {
-                    Flare::context([
-                        'monitor_id' => $monitor->id,
-                        'monitor_title' => $monitor->title,
-                        'url' => $monitor->url,
-                        'data_path' => $monitor->data_path,
-                        'result' => $result
-                    ]);
+                    Flare::context('monitor_id', $monitor->id);
+                    Flare::context('monitor_title', $monitor->title);
+                    Flare::context('url', $monitor->url);
+                    Flare::context('data_path', $monitor->data_path);
+                    Flare::context('result', $result);
                     throw new \Exception('Invalid API test result format - missing required keys');
                 }
 
