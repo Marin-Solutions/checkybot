@@ -20,7 +20,8 @@ class MonitorApiResult extends Model
         'is_success' => 'boolean',
         'response_time_ms' => 'integer',
         'http_code' => 'integer',
-        'failed_assertions' => 'array'
+        'failed_assertions' => 'array',
+        'response_body' => 'array'
     ];
 
     public function monitorApi(): BelongsTo
