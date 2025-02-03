@@ -42,7 +42,7 @@ class CheckApiMonitors extends Command
                 $count++;
 
                 $shouldNotify = false;
-                $message = "API Monitor Alert for {$monitor->title} ({$monitor->url}): ";
+                $message = "API Monitor Alert for {$monitor->title}: ";
 
                 if ($result['code'] != 200) {
                     $shouldNotify = true;
