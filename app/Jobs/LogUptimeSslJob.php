@@ -59,7 +59,6 @@ class LogUptimeSslJob implements ShouldQueue
             $websiteLogHistory->save();
 
             /*Create system log*/
-            Log::info('Log created for website ' . $this->website['url']);
         } catch (\Exception $e) {
             Log::error('Error creating log for website ' . $this->website['url'] . ': ' . $e->getMessage());
             throw $e;
