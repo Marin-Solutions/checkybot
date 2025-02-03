@@ -56,14 +56,13 @@ class MonitorApis extends Model
                 return $responseData;
             }
 
-            // Check if the body is a valid JSON
-            $responseData['body'] = json_decode($responseData['body'], true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                return $responseData;
+            // Check if the body is a valid JSON and convert to array
+            if (is_string($responseData['body'])) {
+                $responseData['body'] = json_decode($responseData['body'], true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    return $responseData;
+                }
             }
-
-            // Convert body to array
-            $responseData['body'] = json_decode($responseData['body'], true);
 
             // If this is a new API being tested (not saved yet)
             if (isset($data['data_path'])) {
