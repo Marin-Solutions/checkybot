@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
-use GuzzleHttp\Exception\RequestException;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Database\Eloquent\Model;
+use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class MonitorApis extends Model
 {
@@ -84,6 +85,11 @@ class MonitorApis extends Model
 
             return $responseData;
         } catch (RequestException $exception) {
+            Log::error("Error testing API", [
+                'monitor_id' => $data['id'],
+                'monitor_title' => $data['title'],
+                'error' => $exception->getMessage()
+            ]);
             $handlerContext = $exception->getHandlerContext();
             $responseData['code'] = $handlerContext['errno'];
             $responseData['body'] = $handlerContext['error'];
