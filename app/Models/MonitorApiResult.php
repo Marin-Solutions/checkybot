@@ -51,6 +51,9 @@ class MonitorApiResult extends Model
         // Calculate response time
         $responseTime = (int) ((microtime(true) - $startTime) * 1000);
 
+        // Only save the response body if there was an error
+        $savedResponseBody = $isSuccess ? null : $testResult['body'];
+
         // Create new result for every request
         return self::create([
             'monitor_api_id' => $api->id,
@@ -58,7 +61,7 @@ class MonitorApiResult extends Model
             'response_time_ms' => $responseTime,
             'http_code' => $testResult['code'],
             'failed_assertions' => $failedAssertions,
-            'response_body' => $testResult['body'],
+            'response_body' => $savedResponseBody,
         ]);
     }
 }
