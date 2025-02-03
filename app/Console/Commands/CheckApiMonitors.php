@@ -7,6 +7,7 @@ use App\Models\MonitorApiResult;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Arr;
+use Spatie\LaravelFlare\Facades\Flare;
 
 class CheckApiMonitors extends Command
 {
@@ -29,6 +30,13 @@ class CheckApiMonitors extends Command
                 ]);
 
                 if (!isset($result['code']) || !isset($result['body'])) {
+                    Flare::context([
+                        'monitor_id' => $monitor->id,
+                        'monitor_title' => $monitor->title,
+                        'url' => $monitor->url,
+                        'data_path' => $monitor->data_path,
+                        'result' => $result
+                    ]);
                     throw new \Exception('Invalid API test result format - missing required keys');
                 }
 
