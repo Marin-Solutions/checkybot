@@ -107,6 +107,7 @@ class CheckApiMonitors extends Command
                     }
                 }
             } catch (\Exception $e) {
+                $errorMessage = $e->getMessage();
                 $globalChannels = $monitor->user->globalNotificationChannels()
                     ->whereIn('inspection', ['API_MONITOR', 'ALL_CHECK'])
                     ->get();
@@ -120,8 +121,10 @@ class CheckApiMonitors extends Command
                         continue;
                     }
 
+                    Log::error("Error in CheckApiMonitors for API monitor {$monitor->title}: " . $errorMessage);
+
                     $result = $channel->sendWebhookNotification([
-                        'message' => "Error checking API monitor {$monitor->title}: Specified key not found in response",
+                        'message' => "Error in CheckApiMonitors for API monitor {$monitor->title}: " . $errorMessage,
                         'description' => "API Monitor System Error"
                     ]);
                 }
