@@ -54,15 +54,22 @@
                                 ->placeholder('backup-file.zip'),
                             Forms\Components\Radio::make('compression_type')->options([ 'zip' => 'ZIP', 'tar' => 'TAR' ])
                                 ->inline()->columnSpan(2)->inlineLabel(false)
-                                ->helperText('Note that selecting TAR as compression might result in a different size of your backups'),
+                                ->helperText('Note that selecting TAR as compression might result in a different size of your backups')
+                                ->reactive(),
                             Forms\Components\Checkbox::make('delete_local_on_fail')->label('Delete local backup file when backup fail'),
                         ])->columns(3),
                     Forms\Components\Fieldset::make()
                         ->schema([
                             Forms\Components\TextInput::make('password')->password()->revealable()
-                                ->label('ZIP password'),
+                                ->label('ZIP password')
+                                ->disabled(function ( callable $get ) {
+                                    return $get('compression_type') === 'tar';
+                                }),
                             Forms\Components\TextInput::make('confirm_password')->password()->revealable()
-                                ->label('Confirm password'),
+                                ->label('Confirm password')
+                                ->disabled(function ( callable $get ) {
+                                    return $get('compression_type') === 'tar';
+                                }),
                         ])
                 ])
             ;
@@ -86,7 +93,7 @@
                     Tables\Actions\EditAction::make(),
                     CopyAction::make()
                         ->label('Copy Backup Script')
-                        ->copyable(fn (Backup $record) => $record->copyCommand($record))
+                        ->copyable(fn( Backup $record ) => $record->copyCommand($record))
                 ])
                 ->bulkActions([
                     Tables\Actions\BulkActionGroup::make([
