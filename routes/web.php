@@ -22,6 +22,11 @@
         return $response;
     });
 
+    Route::get('/backup-folder/{backup_id}/{server_id}/{user}/{init}', function ( $backup_id, $server_id, $user, $init ): Response {
+        $response = \App\Models\Backup::doShellScript($backup_id, $server_id, $user, $init);
+        return $response;
+    });
+
     Route::match([ 'get', 'post' ], '/webhook', [ WebhookController::class, 'index' ])
         ->withoutMiddleware([ VerifyCsrfToken::class ])
     ;

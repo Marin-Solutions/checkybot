@@ -88,7 +88,6 @@
          */
         public static function copyCommand( $server ): string
         {
-            https://9da3-182-1-6-10.ngrok-free.app
             $user    = Auth::user()->id;
             $command = "wget https://checkybot.test/log-reporter/$server/$user -O log-reporter_server_info.sh ";
             $command .= "&& chmod +x $(pwd)/log-reporter_server_info.sh ";
