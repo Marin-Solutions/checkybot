@@ -12,4 +12,6 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
     Route::post('/server-history', [ServerInformationHistoryController::class, 'store']);
     Route::post('/server-log-history', [ServerLogFileHistoryController::class, 'store']);
     Route::post('/backup-history', [BackupHistoryController::class, 'store']);
+
+    Route::any('/reports', [\App\Http\Controllers\ErrorReportingSystemController::class, 'store']);
 });
