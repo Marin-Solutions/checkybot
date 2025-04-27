@@ -7,6 +7,9 @@
     use App\Models\Projects;
     use Filament\Forms;
     use Filament\Forms\Form;
+    use Filament\Infolists\Components\Fieldset;
+    use Filament\Infolists\Components\TextEntry;
+    use Filament\Infolists\Infolist;
     use Filament\Resources\Resource;
     use Filament\Tables;
     use Filament\Tables\Table;
@@ -36,11 +39,13 @@
             return $table
                 ->columns([
                     Tables\Columns\TextColumn::make('name')->label("Project name"),
+                    Tables\Columns\TextColumn::make("error_reported_count")->counts('errorReported')->label("Errors")
                 ])
                 ->filters([
                     //
                 ])
                 ->actions([
+                    Tables\Actions\ViewAction::make(),
                     CopyAction::make()
                         ->copyable(fn( Projects $projects ) => $projects->token)
                         ->label("Copy Token"),
@@ -57,16 +62,30 @@
         public static function getRelations(): array
         {
             return [
-                //
+                RelationManagers\ErrorReportedRelationManager::make()
             ];
         }
 
         public static function getPages(): array
         {
             return [
-                'index'  => Pages\ListProjects::route('/'),
-                'create' => Pages\CreateProjects::route('/create'),
-                'edit'   => Pages\EditProjects::route('/{record}/edit'),
+                'index'      => Pages\ListProjects::route('/'),
+                'create'     => Pages\CreateProjects::route('/create'),
+                'view'       => Pages\ViewProjects::route('/{record}'),
+                'edit'       => Pages\EditProjects::route('/{record}/edit'),
+                'view-error' => Pages\ViewProjectsError::route('{record}/error/{error}')
             ];
+        }
+
+        public static function infolist( Infolist $infolist ): Infolist
+        {
+            return $infolist
+                ->schema([
+                    Fieldset::make('Name')
+                        ->schema([
+                            TextEntry::make('name')->label(''),
+                        ])
+                ])
+            ;
         }
     }

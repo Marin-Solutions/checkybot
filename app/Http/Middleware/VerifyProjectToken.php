@@ -29,7 +29,7 @@ class VerifyProjectToken
             return response()->json(['errors' => 'Invalid token'], Response::HTTP_UNAUTHORIZED);
         }
 
-//        $request->merge(['project' => $project]);
+        $request->merge(['project' => $project]);
 
         return $next($request);
     }

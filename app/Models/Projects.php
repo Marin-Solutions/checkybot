@@ -16,4 +16,9 @@
             "token",
             "created_by"
         ];
+
+        public function errorReported(): \Illuminate\Database\Eloquent\Relations\HasMany
+        {
+            return $this->hasMany(ErrorReports::class, 'project_id');
+        }
     }
