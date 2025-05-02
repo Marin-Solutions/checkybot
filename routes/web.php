@@ -30,3 +30,5 @@
     Route::match([ 'get', 'post' ], '/webhook', [ WebhookController::class, 'index' ])
         ->withoutMiddleware([ VerifyCsrfToken::class ])
     ;
+
+    Route::get('share/{error_token}', \App\Livewire\ViewShareError::class)->name('share-error');

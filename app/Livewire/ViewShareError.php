@@ -1,11 +1,10 @@
 <?php
 
-    namespace App\Filament\Resources\ProjectsResource\Pages;
+    namespace App\Livewire;
 
-    use App\Filament\Resources\ProjectsResource;
     use App\Models\ErrorReportPublicLink;
-    use App\Models\ErrorReports;
-    use Filament\Actions\Action;
+    use Filament\Forms\Concerns\InteractsWithForms;
+    use Filament\Forms\Contracts\HasForms;
     use Filament\Infolists\Components\Fieldset;
     use Filament\Infolists\Components\KeyValueEntry;
     use Filament\Infolists\Components\RepeatableEntry;
@@ -16,48 +15,36 @@
     use Filament\Infolists\Concerns\InteractsWithInfolists;
     use Filament\Infolists\Contracts\HasInfolists;
     use Filament\Infolists\Infolist;
-    use Filament\Resources\Pages\Concerns\InteractsWithRecord;
-    use Filament\Resources\Pages\Page;
-    use Illuminate\Contracts\Support\Htmlable;
+    use Filament\Pages\BasePage;
     use Illuminate\Database\Eloquent\Model;
-    use Illuminate\Support\Facades\Route;
-    use Illuminate\Support\Str;
     use Livewire\Attributes\Locked;
-    use Webbingbrasil\FilamentCopyActions\Pages\Actions\CopyAction;
 
-    class ViewProjectsError extends Page implements HasInfolists
+    class ViewShareError extends BasePage implements HasForms, HasInfolists
     {
-        use InteractsWithRecord;
         use InteractsWithInfolists;
+        use InteractsWithForms;
 
-        protected static string $resource = ProjectsResource::class;
-
-        protected static string $view = 'filament.resources.projects-resource.pages.projects-error';
-
-        public function getBreadcrumbs(): array
-        {
-            return [
-                self::$resource::getUrl()                          => self::$resource::getBreadcrumb(),
-                self::$resource::getUrl('view', [ $this->record ]) => 'View',
-                'Error'
-            ];
-        }
-
-        public function getTitle(): string|Htmlable
-        {
-            return $this->record->name;
-        }
+        #[Locked]
+        public Model|int|string|null $errorToken;
 
         #[Locked]
         public Model|int|string|null $error;
 
-        public ?array $data = [];
+        #[Locked]
+        public array $errorStacktrace;
 
-        public function mount( int|string $record ): void
+        public function hasLogo()
         {
-            $this->record = $this->resolveRecord($record);
+            return false;
+        }
 
-            $error                   = ErrorReports::query()->findOrFail(Route::current()->parameter('error'));
+        protected static string $view = 'livewire.view-share-error';
+
+        public function mount( $error_token ): void
+        {
+            $this->errorToken = ErrorReportPublicLink::query()->firstWhere('token', $error_token);
+
+            $error      = $this->errorToken->errorReport;
             $error->request_headers  = $error->context[ 'headers' ];
             $error->request_body     = $error->context[ 'request_data' ][ 'body' ];
             $error->route_name       = $error->context[ 'route' ][ 'route' ];
@@ -65,10 +52,10 @@
             $error->route_middleware = $error->context[ 'route' ][ 'middleware' ];
             $error->route_parameters = $error->context[ 'route' ][ 'routeParameters' ];
             $error->queries          = $error->context[ 'queries' ];
-            $this->error             = $error;
 
-            $this->form->fill();
+            $this->error = $error;
         }
+
 
         public function errorInfolist( Infolist $infolist ): Infolist
         {
@@ -175,30 +162,6 @@
                 $query   = preg_replace('/\?/', $binding, $query, 1);
             }
             return $query;
-        }
-
-        protected function getHeaderActions(): array
-        {
-            return [
-                Action::make('Resolve')
-                    ->icon('heroicon-o-wrench')
-                    ->action(function () {
-                        app('debugbar')->log('hai');
-                    }),
-                CopyAction::make()
-                    ->copyable(function ( $record ) {
-                        $publicLink = ErrorReportPublicLink::create([
-                            'error_report_id' => $record->id,
-                            'created_by'      => auth()->user()->id,
-                            'token'           => Str::uuid()->toString()
-                        ]);
-
-                        return \route('share-error', [ 'error_token' => $publicLink->token ]);
-                    })
-                    ->label('Share')
-                    ->icon('heroicon-o-arrow-uturn-right')
-
-            ];
         }
 
     }

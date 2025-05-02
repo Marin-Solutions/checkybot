@@ -28,4 +28,9 @@
         {
             return $this->belongsTo(Projects::class, 'project_id');
         }
+
+        public function publicLinks(): \Illuminate\Database\Eloquent\Relations\HasMany
+        {
+            return $this->hasMany(ErrorReportPublicLink::class, 'error_report_id');
+        }
     }
