@@ -15,13 +15,14 @@
         protected $guarded = [];
 
         protected $casts = [
-            'seen_at' => 'datetime',
-            'glows' => 'array',
-            'solutions' => 'array',
+            'seen_at'             => 'datetime',
+            'glows'               => 'array',
+            'solutions'           => 'array',
             'documentation_links' => 'array',
-            'stacktrace' => 'array',
-            'context' => 'array',
-            'handled' => 'boolean',
+            'stacktrace'          => 'array',
+            'context'             => 'array',
+            'handled'             => 'boolean',
+            'is_resolved'         => 'boolean',
         ];
 
         public function projects(): \Illuminate\Database\Eloquent\Relations\BelongsTo

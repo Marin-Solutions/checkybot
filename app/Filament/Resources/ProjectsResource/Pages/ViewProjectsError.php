@@ -182,9 +182,17 @@
             return [
                 Action::make('Resolve')
                     ->icon('heroicon-o-wrench')
+                    ->color(function () {
+                        return $this->error->is_resolved ? 'danger' : 'success';
+                    })
+                    ->label(function () {
+                        return "Mark as " . ($this->error->is_resolved ? 'unresolved' : 'resolved');
+                    })
                     ->action(function () {
-                        app('debugbar')->log('hai');
-                    }),
+                        $this->error->is_resolved = !$this->error->is_resolved;
+                        $this->error->save();
+                    })
+                    ->requiresConfirmation(),
                 CopyAction::make()
                     ->copyable(function ( $record ) {
                         $publicLink = ErrorReportPublicLink::create([
