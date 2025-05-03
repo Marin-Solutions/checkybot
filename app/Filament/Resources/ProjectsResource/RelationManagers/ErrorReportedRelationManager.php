@@ -33,8 +33,8 @@
             return $table
                 ->recordTitleAttribute('exception_class')
                 ->columns([
-                    Tables\Columns\TextColumn::make('exception_class'),
-                    Tables\Columns\TextColumn::make('message')->lineClamp(1)->limit(64),
+                    Tables\Columns\TextColumn::make('exception_class')->searchable(),
+                    Tables\Columns\TextColumn::make('message')->lineClamp(1)->limit(64)->searchable(),
                 ])
                 ->filters([
                     //
@@ -55,6 +55,10 @@
                         Tables\Actions\DeleteBulkAction::make(),
                     ]),
                 ])
+                ->groups([
+                    'exception_class'
+                ])
+                ->defaultGroup('exception_class')
             ;
         }
     }
