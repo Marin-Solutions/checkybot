@@ -25,7 +25,7 @@ class MonitorApisResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with('results');
+        return parent::getEloquentQuery()->withAvg('results as avg_response_time', 'response_time_ms');
     }
 
     public static function form(Form $form): Form
@@ -55,9 +55,10 @@ class MonitorApisResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('data_path')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('average_response_time')
+                Tables\Columns\TextColumn::make('avg_response_time')
                     ->label('Avg Response Time (ms)')
-                    ->getStateUsing(fn ($record) => $record->results->count() > 0 ? round($record->results->avg('response_time_ms')) : '-')
+                    ->default('-')
+                    ->formatStateUsing(fn( $state ) => $state === '-' ? '-' : round($state))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
