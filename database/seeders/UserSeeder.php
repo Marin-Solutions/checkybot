@@ -16,13 +16,13 @@ class UserSeeder extends Seeder
         $usersData = [
             [
                 'name' => 'Super Admin',
-                'email' => 'superadmin@nxtyou.de',
+                'email' => 'superadmin@checkybot.com',
                 'password' => 'password',
                 'role' => 'Super Admin',
             ],
             [
                 'name' => 'Admin',
-                'email' => 'admin@nxtyou.de',
+                'email' => 'admin@checkybot.com',
                 'password' => 'password',
                 'role' => 'Admin',
             ],
