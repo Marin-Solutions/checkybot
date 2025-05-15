@@ -1,5 +1,5 @@
 <x-filament-panels::page
-    wire:poll.10s
+    wire:poll.60s
     @class([
         'fi-resource-view-record-page',
         'fi-resource-' . str_replace('/', '-', $this->getResource()::getSlug()),
