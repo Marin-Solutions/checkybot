@@ -8,14 +8,18 @@
     use Filament\Resources\RelationManagers\RelationManager;
     use Filament\Tables;
     use Filament\Tables\Table;
-    use Illuminate\Database\Eloquent\Builder;
-    use Illuminate\Database\Eloquent\SoftDeletingScope;
+    use Illuminate\Database\Eloquent\Model;
 
     class ErrorReportedRelationManager extends RelationManager
     {
         protected static string $relationship = 'errorReported';
 
         protected static ?string $title = "Errors";
+
+        public static function canViewForRecord( Model $ownerRecord, string $pageClass ): bool
+        {
+            return $ownerRecord->error_reported_count > 0;
+        }
 
         public function form( Form $form ): Form
         {
