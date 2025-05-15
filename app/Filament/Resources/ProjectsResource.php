@@ -7,14 +7,17 @@
     use App\Models\Projects;
     use Filament\Forms;
     use Filament\Forms\Form;
+    use Filament\Infolists\Components\Actions\Action;
     use Filament\Infolists\Components\Fieldset;
     use Filament\Infolists\Components\TextEntry;
     use Filament\Infolists\Infolist;
     use Filament\Resources\Resource;
+    use Filament\Support\Enums\IconPosition;
     use Filament\Tables;
     use Filament\Tables\Table;
     use Illuminate\Database\Eloquent\Builder;
-    use Illuminate\Database\Eloquent\SoftDeletingScope;
+    use Illuminate\Support\HtmlString;
+    use Illuminate\Support\Str;
     use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
     class ProjectsResource extends Resource
@@ -77,14 +80,78 @@
             ];
         }
 
+        public static function getEloquentQuery(): Builder
+        {
+            return parent::getEloquentQuery()->withCount('errorReported');
+        }
+
         public static function infolist( Infolist $infolist ): Infolist
         {
             return $infolist
                 ->schema([
-                    Fieldset::make('Name')
+                    Fieldset::make("Step 1")
                         ->schema([
-                            TextEntry::make('name')->label(''),
+                            TextEntry::make('step1')
+                                ->label(new HtmlString("Install <b>Flare</b> to your `dependencies` using this command:"))
+                                ->html()
+                                ->copyable()
+                                ->default("composer require checkybot-labs/laravel-ers --no-interaction")
+                                ->formatStateUsing(function ( $state ) {
+                                    return "<pre class='text-sm'>" . e($state) . "</pre>";
+                                })
+                                ->tooltip("Click to copy the command to your clipboard."),
                         ])
+                        ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
+                    Fieldset::make("Step 2")
+                        ->schema([
+                            TextEntry::make('step2')
+                                ->label(new HtmlString("<b>Register Flare</b> in the <code>withExceptions</code> closure of your <code>bootstrap/app.php</code> file:"))
+                                ->html()
+                                ->default('->withExceptions(function (Exceptions $exceptions) {
+    \CheckybotLabs\LaravelErs\Facades\Flare::handles($exceptions);
+})->create();')
+                                ->formatStateUsing(function ( $state ) {
+                                    return "<pre class='text-sm'>" . e($state) . "</pre>";
+                                })
+                        ])
+                        ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
+                    Fieldset::make("Step 3")
+                        ->schema([
+                            TextEntry::make('token')
+                                ->label(new HtmlString("<b>Copy</b> the token/key to your <code>.env</code> file:"))
+                                ->html()
+                                ->copyable()
+                                ->formatStateUsing(function ( $state ) {
+                                    return "<pre class='text-sm'>CHECKYBOT_KEY=" . e($state) . "</pre>";
+                                })
+                                ->tooltip("Click to copy token to your clipboard.")
+                                ->hintActions([
+                                    Action::make('regenerate_token')
+                                        ->label("Regenerate Token")
+                                        ->icon('heroicon-o-arrow-path')
+                                        ->action(function ( Projects $record, $livewire ) {
+                                            $record->token = Str::random(40);
+                                            $record->save();
+                                        })
+                                        ->iconPosition(IconPosition::After)
+                                        ->requiresConfirmation()
+                                ]),
+                        ])->columns(1)
+                        ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
+                    Fieldset::make("Step 4")
+                        ->schema([
+                            TextEntry::make('test')
+                                ->label(new HtmlString("<b>Test</b> if you performed the steps correctly by running the following command:"))
+                                ->html()
+                                ->default("php artisan flare:test")
+                                ->formatStateUsing(function ( $state ) {
+                                    return "<pre class='text-sm'>" . e($state) . "</pre>";
+                                })
+                                ->copyable()
+                                ->tooltip("Click to copy the command to your clipboard.")
+
+                        ])->columns(1)
+                        ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
                 ])
             ;
         }

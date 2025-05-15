@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+.waiting-for-error-section .fi-section-header > .flex > .fi-section-header-icon {
+    align-self: center !important;
+}
+.waiting-for-error-section .fi-section-content-ctn {
+    border: 0 !important;
+}
+.waiting-for-error-section .fi-section-content-ctn > .fi-section-content {
+    padding: 0;
+}
