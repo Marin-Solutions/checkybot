@@ -69,14 +69,12 @@ class ServerResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->formatStateUsing(function ($record) {
-                        $latestInfo = $record->informationHistory()
-                            ->latest()
-                            ->first();
+                        $latestInfo = $record->latest_server_history_created_at;
 
                         $statusColor = 'bg-danger-500';
                         $title = 'Offline (No recent data)';
-                        
-                        if ($latestInfo && $latestInfo->created_at->diffInMinutes(now()) <= 2) {
+
+                        if ($latestInfo && Carbon::parse($latestInfo)->diffInMinutes(now()) <= 2) {
                             $statusColor = 'bg-success-500';
                             $title = 'Online';
                         }
@@ -106,25 +104,23 @@ class ServerResource extends Resource
                             );
                     })
                     ->state(function (Server $record): array {
-                        $latestInfo = $record->informationHistory()
-                            ->orderBy('id', 'desc')
-                            ->first();
+                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         // Debug output
                         \Log::info('Disk Usage Debug', [
                             'server_id' => $record->id,
                             'has_latest_info' => $latestInfo ? 'yes' : 'no',
-                            'raw_data' => $latestInfo?->toArray()
+                            'raw_data' => $latestInfo
                         ]);
 
-                        if (!$latestInfo) {
+                        if (!isset($latestInfo["disk_usage"])) {
                             return [
                                 'value' => 0,
                                 'tooltip' => "No data available"
                             ];
                         }
 
-                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->disk_free_percentage);
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo["disk_usage"]);
                         $usedPercentage = 100 - $freePercentage;
 
                         return [
@@ -146,11 +142,10 @@ class ServerResource extends Resource
                             );
                     })
                     ->state(function (Server $record): array {
-                        $latestInfo = $record->informationHistory()
-                            ->orderBy('id', 'desc')
-                            ->first();
+                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
+                        app('debugbar')->log($latestInfo);
 
-                        if (!$latestInfo) {
+                        if (!isset($latestInfo["ram_usage"])) {
                             return [
                                 'label' => 'RAM',
                                 'value' => 0,
@@ -159,10 +154,10 @@ class ServerResource extends Resource
                         }
 
                         // Debug the raw value
-                        \Log::info('RAM Free:', ['value' => $latestInfo->ram_free_percentage]);
+                        \Log::info('RAM Free:', ['value' => $latestInfo["ram_usage"]]);
 
                         // Remove any % sign and convert to float
-                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo->ram_free_percentage);
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo["ram_usage"]);
                         $usedPercentage = 100 - $freePercentage;
 
                         return [
@@ -185,11 +180,9 @@ class ServerResource extends Resource
                             );
                     })
                     ->state(function (Server $record): array {
-                        $latestInfo = $record->informationHistory()
-                            ->orderBy('id', 'desc')
-                            ->first();
+                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
-                        if (!$latestInfo) {
+                        if (!isset($latestInfo["cpu_usage"])) {
                             return [
                                 'value' => 0,
                                 'tooltip' => "No data available"
@@ -197,7 +190,7 @@ class ServerResource extends Resource
                         }
 
                         // Get CPU usage directly from CPU_LOAD
-                        $cpuUsage = (float) str_replace(',', '.', $latestInfo->cpu_load);
+                        $cpuUsage = (float) str_replace(',', '.', $latestInfo["cpu_usage"]);
 
                         return [
                             'value' => min(100, $cpuUsage), // Cap at 100%
@@ -265,6 +258,9 @@ class ServerResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
+            ->select("*")
+            ->selectRaw("(SELECT CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) FROM `server_information_history` b WHERE b.server_id = servers.`id` ORDER BY b.id DESC LIMIT 1) AS latest_server_history_info")
+            ->selectRaw("(SELECT MAX(created_at) FROM server_information_history b WHERE b.server_id = servers.id) AS latest_server_history_created_at")
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
