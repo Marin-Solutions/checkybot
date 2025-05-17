@@ -135,4 +135,11 @@ class Website extends Model
     {
         return $this->hasMany(WebsiteLogHistory::class);
     }
+
+    public function logHistoryLast24h(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(WebsiteLogHistory::class)
+            ->where('created_at', '>=', now()->subHours(24));
+    }
+
 }

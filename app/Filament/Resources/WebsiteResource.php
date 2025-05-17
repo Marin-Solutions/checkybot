@@ -166,10 +166,8 @@
                         ->label('Avg Response (24h)')
                         ->translateLabel()
                         ->state(function (Website $record): string {
-                            $avg = $record->logHistory()
-                                ->where('created_at', '>=', now()->subHours(24))
-                                ->avg('speed');
-                            
+                            $avg = $record->average_response_time;
+
                             return $avg ? round($avg) . 'ms' : 'N/A';
                         })
                         ->sortable()
@@ -275,6 +273,7 @@
         public static function getEloquentQuery(): Builder
         {
             return parent::getEloquentQuery()
+                ->withAvg('logHistoryLast24h as average_response_time', 'speed')
                 ->where('created_by', auth()->id())
                 ->withoutGlobalScopes([
                     SoftDeletingScope::class,
