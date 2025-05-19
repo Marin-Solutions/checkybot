@@ -38,4 +38,16 @@ class Server extends Model
     {
         return $this->hasMany(ServerRule::class);
     }
+
+    function parseLatestServerHistoryInfo(?string $summary = null): array {
+        $result = [];
+        if ( !empty($summary) ) {
+            foreach (explode('|', $summary) as $part) {
+                [$key, $value] = explode(':', $part);
+                $result[$key] = $value;
+            }
+        }
+        return $result;
+    }
+
 }
