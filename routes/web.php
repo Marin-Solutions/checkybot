@@ -32,3 +32,5 @@
     ;
 
     Route::get('share/{error_token}', \App\Livewire\ViewShareError::class)->name('share-error');
+
+    Route::get('welcome', \App\Livewire\Welcome::class);

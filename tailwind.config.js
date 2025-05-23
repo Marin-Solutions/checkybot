@@ -1,5 +1,6 @@
 import preset from './vendor/filament/support/tailwind.config.preset'
 import scrollbarHide from 'tailwind-scrollbar-hide'
+import colors from 'tailwindcss/colors'
 
 export default {
     presets: [preset],
@@ -10,7 +11,14 @@ export default {
     ],
     darkMode: 'class',
     theme: {
-        extend: {},
+        extend: {
+            colors: {
+                "base-gray": colors.gray,
+            },
+            fontFamily: {
+                "inter-sans": ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            }
+        },
     },
     plugins: [
         scrollbarHide
