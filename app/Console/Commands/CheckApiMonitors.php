@@ -27,6 +27,7 @@ class CheckApiMonitors extends Command
                     'id' => $monitor->id,
                     'url' => $monitor->url,
                     'data_path' => $monitor->data_path,
+                    'headers' => $monitor->headers,
                 ]);
 
                 if (!isset($result['code']) || !isset($result['body'])) {

@@ -53,7 +53,6 @@ class MonitorApis extends Model
         ];
 
         try {
-            Log::info("Headers", $data['headers']);
             $request = !empty($data['headers'])
                 ? Http::withHeaders($data['headers'])->get($url)
                 : Http::get($url);
