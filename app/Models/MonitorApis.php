@@ -59,7 +59,7 @@ class MonitorApis extends Model
             $responseData['code'] = $request->status();
             $responseData['body'] = $request->body();
             Log::info("Response Data", $responseData);
-            Log::info("Request status", $request->status());
+            Log::info("Request status", ['status' => $request->status()]);
 
             if ($responseData['code'] != 200) {
                 return $responseData;
