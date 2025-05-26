@@ -20,7 +20,7 @@
     @vite('resources/css/filament.css')
 </head>
 
-<body class="antialiased bg-blue-950 text-blue-100 font-inter-sans">
+<body class="antialiased bg-base-gray-950 text-base-gray-100 font-inter-sans">
 {{ $slot }}
 
 <footer class="mt-20">
