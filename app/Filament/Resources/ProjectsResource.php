@@ -121,6 +121,7 @@
                                 ->label(new HtmlString("<b>Copy</b> the token/key to your <code>.env</code> file:"))
                                 ->html()
                                 ->copyable()
+                                ->copyableState(fn( $record ) => "CHECKYBOT_KEY=" . $record->token)
                                 ->formatStateUsing(function ( $state ) {
                                     return "<pre class='text-sm'>CHECKYBOT_KEY=" . e($state) . "</pre>";
                                 })
