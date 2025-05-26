@@ -103,6 +103,7 @@
                         ])
                         ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
                     Fieldset::make("Step 2")
+                        ->columns(1)
                         ->schema([
                             TextEntry::make('step2')
                                 ->label(new HtmlString("<b>Register Flare</b> in the <code>withExceptions</code> closure of your <code>bootstrap/app.php</code> file:"))
@@ -110,6 +111,16 @@
                                 ->default('->withExceptions(function (Exceptions $exceptions) {
     \CheckybotLabs\LaravelErs\Facades\Flare::handles($exceptions);
 })->create();')
+                                ->formatStateUsing(function ( $state ) {
+                                    return "<pre class='text-sm'>" . e($state) . "</pre>";
+                                }),
+                            TextEntry::make('step2_note')
+                                ->label(new HtmlString("<span class='text-danger-600'><b>Note:</b></span><br>
+If your project still uses the older Laravel 10 structure (i.e., no <code>withExceptions</code> closure in <code>bootstrap/app.php</code>), you can register Flare inside the <code>register()</code> method of your <code>App\Providers\AppServiceProvider</code> like this:"))
+                                ->html()
+                                ->default('$this->reportable(function (Throwable $e) {
+    \CheckybotLabs\LaravelErs\Facades\Flare::handles($exceptions);
+});')
                                 ->formatStateUsing(function ( $state ) {
                                     return "<pre class='text-sm'>" . e($state) . "</pre>";
                                 })
@@ -121,6 +132,7 @@
                                 ->label(new HtmlString("<b>Copy</b> the token/key to your <code>.env</code> file:"))
                                 ->html()
                                 ->copyable()
+                                ->copyableState(fn( $record ) => "CHECKYBOT_KEY=" . $record->token)
                                 ->formatStateUsing(function ( $state ) {
                                     return "<pre class='text-sm'>CHECKYBOT_KEY=" . e($state) . "</pre>";
                                 })
