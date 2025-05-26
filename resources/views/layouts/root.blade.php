@@ -17,7 +17,7 @@
         }
     </style>
 
-    @vite('resources/css/app.css')
+    @vite('resources/css/filament.css')
 </head>
 
 <body class="antialiased bg-base-gray-950 text-base-gray-200 font-inter-sans">
