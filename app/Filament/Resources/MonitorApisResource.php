@@ -42,6 +42,14 @@ class MonitorApisResource extends Resource
                 Forms\Components\TextInput::make('data_path')
                     ->helperText('The path to the data in the JSON response (e.g. "data.items")')
                     ->maxLength(255),
+                Forms\Components\KeyValue::make('headers')
+                    ->keyLabel('Header')
+                    ->valueLabel('Value')
+                    ->keyPlaceholder('Header Name')
+                    ->valuePlaceholder('Header Value')
+                    ->helperText('Optional headers to include in the request')
+                    ->columnSpanFull()
+                    ->addActionLabel("Add Header")
             ]);
     }
 

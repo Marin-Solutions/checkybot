@@ -19,7 +19,12 @@ class MonitorApis extends Model
         'title',
         'url',
         'data_path',
+        'headers',
         'created_by'
+    ];
+
+    protected $casts = [
+        'headers' => 'array',
     ];
 
     public function user(): BelongsTo
@@ -48,9 +53,13 @@ class MonitorApis extends Model
         ];
 
         try {
-            $request = Http::get($url);
+            $request = !empty($data['headers'])
+                ? Http::withHeaders($data['headers'])->get($url)
+                : Http::get($url);
             $responseData['code'] = $request->status();
             $responseData['body'] = $request->body();
+            Log::info("Response Data", $responseData);
+            Log::info("Request status", ['status' => $request->status()]);
 
             if ($responseData['code'] != 200) {
                 return $responseData;
