@@ -115,7 +115,6 @@
                             'created_by'      => auth()->user()->id,
                             'token'           => Str::uuid()->toString()
                         ]);
-                        \Log::info("Public link created for error report: {$publicLink->token}");
 
                         return \route('share-error', [ 'error_token' => $publicLink->token ]);
                     })
