@@ -5,13 +5,10 @@
     use App\Filament\Resources\ProjectsResource;
     use App\Models\ErrorReportPublicLink;
     use App\Models\ErrorReports;
+    use App\Traits\ErsHasErrorRequestInfolist;
     use Filament\Actions\Action;
-    use Filament\Infolists\Components\Fieldset;
-    use Filament\Infolists\Components\KeyValueEntry;
-    use Filament\Infolists\Components\RepeatableEntry;
     use Filament\Infolists\Components\Section;
     use Filament\Infolists\Components\Split;
-    use Filament\Infolists\Components\Tabs;
     use Filament\Infolists\Components\TextEntry;
     use Filament\Infolists\Concerns\InteractsWithInfolists;
     use Filament\Infolists\Contracts\HasInfolists;
@@ -29,6 +26,7 @@
     {
         use InteractsWithRecord;
         use InteractsWithInfolists;
+        use ErsHasErrorRequestInfolist;
 
         protected static string $resource = ProjectsResource::class;
 
@@ -56,17 +54,7 @@
         public function mount( int|string $record ): void
         {
             $this->record = $this->resolveRecord($record);
-
-            $error                   = ErrorReports::query()->findOrFail(Route::current()->parameter('error'));
-            $error->request_headers  = $error->context[ 'headers' ];
-            $error->request_body     = $error->context[ 'request_data' ][ 'body' ];
-            $error->route_name       = $error->context[ 'route' ][ 'route' ];
-            $error->route_action     = $error->context[ 'route' ][ 'controllerAction' ];
-            $error->route_middleware = $error->context[ 'route' ][ 'middleware' ];
-            $error->route_parameters = $error->context[ 'route' ][ 'routeParameters' ];
-            $error->queries          = $error->context[ 'queries' ];
-            $this->error             = $error;
-
+            $this->error  = ErrorReports::query()->findOrFail(Route::current()->parameter('error'));
             $this->form->fill();
         }
 
@@ -104,79 +92,6 @@
             ;
         }
 
-        public function requestInfolist( Infolist $infolist ): Infolist
-        {
-            return $infolist
-                ->record($this->error)
-                ->schema([
-                    Tabs::make('Tabs')
-                        ->tabs([
-                            Tabs\Tab::make('Request')
-                                ->schema([
-                                    TextEntry::make('id')
-                                        ->label('Method')
-                                        ->formatStateUsing(fn( $state, $record ) => data_get($record, 'context.request.method', '-'))
-                                        ->badge()
-                                        ->color('gray'),
-                                    KeyValueEntry::make('request_headers'),
-                                    KeyValueEntry::make('request_body')
-                                ]),
-                            Tabs\Tab::make('Application')
-                                ->schema([
-                                    Fieldset::make('Routing')
-                                        ->schema([
-                                            TextEntry::make('route_action')
-                                                ->label('Controller')
-                                                ->html()
-                                                ->formatStateUsing(function ( $state ) {
-                                                    return "<pre class='text-sm'>" . e($state) . "</pre>";
-                                                }),
-                                            TextEntry::make('route_name')
-                                                ->label('Route name')
-                                                ->visible(function ( $state ) {
-                                                    return !empty($state);
-                                                }),
-                                            TextEntry::make('route_middleware')
-                                                ->label('Middleware')
-                                                ->formatStateUsing(fn( $state, $record ) => implode(', ', $record->context[ 'route' ][ 'middleware' ])),
-                                            KeyValueEntry::make('route_parameters')
-                                                ->label('Parameters')
-                                                ->visible(fn( $state ) => !empty($state) || !is_null($state))
-                                        ])
-                                        ->columns(1),
-                                    RepeatableEntry::make('queries')
-                                        ->label("Database Queries")
-                                        ->schema([
-                                            TextEntry::make('connection_name'),
-                                            TextEntry::make('time')
-                                                ->formatStateUsing(fn( string $state, $record ) => $state . ' ms'),
-                                            TextEntry::make('sql')->label('SQL')
-                                                ->html()
-                                                ->formatStateUsing(function ( $state, $record, $component ) {
-                                                    $path  = explode('.', $component->getStatePath())[ 1 ];
-                                                    $query = $record->queries[ $path ];
-                                                    $sql   = $this->bindQuery($state, $query[ 'bindings' ]);
-
-                                                    return "<pre class='text-sm'>" . e($sql) . "</pre>";
-                                                }),
-                                        ])
-                                        ->columns(2)
-                                        ->visible(fn( $state ) => !empty($state) || !is_null($state))
-                                ]),
-                        ])
-                ])
-            ;
-        }
-
-        protected function bindQuery( $query, $bindings )
-        {
-            foreach ( $bindings as $binding ) {
-                $binding = is_numeric($binding) ? $binding : "'" . addslashes($binding) . "'";
-                $query   = preg_replace('/\?/', $binding, $query, 1);
-            }
-            return $query;
-        }
-
         protected function getHeaderActions(): array
         {
             return [
@@ -186,7 +101,7 @@
                         return $this->error->is_resolved ? 'danger' : 'success';
                     })
                     ->label(function () {
-                        return "Mark as " . ($this->error->is_resolved ? 'unresolved' : 'resolved');
+                        return "Mark as " . ( $this->error->is_resolved ? 'unresolved' : 'resolved' );
                     })
                     ->action(function () {
                         $this->error->is_resolved = !$this->error->is_resolved;
@@ -196,16 +111,16 @@
                 CopyAction::make()
                     ->copyable(function ( $record ) {
                         $publicLink = ErrorReportPublicLink::create([
-                            'error_report_id' => $record->id,
+                            'error_report_id' => $this->error->id,
                             'created_by'      => auth()->user()->id,
                             'token'           => Str::uuid()->toString()
                         ]);
+                        \Log::info("Public link created for error report: {$publicLink->token}");
 
                         return \route('share-error', [ 'error_token' => $publicLink->token ]);
                     })
                     ->label('Share')
                     ->icon('heroicon-o-arrow-uturn-right')
-
             ];
         }
 
