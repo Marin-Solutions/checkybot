@@ -83,6 +83,8 @@
         </x-filament::section>
     </div>
 
-    {{ $this->requestInfolist }}
+    @if($this->shouldShowRequestInfolist())
+        {{ $this->requestInfolist }}
+    @endif
 
 </x-filament-panels::page>
