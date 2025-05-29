@@ -49,6 +49,10 @@
                         ->trueIcon('heroicon-o-check-circle')
                         ->falseIcon('heroicon-o-x-circle')
                         ->tooltip(fn( PloiAccounts $record ) => $record->error_message ?: 'No error message'),
+                    Tables\Columns\TextColumn::make('servers_count')
+                        ->label('Servers')
+                        ->counts('servers')
+                        ->sortable(),
                 ])
                 ->filters([
                     //
@@ -89,7 +93,7 @@
                         })
                         ->icon('heroicon-o-server')
                         ->requiresConfirmation()
-                        ->color('primary'),
+                        ->color('primary')
                 ])
                 ->bulkActions([
                     Tables\Actions\BulkActionGroup::make([
@@ -105,7 +109,8 @@
         public static function getRelations(): array
         {
             return [
-                RelationManagers\ServersRelationManager::class
+                RelationManagers\ServersRelationManager::class,
+                RelationManagers\SitesRelationManager::class
             ];
         }
 

@@ -45,7 +45,7 @@
 
                 $body = $response->json();
                 foreach ( $body[ 'data' ] as $item ) {
-                    PloiServers::query()->updateOrCreate(
+                    PloiServers::updateOrCreate(
                         [
                             'server_id'  => $item[ 'id' ],
                             'created_by' => $this->userId,

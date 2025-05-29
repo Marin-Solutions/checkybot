@@ -22,7 +22,7 @@
 
         protected $casts = [];
 
-        public function PloiAccount()
+        public function PloiAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
         {
             return $this->belongsTo(PloiAccounts::class, 'ploi_account_id');
         }

@@ -32,7 +32,7 @@
             return $table
                 ->recordTitleAttribute('label')
                 ->columns([
-                    Tables\Columns\TextColumn::make('server_id')->label('Id'),
+                    Tables\Columns\TextColumn::make('server_id')->label('Id')->searchable(),
                     Tables\Columns\TextColumn::make('type'),
                     Tables\Columns\TextColumn::make('name'),
                     Tables\Columns\TextColumn::make('ip_address'),
@@ -47,6 +47,42 @@
                 ])
                 ->headerActions([
                     Tables\Actions\CreateAction::make(),
+                    Tables\Actions\Action::make('import_all_site')
+                        ->label('Import All Sites')
+                        ->action(function () {
+                            if ( $this->getOwnerRecord()->servers()->count() === 0 ) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('No Servers Available')
+                                    ->body('You need to import servers first before importing sites. You can do this by clicking the "Import Server" button.')
+                                    ->warning()
+                                    ->persistent()
+                                    ->send()
+                                ;
+                            } else {
+                                try {
+                                    $service  = new \App\Services\PloiSiteImportService($this->getOwnerRecord());
+                                    $imported = $service->import();
+
+                                    \Filament\Notifications\Notification::make()
+                                        ->title('Import complete')
+                                        ->body("Imported/updated {$imported} sites.")
+                                        ->success()
+                                        ->persistent()
+                                        ->send()
+                                    ;
+                                } catch ( \Exception $e ) {
+                                    \Filament\Notifications\Notification::make()
+                                        ->title('Import failed')
+                                        ->body($e->getMessage())
+                                        ->danger()
+                                        ->persistent()
+                                        ->send()
+                                    ;
+                                }
+                            }
+                        })
+                        ->requiresConfirmation()
+                        ->icon('heroicon-o-globe-alt'),
                     Tables\Actions\Action::make('import_server')
                         ->label('Import Server')
                         ->action(function () {
@@ -75,6 +111,30 @@
                 ->actions([
                     Tables\Actions\EditAction::make(),
                     Tables\Actions\DeleteAction::make(),
+                    Tables\Actions\Action::make('import_site')
+                        ->label('Import Sites')
+                        ->action(function ( $record ) {
+                            try {
+                                $service  = new \App\Services\PloiSiteImportService($this->getOwnerRecord());
+                                $imported = $service->import($record);
+
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Import complete')
+                                    ->body("Imported/updated {$imported} sites for server {$record->name}.")
+                                    ->success()
+                                    ->send()
+                                ;
+                            } catch ( \Exception $e ) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Import failed')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send()
+                                ;
+                            }
+                        })
+                        ->requiresConfirmation()
+                        ->icon('heroicon-o-cloud-arrow-down'),
                 ])
                 ->bulkActions([
                     Tables\Actions\BulkActionGroup::make([

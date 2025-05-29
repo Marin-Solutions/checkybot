@@ -22,4 +22,9 @@
         {
             return $this->hasMany(PloiServers::class, 'ploi_account_id');
         }
+
+        public function sites(): \Illuminate\Database\Eloquent\Relations\HasMany
+        {
+            return $this->hasMany(PloiWebsites::class, 'ploi_account_id');
+        }
     }
