@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\ErrorReports;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class OptimizeErrorReportsTable extends Command
 {
@@ -78,8 +79,8 @@ class OptimizeErrorReportsTable extends Command
             }
         }
 
-        // Optimize table
-        if (!$dryRun) {
+        // Optimize table (MySQL only)
+        if (!$dryRun && $this->isMySQL()) {
             $this->info("Optimizing table structure...");
             DB::statement('OPTIMIZE TABLE error_reports');
             $this->info("Table optimization complete!");
@@ -92,76 +93,101 @@ class OptimizeErrorReportsTable extends Command
     {
         $this->info("Analyzing error_reports table...");
 
-        // Get table size
-        $tableSize = DB::selectOne("
-            SELECT 
-                ROUND(((data_length + index_length) / 1024 / 1024), 2) AS 'size_mb'
-            FROM information_schema.tables 
-            WHERE table_schema = DATABASE() 
-            AND table_name = 'error_reports'
-        ");
+        $dbDriver = config('database.default');
+        $connection = config("database.connections.{$dbDriver}.driver");
+
+        $this->info("Database: {$connection}");
 
         // Get record counts by project
-        $projectCounts = DB::select("
-            SELECT 
-                project_id, 
-                COUNT(*) as count,
-                MIN(created_at) as oldest,
-                MAX(created_at) as newest
-            FROM error_reports 
-            GROUP BY project_id 
-            ORDER BY count DESC 
-            LIMIT 10
-        ");
+        $projectCounts = ErrorReports::selectRaw('
+            project_id, 
+            COUNT(*) as count,
+            MIN(created_at) as oldest,
+            MAX(created_at) as newest
+        ')
+            ->groupBy('project_id')
+            ->orderByDesc('count')
+            ->limit(10)
+            ->get();
 
         // Get most common exception classes
-        $exceptionClasses = DB::select("
-            SELECT 
-                exception_class, 
-                COUNT(*) as count 
-            FROM error_reports 
-            WHERE exception_class IS NOT NULL
-            GROUP BY exception_class 
-            ORDER BY count DESC 
-            LIMIT 10
-        ");
+        $exceptionClasses = ErrorReports::selectRaw('
+            exception_class, 
+            COUNT(*) as count 
+        ')
+            ->whereNotNull('exception_class')
+            ->groupBy('exception_class')
+            ->orderByDesc('count')
+            ->limit(10)
+            ->get();
 
-        // Check for indexes
-        $indexes = DB::select("SHOW INDEX FROM error_reports WHERE Key_name != 'PRIMARY'");
+        // Basic metrics
+        $totalRecords = ErrorReports::count();
+        $recentRecords7Days = ErrorReports::where('created_at', '>=', now()->subDays(7))->count();
+        $recentRecords30Days = ErrorReports::where('created_at', '>=', now()->subDays(30))->count();
 
         $this->table(['Metric', 'Value'], [
-            ['Table Size', ($tableSize->size_mb ?? 0) . ' MB'],
-            ['Total Records', ErrorReports::count()],
-            ['Records Last 7 Days', ErrorReports::where('created_at', '>=', now()->subDays(7))->count()],
-            ['Records Last 30 Days', ErrorReports::where('created_at', '>=', now()->subDays(30))->count()],
+            ['Database Type', $connection],
+            ['Total Records', number_format($totalRecords)],
+            ['Records Last 7 Days', number_format($recentRecords7Days)],
+            ['Records Last 30 Days', number_format($recentRecords30Days)],
         ]);
 
         $this->info("\n📊 Top Projects by Error Count:");
         $this->table(
             ['Project ID', 'Error Count', 'Oldest Error', 'Newest Error'],
-            array_map(fn($p) => [$p->project_id, $p->count, $p->oldest, $p->newest], $projectCounts)
+            $projectCounts->map(fn($p) => [$p->project_id, number_format($p->count), $p->oldest, $p->newest])->toArray()
         );
 
         $this->info("\n🔥 Most Common Exception Classes:");
         $this->table(
             ['Exception Class', 'Count'],
-            array_map(fn($e) => [$e->exception_class, $e->count], $exceptionClasses)
+            $exceptionClasses->map(fn($e) => [$e->exception_class, number_format($e->count)])->toArray()
         );
 
-        $this->info("\n🗂️ Current Indexes:");
-        if (empty($indexes)) {
-            $this->warn("❌ No indexes found! Run the migration to add performance indexes.");
+        // Check for indexes (MySQL only)
+        if ($this->isMySQL()) {
+            try {
+                $indexes = DB::select("SHOW INDEX FROM error_reports WHERE Key_name != 'PRIMARY'");
+
+                $this->info("\n🗂️ Current Indexes:");
+                if (empty($indexes)) {
+                    $this->warn("❌ No indexes found! Run the migration to add performance indexes.");
+                } else {
+                    $this->table(
+                        ['Index Name', 'Column', 'Unique'],
+                        array_map(fn($i) => [$i->Key_name, $i->Column_name, $i->Non_unique ? 'No' : 'Yes'], $indexes)
+                    );
+                }
+            } catch (\Exception $e) {
+                $this->warn("Could not retrieve index information: " . $e->getMessage());
+            }
         } else {
-            $this->table(
-                ['Index Name', 'Column', 'Unique'],
-                array_map(fn($i) => [$i->Key_name, $i->Column_name, $i->Non_unique ? 'No' : 'Yes'], $indexes)
-            );
+            $this->info("\n🗂️ Index Information:");
+            $this->warn("Index analysis not available for {$connection} database.");
         }
 
         $this->info("\n💡 Recommendations:");
-        $this->line("• Run 'php artisan migrate' to add performance indexes");
-        $this->line("• Consider keeping only last 30-90 days of error reports");
-        $this->line("• Archive old data to separate storage if needed for compliance");
-        $this->line("• Monitor table size and run optimization regularly");
+        if ($this->isMySQL()) {
+            $this->line("• Run 'php artisan migrate' to add performance indexes (MySQL)");
+            $this->line("• Consider keeping only last 30-90 days of error reports");
+            $this->line("• Archive old data to separate storage if needed for compliance");
+            $this->line("• Monitor table size and run optimization regularly");
+        } else {
+            $this->line("• For production MySQL: Run 'php artisan migrate' to add performance indexes");
+            $this->line("• Consider keeping only last 30-90 days of error reports");
+            $this->line("• Archive old data to separate storage if needed for compliance");
+        }
+
+        if ($totalRecords > 100000) {
+            $this->warn("\n⚠️  Large dataset detected ({$totalRecords} records)");
+            $this->line("Consider running: php artisan error-reports:optimize --days=30 --dry-run");
+        }
+    }
+
+    private function isMySQL(): bool
+    {
+        $driver = config('database.connections.' . config('database.default') . '.driver');
+        return $driver === 'mysql';
     }
 }
