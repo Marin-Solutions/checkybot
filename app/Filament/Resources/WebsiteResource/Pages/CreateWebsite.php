@@ -33,58 +33,11 @@ class CreateWebsite extends CreateRecord
 
     }
 
-    protected function beforeCreate()
+    protected function beforeCreate(): void
     {
-        $url=$this->data['url'];
-        $urlExistsInDB = Website::whereUrl($url)->count();
-        $urlCheckExists = Website::checkWebsiteExists($url);
-        $urlResponseCode = Website::checkResponseCode($url);
-        $responseStatus = false;
-
-        if( $urlResponseCode['code'] != 200 ) {
-            $responseStatus = true;
-            if($urlResponseCode['code'] == 60){
-                $title = 'URL website, problem with certificate';
-                $body = $urlResponseCode['body'];
-            }else if($urlResponseCode['body']==1){
-                $title ='URL Website Response error';
-                $body ='The website response is not 200!';
-            }else{
-                $title = 'URL website a unknown error. try other url';
-                $body = $urlResponseCode['body']. ' code errno:'. $urlResponseCode['code'];
-                $responseStatus = true;
-            }
-        }
-
-        if($responseStatus){
-            Notification::make()
-                ->danger()
-                ->title(__($title))
-                ->body(__($body))
-                ->send();
-            $this->halt();
-        }
-
-        if ($urlExistsInDB>0) {
-            Notification::make()
-                ->danger()
-                ->title(__('URL Website Exists in database'))
-                ->body(__('The new website exists in database, try again'))
-                ->send();
-        }
-
-        if (!$urlCheckExists) {
-            Notification::make()
-                ->danger()
-                ->title(__('website was not registered'))
-                ->body(__('The new website not exists in DNS Lookup'))
-                ->send();
-        }
-
-
-        if($urlExistsInDB>0 || !$urlCheckExists ){
-            $this->halt();
-        }
-
+        \App\Services\WebsiteUrlValidator::validate(
+            $this->data['url'],
+            fn() => $this->halt()
+        );
     }
 }

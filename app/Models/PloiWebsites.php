@@ -30,4 +30,9 @@
         {
             return $this->belongsTo(PloiServers::class, 'server_id', 'server_id');
         }
+
+        public function checkybotWebsite(): \Illuminate\Database\Eloquent\Relations\HasOne
+        {
+            return $this->hasOne(Website::class, 'ploi_website_id', 'id');
+        }
     }

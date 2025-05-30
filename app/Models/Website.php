@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\NotificationScopesEnum;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Client\ConnectionException;
 use Spatie\Dns\Dns;
 use Ramsey\Uuid\Type\Integer;
 use Illuminate\Support\Facades\Http;
@@ -21,6 +22,7 @@ class Website extends Model
     use HasFactory;
 
     protected $fillable = [
+        'ploi_website_id',
         'name',
         'url',
         'description',
@@ -71,10 +73,14 @@ class Website extends Model
         $dataResponse = array();
         try {
             $response = Http::get($url);
-        } catch (RequestException $e) {
+        }  catch (RequestException $e) {
             $handlerContext = $e->getHandlerContext();
             $dataResponse['code'] = $handlerContext['errno'];
             $dataResponse['body'] = $handlerContext['error'];
+            return $dataResponse;
+        } catch (ConnectionException $e) {
+            $dataResponse['code'] = 0;
+            $dataResponse['body'] = $e->getMessage();
             return $dataResponse;
         }
         $dataResponse['code'] = $response->ok()?200:0;
@@ -140,6 +146,11 @@ class Website extends Model
     {
         return $this->hasMany(WebsiteLogHistory::class)
             ->where('created_at', '>=', now()->subHours(24));
+    }
+
+    public function PlowWebsite(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(PloiWebsites::class, 'ploi_website_id', 'id');
     }
 
 }
