@@ -2,13 +2,13 @@
 
     namespace App\Filament\Resources\PloiAccountsResource\RelationManagers;
 
+    use App\Models\Server;
     use Filament\Forms;
     use Filament\Forms\Form;
     use Filament\Resources\RelationManagers\RelationManager;
     use Filament\Tables;
     use Filament\Tables\Table;
-    use Illuminate\Database\Eloquent\Builder;
-    use Illuminate\Database\Eloquent\SoftDeletingScope;
+    use Illuminate\Database\Eloquent\Model;
 
     class ServersRelationManager extends RelationManager
     {
@@ -41,6 +41,12 @@
                     Tables\Columns\TextColumn::make('sites_count')->sortable()->numeric(),
                     Tables\Columns\TextColumn::make('status'),
                     Tables\Columns\TextColumn::make('status_id')->sortable(),
+                    Tables\Columns\IconColumn::make('checkybot_server_exists')->exists('checkybotServer')
+                        ->label('Added to Checkybot')
+                        ->boolean()
+                        ->trueIcon('heroicon-o-check-circle')
+                        ->falseIcon('heroicon-o-x-circle')
+                        ->sortable()
                 ])
                 ->filters([
                     //
@@ -135,6 +141,39 @@
                         })
                         ->requiresConfirmation()
                         ->icon('heroicon-o-cloud-arrow-down'),
+                    Tables\Actions\Action::make('add_to_checkybot')
+                        ->label('Add to Checkybot')
+                        ->requiresConfirmation()
+                        ->icon('heroicon-o-presentation-chart-line')
+                        ->action(function ( Model $record ) {
+                            try {
+                                Server::create([
+                                    'ip'             => $record->ip_address,
+                                    'name'           => $record->name,
+                                    'description'    => "Imported from Ploi server: {$record->id}",
+                                    'created_by'     => auth()->id(),
+                                    'token'          => \Illuminate\Support\Str::random(40),
+                                    'ploi_server_id' => $record->id,
+                                ]);
+
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Server added to Checkybot')
+                                    ->body("Server {$record->name} has been added to Checkybot.")
+                                    ->success()
+                                    ->send()
+                                ;
+                            } catch ( \Exception $e ) {
+                                \Filament\Notifications\Notification::make()
+                                    ->title('Failed to add server')
+                                    ->body($e->getMessage())
+                                    ->danger()
+                                    ->send()
+                                ;
+                            }
+                        })
+                        ->disabled(
+                            fn( Model $record ) => $record->checkybot_server_exists
+                        ),
                 ])
                 ->bulkActions([
                     Tables\Actions\BulkActionGroup::make([
