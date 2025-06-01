@@ -1,0 +1,60 @@
+<?php
+
+    namespace App\Filament\Resources\PloiAccountsResource\Pages;
+
+    use App\Filament\Resources\PloiAccountsResource;
+    use App\Models\PloiAccounts;
+    use App\Traits\HandlesPloiVerificationNotification;
+    use Filament\Actions;
+    use Filament\Infolists\Components\IconEntry;
+    use Filament\Infolists\Components\TextEntry;
+    use Filament\Infolists\Infolist;
+    use Filament\Resources\Pages\ViewRecord;
+    use Illuminate\Support\Facades\Http;
+
+    class ViewPloiAccounts extends ViewRecord
+    {
+        use HandlesPloiVerificationNotification;
+
+        protected static string $resource = PloiAccountsResource::class;
+
+        protected function getHeaderActions(): array
+        {
+            return [
+                Actions\Action::make('verify')
+                    ->action(function ( PloiAccounts $record ) {
+                        $service = new \App\Services\PloiApiService();
+                        $result = $service->verifyKey($record->key);
+                        $record->update($result);
+                        static::notifyPloiVerificationResult($result);
+                    })
+                    ->color('success')
+                    ->icon('heroicon-o-check-circle')
+                    ->requiresConfirmation()
+                    ->hidden(fn( $record ) => $record->is_verified),
+                Actions\Action::make('back')->url(PloiAccountsResource::getUrl('index'))->color('gray'),
+            ];
+        }
+
+        public function infolist( Infolist $infolist ): Infolist
+        {
+            return $infolist
+                ->schema([
+                    TextEntry::make('label'),
+                    TextEntry::make('key')
+                        ->label('API Key')
+                        ->formatStateUsing(fn( string $state ): string => substr($state, 0, 8) . '...')
+                        ->copyable()
+                        ->copyMessage('API Key copied')
+                        ->copyMessageDuration(1500),
+                    IconEntry::make('is_verified')
+                        ->label('Verified')
+                        ->icon(fn( $state ) => $state ? 'heroicon-o-check-circle' : 'heroicon-o-x-circle')
+                        ->color(fn( $state ) => $state ? 'success' : 'danger'),
+                    TextEntry::make('error_message')
+                        ->label('Message')
+                        ->hidden(fn( $record ) => is_null($record->error_message))
+                ])
+            ;
+        }
+    }

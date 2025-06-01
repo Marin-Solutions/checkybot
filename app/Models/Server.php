@@ -16,7 +16,7 @@ class Server extends Model
         'cpu_cores',
         'created_by',
         'token',
-
+        'ploi_server_id',
     ];
 
     public function user()
@@ -48,6 +48,11 @@ class Server extends Model
             }
         }
         return $result;
+    }
+
+    public function ploiServer(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(PloiServers::class, 'ploi_server_id', 'id');
     }
 
 }
