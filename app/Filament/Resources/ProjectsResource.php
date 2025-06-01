@@ -113,7 +113,9 @@
 })->create();')
                                 ->formatStateUsing(function ( $state ) {
                                     return "<pre class='text-sm'>" . e($state) . "</pre>";
-                                }),
+                                })
+                                ->copyable()
+                                ->tooltip("Click to copy the code snippet to register Flare's exception handler."),
                             TextEntry::make('step2_note')
                                 ->label(new HtmlString("<span class='text-danger-600'><b>Note:</b></span><br>
 If your project still uses the older Laravel 10 structure (i.e., no <code>withExceptions</code> closure in <code>bootstrap/app.php</code>), you can register Flare inside the <code>register()</code> method of your <code>App\Providers\AppServiceProvider</code> like this:"))
@@ -124,6 +126,8 @@ If your project still uses the older Laravel 10 structure (i.e., no <code>withEx
                                 ->formatStateUsing(function ( $state ) {
                                     return "<pre class='text-sm'>" . e($state) . "</pre>";
                                 })
+                                ->copyable()
+                                ->tooltip("Click to copy the code snippet to register Flare's exception handler."),
                         ])
                         ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
                     Fieldset::make("Step 3")
