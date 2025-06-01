@@ -7,85 +7,6 @@
             apps—your way.</p>
         <div class="pb-10 pt-1 text-xs flex gap-6 justify-center flex-row flex-wrap"></div>
 
-        <div id="screenshots" class="text-center text-4xl font-bold pt-10 text-white">Screenshots</div>
-        <div
-            x-data="{ openModal: null }"
-            class="mx-auto mt-16 max-w-2xl sm:mt-14 lg:mt-14 lg:max-w-none text-left mb-16"
-        >
-            @php
-                $screenshots = [
-                    [
-                        'img' => '/images/screenshot-dashboard.png',
-                        'title' => 'Intuitive Dashboard',
-                        'subtitle' => 'Monitor all your resources in one place with real-time updates.',
-                    ],
-                    [
-                        'img' => '/images/screenshot-uptime.png',
-                        'title' => 'Uptime Reports',
-                        'subtitle' => 'Detailed uptime and downtime logs for your websites and servers.',
-                    ],
-                    [
-                        'img' => '/images/screenshot-alerts.png',
-                        'title' => 'Instant Alerts',
-                        'subtitle' => 'Get notified immediately when issues are detected.',
-                    ],
-                    [
-                        'img' => '/images/screenshot-api.png',
-                        'title' => 'API Monitoring',
-                        'subtitle' => 'Track API health and response times with ease.',
-                    ],
-                    [
-                        'img' => '/images/screenshot-team.png',
-                        'title' => 'Team Collaboration',
-                        'subtitle' => 'Invite your team and manage permissions effortlessly.',
-                    ],
-                ];
-            @endphp
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
-                @foreach($screenshots as $i => $ss)
-                    <div
-                        class="flex flex-col items-center bg-zinc-800/30 rounded-lg shadow cursor-pointer"
-                        @click="openModal = {{ $i }}"
-                    >
-                        <img src="{{ $ss['img'] }}" alt="{{ $ss['title'] }}"
-                             class="rounded mb-4 w-full object-cover max-h-56">
-                        <div class="text-lg font-bold text-white self-start px-4">{{ $ss['title'] }}</div>
-                        <div class="text-xs text-zinc-400 mt-1 self-start px-4 pb-4">{{ $ss['subtitle'] }}</div>
-                    </div>
-                @endforeach
-            </div>
-
-            <template x-if="openModal !== null">
-                <div
-                    x-cloak
-                    x-show="true"
-                    x-transition
-                    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-                    @click.self="openModal = null"
-                    @keydown.window.escape="openModal = null"
-                >
-                    <div
-                        x-transition
-                        class="bg-zinc-900 rounded-lg shadow-lg w-full max-w-3xl p-6 relative flex flex-col items-center"
-                    >
-                        <button
-                            class="absolute top-2 right-2 text-white text-3xl leading-none"
-                            @click="openModal = null"
-                        >×
-                        </button>
-
-                        <div class="mb-2 text-xl font-bold text-white self-start"
-                             x-text="{{ json_encode($screenshots) }}[openModal].title"></div>
-                        <div class="mb-4 text-sm text-zinc-400 self-start"
-                             x-text="{{ json_encode($screenshots) }}[openModal].subtitle"></div>
-                        <img :src="'{{ url('/') }}' + {{ json_encode($screenshots) }}[openModal].img"
-                             class="rounded w-full object-contain max-h-[80vh] shadow-lg"/>
-                    </div>
-                </div>
-            </template>
-
-        </div>
-
         <div id="features" class="text-center text-4xl font-bold pt-10 text-white">Features</div>
         <div class="mx-auto mt-16 max-w-2xl sm:mt-14 lg:mt-14 lg:max-w-none text-left">
             @php
@@ -121,11 +42,6 @@
                         'desc' => 'Supports multiple notification channels including email and webhooks, allowing you to receive alerts in your preferred way and integrate with your existing workflows.',
                     ],
                     [
-                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-users-icon lucide-users"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>',
-                        'title' => 'Team Collaboration',
-                        'desc' => 'Invite team members, assign roles, and manage permissions, enabling efficient collaboration and shared responsibility for monitoring and incident response.',
-                    ],
-                    [
                         'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-upload-icon lucide-cloud-upload"><path d="M12 13v8"/><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="m8 17 4-4 4 4"/></svg>',
                         'title' => 'Automated Backups',
                         'desc' => 'Schedule and manage automated backups for your servers and databases, ensuring your critical data is always protected and easily restorable in case of failure.',
@@ -157,6 +73,90 @@
                     </div>
                 @endforeach
             </div>
+        </div>
+
+        <div id="screenshots" class="text-center text-4xl font-bold pt-10 text-white">Screenshots</div>
+        <div
+            x-data="{ openModal: null }"
+            class="mx-auto mt-16 max-w-2xl sm:mt-14 lg:mt-14 lg:max-w-none text-left mb-16"
+        >
+            @php
+                $screenshots = [
+                    [
+                        'img' => '/images/screenshot-dashboard.png',
+                        'title' => 'Intuitive Dashboard',
+                        'subtitle' => 'Monitor all your resources in one place with real-time updates.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-uptime.png',
+                        'title' => 'Server Health Monitoring',
+                        'subtitle' => 'Track server performance with real-time metrics for CPU, RAM, and disk usage through interactive charts and customizable alert thresholds.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-notification-channels.png',
+                        'title' => 'Custom Notification Channels',
+                        'subtitle' => 'Configure webhook notifications with custom URLs, request methods, and payload structures to seamlessly integrate alerts with your external systems and services.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-api.png',
+                        'title' => 'API Endpoint Monitoring',
+                        'subtitle' => 'Monitor API endpoints with customizable assertions, response time tracking, and detailed performance charts to ensure your integrations stay reliable and performant.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-ploi-integration.png',
+                        'title' => 'Ploi Integration',
+                        'subtitle' => 'Import and monitor your Ploi servers and sites with real-time status tracking, version info, and one-click synchronization to Checkybot monitoring.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-error-reporting.png',
+                        'title' => 'Exception Tracking & Debugging',
+                        'subtitle' => 'Capture detailed error reports with full stack traces, request data, and context information to quickly diagnose and resolve issues in your Laravel applications.',
+                    ]
+                ];
+            @endphp
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
+                @foreach($screenshots as $i => $ss)
+                    <div
+                        class="flex flex-col items-center shadow cursor-pointer"
+                        @click="openModal = {{ $i }}"
+                    >
+                        <img src="{{ $ss['img'] }}" alt="{{ $ss['title'] }}"
+                             class="rounded border-4 border-zinc-800 mb-4 w-full object-cover max-h-56">
+                        <div class="text-lg font-bold text-white self-start">{{ $ss['title'] }}</div>
+                        <div class="text-xs text-zinc-400 mt-1 self-start pb-4">{{ $ss['subtitle'] }}</div>
+                    </div>
+                @endforeach
+            </div>
+
+            <template x-if="openModal !== null">
+                <div
+                    x-cloak
+                    x-show="true"
+                    x-transition
+                    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+                    @click.self="openModal = null"
+                    @keydown.window.escape="openModal = null"
+                >
+                    <div
+                        x-transition
+                        class="bg-zinc-900 rounded-lg shadow-lg w-full max-w-3xl p-6 relative flex flex-col items-center"
+                    >
+                        <button
+                            class="absolute top-2 right-2 text-white text-3xl leading-none"
+                            @click="openModal = null"
+                        >×
+                        </button>
+
+                        <div class="mb-1 text-xl font-bold text-white self-start"
+                             x-text="{{ json_encode($screenshots) }}[openModal].title"></div>
+                        <div class="mb-4 text-sm text-zinc-400 self-start"
+                             x-text="{{ json_encode($screenshots) }}[openModal].subtitle"></div>
+                        <img :src="'{{ url('/') }}' + {{ json_encode($screenshots) }}[openModal].img"
+                             class="rounded w-full object-contain max-h-[80vh] shadow-lg border-4 border-zinc-800"/>
+                    </div>
+                </div>
+            </template>
+
         </div>
 
     </div>

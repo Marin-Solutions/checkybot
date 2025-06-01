@@ -31,4 +31,9 @@
 
             return $data;
         }
+
+        protected function getAllRelationManagers(): array
+        {
+            return [];
+        }
     }
