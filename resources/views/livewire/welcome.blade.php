@@ -1,89 +1,90 @@
-<main class="max-w-7xl mx-auto">
+<main class="max-w-7xl mx-auto" x-data="{ openModal: null }">
     <x-nav/>
     <div class="text-center pt-12 md:pt-24">
         <h1 class="text-3xl font-bold tracking-tight text-white md:text-6xl px-4">Unleash Your Apps with Checkybot<span
                 class="text-emerald-500">.</span></h1>
-        <p class="text-base pt-4 text-zinc-400 px-4">The next-gen open platform to launch, scale, and manage your apps—your way.</p>
-        <div class="pb-10 pt-1 text-xs flex gap-6 justify-center flex-row flex-wrap">
+        <p class="text-base pt-4 text-zinc-400 px-4">The next-gen open platform to launch, scale, and manage your
+            apps—your way.</p>
+        <div class="pb-10 pt-1 text-xs flex gap-6 justify-center flex-row flex-wrap"></div>
+
+        <div id="screenshots" class="text-center text-4xl font-bold pt-10 text-white">Screenshots</div>
+        <div
+            x-data="{ openModal: null }"
+            class="mx-auto mt-16 max-w-2xl sm:mt-14 lg:mt-14 lg:max-w-none text-left mb-16"
+        >
             @php
-                $heroNavItems = [
-//                    [
-//                        'href' => '#features',
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5 text-emerald-500 lucide lucide-rocket-icon lucide-rocket"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
-//                        'label' => 'Features',
-//                        'iconColor' => null
-//                    ],
+                $screenshots = [
                     [
-                        'href' => '/screenshots',
-                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5 text-emerald-500 lucide lucide-camera-icon lucide-camera"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>',
-                        'label' => 'Screenshots',
-                        'iconColor' => null
+                        'img' => '/images/screenshot-dashboard.png',
+                        'title' => 'Intuitive Dashboard',
+                        'subtitle' => 'Monitor all your resources in one place with real-time updates.',
                     ],
                     [
-                        'href' => '/videos',
-                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="size-5 text-emerald-500 lucide lucide-video-icon lucide-video"><path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>',
-                        'label' => 'Videos',
-                        'iconColor' => null
+                        'img' => '/images/screenshot-uptime.png',
+                        'title' => 'Uptime Reports',
+                        'subtitle' => 'Detailed uptime and downtime logs for your websites and servers.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-alerts.png',
+                        'title' => 'Instant Alerts',
+                        'subtitle' => 'Get notified immediately when issues are detected.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-api.png',
+                        'title' => 'API Monitoring',
+                        'subtitle' => 'Track API health and response times with ease.',
+                    ],
+                    [
+                        'img' => '/images/screenshot-team.png',
+                        'title' => 'Team Collaboration',
+                        'subtitle' => 'Invite your team and manage permissions effortlessly.',
                     ],
                 ];
             @endphp
-            @foreach($heroNavItems as $item)
-                <a href="{{ $item['href'] }}"
-                   class="hover:underline cursor-pointer text-white flex gap-2 items-center justify-center text-xs">
-                    {!! $item['icon'] !!}
-                    {{ $item['label'] }}
-                </a>
-            @endforeach
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 px-4">
+                @foreach($screenshots as $i => $ss)
+                    <div
+                        class="flex flex-col items-center bg-zinc-800/30 rounded-lg shadow cursor-pointer"
+                        @click="openModal = {{ $i }}"
+                    >
+                        <img src="{{ $ss['img'] }}" alt="{{ $ss['title'] }}"
+                             class="rounded mb-4 w-full object-cover max-h-56">
+                        <div class="text-lg font-bold text-white self-start px-4">{{ $ss['title'] }}</div>
+                        <div class="text-xs text-zinc-400 mt-1 self-start px-4 pb-4">{{ $ss['subtitle'] }}</div>
+                    </div>
+                @endforeach
+            </div>
+
+            <template x-if="openModal !== null">
+                <div
+                    x-cloak
+                    x-show="true"
+                    x-transition
+                    class="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
+                    @click.self="openModal = null"
+                    @keydown.window.escape="openModal = null"
+                >
+                    <div
+                        x-transition
+                        class="bg-zinc-900 rounded-lg shadow-lg w-full max-w-3xl p-6 relative flex flex-col items-center"
+                    >
+                        <button
+                            class="absolute top-2 right-2 text-white text-3xl leading-none"
+                            @click="openModal = null"
+                        >×
+                        </button>
+
+                        <div class="mb-2 text-xl font-bold text-white self-start"
+                             x-text="{{ json_encode($screenshots) }}[openModal].title"></div>
+                        <div class="mb-4 text-sm text-zinc-400 self-start"
+                             x-text="{{ json_encode($screenshots) }}[openModal].subtitle"></div>
+                        <img :src="'{{ url('/') }}' + {{ json_encode($screenshots) }}[openModal].img"
+                             class="rounded w-full object-contain max-h-[80vh] shadow-lg"/>
+                    </div>
+                </div>
+            </template>
+
         </div>
-
-        {{--        <div class="pb-2 pt-2 flex justify-center text-centerb gap-8 px-4">--}}
-        {{--            @php--}}
-        {{--                $plans = [--}}
-        {{--                    [--}}
-        {{--                        'href' => '/cloud',--}}
-        {{--                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-cloud-icon lucide-cloud"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"/></svg>',--}}
-        {{--                        'label' => 'Cloud',--}}
-        {{--                        'stat' => '2,013+',--}}
-        {{--                        'desc' => 'customers in the cloud.'--}}
-        {{--                    ],--}}
-        {{--                    [--}}
-        {{--                        'href' => '/self-hosted',--}}
-        {{--                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-ghost-icon lucide-ghost"><path d="M9 10h.01"/><path d="M15 10h.01"/><path d="M12 2a8 8 0 0 0-8 8v12l3-3 2.5 2.5L12 19l2.5 2.5L17 19l3 3V10a8 8 0 0 0-8-8z"/></svg>',--}}
-        {{--                        'label' => 'Self Hosted',--}}
-        {{--                        'stat' => '186,861+',--}}
-        {{--                        'desc' => 'self-hosted instances.'--}}
-        {{--                    ]--}}
-        {{--                ];--}}
-        {{--            @endphp--}}
-        {{--            @foreach($plans as $plan)--}}
-        {{--                <div>--}}
-        {{--                    <a href="{{ $plan['href'] }}"--}}
-        {{--                       class="text-xs sm:text-base font-bold rounded p-4 px-2 text-white bg-zinc-800/85 hover:bg-zinc-800 flex gap-2 lg:w-64 justify-center">--}}
-        {{--                        {!! $plan['icon'] !!}--}}
-        {{--                        {{ $plan['label'] }}--}}
-        {{--                    </a>--}}
-        {{--                    <div--}}
-        {{--                        class="text-neutral-400 sm:text-base text-xs sm:flex-row flex flex-col gap-1 pt-2 sm:justify-center">--}}
-        {{--                        <span--}}
-        {{--                            class="text-yellow-500 mt-[0.1rem] font-bold font-mono">{{ $plan['stat'] }}</span> {{ $plan['desc'] }}--}}
-        {{--                    </div>--}}
-        {{--                </div>--}}
-        {{--            @endforeach--}}
-        {{--        </div>--}}
-
-        {{-- List of sponsors --}}
-        {{--        <div class="text-white pb-4 pt-6 text-base">--}}
-        {{--            Special sponsors--}}
-        {{--            <a target="_blank" href="/sdfsdf"--}}
-        {{--               class="text-yellow-500 border rounded-full px-[0.3rem] ml-1 border-yellow-500 cursor-pointer hover:bg-yellow-500 hover:text-black font-bold text-xs">?</a>--}}
-        {{--            <div class="text-xs text-neutral-400">Check out our sponsors' amazing products (click on them)! It helps us--}}
-        {{--                grow!--}}
-        {{--            </div>--}}
-        {{--        </div>--}}
-
-        {{--        <div class="text-center pt-4">--}}
-        {{--            <a href="#" class="text-yellow-500 underline text-xs hover:text-white">...and many more...</a>--}}
-        {{--        </div>--}}
 
         <div id="features" class="text-center text-4xl font-bold pt-10 text-white">Features</div>
         <div class="mx-auto mt-16 max-w-2xl sm:mt-14 lg:mt-14 lg:max-w-none text-left">
@@ -129,66 +130,16 @@
                         'title' => 'Automated Backups',
                         'desc' => 'Schedule and manage automated backups for your servers and databases, ensuring your critical data is always protected and easily restorable in case of failure.',
                     ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-folder-sync-icon lucide-folder-sync"><path d="M9 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v.5"/><path d="M12 10v4h4"/><path d="m12 14 1.535-1.605a5 5 0 0 1 8 1.5"/><path d="M22 22v-4h-4"/><path d="m22 18-1.535 1.605a5 5 0 0 1-8-1.5"/></svg>',
-//                        'title' => 'Backup Storage Integrations',
-//                        'desc' => 'Connect to various remote storage providers such as SFTP, FTP, AWS S3, and custom S3-compatible services for flexible and secure backup storage options.',
-//                    ],
                     [
                         'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-file-text-icon lucide-file-text"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>',
                         'title' => 'Incident Logging and Reporting',
                         'desc' => 'Keeps a detailed log of incidents, outages, and performance issues, providing you with actionable reports and historical data for analysis and compliance.',
                     ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-timer-reset-icon lucide-timer-reset"><path d="M10 2h4"/><path d="M12 14v-4"/><path d="M4 13a8 8 0 0 1 8-7 8 8 0 1 1-5.3 14L4 17.6"/><path d="M9 17H4v5"/></svg>',
-//                        'title' => 'Customizable Monitoring Intervals',
-//                        'desc' => 'Set monitoring intervals to fit your needs, from every minute to every 24 hours, balancing resource usage and responsiveness for different types of checks.',
-//                    ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-key-icon lucide-key"><path d="m15.5 7.5 2.3 2.3a1 1 0 0 0 1.4 0l2.1-2.1a1 1 0 0 0 0-1.4L19 4"/><path d="m21 2-9.6 9.6"/><circle cx="7.5" cy="15.5" r="5.5"/></svg>',
-//                        'title' => 'Role-Based Access Control',
-//                        'desc' => 'Manage user access with fine-grained roles and permissions, ensuring only authorized team members can view or modify sensitive monitoring and configuration data.',
-//                    ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rocket-icon lucide-rocket"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
-//                        'title' => 'Fast Deployments',
-//                        'desc' => 'Deploy monitoring agents and integrations quickly with simple setup steps, reducing onboarding time and allowing you to start protecting your infrastructure immediately.',
-//                    ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-square-terminal-icon lucide-square-terminal"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></svg>',
-//                        'title' => 'CLI & API Access',
-//                        'desc' => 'Automate and control monitoring tasks via a command-line interface or REST API, enabling seamless integration with your DevOps pipelines and custom tools.',
-//                    ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-lock-icon lucide-lock"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
-//                        'title' => 'Built-in Security Best Practices',
-//                        'desc' => 'Implements security best practices by default, including automatic SSL, secure authentication, and data encryption, helping you safeguard your infrastructure effortlessly.',
-//                    ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock-alert-icon lucide-clock-alert"><path d="M12 6v6l4 2"/><path d="M16 21.16a10 10 0 1 1 5-13.516"/><path d="M20 11.5v6"/><path d="M20 21.5h.01"/></svg>',
-//                        'title' => 'Customizable Alerts',
-//                        'desc' => 'Configure alert thresholds and notification preferences for each monitored resource, ensuring you only receive relevant and actionable alerts.',
-//                    ],
                     [
                         'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-layout-dashboard-icon lucide-layout-dashboard"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>',
                         'title' => 'Monitoring Dashboard',
                         'desc' => 'Visualize the status and performance of all your resources in a unified dashboard, making it easy to spot issues and track trends at a glance.',
                     ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bug-icon lucide-bug"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg>',
-//                        'title' => 'Error Reporting for Applications',
-//                        'desc' => 'Integrate with your applications to capture and report errors, helping you identify and resolve bugs quickly to improve software reliability.',
-//                    ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-chart-no-axes-combined-icon lucide-chart-no-axes-combined"><path d="M12 16v5"/><path d="M16 14v7"/><path d="M20 10v11"/><path d="m22 3-8.646 8.646a.5.5 0 0 1-.708 0L9.354 8.354a.5.5 0 0 0-.707 0L2 15"/><path d="M4 18v3"/><path d="M8 14v7"/></svg>',
-//                        'title' => 'Historical Performance Analytics',
-//                        'desc' => 'Access historical data and analytics for your monitored resources, enabling you to identify patterns, optimize performance, and plan for future growth.',
-//                    ],
-//                    [
-//                        'icon' => '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plug-icon lucide-plug"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>',
-//                        'title' => 'Easy Integration with Existing Tools',
-//                        'desc' => 'Integrates smoothly with popular tools and platforms, allowing you to extend Checkybot’s capabilities and fit it into your existing workflow.',
-//                    ],
                 ];
             @endphp
             <div class="my-[1em] grid max-w-xl grid-cols-1 gap-x-8 px-4 gap-y-16 lg:max-w-none lg:grid-cols-3">
