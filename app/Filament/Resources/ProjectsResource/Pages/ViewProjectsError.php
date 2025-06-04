@@ -7,6 +7,7 @@
     use App\Models\ErrorReports;
     use App\Traits\ErsHasErrorRequestInfolist;
     use Filament\Actions\Action;
+    use Filament\Infolists\Components\Actions;
     use Filament\Infolists\Components\Section;
     use Filament\Infolists\Components\Split;
     use Filament\Infolists\Components\TextEntry;
@@ -15,6 +16,7 @@
     use Filament\Infolists\Infolist;
     use Filament\Resources\Pages\Concerns\InteractsWithRecord;
     use Filament\Resources\Pages\Page;
+    use Filament\Support\Enums\Alignment;
     use Illuminate\Contracts\Support\Htmlable;
     use Illuminate\Database\Eloquent\Model;
     use Illuminate\Support\Facades\Route;
@@ -86,7 +88,18 @@
                                 ->size(TextEntry\TextEntrySize::Medium)
                                 ->copyable()
                                 ->copyMessage('Copied!')
-                                ->copyMessageDuration(1500)
+                                ->copyMessageDuration(1500),
+                            Actions::make([
+                                \App\Filament\Infolists\Actions\CopyAction::make()
+                                    ->copyable(fn( $record ) => "Stacktrace:\n" . json_encode($this->error->stacktrace, JSON_PRETTY_PRINT) .
+                                        "\n\nCommand:\n" . ( @$this->error->context[ 'arguments' ] ?
+                                            json_encode($this->error->context['arguments'], JSON_PRETTY_PRINT)
+                                            : '-' ) .
+                                        "\n\nRequest Info:\n" . json_encode($this->error->context['request'], JSON_PRETTY_PRINT) .
+                                        "\n\nPlease solve this issue and provide me with an explanation regarding the error"
+                                    )
+                                    ->label("Copy to solve with AI")
+                            ])->alignment(Alignment::End),
                         ])
                 ])
             ;
