@@ -7,6 +7,7 @@
     use App\Models\Projects;
     use Filament\Forms;
     use Filament\Forms\Form;
+    use Filament\Infolists\Components\Actions;
     use Filament\Infolists\Components\Actions\Action;
     use Filament\Infolists\Components\Fieldset;
     use Filament\Infolists\Components\TextEntry;
@@ -112,10 +113,8 @@
     \CheckybotLabs\LaravelErs\Facades\Flare::handles($exceptions);
 })->create();')
                                 ->formatStateUsing(function ( $state ) {
-                                    return "<pre class='text-sm'>" . e($state) . "</pre>";
-                                })
-                                ->copyable()
-                                ->tooltip("Click to copy the code snippet to register Flare's exception handler."),
+                                    return "<pre id='step2-content' class='text-sm'>" . e($state) . "</pre>";
+                                }),
                             TextEntry::make('step2_note')
                                 ->label(new HtmlString("<span class='text-danger-600'><b>Note:</b></span><br>
 If your project still uses the older Laravel 10 structure (i.e., no <code>withExceptions</code> closure in <code>bootstrap/app.php</code>), you can register Flare inside the <code>register()</code> method of your <code>App\Providers\AppServiceProvider</code> like this:"))
@@ -124,10 +123,29 @@ If your project still uses the older Laravel 10 structure (i.e., no <code>withEx
     \CheckybotLabs\LaravelErs\Facades\Flare::handles($exceptions);
 });')
                                 ->formatStateUsing(function ( $state ) {
-                                    return "<pre class='text-sm'>" . e($state) . "</pre>";
-                                })
-                                ->copyable()
-                                ->tooltip("Click to copy the code snippet to register Flare's exception handler."),
+                                    return "<pre id='span2-note-content' class='text-sm'>" . e($state) . "</pre>";
+                                }),
+                            Actions::make([
+                                \App\Filament\Infolists\Actions\CopyAction::make('copy_ai_instruction')
+                                    ->label("Copy AI Instruction")
+                                    ->tooltip("Click to copy the instruction to your clipboard.")
+                                    ->copyable(function () {
+                                        return 'Register Flare in the withExceptions closure of your bootstrap/app.php file:
+
+->withExceptions(function (Exceptions $exceptions) {
+    \CheckybotLabs\LaravelErs\Facades\Flare::handles($exceptions);
+})->create();
+
+Note:
+If your project still uses the older Laravel 10 structure (i.e., no withExceptions closure in bootstrap/app.php), you can register Flare inside the register() method of your App\Providers\AppServiceProvider like this:
+
+$this->reportable(function (Throwable $e) {
+    \CheckybotLabs\LaravelErs\Facades\Flare::handles($exceptions);
+});
+
+Please implement this package according to our Laravel Project version';
+                                    }),
+                            ]),
                         ])
                         ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
                     Fieldset::make("Step 3")
@@ -168,6 +186,7 @@ If your project still uses the older Laravel 10 structure (i.e., no <code>withEx
 
                         ])->columns(1)
                         ->visible(fn( $livewire ) => !$livewire->record->error_reported_count > 0),
+
                 ])
             ;
         }
