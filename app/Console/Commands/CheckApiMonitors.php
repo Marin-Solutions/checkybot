@@ -2,16 +2,17 @@
 
 namespace App\Console\Commands;
 
-use App\Models\MonitorApis;
 use App\Models\MonitorApiResult;
+use App\Models\MonitorApis;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Log;
 use Spatie\LaravelFlare\Facades\Flare;
 
 class CheckApiMonitors extends Command
 {
     protected $signature = 'monitor:check-apis';
+
     protected $description = 'Check all API monitors and record their results';
 
     public function handle()
@@ -28,15 +29,16 @@ class CheckApiMonitors extends Command
                     'url' => $monitor->url,
                     'data_path' => $monitor->data_path,
                     'headers' => $monitor->headers,
+                    'title' => $monitor->title,
                 ]);
 
-                if (!isset($result['code']) || !isset($result['body'])) {
+                if (! isset($result['code'])) {
                     Flare::context('monitor_id', $monitor->id);
                     Flare::context('monitor_title', $monitor->title);
                     Flare::context('url', $monitor->url);
                     Flare::context('data_path', $monitor->data_path);
                     Flare::context('result', $result);
-                    throw new \Exception('Invalid API test result format - missing required keys');
+                    throw new \Exception('Invalid API test result format - missing code');
                 }
 
                 MonitorApiResult::recordResult($monitor, $result, $startTime);
@@ -45,23 +47,26 @@ class CheckApiMonitors extends Command
                 $shouldNotify = false;
                 $message = "API Monitor Alert for {$monitor->title}: ";
 
-                if ($result['code'] != 200) {
+                if (isset($result['error']) && $result['error']) {
+                    $shouldNotify = true;
+                    $message .= $result['error'].' ';
+                } elseif ($result['code'] != 200) {
                     $shouldNotify = true;
                     $message .= "HTTP Code: {$result['code']}. ";
                 }
 
                 if ($monitor->data_path) {
                     $data = is_string($result['body']) ? json_decode($result['body'], true) : $result['body'];
-                    if (!Arr::has($data, $monitor->data_path)) {
+                    if (! Arr::has($data, $monitor->data_path)) {
                         $shouldNotify = true;
                         $message .= "Specified key '{$monitor->data_path}' not found in response. ";
                     } else {
                         if (isset($result['assertions']) && count(array_filter($result['assertions'], function ($assertion) {
-                            return !$assertion['passed'];
+                            return ! $assertion['passed'];
                         })) > 0) {
                             $shouldNotify = true;
                             $failed = array_filter($result['assertions'], function ($a) {
-                                return !$a['passed'];
+                                return ! $a['passed'];
                             });
                             foreach ($failed as $assertion) {
                                 $message .= "Assertion failed at {$assertion['path']}: {$assertion['message']}; ";
@@ -70,11 +75,11 @@ class CheckApiMonitors extends Command
                     }
                 } else {
                     if (isset($result['assertions']) && count(array_filter($result['assertions'], function ($assertion) {
-                        return !$assertion['passed'];
+                        return ! $assertion['passed'];
                     })) > 0) {
                         $shouldNotify = true;
                         $failed = array_filter($result['assertions'], function ($a) {
-                            return !$a['passed'];
+                            return ! $a['passed'];
                         });
                         foreach ($failed as $assertion) {
                             $message .= "Assertion failed at {$assertion['path']}: {$assertion['message']}; ";
@@ -89,27 +94,28 @@ class CheckApiMonitors extends Command
 
                     foreach ($globalChannels as $notificationSetting) {
                         $channel = $notificationSetting->channel;
-                        if (!$channel) {
-                            Log::warning("No channel found for notification setting", [
-                                'setting_id' => $notificationSetting->id
+                        if (! $channel) {
+                            Log::warning('No channel found for notification setting', [
+                                'setting_id' => $notificationSetting->id,
                             ]);
+
                             continue;
                         }
 
-                        Log::info("Attempting to send notification", [
+                        Log::info('Attempting to send notification', [
                             'channel_id' => $channel->id,
                             'channel_url' => $channel->url,
-                            'channel_method' => $channel->method
+                            'channel_method' => $channel->method,
                         ]);
 
                         $result = $channel->sendWebhookNotification([
                             'message' => $message,
-                            'description' => "API Monitor Error Notification"
+                            'description' => 'API Monitor Error Notification',
                         ]);
 
-                        Log::info("Webhook notification attempt result", [
+                        Log::info('Webhook notification attempt result', [
                             'channel_id' => $channel->id,
-                            'result' => $result
+                            'result' => $result,
                         ]);
                     }
                 }

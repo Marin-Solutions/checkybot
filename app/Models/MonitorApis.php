@@ -2,14 +2,15 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Arr;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Database\Eloquent\Model;
 use GuzzleHttp\Exception\RequestException;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class MonitorApis extends Model
 {
@@ -20,7 +21,7 @@ class MonitorApis extends Model
         'url',
         'data_path',
         'headers',
-        'created_by'
+        'created_by',
     ];
 
     protected $casts = [
@@ -46,75 +47,194 @@ class MonitorApis extends Model
     public static function testApi(array $data): array
     {
         $url = $data['url'];
-        $responseData = [
-            'code' => 0,
-            'body' => null,
-            'assertions' => []
-        ];
+        $startTime = microtime(true);
+
+        $responseData = self::initializeResponseData();
+        $httpConfig = self::getHttpConfiguration();
 
         try {
-            $request = !empty($data['headers'])
-                ? Http::withHeaders($data['headers'])->get($url)
-                : Http::get($url);
-            $responseData['code'] = $request->status();
-            $responseData['body'] = $request->body();
-            Log::info("Response Data", $responseData);
-            Log::info("Request status", ['status' => $request->status()]);
+            $httpClient = self::configureHttpClient($httpConfig, $data['headers'] ?? []);
+            $request = $httpClient->get($url);
 
-            if ($responseData['code'] != 200) {
+            $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data);
+
+            if ($responseData['code'] !== 200) {
                 return $responseData;
             }
 
-            // Check if the body is a valid JSON and convert to array
-            if (is_string($responseData['body'])) {
-                $responseData['body'] = json_decode($responseData['body'], true);
-                if (json_last_error() !== JSON_ERROR_NONE) {
-                    return $responseData;
-                }
+            $responseData = self::parseJsonResponse($responseData);
+            if ($responseData['body'] === null && $responseData['code'] === 200) {
+                return $responseData;
             }
 
-            // If this is a new API being tested (not saved yet)
-            if (isset($data['data_path'])) {
-                $value = Arr::get($responseData['body'], $data['data_path']);
-                $responseData['assertions'][] = [
-                    'path' => $data['data_path'],
-                    'passed' => isset($value),
-                    'message' => isset($value)
-                        ? "Value exists at path"
-                        : "Value does not exist at path"
-                ];
-            }
-            // If this is an existing API with assertions
-            elseif (isset($data['id'])) {
-                $api = self::with('assertions')->find($data['id']);
-                if ($api) {
-                    foreach ($api->assertions as $assertion) {
-                        if (!$assertion->is_active) continue;
+            $responseData = self::runAssertions($data, $responseData);
 
-                        $value = Arr::get($responseData['body'], $assertion->data_path);
-                        $validationResult = $assertion->validateResponse($value);
+            return $responseData;
+        } catch (ConnectionException $exception) {
+            Log::error('Connection timeout while testing API', [
+                'monitor_id' => $data['id'] ?? null,
+                'monitor_title' => $data['title'] ?? null,
+                'url' => $url,
+                'error' => $exception->getMessage(),
+                'timeout' => $httpConfig['timeout'],
+                'retries' => $httpConfig['retries'],
+            ]);
 
-                        $responseData['assertions'][] = [
-                            'path' => $assertion->data_path,
-                            'type' => $assertion->assertion_type,
-                            'passed' => $validationResult['passed'],
-                            'message' => $validationResult['message']
-                        ];
-                    }
-                }
-            }
+            $responseData['code'] = 0;
+            $responseData['body'] = null;
+            $responseData['error'] = 'Connection timeout: '.$exception->getMessage();
 
             return $responseData;
         } catch (RequestException $exception) {
-            Log::error("Error testing API", [
-                'monitor_id' => $data['id'],
-                'monitor_title' => $data['title'],
-                'error' => $exception->getMessage()
+            Log::error('Request error while testing API', [
+                'monitor_id' => $data['id'] ?? null,
+                'monitor_title' => $data['title'] ?? null,
+                'url' => $url,
+                'error' => $exception->getMessage(),
             ]);
-            $handlerContext = $exception->getHandlerContext();
-            $responseData['code'] = $handlerContext['errno'];
-            $responseData['body'] = $handlerContext['error'];
+
+            if ($exception->hasResponse()) {
+                $responseData['code'] = $exception->getResponse()->getStatusCode();
+                $responseData['body'] = $exception->getResponse()->getBody()->getContents();
+            } else {
+                $handlerContext = $exception->getHandlerContext();
+                $responseData['code'] = $handlerContext['errno'] ?? 0;
+                $responseData['body'] = $handlerContext['error'] ?? $exception->getMessage();
+            }
+            $responseData['error'] = $exception->getMessage();
+
+            return $responseData;
+        } catch (\Exception $exception) {
+            Log::error('Unexpected error while testing API', [
+                'monitor_id' => $data['id'] ?? null,
+                'monitor_title' => $data['title'] ?? null,
+                'url' => $url,
+                'error' => $exception->getMessage(),
+                'trace' => $exception->getTraceAsString(),
+            ]);
+
+            $responseData['code'] = 0;
+            $responseData['body'] = null;
+            $responseData['error'] = 'Unexpected error: '.$exception->getMessage();
+
             return $responseData;
         }
+    }
+
+    private static function initializeResponseData(): array
+    {
+        return [
+            'code' => 0,
+            'body' => null,
+            'assertions' => [],
+            'error' => null,
+        ];
+    }
+
+    private static function getHttpConfiguration(): array
+    {
+        return [
+            'timeout' => config('monitor.api_timeout', 10),
+            'retries' => config('monitor.api_retries', 3),
+            'retryDelay' => config('monitor.api_retry_delay', 1000),
+        ];
+    }
+
+    private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest
+    {
+        $client = Http::timeout($config['timeout'])
+            ->retry($config['retries'], $config['retryDelay']);
+
+        if (! empty($headers)) {
+            $client = $client->withHeaders($headers);
+        }
+
+        return $client;
+    }
+
+    private static function processSuccessfulResponse($request, array $responseData, float $startTime, array $data): array
+    {
+        $responseData['code'] = $request->status();
+        $responseData['body'] = $request->body();
+
+        Log::debug('API Monitor response received', [
+            'monitor_id' => $data['id'] ?? null,
+            'url' => $data['url'],
+            'status' => $request->status(),
+            'response_time' => round((microtime(true) - $startTime) * 1000, 2).'ms',
+        ]);
+
+        return $responseData;
+    }
+
+    private static function parseJsonResponse(array $responseData): array
+    {
+        if (is_string($responseData['body'])) {
+            $parsedBody = json_decode($responseData['body'], true);
+
+            if (json_last_error() !== JSON_ERROR_NONE) {
+                $responseData['error'] = 'Invalid JSON response: '.json_last_error_msg();
+                $responseData['body'] = null;
+            } else {
+                $responseData['body'] = $parsedBody;
+            }
+        }
+
+        return $responseData;
+    }
+
+    private static function runAssertions(array $data, array $responseData): array
+    {
+        if (isset($data['data_path'])) {
+            return self::runDataPathAssertion($data, $responseData);
+        }
+
+        if (isset($data['id'])) {
+            return self::runStoredAssertions($data, $responseData);
+        }
+
+        return $responseData;
+    }
+
+    private static function runDataPathAssertion(array $data, array $responseData): array
+    {
+        $value = Arr::get($responseData['body'], $data['data_path']);
+
+        $responseData['assertions'][] = [
+            'path' => $data['data_path'],
+            'passed' => isset($value),
+            'message' => isset($value)
+                ? 'Value exists at path'
+                : 'Value does not exist at path',
+        ];
+
+        return $responseData;
+    }
+
+    private static function runStoredAssertions(array $data, array $responseData): array
+    {
+        $api = self::with('assertions')->find($data['id']);
+
+        if (! $api) {
+            return $responseData;
+        }
+
+        foreach ($api->assertions as $assertion) {
+            if (! $assertion->is_active) {
+                continue;
+            }
+
+            $value = Arr::get($responseData['body'], $assertion->data_path);
+            $validationResult = $assertion->validateResponse($value);
+
+            $responseData['assertions'][] = [
+                'path' => $assertion->data_path,
+                'type' => $assertion->assertion_type,
+                'passed' => $validationResult['passed'],
+                'message' => $validationResult['message'],
+            ];
+        }
+
+        return $responseData;
     }
 }
