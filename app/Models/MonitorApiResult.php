@@ -21,7 +21,7 @@ class MonitorApiResult extends Model
         'response_time_ms' => 'integer',
         'http_code' => 'integer',
         'failed_assertions' => 'array',
-        'response_body' => 'array'
+        'response_body' => 'array',
     ];
 
     public function monitorApi(): BelongsTo
@@ -35,14 +35,14 @@ class MonitorApiResult extends Model
         $isSuccess = true;
         $failedAssertions = [];
 
-        if (!empty($testResult['assertions'])) {
+        if (! empty($testResult['assertions'])) {
             foreach ($testResult['assertions'] as $assertion) {
-                if (!$assertion['passed']) {
+                if (! $assertion['passed']) {
                     $isSuccess = false;
                     $failedAssertions[] = [
-                        'path' => $assertion['path'],
-                        'type' => $assertion['type'],
-                        'message' => $assertion['message']
+                        'path' => $assertion['path'] ?? null,
+                        'type' => $assertion['type'] ?? null,
+                        'message' => $assertion['message'] ?? 'Assertion failed',
                     ];
                 }
             }
