@@ -5,20 +5,22 @@ namespace App\Filament\Resources\MonitorApisResource\Widgets;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Carbon;
 
 class ResponseTimeChart extends ChartWidget
 {
     protected static ?string $heading = 'Response Times';
+
     protected static ?string $maxHeight = '300px';
+
     protected static ?string $pollingInterval = '10s';
+
     public string|int|array $columnSpan = 'full';
 
     public ?MonitorApis $record = null;
 
     protected function getData(): array
     {
-        if (!$this->record) {
+        if (! $this->record) {
             return [
                 'datasets' => [
                     [
