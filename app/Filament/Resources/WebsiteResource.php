@@ -282,7 +282,7 @@ class WebsiteResource extends Resource
                 'globalNotifications:id,user_id,website_id,inspection',
                 'individualNotifications:id,website_id,inspection',
             ])
-            ->where('created_by', Auth::id())
+            ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ])
