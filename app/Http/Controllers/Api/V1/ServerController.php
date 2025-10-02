@@ -12,7 +12,12 @@ class ServerController extends Controller
 {
     public function index()
     {
-        $servers = Auth::user()->servers()->paginate();
+        $servers = Auth::user()->servers()
+            ->with(['informationHistory' => function ($query) {
+                $query->latest()->limit(1);
+            }])
+            ->paginate();
+
         return ServerResource::collection($servers);
     }
 
@@ -32,6 +37,7 @@ class ServerController extends Controller
     public function show(Server $server)
     {
         $this->authorize('view', $server);
+
         return new ServerResource($server);
     }
 
@@ -54,6 +60,7 @@ class ServerController extends Controller
     {
         $this->authorize('delete', $server);
         $server->delete();
+
         return response()->noContent();
     }
-} 
+}

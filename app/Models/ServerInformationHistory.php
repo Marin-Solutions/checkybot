@@ -2,24 +2,20 @@
 
 namespace App\Models;
 
-
-
-use App\Models\User;
-use Illuminate\Http\Response;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Database\Eloquent\Model;
-use Filament\Notifications\Notification;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Response;
+use Illuminate\Support\Facades\Auth;
 
 class ServerInformationHistory extends Model
 {
     use HasFactory;
 
-    protected $table = 'server_information_history';
+    protected $table = 'server_information_histories';
 
-    var string $server_id;
-    var string $token;
+    public string $server_id;
+
+    public string $token;
 
     protected $fillable = [
         'server_id',
@@ -27,7 +23,7 @@ class ServerInformationHistory extends Model
         'ram_free_percentage',
         'ram_free',
         'disk_free_percentage',
-        'disk_free_bytes'
+        'disk_free_bytes',
     ];
 
     protected $casts = [
@@ -43,7 +39,7 @@ class ServerInformationHistory extends Model
 
     public static function doShellScript(int $server_id, int $user): Response
     {
-        $sih = new ServerInformationHistory();
+        $sih = new ServerInformationHistory;
         $sih->server_id = $server_id;
         $sih->user = $user;
         $server = Server::where('id', $server_id)->first();
@@ -54,13 +50,14 @@ class ServerInformationHistory extends Model
             $content = $sih->contentShellScript();
             $status = 200;
         } else {
-            $content = "Error: Server Owner not match with user request, try with your server. thank you";
+            $content = 'Error: Server Owner not match with user request, try with your server. thank you';
             $status = 401;
         }
 
         $response = response()->make($content, $status);
         $response->header('Content-Type', 'application/x-sh');
         $response->header('Content-Disposition', 'attachment; filename="reporter_server_info.sh"');
+
         return $response;
     }
 
@@ -112,17 +109,16 @@ class ServerInformationHistory extends Model
 
     /**
      * copy command, that download a script for monitoring servers
-     *
-     * @return string
      */
     public static function copyCommand($server): string
     {
         $user = Auth::user()->id;
-        $command  = "wget https://checkybot.com/reporter/$server/$user -O reporter_server_info.sh ";
-        $command .= "&& chmod +x $(pwd)/reporter_server_info.sh ";
-        $command .= "&& CRON_CMD=\"$(pwd)/reporter_server_info.sh\" ";
-        $command .= "&& (crontab -l | grep -Fq \"*/1 * * * * \$CRON_CMD\" || ";
-        $command .= "(crontab -l 2>/dev/null; echo \"*/1 * * * * \$CRON_CMD\") | crontab -)";
+        $command = "wget https://checkybot.com/reporter/$server/$user -O reporter_server_info.sh ";
+        $command .= '&& chmod +x $(pwd)/reporter_server_info.sh ';
+        $command .= '&& CRON_CMD="$(pwd)/reporter_server_info.sh" ';
+        $command .= '&& (crontab -l | grep -Fq "*/1 * * * * $CRON_CMD" || ';
+        $command .= '(crontab -l 2>/dev/null; echo "*/1 * * * * $CRON_CMD") | crontab -)';
+
         return $command;
     }
 }

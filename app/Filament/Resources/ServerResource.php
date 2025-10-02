@@ -2,30 +2,31 @@
 
 namespace App\Filament\Resources;
 
-use App\Models\ServerLogFileHistory;
-use Filament\Forms;
-use Filament\Tables;
-use App\Models\Server;
-use Filament\Forms\Form;
-use Filament\Tables\Table;
-use Filament\Resources\Resource;
-use Filament\Tables\Actions\Action;
-use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\ServerResource\Pages;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
 use App\Filament\Resources\ServerResource\RelationManagers;
+use App\Models\Server;
 use App\Models\ServerInformationHistory;
-use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
+use App\Models\ServerLogFileHistory;
 use App\Tables\Columns\UsageBarColumn;
-use Filament\Tables\Columns\Layout\Stack;
+use Filament\Forms;
+use Filament\Forms\Form;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Carbon;
+use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class ServerResource extends Resource
 {
     protected static ?string $model = Server::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-server-stack';
+
     protected static ?string $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 2;
 
     /**
@@ -54,7 +55,7 @@ class ServerResource extends Resource
                     ->maxLength(255),
                 Forms\Components\TextInput::make('description')
                     ->required()
-                    ->maxLength(255)
+                    ->maxLength(255),
             ]);
     }
 
@@ -110,22 +111,22 @@ class ServerResource extends Resource
                         \Log::info('Disk Usage Debug', [
                             'server_id' => $record->id,
                             'has_latest_info' => $latestInfo ? 'yes' : 'no',
-                            'raw_data' => $latestInfo
+                            'raw_data' => $latestInfo,
                         ]);
 
-                        if (!isset($latestInfo["disk_usage"])) {
+                        if (! isset($latestInfo['disk_usage'])) {
                             return [
                                 'value' => 0,
-                                'tooltip' => "No data available"
+                                'tooltip' => 'No data available',
                             ];
                         }
 
-                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo["disk_usage"]);
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo['disk_usage']);
                         $usedPercentage = 100 - $freePercentage;
 
                         return [
                             'value' => $usedPercentage,
-                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage)
+                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage),
                         ];
                     }),
                 UsageBarColumn::make('ram_usage')
@@ -145,25 +146,25 @@ class ServerResource extends Resource
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
                         app('debugbar')->log($latestInfo);
 
-                        if (!isset($latestInfo["ram_usage"])) {
+                        if (! isset($latestInfo['ram_usage'])) {
                             return [
                                 'label' => 'RAM',
                                 'value' => 0,
-                                'tooltip' => "No data available"
+                                'tooltip' => 'No data available',
                             ];
                         }
 
                         // Debug the raw value
-                        \Log::info('RAM Free:', ['value' => $latestInfo["ram_usage"]]);
+                        \Log::info('RAM Free:', ['value' => $latestInfo['ram_usage']]);
 
                         // Remove any % sign and convert to float
-                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo["ram_usage"]);
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo['ram_usage']);
                         $usedPercentage = 100 - $freePercentage;
 
                         return [
                             'label' => 'RAM',
                             'value' => $usedPercentage,
-                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage)
+                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage),
                         ];
                     }),
                 UsageBarColumn::make('cpu_usage')
@@ -182,15 +183,15 @@ class ServerResource extends Resource
                     ->state(function (Server $record): array {
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
-                        if (!isset($latestInfo["cpu_usage"])) {
+                        if (! isset($latestInfo['cpu_usage'])) {
                             return [
                                 'value' => 0,
-                                'tooltip' => "No data available"
+                                'tooltip' => 'No data available',
                             ];
                         }
 
                         // Get CPU usage directly from CPU_LOAD
-                        $cpuUsage = (float) str_replace(',', '.', $latestInfo["cpu_usage"]);
+                        $cpuUsage = (float) str_replace(',', '.', $latestInfo['cpu_usage']);
 
                         return [
                             'value' => min(100, $cpuUsage), // Cap at 100%
@@ -198,7 +199,7 @@ class ServerResource extends Resource
                                 "CPU Load: %.1f%%\nCores: %d",
                                 $cpuUsage,
                                 $record->cpu_cores ?? 0
-                            )
+                            ),
                         ];
                     }),
                 Tables\Columns\TextColumn::make('created_at')
@@ -215,7 +216,7 @@ class ServerResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //Tables\Filters\TrashedFilter::make(),
+                // Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
                 CopyAction::make()
@@ -227,7 +228,7 @@ class ServerResource extends Resource
                 Tables\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
                     ->icon('heroicon-o-presentation-chart-line')
-                    ->color('warning')
+                    ->color('warning'),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -258,9 +259,9 @@ class ServerResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->select("*")
-            ->selectRaw("(SELECT CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) FROM `server_information_history` b WHERE b.server_id = servers.`id` ORDER BY b.id DESC LIMIT 1) AS latest_server_history_info")
-            ->selectRaw("(SELECT MAX(created_at) FROM server_information_history b WHERE b.server_id = servers.id) AS latest_server_history_created_at")
+            ->select('*')
+            ->selectRaw("(SELECT CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) FROM `server_information_histories` b WHERE b.server_id = servers.`id` ORDER BY b.id DESC LIMIT 1) AS latest_server_history_info")
+            ->selectRaw('(SELECT MAX(created_at) FROM server_information_histories b WHERE b.server_id = servers.id) AS latest_server_history_created_at')
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
@@ -277,6 +278,7 @@ class ServerResource extends Resource
                 ->action(fn() => $this->post->delete()),
         ];
     }
+
     public static function getTableActions(): array
     {
         return [
