@@ -29,9 +29,9 @@ return new class extends Migration
 
         // Add indexes to notification_settings table for performance
         Schema::table('notification_settings', function (Blueprint $table) {
-            $table->index(['user_id', 'scope', 'inspection', 'flag_active']);
-            $table->index(['website_id', 'scope', 'inspection', 'flag_active']);
-            $table->index('flag_active');
+            $table->index(['user_id', 'scope', 'inspection', 'flag_active'], 'ns_user_scope_inspect_flag_idx');
+            $table->index(['website_id', 'scope', 'inspection', 'flag_active'], 'ns_website_scope_inspect_flag_idx');
+            $table->index('flag_active', 'ns_flag_active_idx');
         });
     }
 
@@ -58,9 +58,9 @@ return new class extends Migration
 
         // Remove indexes from notification_settings table
         Schema::table('notification_settings', function (Blueprint $table) {
-            $table->dropIndex(['user_id', 'scope', 'inspection', 'flag_active']);
-            $table->dropIndex(['website_id', 'scope', 'inspection', 'flag_active']);
-            $table->dropIndex(['flag_active']);
+            $table->dropIndex('ns_user_scope_inspect_flag_idx');
+            $table->dropIndex('ns_website_scope_inspect_flag_idx');
+            $table->dropIndex('ns_flag_active_idx');
         });
     }
 };
