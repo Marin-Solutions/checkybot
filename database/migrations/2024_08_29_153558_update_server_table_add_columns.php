@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('server_information_histories', function (Blueprint $table) {
+        Schema::table('server_information_history', function (Blueprint $table) {
             $table->string('ram_free_percentage')->nullable();
             $table->string('ram_free')->nullable();
             $table->string('disk_free_percentage')->nullable();
@@ -27,7 +27,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('server_information_histories', function (Blueprint $table) {
+        Schema::table('server_information_history', function (Blueprint $table) {
             $table->dropColumn('token');
             $table->dropColumn('ram_free_percentage');
             $table->dropColumn('ram_free');
@@ -35,7 +35,6 @@ return new class extends Migration
             $table->dropColumn('disk_free_bytes');
             $table->string('ram_user')->nullable();
             $table->string('disk_use')->nullable();
-
         });
     }
 };

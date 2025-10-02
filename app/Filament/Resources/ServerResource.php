@@ -260,8 +260,8 @@ class ServerResource extends Resource
     {
         return parent::getEloquentQuery()
             ->select('*')
-            ->selectRaw("(SELECT CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) FROM `server_information_histories` b WHERE b.server_id = servers.`id` ORDER BY b.id DESC LIMIT 1) AS latest_server_history_info")
-            ->selectRaw('(SELECT MAX(created_at) FROM server_information_histories b WHERE b.server_id = servers.id) AS latest_server_history_created_at')
+            ->selectRaw("(SELECT CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) FROM `server_information_history` b WHERE b.server_id = servers.`id` ORDER BY b.id DESC LIMIT 1) AS latest_server_history_info")
+            ->selectRaw('(SELECT MAX(created_at) FROM server_information_history b WHERE b.server_id = servers.id) AS latest_server_history_created_at')
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,

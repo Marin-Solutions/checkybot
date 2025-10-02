@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('server_information_histories', function (Blueprint $table) {
+        Schema::create('server_information_history', function (Blueprint $table) {
             $table->id();
             $table->string('ram_user');
             $table->string('disk_use');
@@ -30,6 +30,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('server_information_histories');
+        Schema::dropIfExists('server_information_history');
     }
 };

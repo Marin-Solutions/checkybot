@@ -11,7 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('server_information_histories', function (Blueprint $table) {
+        Schema::table('server_information_history', function (Blueprint $table) {
             $table->dropColumn('token');
         });
     }
@@ -21,7 +21,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('server_information_histories', function (Blueprint $table) {
+        Schema::table('server_information_history', function (Blueprint $table) {
             //
         });
     }
