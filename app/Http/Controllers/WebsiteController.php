@@ -26,17 +26,17 @@ class WebsiteController extends Controller
      */
 
 
-     public function index(Request $request)
+    public function index(Request $request)
     {
-        $filter= new WebsiteFilter();
+        $filter = new WebsiteFilter();
         $queryItems = $filter->transform($request);
 
 
-        $includeCustomers= $request->query('includeCustomer');
+        $includeCustomers = $request->query('includeCustomer');
 
         $websites = Website::where($queryItems);
-        if($includeCustomers){
-            $websites=$websites->with('user');
+        if ($includeCustomers) {
+            $websites = $websites->with('user');
         }
 
         return new WebsiteCollection($websites->paginate()->appends($request->query()));
@@ -45,17 +45,14 @@ class WebsiteController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create()
-    {
-
-    }
+    public function create() {}
 
     public function store(StoreWebsiteRequest $request)
     {
-        $website= new Website();
+        $website = new Website();
 
-        $exists=$website->checkWebsiteExists($request->url);
-        if($exists){
+        $exists = $website->checkWebsiteExists($request->url);
+        if ($exists) {
             $website = Website::firstOrNew([
                 'url' => $request->input('url')
             ]);
@@ -66,7 +63,7 @@ class WebsiteController extends Controller
                 $resources  = new WebsiteResource(Website::create($request->all()));
                 return response()->json($resources, 200);
             }
-        }else{
+        } else {
             return response()->json(['message' => __('The website does not exist on the web')], 406);
         }
     }
@@ -74,11 +71,11 @@ class WebsiteController extends Controller
 
     public function show(Website $website)
     {
-        $includeCustomers= request()->query('includeCustomer');
+        $includeCustomers = request()->query('includeCustomer');
 
-        if($includeCustomers){
+        if ($includeCustomers) {
             return new WebsiteResource($website->loadMissing('user'));
-        }else{
+        } else {
             return new WebsiteResource($website);
         }
     }

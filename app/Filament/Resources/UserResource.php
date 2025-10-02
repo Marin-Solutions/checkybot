@@ -77,14 +77,14 @@ class UserResource extends Resource
                         ->required(fn (string $operation): bool => $operation === 'create')
                         ->maxLength(255),
                 ]),
-//                Forms\Components\Section::make('Role')
-//                    ->schema([
-//                        Forms\Components\Select::make('roles')
-//                            ->required()
-//                            ->relationship('roles', 'name')
-//                            ->label(false),
-//                    ])
-//                    ->columns(1),
+                //                Forms\Components\Section::make('Role')
+                //                    ->schema([
+                //                        Forms\Components\Select::make('roles')
+                //                            ->required()
+                //                            ->relationship('roles', 'name')
+                //                            ->label(false),
+                //                    ])
+                //                    ->columns(1),
             ]);
     }
 
@@ -143,6 +143,7 @@ class UserResource extends Resource
             'index' => Pages\ListUsers::route('/'),
         ];
     }
+
     public static function getModelLabel(): string
     {
         return __('User');
@@ -153,4 +154,3 @@ class UserResource extends Resource
         return __('Users');
     }
 }
-

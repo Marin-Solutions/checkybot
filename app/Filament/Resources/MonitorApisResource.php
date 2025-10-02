@@ -15,10 +15,15 @@ use Illuminate\Database\Eloquent\Builder;
 class MonitorApisResource extends Resource
 {
     protected static ?string $model = MonitorApis::class;
+
     protected static ?string $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 3;
+
     protected static ?string $navigationLabel = 'API Monitors';
+
     protected static ?string $modelLabel = 'API Monitor';
+
     protected static ?string $pluralModelLabel = 'API Monitors';
 
     protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
@@ -49,7 +54,7 @@ class MonitorApisResource extends Resource
                     ->valuePlaceholder('Header Value')
                     ->helperText('Optional headers to include in the request')
                     ->columnSpanFull()
-                    ->addActionLabel("Add Header")
+                    ->addActionLabel('Add Header'),
             ]);
     }
 
@@ -66,7 +71,7 @@ class MonitorApisResource extends Resource
                 Tables\Columns\TextColumn::make('avg_response_time')
                     ->label('Avg Response Time (ms)')
                     ->default('-')
-                    ->formatStateUsing(fn( $state ) => $state === '-' ? '-' : round($state))
+                    ->formatStateUsing(fn ($state) => $state === '-' ? '-' : round($state))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -96,7 +101,7 @@ class MonitorApisResource extends Resource
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->emptyStateHeading("No APIs");
+            ->emptyStateHeading('No APIs');
     }
 
     public static function getRelations(): array

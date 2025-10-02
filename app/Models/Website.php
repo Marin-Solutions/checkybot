@@ -47,14 +47,14 @@ class Website extends Model
      * @return boolean
      */
 
-    public static function checkWebsiteExists(?string $url ): ?bool
+    public static function checkWebsiteExists(?string $url): ?bool
     {
         $dns = new Dns();
-        $records = $dns->getRecords($url,'A');
+        $records = $dns->getRecords($url, 'A');
 
-        if(count($records)>0){
+        if (count($records) > 0) {
             return true;
-        }else{
+        } else {
             return false;
         }
     }
@@ -68,12 +68,12 @@ class Website extends Model
      * @return array
      */
 
-    public static function checkResponseCode(?string $url ): array
+    public static function checkResponseCode(?string $url): array
     {
         $dataResponse = array();
         try {
             $response = Http::get($url);
-        }  catch (RequestException $e) {
+        } catch (RequestException $e) {
             $handlerContext = $e->getHandlerContext();
             $dataResponse['code'] = $handlerContext['errno'];
             $dataResponse['body'] = $handlerContext['error'];
@@ -83,7 +83,7 @@ class Website extends Model
             $dataResponse['body'] = $e->getMessage();
             return $dataResponse;
         }
-        $dataResponse['code'] = $response->ok()?200:0;
+        $dataResponse['code'] = $response->ok() ? 200 : 0;
         $dataResponse['body'] = 1;
         return $dataResponse;
     }
@@ -96,10 +96,10 @@ class Website extends Model
      * @return array
      */
 
-    public static function sslExpiryDate(?string $url ): string
-     {
+    public static function sslExpiryDate(?string $url): string
+    {
         $certificate = SslCertificate::createForHostName($url);
-        $expiration_date= $certificate->expirationDate();
+        $expiration_date = $certificate->expirationDate();
 
         return $expiration_date;
     }
@@ -152,5 +152,4 @@ class Website extends Model
     {
         return $this->belongsTo(PloiWebsites::class, 'ploi_website_id', 'id');
     }
-
 }
