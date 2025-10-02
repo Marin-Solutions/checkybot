@@ -2,20 +2,13 @@
 
 namespace App\Models;
 
-use App\Enums\NotificationScopesEnum;
-use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Http\Client\ConnectionException;
-use Spatie\Dns\Dns;
-use Ramsey\Uuid\Type\Integer;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Database\Eloquent\Model;
-use Filament\Notifications\Notification;
-use Spatie\SslCertificate\SslCertificate;
 use GuzzleHttp\Exception\RequestException;
-use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Collection as Collection2;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Http;
+use Spatie\Dns\Dns;
+use Spatie\SslCertificate\SslCertificate;
 
 class Website extends Model
 {
@@ -32,24 +25,21 @@ class Website extends Model
         'ssl_check',
         'ssl_expiry_date',
         'outbound_check',
-        'last_outbound_checked_at'
+        'last_outbound_checked_at',
     ];
 
     protected $casts = [
-        'last_outbound_checked_at' => 'datetime'
+        'last_outbound_checked_at' => 'datetime',
     ];
-
 
     /**
      * Check website exists with look up dns spatie library
      *
      * @param [string] $url to check
-     * @return boolean
      */
-
     public static function checkWebsiteExists(?string $url): ?bool
     {
-        $dns = new Dns();
+        $dns = new Dns;
         $records = $dns->getRecords($url, 'A');
 
         if (count($records) > 0) {
@@ -59,35 +49,33 @@ class Website extends Model
         }
     }
 
-
-
     /**
      * Check website response code
      *
      * @param [string] $url to check
-     * @return array
      */
-
     public static function checkResponseCode(?string $url): array
     {
-        $dataResponse = array();
+        $dataResponse = [];
         try {
             $response = Http::get($url);
         } catch (RequestException $e) {
             $handlerContext = $e->getHandlerContext();
             $dataResponse['code'] = $handlerContext['errno'];
             $dataResponse['body'] = $handlerContext['error'];
+
             return $dataResponse;
         } catch (ConnectionException $e) {
             $dataResponse['code'] = 0;
             $dataResponse['body'] = $e->getMessage();
+
             return $dataResponse;
         }
         $dataResponse['code'] = $response->ok() ? 200 : 0;
         $dataResponse['body'] = 1;
+
         return $dataResponse;
     }
-
 
     /**
      * Check website ssl expiry code
@@ -95,7 +83,6 @@ class Website extends Model
      * @param [string] $url to check
      * @return array
      */
-
     public static function sslExpiryDate(?string $url): string
     {
         $certificate = SslCertificate::createForHostName($url);
@@ -103,7 +90,6 @@ class Website extends Model
 
         return $expiration_date;
     }
-
 
     public function user()
     {
@@ -151,5 +137,15 @@ class Website extends Model
     public function PlowWebsite(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(PloiWebsites::class, 'ploi_website_id', 'id');
+    }
+
+    public function seoChecks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(SeoCheck::class);
+    }
+
+    public function latestSeoCheck(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(SeoCheck::class)->latest();
     }
 }

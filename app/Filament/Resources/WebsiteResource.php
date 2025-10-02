@@ -2,33 +2,29 @@
 
 namespace App\Filament\Resources;
 
-use App\Crawlers\WebsiteOutboundLinkCrawler;
-use App\Jobs\WebsiteCheckOutboundLinkJob;
-use Carbon\Carbon;
-use Filament\Forms;
-use Filament\Notifications\Notification;
-use Filament\Tables;
-use App\Models\Website;
-use Filament\Forms\Form;
-use Filament\Tables\Table;
-use Filament\Resources\Resource;
-use Filament\Forms\Components\View;
-use Filament\Forms\Components\Split;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Fieldset;
-use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\WebsiteResource\Pages;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Resources\WebsiteResource\RelationManagers;
-use Spatie\Crawler\Crawler;
+use App\Models\Website;
+use App\Services\SeoHealthCheckService;
 use App\Tables\Columns\SparklineColumn;
+use Filament\Forms;
+use Filament\Forms\Components\Fieldset;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Form;
+use Filament\Notifications\Notification;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class WebsiteResource extends Resource
 {
     protected static ?string $model = Website::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-globe-alt';
+
     protected static ?string $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 1;
 
     /**
@@ -235,6 +231,76 @@ class WebsiteResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('latest_seo_check.health_score')
+                    ->label('SEO Health Score')
+                    ->formatStateUsing(function ($state, $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if (! $latestCheck) {
+                            return 'Not crawled';
+                        }
+
+                        $score = $latestCheck->health_score;
+                        $status = $latestCheck->status;
+
+                        if ($status === 'running') {
+                            return 'Crawling...';
+                        } elseif ($status === 'failed') {
+                            return 'Failed';
+                        } elseif ($score === null) {
+                            return 'Pending';
+                        }
+
+                        return $score . '%';
+                    })
+                    ->badge()
+                    ->color(function ($state) {
+                        if ($state === 'Not crawled' || $state === 'Failed') {
+                            return 'danger';
+                        }
+                        if ($state === 'Crawling...' || $state === 'Pending') {
+                            return 'warning';
+                        }
+
+                        $score = (int) str_replace('%', '', $state);
+                        if ($score >= 80) {
+                            return 'success';
+                        }
+                        if ($score >= 60) {
+                            return 'warning';
+                        }
+
+                        return 'danger';
+                    })
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('latest_seo_check.started_at')
+                    ->label('Last SEO Crawl')
+                    ->formatStateUsing(function ($state, $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if (! $latestCheck || ! $latestCheck->started_at) {
+                            return 'Never';
+                        }
+
+                        return $latestCheck->started_at->diffForHumans();
+                    })
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('latest_seo_check.total_urls_crawled')
+                    ->label('URLs Crawled')
+                    ->formatStateUsing(function ($state, $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if (! $latestCheck) {
+                            return '-';
+                        }
+
+                        $total = $latestCheck->total_urls_crawled;
+                        $status = $latestCheck->status;
+
+                        if ($status === 'running') {
+                            return $total . ' (running...)';
+                        }
+
+                        return $total ?: '-';
+                    })
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('deleted_at')
                     ->translateLabel()
                     ->dateTime()
@@ -246,6 +312,31 @@ class WebsiteResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('run_seo_crawl')
+                    ->label('Run SEO Crawl')
+                    ->icon('heroicon-o-magnifying-glass')
+                    ->color('primary')
+                    ->requiresConfirmation()
+                    ->modalHeading('Start SEO Health Check')
+                    ->modalDescription('This will start a comprehensive SEO crawl of the website. The process may take several minutes depending on the site size.')
+                    ->action(function (Website $record) {
+                        try {
+                            $seoService = app(SeoHealthCheckService::class);
+                            $seoCheck = $seoService->startManualCheck($record);
+
+                            Notification::make()
+                                ->title('SEO Crawl Started')
+                                ->body("SEO health check has been started for {$record->name}. You can monitor progress in the table.")
+                                ->success()
+                                ->send();
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('Error Starting SEO Crawl')
+                                ->body('Failed to start SEO crawl: ' . $e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -253,8 +344,7 @@ class WebsiteResource extends Resource
                     Tables\Actions\ForceDeleteBulkAction::make(),
                     Tables\Actions\RestoreBulkAction::make(),
                 ]),
-            ])
-        ;
+            ]);
     }
 
     public static function getRelations(): array
@@ -285,8 +375,7 @@ class WebsiteResource extends Resource
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
-            ])
-        ;
+            ]);
     }
 
     public static function getModelLabel(): string
