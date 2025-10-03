@@ -4,6 +4,7 @@ namespace App\Crawlers;
 
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
+use App\Services\RobotsSitemapService;
 use DOMDocument;
 use DOMXPath;
 use GuzzleHttp\Exception\RequestException;
@@ -28,14 +29,24 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected int $maxUrls = 1000; // Limit to prevent infinite crawling
 
+    protected RobotsSitemapService $robotsSitemapService;
+
     public function __construct(SeoCheck $seoCheck)
     {
         $this->seoCheck = $seoCheck;
         $this->baseDomain = parse_url($seoCheck->website->url, PHP_URL_HOST);
+        $this->robotsSitemapService = app(RobotsSitemapService::class);
     }
 
     public function willCrawl(UriInterface $url, ?string $linkText): void
     {
+        // Check if URL is allowed by robots.txt
+        if (! $this->robotsSitemapService->isUrlAllowed((string) $url)) {
+            Log::info("SEO Crawler: Skipping {$url} - disallowed by robots.txt");
+
+            return;
+        }
+
         // Update progress
         $this->crawledCount++;
         $this->seoCheck->update([
@@ -58,8 +69,6 @@ class SeoHealthCheckCrawler extends CrawlObserver
             return;
         }
 
-        $startTime = microtime(true);
-
         try {
             $crawlData = $this->extractSeoData($urlString, $response);
             $this->crawlResults[] = $crawlData;
@@ -74,7 +83,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
                 'seo_check_id' => $this->seoCheck->id,
                 'url' => $urlString,
                 'status_code' => $response->getStatusCode(),
-                'issues' => [['type' => 'crawl_error', 'message' => $e->getMessage()]],
+                'robots_txt_allowed' => $this->robotsSitemapService->isUrlAllowed($urlString),
+                'crawl_source' => 'discovery',
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
@@ -96,7 +106,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
             'seo_check_id' => $this->seoCheck->id,
             'url' => $urlString,
             'status_code' => $requestException->getCode() ?: 0,
-            'issues' => [['type' => 'crawl_failed', 'message' => $requestException->getMessage()]],
+            'robots_txt_allowed' => $this->robotsSitemapService->isUrlAllowed($urlString),
+            'crawl_source' => 'discovery',
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -108,13 +119,18 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
         // Bulk insert crawl results
         if (! empty($this->crawlResults)) {
-            SeoCrawlResult::insert($this->crawlResults);
+            foreach ($this->crawlResults as $result) {
+                SeoCrawlResult::create($result);
+            }
         }
 
-        // Calculate health score and update SEO check
-        $this->calculateHealthScore();
+        // Update SEO check status to completed
+        $this->seoCheck->update([
+            'status' => 'completed',
+            'finished_at' => now(),
+        ]);
 
-        Log::info("SEO Crawler: Health check completed for website {$this->seoCheck->website->url}");
+        Log::info("SEO Crawler: Crawl completed for website {$this->seoCheck->website->url}");
     }
 
     protected function extractSeoData(string $url, ResponseInterface $response): array
@@ -128,36 +144,32 @@ class SeoHealthCheckCrawler extends CrawlObserver
         // Measure response time
         $responseTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
 
-        // Parse HTML content
-        $dom = new DOMDocument;
-        @$dom->loadHTML($body);
-        $xpath = new DOMXPath($dom);
+        // Initialize DOM variables
+        $dom = null;
+        $xpath = null;
 
-        // Extract SEO elements
-        $title = $this->extractTitle($xpath);
-        $metaDescription = $this->extractMetaDescription($xpath);
-        $h1 = $this->extractH1($xpath);
-        $canonicalUrl = $this->extractCanonicalUrl($xpath, $url);
+        // Parse HTML content only if body is not empty
+        if (! empty($body)) {
+            $dom = new DOMDocument;
+            @$dom->loadHTML($body);
+            $xpath = new DOMXPath($dom);
+        }
+
+        // Extract SEO data
+        $title = $xpath ? $this->extractTitle($xpath) : null;
+        $metaDescription = $xpath ? $this->extractMetaDescription($xpath) : null;
+        $h1 = $xpath ? $this->extractH1($xpath) : null;
+        $canonicalUrl = $xpath ? $this->extractCanonicalUrl($xpath) : null;
 
         // Extract links
-        $internalLinks = [];
-        $externalLinks = [];
-        $this->extractAllLinks($xpath, $url, $internalLinks, $externalLinks);
+        $internalLinks = $xpath ? $this->extractInternalLinks($xpath, $url) : [];
+        $externalLinks = $xpath ? $this->extractExternalLinks($xpath, $url) : [];
 
         // Extract resource sizes
-        $resourceSizes = $this->extractResourceSizes($xpath, $url, $body);
+        $resourceSizes = $xpath ? $this->extractResourceSizes($xpath, $url, $body) : [];
 
         // Count images
-        $imageCount = $xpath->query('//img')->length;
-
-        // Detect issues
-        $issues = $this->detectIssues($url, $statusCode, $title, $metaDescription, $h1, $headers, $responseTime, $bodySize);
-
-        // Check for soft 404
-        $isSoft404 = $this->isSoft404($statusCode, $body, $title);
-
-        // Check for redirect loops
-        $isRedirectLoop = $this->isRedirectLoop($url, $headers);
+        $imageCount = $xpath ? $xpath->query('//img')->length : 0;
 
         return [
             'seo_check_id' => $this->seoCheck->id,
@@ -174,12 +186,11 @@ class SeoHealthCheckCrawler extends CrawlObserver
             'resource_sizes' => $resourceSizes,
             'headers' => $headers,
             'response_time_ms' => round($responseTime, 2),
-            'issues' => $issues,
             'internal_link_count' => count($internalLinks),
             'external_link_count' => count($externalLinks),
             'image_count' => $imageCount,
-            'is_soft_404' => $isSoft404,
-            'is_redirect_loop' => $isRedirectLoop,
+            'robots_txt_allowed' => $this->robotsSitemapService->isUrlAllowed($url),
+            'crawl_source' => 'discovery',
             'created_at' => now(),
             'updated_at' => now(),
         ];
@@ -226,253 +237,153 @@ class SeoHealthCheckCrawler extends CrawlObserver
         return $h1Nodes->length > 0 ? trim($h1Nodes->item(0)->textContent) : null;
     }
 
-    protected function extractCanonicalUrl(DOMXPath $xpath, string $currentUrl): ?string
+    protected function extractCanonicalUrl(DOMXPath $xpath): ?string
     {
         $canonicalNodes = $xpath->query('//link[@rel="canonical"]/@href');
-        if ($canonicalNodes->length > 0) {
-            $canonical = $canonicalNodes->item(0)->textContent;
-            // Convert relative URLs to absolute
-            if (str_starts_with($canonical, '/')) {
-                $parsedUrl = parse_url($currentUrl);
-                $canonical = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] . $canonical;
-            }
 
-            return $canonical;
-        }
-
-        return null;
+        return $canonicalNodes->length > 0 ? trim($canonicalNodes->item(0)->textContent) : null;
     }
 
-    protected function extractAllLinks(DOMXPath $xpath, string $currentUrl, array &$internalLinks, array &$externalLinks): void
+    protected function extractInternalLinks(DOMXPath $xpath, string $currentUrl): array
     {
+        $links = [];
         $linkNodes = $xpath->query('//a[@href]');
-        $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
 
-        foreach ($linkNodes as $linkNode) {
-            $href = $linkNode->getAttribute('href');
-            $text = trim($linkNode->textContent);
+        foreach ($linkNodes as $node) {
+            /** @var \DOMElement $node */
+            $href = $node->getAttribute('href') ?? '';
+            $text = trim($node->textContent ?? '');
 
-            // Convert relative URLs to absolute
-            if (str_starts_with($href, '/')) {
-                $parsedUrl = parse_url($currentUrl);
-                $href = $parsedUrl['scheme'] . '://' . $parsedUrl['host'] . $href;
-            } elseif (! str_starts_with($href, 'http')) {
-                continue; // Skip mailto:, tel:, etc.
-            }
-
-            $linkDomain = parse_url($href, PHP_URL_HOST);
-
-            if ($linkDomain === $currentDomain) {
-                $internalLinks[] = ['url' => $href, 'text' => $text];
-            } else {
-                $externalLinks[] = ['url' => $href, 'text' => $text];
+            if ($this->isInternalLink($href, $currentUrl)) {
+                $links[] = [
+                    'url' => $this->resolveUrl($href, $currentUrl),
+                    'text' => $text,
+                ];
             }
         }
+
+        return $links;
+    }
+
+    protected function extractExternalLinks(DOMXPath $xpath, string $currentUrl): array
+    {
+        $links = [];
+        $linkNodes = $xpath->query('//a[@href]');
+
+        foreach ($linkNodes as $node) {
+            /** @var \DOMElement $node */
+            $href = $node->getAttribute('href') ?? '';
+            $text = trim($node->textContent ?? '');
+
+            if ($this->isExternalLink($href, $currentUrl)) {
+                $links[] = [
+                    'url' => $this->resolveUrl($href, $currentUrl),
+                    'text' => $text,
+                ];
+            }
+        }
+
+        return $links;
+    }
+
+    protected function extractResourceSizes(DOMXPath $xpath, string $currentUrl, string $body): array
+    {
+        $resources = [];
+
+        // Extract CSS files
+        $cssNodes = $xpath->query('//link[@rel="stylesheet"]/@href');
+        foreach ($cssNodes as $node) {
+            $href = $node->textContent;
+            $resources[] = [
+                'type' => 'css',
+                'url' => $this->resolveUrl($href, $currentUrl),
+                'size' => 0, // Would need to fetch to get actual size
+            ];
+        }
+
+        // Extract JS files
+        $jsNodes = $xpath->query('//script[@src]/@src');
+        foreach ($jsNodes as $node) {
+            $src = $node->textContent;
+            $resources[] = [
+                'type' => 'js',
+                'url' => $this->resolveUrl($src, $currentUrl),
+                'size' => 0, // Would need to fetch to get actual size
+            ];
+        }
+
+        // Extract images
+        $imgNodes = $xpath->query('//img[@src]/@src');
+        foreach ($imgNodes as $node) {
+            $src = $node->textContent;
+            $resources[] = [
+                'type' => 'image',
+                'url' => $this->resolveUrl($src, $currentUrl),
+                'size' => 0, // Would need to fetch to get actual size
+            ];
+        }
+
+        return $resources;
+    }
+
+    protected function isInternalLink(string $href, string $currentUrl): bool
+    {
+        if (empty($href) || str_starts_with($href, '#')) {
+            return false;
+        }
+
+        $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
+        $linkDomain = parse_url($this->resolveUrl($href, $currentUrl), PHP_URL_HOST);
+
+        return $currentDomain === $linkDomain;
+    }
+
+    protected function isExternalLink(string $href, string $currentUrl): bool
+    {
+        if (empty($href) || str_starts_with($href, '#')) {
+            return false;
+        }
+
+        return ! $this->isInternalLink($href, $currentUrl);
+    }
+
+    protected function resolveUrl(string $url, string $baseUrl): string
+    {
+        // Handle absolute URLs
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            return $url;
+        }
+
+        // Handle protocol-relative URLs
+        if (str_starts_with($url, '//')) {
+            return parse_url($baseUrl, PHP_URL_SCHEME) . ':' . $url;
+        }
+
+        // Handle relative URLs
+        $baseParts = parse_url($baseUrl);
+        $basePath = $baseParts['path'] ?? '/';
+
+        if (str_starts_with($url, '/')) {
+            return $baseParts['scheme'] . '://' . $baseParts['host'] . $url;
+        }
+
+        // Handle relative paths
+        $baseDir = dirname($basePath);
+        if ($baseDir === '.') {
+            $baseDir = '/';
+        }
+
+        return $baseParts['scheme'] . '://' . $baseParts['host'] . $baseDir . '/' . $url;
     }
 
     protected function extractLinks(array $internalLinks, array $externalLinks): void
     {
-        $this->internalLinks = array_merge($this->internalLinks, $internalLinks);
-        $this->externalLinks = array_merge($this->externalLinks, $externalLinks);
-    }
-
-    protected function extractResourceSizes(DOMXPath $xpath, string $baseUrl, string $html): array
-    {
-        $resourceSizes = [
-            'images' => 0,
-            'css' => 0,
-            'js' => 0,
-        ];
-
-        // This is a simplified version - in a real implementation,
-        // you would make HTTP requests to get actual resource sizes
-        $imageNodes = $xpath->query('//img/@src');
-        $cssNodes = $xpath->query('//link[@rel="stylesheet"]/@href');
-        $jsNodes = $xpath->query('//script/@src');
-
-        $resourceSizes['images'] = $imageNodes->length;
-        $resourceSizes['css'] = $cssNodes->length;
-        $resourceSizes['js'] = $jsNodes->length;
-
-        return $resourceSizes;
-    }
-
-    protected function detectIssues(
-        string $url,
-        int $statusCode,
-        ?string $title,
-        ?string $metaDescription,
-        ?string $h1,
-        array $headers,
-        float $responseTime,
-        int $bodySize
-    ): array {
-        $issues = [];
-
-        // Status code issues
-        if ($statusCode >= 400) {
-            $issues[] = [
-                'type' => 'error',
-                'category' => 'crawlability',
-                'message' => "HTTP {$statusCode} status code",
-            ];
+        foreach ($internalLinks as $link) {
+            $this->internalLinks[] = $link['url'];
         }
 
-        // Missing title
-        if (empty($title)) {
-            $issues[] = [
-                'type' => 'warning',
-                'category' => 'onpage',
-                'message' => 'Missing page title',
-            ];
+        foreach ($externalLinks as $link) {
+            $this->externalLinks[] = $link['url'];
         }
-
-        // Missing meta description
-        if (empty($metaDescription)) {
-            $issues[] = [
-                'type' => 'warning',
-                'category' => 'onpage',
-                'message' => 'Missing meta description',
-            ];
-        }
-
-        // Missing H1
-        if (empty($h1)) {
-            $issues[] = [
-                'type' => 'warning',
-                'category' => 'onpage',
-                'message' => 'Missing H1 tag',
-            ];
-        }
-
-        // Slow response time
-        if ($responseTime > 1000) { // > 1 second
-            $issues[] = [
-                'type' => 'warning',
-                'category' => 'technical',
-                'message' => 'Slow response time (' . round($responseTime / 1000, 2) . 's)',
-            ];
-        }
-
-        // Large page size
-        if ($bodySize > 1024 * 1024) { // > 1MB
-            $issues[] = [
-                'type' => 'notice',
-                'category' => 'technical',
-                'message' => 'Large page size (' . round($bodySize / 1024, 2) . 'KB)',
-            ];
-        }
-
-        // Noindex header
-        if (isset($headers['x-robots-tag']) && str_contains(strtolower($headers['x-robots-tag']), 'noindex')) {
-            $issues[] = [
-                'type' => 'notice',
-                'category' => 'indexability',
-                'message' => 'Page has noindex directive',
-            ];
-        }
-
-        return $issues;
-    }
-
-    protected function isSoft404(int $statusCode, string $body, ?string $title): bool
-    {
-        if ($statusCode === 200) {
-            // Check for soft 404 indicators
-            $soft404Indicators = [
-                'page not found',
-                '404 error',
-                'not found',
-                'page does not exist',
-                'error 404',
-            ];
-
-            $bodyLower = strtolower($body);
-            $titleLower = strtolower($title ?? '');
-
-            foreach ($soft404Indicators as $indicator) {
-                if (str_contains($bodyLower, $indicator) || str_contains($titleLower, $indicator)) {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    protected function isRedirectLoop(string $url, array $headers): bool
-    {
-        // Simple check for redirect loops - in a real implementation,
-        // you would track the redirect chain
-        if (isset($headers['location']) && $headers['location'] === $url) {
-            return true;
-        }
-
-        return false;
-    }
-
-    protected function calculateHealthScore(): void
-    {
-        $totalUrls = $this->crawledCount;
-        $errorUrls = 0;
-        $warningCount = 0;
-        $noticeCount = 0;
-
-        // Count errors and other issues
-        foreach ($this->crawlResults as $result) {
-            if (isset($result['issues'])) {
-                foreach ($result['issues'] as $issue) {
-                    switch ($issue['type']) {
-                        case 'error':
-                            $errorUrls++;
-                            break;
-                        case 'warning':
-                            $warningCount++;
-                            break;
-                        case 'notice':
-                            $noticeCount++;
-                            break;
-                    }
-                }
-            }
-        }
-
-        // Calculate health score (Ahrefs-style: percentage of URLs without errors)
-        $healthScore = $totalUrls > 0 ? round((($totalUrls - $errorUrls) / $totalUrls) * 100) : 0;
-
-        // Update SEO check
-        $this->seoCheck->update([
-            'status' => 'completed',
-            'health_score' => $healthScore,
-            'errors_found' => $errorUrls,
-            'warnings_found' => $warningCount,
-            'notices_found' => $noticeCount,
-            'finished_at' => now(),
-            'crawl_summary' => [
-                'total_urls' => $totalUrls,
-                'internal_links_found' => count($this->internalLinks),
-                'external_links_found' => count($this->externalLinks),
-                'avg_response_time' => $this->calculateAverageResponseTime(),
-            ],
-        ]);
-    }
-
-    protected function calculateAverageResponseTime(): float
-    {
-        if (empty($this->crawlResults)) {
-            return 0;
-        }
-
-        $totalTime = 0;
-        $count = 0;
-
-        foreach ($this->crawlResults as $result) {
-            if (isset($result['response_time_ms'])) {
-                $totalTime += $result['response_time_ms'];
-                $count++;
-            }
-        }
-
-        return $count > 0 ? round($totalTime / $count, 2) : 0;
     }
 }

@@ -9,7 +9,6 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Spatie\Crawler\Crawler;
 use Spatie\Crawler\CrawlProfiles\CrawlInternalUrls;
-use Spatie\Robots\RobotsTxt;
 
 class SeoHealthCheckJob implements ShouldQueue
 {
@@ -21,9 +20,12 @@ class SeoHealthCheckJob implements ShouldQueue
 
     protected SeoCheck $seoCheck;
 
-    public function __construct(SeoCheck $seoCheck)
+    protected array $crawlableUrls;
+
+    public function __construct(SeoCheck $seoCheck, array $crawlableUrls = [])
     {
         $this->seoCheck = $seoCheck;
+        $this->crawlableUrls = $crawlableUrls;
     }
 
     public function handle(): void
@@ -40,9 +42,6 @@ class SeoHealthCheckJob implements ShouldQueue
             $website = $this->seoCheck->website;
             $baseUrl = $website->getBaseURL();
 
-            // Check robots.txt
-            $this->checkRobotsTxt($baseUrl);
-
             // Create crawler with SEO-specific configuration
             $crawler = Crawler::create()
                 ->setCrawlObserver(new SeoHealthCheckCrawler($this->seoCheck))
@@ -51,8 +50,14 @@ class SeoHealthCheckJob implements ShouldQueue
                 ->setUserAgent('CheckyBot SEO Crawler/1.0 (+https://checkybot.com/bot)')
                 ->ignoreRobots(false); // Respect robots.txt
 
-            // Start crawling
-            $crawler->startCrawling($baseUrl);
+            // Start crawling from specific URLs if provided, otherwise from base URL
+            if (! empty($this->crawlableUrls)) {
+                foreach ($this->crawlableUrls as $url) {
+                    $crawler->startCrawling($url);
+                }
+            } else {
+                $crawler->startCrawling($baseUrl);
+            }
 
             Log::info("SEO health check completed successfully for website: {$website->url}");
         } catch (\Exception $e) {
@@ -65,18 +70,6 @@ class SeoHealthCheckJob implements ShouldQueue
             ]);
 
             throw $e; // Re-throw to mark job as failed
-        }
-    }
-
-    protected function checkRobotsTxt(string $baseUrl): void
-    {
-        try {
-            $robotsTxtUrl = rtrim($baseUrl, '/') . '/robots.txt';
-            $robots = RobotsTxt::create($robotsTxtUrl);
-
-            Log::info("Robots.txt found for {$baseUrl}: " . ($robots->allows('CheckyBot SEO Crawler') ? 'Allowed' : 'Disallowed'));
-        } catch (\Exception $e) {
-            Log::warning("Could not fetch robots.txt for {$baseUrl}: " . $e->getMessage());
         }
     }
 

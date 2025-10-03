@@ -25,12 +25,11 @@ class SeoCrawlResult extends Model
         'resource_sizes',
         'headers',
         'response_time_ms',
-        'issues',
         'internal_link_count',
         'external_link_count',
         'image_count',
-        'is_soft_404',
-        'is_redirect_loop',
+        'robots_txt_allowed',
+        'crawl_source',
     ];
 
     protected $casts = [
@@ -38,10 +37,8 @@ class SeoCrawlResult extends Model
         'external_links' => 'array',
         'resource_sizes' => 'array',
         'headers' => 'array',
-        'issues' => 'array',
         'response_time_ms' => 'decimal:2',
-        'is_soft_404' => 'boolean',
-        'is_redirect_loop' => 'boolean',
+        'robots_txt_allowed' => 'boolean',
     ];
 
     public function seoCheck(): BelongsTo
@@ -74,9 +71,14 @@ class SeoCrawlResult extends Model
         return $this->isClientError() || $this->isServerError();
     }
 
-    public function hasIssues(): bool
+    public function wasAllowedByRobots(): bool
     {
-        return ! empty($this->issues);
+        return $this->robots_txt_allowed;
+    }
+
+    public function getCrawlSource(): string
+    {
+        return $this->crawl_source ?? 'discovery';
     }
 
     public function getPageSizeInKb(): float

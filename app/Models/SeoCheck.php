@@ -14,11 +14,10 @@ class SeoCheck extends Model
     protected $fillable = [
         'website_id',
         'status',
-        'health_score',
         'total_urls_crawled',
-        'errors_found',
-        'warnings_found',
-        'notices_found',
+        'total_crawlable_urls',
+        'sitemap_used',
+        'robots_txt_checked',
         'started_at',
         'finished_at',
         'crawl_summary',
@@ -66,11 +65,11 @@ class SeoCheck extends Model
 
     public function getProgressPercentage(): int
     {
-        if (! $this->isRunning() || $this->total_urls_crawled === 0) {
+        if (! $this->isRunning() || $this->total_crawlable_urls === 0) {
             return 0;
         }
 
-        // Estimate progress based on URLs crawled (this would need to be updated during crawling)
-        return min(100, (int) (($this->total_urls_crawled / 1000) * 100)); // Rough estimate
+        // Calculate progress based on URLs crawled vs total crawlable URLs
+        return min(100, (int) (($this->total_urls_crawled / $this->total_crawlable_urls) * 100));
     }
 }

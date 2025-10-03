@@ -62,13 +62,13 @@ class WebsiteResource extends Resource
                                     ->activeUrl()
                                     ->default('https://')
                                     ->validationMessages([
-                                        'active_url' => 'The website Url not exists, try again'
+                                        'active_url' => 'The website Url not exists, try again',
                                     ])
                                     ->url()
                                     ->maxLength(255),
                                 Forms\Components\Textarea::make('description')
                                     ->translateLabel()
-                                    ->columnSpanFull()
+                                    ->columnSpanFull(),
                             ]),
                         Fieldset::make('Monitoring info')
                             ->translateLabel()
@@ -76,7 +76,7 @@ class WebsiteResource extends Resource
                                 Forms\Components\Grid::make()
                                     ->columns([
                                         'md' => 2,
-                                        'xl' => 3
+                                        'xl' => 3,
                                     ])
                                     ->schema([
                                         fieldset::make('Uptime settings')
@@ -113,7 +113,7 @@ class WebsiteResource extends Resource
                                                     ->columnSpan(1)
                                                     ->live()
                                                     ->default(1)
-                                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
+                                                    // ->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
                                                     ->required(),
                                             ])->columnSpan(1),
                                         fieldset::make('Outbound settings')
@@ -123,12 +123,12 @@ class WebsiteResource extends Resource
                                                     ->onColor('success')
                                                     ->inline(false)
                                                     ->live()
-                                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
+                                                    // ->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
                                                     ->required(),
                                             ])->columnSpan(1),
                                     ]),
-                            ])->columns(1)
-                    ])
+                            ])->columns(1),
+                    ]),
             ]);
     }
 
@@ -155,7 +155,7 @@ class WebsiteResource extends Resource
                             ->get()
                             ->map(fn($log) => [
                                 'date' => $log->created_at->format('M j, H:i'),
-                                'value' => $log->speed
+                                'value' => $log->speed,
                             ])
                             ->toArray();
                     }),
@@ -231,45 +231,40 @@ class WebsiteResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('latest_seo_check.health_score')
-                    ->label('SEO Health Score')
+                Tables\Columns\TextColumn::make('latest_seo_check.status')
+                    ->label('SEO Crawl Status')
                     ->formatStateUsing(function ($state, $record) {
                         $latestCheck = $record->latestSeoCheck;
                         if (! $latestCheck) {
                             return 'Not crawled';
                         }
 
-                        $score = $latestCheck->health_score;
                         $status = $latestCheck->status;
+                        $progress = $latestCheck->getProgressPercentage();
 
                         if ($status === 'running') {
-                            return 'Crawling...';
+                            return "Crawling ({$progress}%)";
                         } elseif ($status === 'failed') {
                             return 'Failed';
-                        } elseif ($score === null) {
-                            return 'Pending';
+                        } elseif ($status === 'completed') {
+                            return 'Completed';
                         }
 
-                        return $score . '%';
+                        return ucfirst($status);
                     })
                     ->badge()
                     ->color(function ($state) {
-                        if ($state === 'Not crawled' || $state === 'Failed') {
+                        if (str_contains($state, 'Not crawled') || str_contains($state, 'Failed')) {
                             return 'danger';
                         }
-                        if ($state === 'Crawling...' || $state === 'Pending') {
+                        if (str_contains($state, 'Crawling') || str_contains($state, 'Pending')) {
                             return 'warning';
                         }
-
-                        $score = (int) str_replace('%', '', $state);
-                        if ($score >= 80) {
+                        if (str_contains($state, 'Completed')) {
                             return 'success';
                         }
-                        if ($score >= 60) {
-                            return 'warning';
-                        }
 
-                        return 'danger';
+                        return 'gray';
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('latest_seo_check.started_at')
@@ -291,14 +286,15 @@ class WebsiteResource extends Resource
                             return '-';
                         }
 
-                        $total = $latestCheck->total_urls_crawled;
+                        $crawled = $latestCheck->total_urls_crawled;
+                        $total = $latestCheck->total_crawlable_urls;
                         $status = $latestCheck->status;
 
                         if ($status === 'running') {
-                            return $total . ' (running...)';
+                            return "{$crawled}/{$total} (running...)";
                         }
 
-                        return $total ?: '-';
+                        return $total > 0 ? "{$crawled}/{$total}" : ($crawled ?: '-');
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('deleted_at')
@@ -308,7 +304,7 @@ class WebsiteResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //Tables\Filters\TrashedFilter::make(),
+                // Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
@@ -317,8 +313,8 @@ class WebsiteResource extends Resource
                     ->icon('heroicon-o-magnifying-glass')
                     ->color('primary')
                     ->requiresConfirmation()
-                    ->modalHeading('Start SEO Health Check')
-                    ->modalDescription('This will start a comprehensive SEO crawl of the website. The process may take several minutes depending on the site size.')
+                    ->modalHeading('Start SEO Crawl')
+                    ->modalDescription('This will start crawling the website to collect SEO data. The process may take several minutes depending on the site size. The crawler will respect robots.txt and use sitemap.xml if available.')
                     ->action(function (Website $record) {
                         try {
                             $seoService = app(SeoHealthCheckService::class);
@@ -326,7 +322,7 @@ class WebsiteResource extends Resource
 
                             Notification::make()
                                 ->title('SEO Crawl Started')
-                                ->body("SEO health check has been started for {$record->name}. You can monitor progress in the table.")
+                                ->body("SEO crawl has been started for {$record->name}. The crawler will respect robots.txt and use sitemap.xml if available. You can monitor progress in the table.")
                                 ->success()
                                 ->send();
                         } catch (\Exception $e) {
@@ -357,9 +353,9 @@ class WebsiteResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListWebsites::route('/'),
+            'index' => Pages\ListWebsites::route('/'),
             'create' => Pages\CreateWebsite::route('/create'),
-            'edit'   => Pages\EditWebsite::route('/{record}/edit'),
+            'edit' => Pages\EditWebsite::route('/{record}/edit'),
         ];
     }
 
