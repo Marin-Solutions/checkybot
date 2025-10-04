@@ -220,10 +220,10 @@ class ServerResource extends Resource
             ])
             ->actions([
                 CopyAction::make()
-                    ->copyable(fn(Server $record) => ServerInformationHistory::copyCommand($record->id))
+                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
                     ->label(__('Copy script')),
                 CopyAction::make()
-                    ->copyable(fn(Server $record) => ServerLogFileHistory::copyCommand($record->id))
+                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
                     ->label(__('Copy log script')),
                 Tables\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
@@ -259,9 +259,7 @@ class ServerResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->select('*')
-            ->selectRaw("(SELECT CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) FROM `server_information_history` b WHERE b.server_id = servers.`id` ORDER BY b.id DESC LIMIT 1) AS latest_server_history_info")
-            ->selectRaw('(SELECT MAX(created_at) FROM server_information_history b WHERE b.server_id = servers.id) AS latest_server_history_created_at')
+            ->withLatestHistory()
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
@@ -275,7 +273,7 @@ class ServerResource extends Resource
                 ->url('localhsot'),
             Action::make('delete')
                 ->requiresConfirmation()
-                ->action(fn() => $this->post->delete()),
+                ->action(fn () => $this->post->delete()),
         ];
     }
 

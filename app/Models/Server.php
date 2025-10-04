@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Server extends Model
 {
@@ -63,8 +64,25 @@ class Server extends Model
     public function scopeWithLatestHistory($query)
     {
         return $query->select('servers.*')
-            ->selectRaw("(SELECT CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) FROM `server_information_histories` b WHERE b.server_id = servers.`id` ORDER BY b.id DESC LIMIT 1) AS latest_server_history_info")
-            ->selectRaw('(SELECT MAX(created_at) FROM server_information_histories b WHERE b.server_id = servers.id) AS latest_server_history_created_at');
+            ->leftJoinSub(
+                DB::table('server_information_history')
+                    ->select(
+                        'server_id',
+                        DB::raw("CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) as latest_server_history_info"),
+                        'created_at as latest_server_history_created_at'
+                    )
+                    ->whereIn('id', function ($subQuery) {
+                        $subQuery->select(DB::raw('MAX(id)'))
+                            ->from('server_information_history as sih2')
+                            ->groupBy('sih2.server_id');
+                    }),
+                'latest_history',
+                'servers.id',
+                '=',
+                'latest_history.server_id'
+            )
+            ->addSelect('latest_history.latest_server_history_info')
+            ->addSelect('latest_history.latest_server_history_created_at');
     }
 
     /**
