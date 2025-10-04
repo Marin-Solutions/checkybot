@@ -39,6 +39,11 @@ class SeoCheck extends Model
         return $this->hasMany(SeoCrawlResult::class);
     }
 
+    public function issues(): HasMany
+    {
+        return $this->hasMany(SeoIssue::class);
+    }
+
     public function isCompleted(): bool
     {
         return $this->status === 'completed';

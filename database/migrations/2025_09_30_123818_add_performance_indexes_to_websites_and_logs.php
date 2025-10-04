@@ -13,25 +13,69 @@ return new class extends Migration
     {
         // Add indexes to websites table
         Schema::table('websites', function (Blueprint $table) {
-            $table->index('created_by');
-            $table->index(['created_by', 'created_at']);
-            $table->index('uptime_check');
-            $table->index('ssl_check');
-            $table->index('outbound_check');
+            try {
+                $table->index('created_by');
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index(['created_by', 'created_at']);
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index('uptime_check');
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index('ssl_check');
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index('outbound_check');
+            } catch (\Exception $e) {
+                // Index already exists
+            }
         });
 
         // Add indexes to website_log_history table
         Schema::table('website_log_history', function (Blueprint $table) {
-            $table->index(['website_id', 'created_at']);
-            $table->index('created_at');
-            $table->index('speed');
+            try {
+                $table->index(['website_id', 'created_at']);
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index('created_at');
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index('speed');
+            } catch (\Exception $e) {
+                // Index already exists
+            }
         });
 
         // Add indexes to notification_settings table for performance
         Schema::table('notification_settings', function (Blueprint $table) {
-            $table->index(['user_id', 'scope', 'inspection', 'flag_active']);
-            $table->index(['website_id', 'scope', 'inspection', 'flag_active']);
-            $table->index('flag_active');
+            try {
+                $table->index(['user_id', 'scope', 'inspection', 'flag_active']);
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index(['website_id', 'scope', 'inspection', 'flag_active']);
+            } catch (\Exception $e) {
+                // Index already exists
+            }
+            try {
+                $table->index('flag_active');
+            } catch (\Exception $e) {
+                // Index already exists
+            }
         });
     }
 

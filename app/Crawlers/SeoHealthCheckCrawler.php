@@ -5,6 +5,7 @@ namespace App\Crawlers;
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
 use App\Services\RobotsSitemapService;
+use App\Services\SeoIssueDetectionService;
 use DOMDocument;
 use DOMXPath;
 use GuzzleHttp\Exception\RequestException;
@@ -31,11 +32,14 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected RobotsSitemapService $robotsSitemapService;
 
+    protected SeoIssueDetectionService $issueDetectionService;
+
     public function __construct(SeoCheck $seoCheck)
     {
         $this->seoCheck = $seoCheck;
         $this->baseDomain = parse_url($seoCheck->website->url, PHP_URL_HOST);
         $this->robotsSitemapService = app(RobotsSitemapService::class);
+        $this->issueDetectionService = app(SeoIssueDetectionService::class);
     }
 
     public function willCrawl(UriInterface $url, ?string $linkText): void
@@ -123,6 +127,11 @@ class SeoHealthCheckCrawler extends CrawlObserver
                 SeoCrawlResult::create($result);
             }
         }
+
+        // Detect and classify issues
+        Log::info('SEO Crawler: Starting issue detection and classification...');
+        $this->issueDetectionService->detectIssues($this->seoCheck);
+        Log::info('SEO Crawler: Issue detection completed.');
 
         // Update SEO check status to completed
         $this->seoCheck->update([
