@@ -11,7 +11,7 @@ class ServerInformationHistory extends Model
 {
     use HasFactory;
 
-    protected $table = 'server_information_histories';
+    protected $table = 'server_information_history';
 
     public string $server_id;
 

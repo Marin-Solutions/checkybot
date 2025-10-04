@@ -20,5 +20,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Gate::define('viewPulse', function ($user) {
+            return $user->email === 'superadmin@nxtyou.de';
+        });
     }
 }

@@ -28,20 +28,22 @@ return new class extends Migration
             });
         }
 
-        // Add index on server_id for server_information_histories table if it doesn't exist
-        $historyIndexExists = DB::select("SHOW INDEX FROM server_information_histories WHERE Key_name = 'server_information_histories_server_id_index'");
-        if (empty($historyIndexExists)) {
-            Schema::table('server_information_histories', function (Blueprint $table) {
-                $table->index('server_id');
-            });
-        }
+        // Add index on server_id for server_information_history table if it doesn't exist
+        if (Schema::hasTable('server_information_history')) {
+            $historyIndexExists = DB::select("SHOW INDEX FROM server_information_history WHERE Key_name = 'server_information_history_server_id_index'");
+            if (empty($historyIndexExists)) {
+                Schema::table('server_information_history', function (Blueprint $table) {
+                    $table->index('server_id');
+                });
+            }
 
-        // Add composite index for server_information_histories table if it doesn't exist
-        $historyCompositeIndexExists = DB::select("SHOW INDEX FROM server_information_histories WHERE Key_name = 'server_information_histories_server_id_created_at_index'");
-        if (empty($historyCompositeIndexExists)) {
-            Schema::table('server_information_histories', function (Blueprint $table) {
-                $table->index(['server_id', 'created_at']);
-            });
+            // Add composite index for server_information_history table if it doesn't exist
+            $historyCompositeIndexExists = DB::select("SHOW INDEX FROM server_information_history WHERE Key_name = 'server_information_history_server_id_created_at_index'");
+            if (empty($historyCompositeIndexExists)) {
+                Schema::table('server_information_history', function (Blueprint $table) {
+                    $table->index(['server_id', 'created_at']);
+                });
+            }
         }
     }
 
@@ -55,9 +57,11 @@ return new class extends Migration
             $table->dropIndex(['created_by', 'deleted_at']);
         });
 
-        Schema::table('server_information_histories', function (Blueprint $table) {
-            $table->dropIndex(['server_id']);
-            $table->dropIndex(['server_id', 'created_at']);
-        });
+        if (Schema::hasTable('server_information_history')) {
+            Schema::table('server_information_history', function (Blueprint $table) {
+                $table->dropIndex(['server_id']);
+                $table->dropIndex(['server_id', 'created_at']);
+            });
+        }
     }
 };

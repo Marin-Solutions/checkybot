@@ -13,70 +13,53 @@ return new class extends Migration
     {
         // Add indexes to websites table
         Schema::table('websites', function (Blueprint $table) {
-            try {
+            if (! $this->indexExists('websites', 'websites_created_by_index')) {
                 $table->index('created_by');
-            } catch (\Exception $e) {
-                // Index already exists
             }
-            try {
+            if (! $this->indexExists('websites', 'websites_created_by_created_at_index')) {
                 $table->index(['created_by', 'created_at']);
-            } catch (\Exception $e) {
-                // Index already exists
             }
-            try {
+            if (! $this->indexExists('websites', 'websites_uptime_check_index')) {
                 $table->index('uptime_check');
-            } catch (\Exception $e) {
-                // Index already exists
             }
-            try {
+            if (! $this->indexExists('websites', 'websites_ssl_check_index')) {
                 $table->index('ssl_check');
-            } catch (\Exception $e) {
-                // Index already exists
             }
-            try {
+            if (! $this->indexExists('websites', 'websites_outbound_check_index')) {
                 $table->index('outbound_check');
-            } catch (\Exception $e) {
-                // Index already exists
             }
         });
 
         // Add indexes to website_log_history table
         Schema::table('website_log_history', function (Blueprint $table) {
-            try {
+            if (! $this->indexExists('website_log_history', 'website_log_history_website_id_created_at_index')) {
                 $table->index(['website_id', 'created_at']);
-            } catch (\Exception $e) {
-                // Index already exists
             }
-            try {
+            if (! $this->indexExists('website_log_history', 'website_log_history_created_at_index')) {
                 $table->index('created_at');
-            } catch (\Exception $e) {
-                // Index already exists
             }
-            try {
+            if (! $this->indexExists('website_log_history', 'website_log_history_speed_index')) {
                 $table->index('speed');
-            } catch (\Exception $e) {
-                // Index already exists
             }
         });
 
         // Add indexes to notification_settings table for performance
         Schema::table('notification_settings', function (Blueprint $table) {
-            try {
-                $table->index(['user_id', 'scope', 'inspection', 'flag_active']);
-            } catch (\Exception $e) {
-                // Index already exists
+            if (! $this->indexExists('notification_settings', 'ns_user_scope_inspect_flag_idx')) {
+                $table->index(['user_id', 'scope', 'inspection', 'flag_active'], 'ns_user_scope_inspect_flag_idx');
             }
-            try {
-                $table->index(['website_id', 'scope', 'inspection', 'flag_active']);
-            } catch (\Exception $e) {
-                // Index already exists
+            if (! $this->indexExists('notification_settings', 'ns_website_scope_inspect_flag_idx')) {
+                $table->index(['website_id', 'scope', 'inspection', 'flag_active'], 'ns_website_scope_inspect_flag_idx');
             }
-            try {
-                $table->index('flag_active');
-            } catch (\Exception $e) {
-                // Index already exists
+            if (! $this->indexExists('notification_settings', 'ns_flag_active_idx')) {
+                $table->index('flag_active', 'ns_flag_active_idx');
             }
         });
+    }
+
+    protected function indexExists(string $table, string $index): bool
+    {
+        return Schema::hasIndex($table, $index);
     }
 
     /**
@@ -102,9 +85,9 @@ return new class extends Migration
 
         // Remove indexes from notification_settings table
         Schema::table('notification_settings', function (Blueprint $table) {
-            $table->dropIndex(['user_id', 'scope', 'inspection', 'flag_active']);
-            $table->dropIndex(['website_id', 'scope', 'inspection', 'flag_active']);
-            $table->dropIndex(['flag_active']);
+            $table->dropIndex('ns_user_scope_inspect_flag_idx');
+            $table->dropIndex('ns_website_scope_inspect_flag_idx');
+            $table->dropIndex('ns_flag_active_idx');
         });
     }
 };
