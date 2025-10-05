@@ -16,7 +16,14 @@ class SeoCheckResource extends Resource
 
     protected static ?string $navigationGroup = 'SEO';
 
-    protected static ?int $navigationSort = 2;
+    protected static ?int $navigationSort = 3;
+
+    protected static ?string $navigationLabel = 'All SEO Checks';
+
+    public static function shouldRegisterNavigation(): bool
+    {
+        return false; // Hide from navigation, only accessible via WebsiteSeoCheckResource
+    }
 
     public static function table(Table $table): Table
     {
@@ -41,39 +48,21 @@ class SeoCheckResource extends Resource
                         'pending' => 'gray',
                     })
                     ->sortable(),
-                Tables\Columns\TextColumn::make('health_score')
-                    ->label('Health Score')
-                    ->formatStateUsing(fn($state) => $state ? $state . '%' : 'N/A')
-                    ->badge()
-                    ->color(function ($state) {
-                        if (! $state) {
-                            return 'gray';
-                        }
-                        if ($state >= 80) {
-                            return 'success';
-                        }
-                        if ($state >= 60) {
-                            return 'warning';
-                        }
-
-                        return 'danger';
-                    })
-                    ->sortable(),
                 Tables\Columns\TextColumn::make('total_urls_crawled')
                     ->label('URLs Crawled')
                     ->numeric()
                     ->sortable(),
-                Tables\Columns\TextColumn::make('errors_found')
+                Tables\Columns\TextColumn::make('errors_count')
                     ->label('Errors')
                     ->badge()
                     ->color('danger')
                     ->sortable(),
-                Tables\Columns\TextColumn::make('warnings_found')
+                Tables\Columns\TextColumn::make('warnings_count')
                     ->label('Warnings')
                     ->badge()
                     ->color('warning')
                     ->sortable(),
-                Tables\Columns\TextColumn::make('notices_found')
+                Tables\Columns\TextColumn::make('notices_count')
                     ->label('Notices')
                     ->badge()
                     ->color('info')
@@ -120,5 +109,11 @@ class SeoCheckResource extends Resource
             'index' => Pages\ListSeoChecks::route('/'),
             'view' => Pages\ViewSeoCheck::route('/{record}'),
         ];
+    }
+
+    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['seoIssues', 'website']);
     }
 }

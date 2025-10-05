@@ -31,8 +31,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
     protected int $maxUrls = 1000; // Limit to prevent infinite crawling
 
     protected RobotsSitemapService $robotsSitemapService;
-
     protected SeoIssueDetectionService $issueDetectionService;
+
 
     public function __construct(SeoCheck $seoCheck)
     {

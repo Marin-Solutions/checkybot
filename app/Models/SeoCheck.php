@@ -39,7 +39,7 @@ class SeoCheck extends Model
         return $this->hasMany(SeoCrawlResult::class);
     }
 
-    public function issues(): HasMany
+    public function seoIssues(): HasMany
     {
         return $this->hasMany(SeoIssue::class);
     }
@@ -76,5 +76,20 @@ class SeoCheck extends Model
 
         // Calculate progress based on URLs crawled vs total crawlable URLs
         return min(100, (int) (($this->total_urls_crawled / $this->total_crawlable_urls) * 100));
+    }
+
+    public function getErrorsCountAttribute(): int
+    {
+        return $this->seoIssues()->where('severity', 'error')->count();
+    }
+
+    public function getWarningsCountAttribute(): int
+    {
+        return $this->seoIssues()->where('severity', 'warning')->count();
+    }
+
+    public function getNoticesCountAttribute(): int
+    {
+        return $this->seoIssues()->where('severity', 'notice')->count();
     }
 }

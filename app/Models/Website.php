@@ -148,4 +148,34 @@ class Website extends Model
     {
         return $this->hasOne(SeoCheck::class)->latest();
     }
+
+    public function getLatestSeoCheckStatusAttribute(): ?string
+    {
+        return $this->latestSeoCheck?->status;
+    }
+
+    public function getLatestSeoCheckUrlsCrawledAttribute(): int
+    {
+        return $this->latestSeoCheck?->total_urls_crawled ?? 0;
+    }
+
+    public function getLatestSeoCheckErrorsCountAttribute(): int
+    {
+        return $this->latestSeoCheck?->errors_count ?? 0;
+    }
+
+    public function getLatestSeoCheckWarningsCountAttribute(): int
+    {
+        return $this->latestSeoCheck?->warnings_count ?? 0;
+    }
+
+    public function getLatestSeoCheckNoticesCountAttribute(): int
+    {
+        return $this->latestSeoCheck?->notices_count ?? 0;
+    }
+
+    public function getLatestSeoCheckFinishedAtAttribute(): ?\Illuminate\Support\Carbon
+    {
+        return $this->latestSeoCheck?->finished_at;
+    }
 }

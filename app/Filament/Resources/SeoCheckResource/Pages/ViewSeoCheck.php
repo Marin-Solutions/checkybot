@@ -8,7 +8,6 @@ use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
-use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ViewRecord;
 
 class ViewSeoCheck extends ViewRecord
@@ -49,23 +48,6 @@ class ViewSeoCheck extends ViewRecord
                                         'failed' => 'danger',
                                         'pending' => 'gray',
                                     }),
-                                TextEntry::make('health_score')
-                                    ->label('Health Score')
-                                    ->formatStateUsing(fn($state) => $state ? $state . '%' : 'N/A')
-                                    ->badge()
-                                    ->color(function ($state) {
-                                        if (! $state) {
-                                            return 'gray';
-                                        }
-                                        if ($state >= 80) {
-                                            return 'success';
-                                        }
-                                        if ($state >= 60) {
-                                            return 'warning';
-                                        }
-
-                                        return 'danger';
-                                    }),
                                 TextEntry::make('total_urls_crawled')
                                     ->label('URLs Crawled'),
                                 TextEntry::make('started_at')
@@ -89,39 +71,68 @@ class ViewSeoCheck extends ViewRecord
                     ->schema([
                         Grid::make(3)
                             ->schema([
-                                TextEntry::make('errors_found')
+                                TextEntry::make('errors_count')
                                     ->label('Errors')
                                     ->badge()
                                     ->color('danger'),
-                                TextEntry::make('warnings_found')
+                                TextEntry::make('warnings_count')
                                     ->label('Warnings')
                                     ->badge()
                                     ->color('warning'),
-                                TextEntry::make('notices_found')
+                                TextEntry::make('notices_count')
                                     ->label('Notices')
                                     ->badge()
                                     ->color('info'),
                             ]),
                     ]),
+                Section::make('Issues Details')
+                    ->schema([
+                        TextEntry::make('id')
+                            ->label('Issues List')
+                            ->formatStateUsing(function ($record) {
+                                // Get a mix of different severity types
+                                $errors = $record->seoIssues()->where('severity', 'error')->take(3)->get();
+                                $warnings = $record->seoIssues()->where('severity', 'warning')->take(3)->get();
+                                $notices = $record->seoIssues()->where('severity', 'notice')->take(3)->get();
+
+                                $issues = $errors->concat($warnings)->concat($notices);
+
+                                if ($issues->isEmpty()) {
+                                    return 'No issues found';
+                                }
+
+                                $html = '<div style="font-family: system-ui, sans-serif;">';
+                                foreach ($issues as $issue) {
+                                    $severityColor = match ($issue->severity->value) {
+                                        'error' => '#dc2626',
+                                        'warning' => '#d97706',
+                                        'notice' => '#2563eb',
+                                        default => '#6b7280'
+                                    };
+
+                                    $html .= '<div style="border-left: 4px solid ' . $severityColor . '; padding: 12px 0 12px 16px; margin-bottom: 16px;">';
+                                    $html .= '<div style="font-weight: 600; color: ' . $severityColor . '; margin-bottom: 4px;">';
+                                    $html .= '[' . strtoupper($issue->severity->value) . '] ' . $issue->title;
+                                    $html .= '</div>';
+                                    $html .= '<div style="font-size: 14px; color: #6b7280; margin-bottom: 4px;">';
+                                    $html .= $issue->description;
+                                    $html .= '</div>';
+                                    $html .= '<div style="font-size: 12px; color: #9ca3af;">';
+                                    $html .= '<a href="' . $issue->url . '" target="_blank" style="color: #3b82f6; text-decoration: underline;">';
+                                    $html .= \Str::limit($issue->url, 80);
+                                    $html .= '</a>';
+                                    $html .= '</div>';
+                                    $html .= '</div>';
+                                }
+                                $html .= '</div>';
+
+                                return new \Illuminate\Support\HtmlString($html);
+                            })
+                            ->html()
+                            ->columnSpanFull(),
+                    ])
+                    ->collapsible()
+                    ->collapsed(false),
             ]);
-    }
-
-    public function getTabs(): array
-    {
-        return [
-            'overview' => Tab::make('Overview')
-                ->icon('heroicon-o-information-circle'),
-            'crawl_results' => Tab::make('Crawl Results')
-                ->icon('heroicon-o-table-cells')
-                ->content(function () {
-                    $seoCheck = $this->record;
-                    $results = $seoCheck->crawlResults()->paginate(50);
-
-                    return view('filament.pages.seo-check-results', [
-                        'results' => $results,
-                        'seoCheck' => $seoCheck,
-                    ]);
-                }),
-        ];
     }
 }
