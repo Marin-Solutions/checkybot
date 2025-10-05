@@ -48,20 +48,4 @@ class SeoHealthCheckService
 
         return $seoCheck;
     }
-
-    public function getCrawlSummary(SeoCheck $seoCheck): array
-    {
-        $results = $seoCheck->crawlResults()->get();
-
-        return [
-            'total_urls_crawled' => $results->count(),
-            'successful_crawls' => $results->where('status_code', '>=', 200)->where('status_code', '<', 300)->count(),
-            'redirects' => $results->where('status_code', '>=', 300)->where('status_code', '<', 400)->count(),
-            'client_errors' => $results->where('status_code', '>=', 400)->where('status_code', '<', 500)->count(),
-            'server_errors' => $results->where('status_code', '>=', 500)->count(),
-            'average_response_time' => $results->whereNotNull('response_time_ms')->avg('response_time_ms'),
-            'total_internal_links' => $results->sum('internal_link_count'),
-            'total_external_links' => $results->sum('external_link_count'),
-        ];
-    }
 }
