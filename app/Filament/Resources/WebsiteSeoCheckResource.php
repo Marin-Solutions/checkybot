@@ -31,7 +31,7 @@ class WebsiteSeoCheckResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('url')
                     ->label('URL')
-                    ->url(fn($record) => $record->url)
+                    ->url(fn ($record) => $record->url)
                     ->openUrlInNewTab()
                     ->searchable()
                     ->sortable()
@@ -39,7 +39,7 @@ class WebsiteSeoCheckResource extends Resource
                 Tables\Columns\TextColumn::make('latest_seo_check_status')
                     ->label('Latest Status')
                     ->badge()
-                    ->color(fn(?string $state): string => match ($state) {
+                    ->color(fn (?string $state): string => match ($state) {
                         'completed' => 'success',
                         'running' => 'warning',
                         'failed' => 'danger',
@@ -51,6 +51,11 @@ class WebsiteSeoCheckResource extends Resource
                 Tables\Columns\TextColumn::make('latest_seo_check_urls_crawled')
                     ->label('URLs Crawled')
                     ->numeric(),
+                Tables\Columns\TextColumn::make('latest_seo_check_health_score_formatted')
+                    ->label('Health Score')
+                    ->badge()
+                    ->color(fn ($record): string => $record->latest_seo_check_health_score_color ?? 'gray')
+                    ->formatStateUsing(fn ($record): string => $record->latest_seo_check_health_score_formatted ?? 'N/A'),
                 Tables\Columns\TextColumn::make('latest_seo_check_errors_count')
                     ->label('Errors')
                     ->badge()
@@ -82,7 +87,7 @@ class WebsiteSeoCheckResource extends Resource
                         'failed' => 'Failed',
                     ])
                     ->query(function (Builder $query, array $data): Builder {
-                        if (!$data['value']) {
+                        if (! $data['value']) {
                             return $query;
                         }
 
@@ -95,7 +100,7 @@ class WebsiteSeoCheckResource extends Resource
                 Tables\Actions\Action::make('view_checks')
                     ->label('View Checks')
                     ->icon('heroicon-o-eye')
-                    ->url(fn($record) => route('filament.admin.resources.seo-checks.index', ['website_id' => $record->id]))
+                    ->url(fn ($record) => route('filament.admin.resources.seo-checks.index', ['website_id' => $record->id]))
                     ->openUrlInNewTab(),
             ]);
     }

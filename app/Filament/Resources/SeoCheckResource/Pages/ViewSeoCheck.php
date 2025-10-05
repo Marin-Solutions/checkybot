@@ -9,10 +9,18 @@ use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
-use Illuminate\Support\Str;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
-class ViewSeoCheck extends ViewRecord
+class ViewSeoCheck extends ViewRecord implements HasTable
 {
+    use InteractsWithTable;
+
     protected static string $resource = SeoCheckResource::class;
 
     protected function getHeaderActions(): array
@@ -25,6 +33,77 @@ class ViewSeoCheck extends ViewRecord
                     $this->refreshFormData(['record']);
                 }),
         ];
+    }
+
+    public function table(Table $table): Table
+    {
+        return $table
+            ->query($this->getRecord()->seoIssues()->getQuery())
+            ->columns([
+                TextColumn::make('severity')
+                    ->badge()
+                    ->color(fn($state): string => match ($state->value) {
+                        'error' => 'danger',
+                        'warning' => 'warning',
+                        'notice' => 'info',
+                        default => 'gray',
+                    })
+                    ->formatStateUsing(fn($state): string => strtoupper($state->value))
+                    ->sortable(),
+                TextColumn::make('title')
+                    ->label('Issue')
+                    ->weight('bold')
+                    ->searchable()
+                    ->sortable(),
+                TextColumn::make('url')
+                    ->label('URL')
+                    ->url(fn($state) => $state)
+                    ->openUrlInNewTab()
+                    ->limit(50)
+                    ->searchable(),
+                TextColumn::make('description')
+                    ->limit(100)
+                    ->searchable()
+                    ->sortable(),
+            ])
+            ->filters([
+                SelectFilter::make('severity')
+                    ->options([
+                        'error' => 'Error',
+                        'warning' => 'Warning',
+                        'notice' => 'Notice',
+                    ])
+                    ->placeholder('All severities'),
+                Filter::make('title')
+                    ->form([
+                        \Filament\Forms\Components\TextInput::make('title')
+                            ->label('Filter by Issue Title')
+                            ->placeholder('Search issue titles...'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['title'],
+                                fn(Builder $query, $title): Builder => $query->where('title', 'like', "%{$title}%"),
+                            );
+                    }),
+                Filter::make('description')
+                    ->form([
+                        \Filament\Forms\Components\TextInput::make('description')
+                            ->label('Filter by Description')
+                            ->placeholder('Search descriptions...'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['description'],
+                                fn(Builder $query, $description): Builder => $query->where('description', 'like', "%{$description}%"),
+                            );
+                    }),
+            ])
+            ->defaultSort('severity')
+            ->paginated([10, 25, 50, 100])
+            ->defaultPaginationPageOption(25);
     }
 
     public function infolist(Infolist $infolist): Infolist
@@ -68,6 +147,31 @@ class ViewSeoCheck extends ViewRecord
                                     }),
                             ]),
                     ]),
+                Section::make('Health Score')
+                    ->schema([
+                        Grid::make(3)
+                            ->schema([
+                                TextEntry::make('health_score_formatted')
+                                    ->label('Health Score')
+                                    ->badge()
+                                    ->color(fn($record): string => $record->health_score_color)
+                                    ->formatStateUsing(fn($record): string => $record->health_score_formatted),
+                                TextEntry::make('health_score_status')
+                                    ->label('Status')
+                                    ->badge()
+                                    ->color(fn($record): string => $record->health_score_color),
+                                TextEntry::make('urls_with_errors_count')
+                                    ->label('URLs with Errors')
+                                    ->formatStateUsing(function ($record) {
+                                        $total = $record->total_urls_crawled;
+                                        $errors = $record->getUrlsWithErrorsCount();
+
+                                        return "{$errors} of {$total} URLs";
+                                    })
+                                    ->default('Loading...'),
+                            ]),
+                    ])
+                    ->visible(fn($record): bool => $record->isCompleted()),
                 Section::make('Issues Summary')
                     ->schema([
                         Grid::make(3)
@@ -86,54 +190,15 @@ class ViewSeoCheck extends ViewRecord
                                     ->color('info'),
                             ]),
                     ]),
-                Section::make('Issues Details')
-                    ->schema([
-                        TextEntry::make('id')
-                            ->label('Issues List')
-                            ->formatStateUsing(function ($record) {
-                                // Get a mix of different severity types
-                                $errors = $record->seoIssues()->where('severity', 'error')->take(3)->get();
-                                $warnings = $record->seoIssues()->where('severity', 'warning')->take(3)->get();
-                                $notices = $record->seoIssues()->where('severity', 'notice')->take(3)->get();
-
-                                $issues = $errors->concat($warnings)->concat($notices);
-
-                                if ($issues->isEmpty()) {
-                                    return 'No issues found';
-                                }
-
-                                $html = '<div style="font-family: system-ui, sans-serif;">';
-                                foreach ($issues as $issue) {
-                                    $severityColor = match ($issue->severity->value) {
-                                        'error' => '#dc2626',
-                                        'warning' => '#d97706',
-                                        'notice' => '#2563eb',
-                                        default => '#6b7280'
-                                    };
-
-                                    $html .= '<div style="border-left: 4px solid ' . $severityColor . '; padding: 12px 0 12px 16px; margin-bottom: 16px;">';
-                                    $html .= '<div style="font-weight: 600; color: ' . $severityColor . '; margin-bottom: 4px;">';
-                                    $html .= '[' . strtoupper($issue->severity->value) . '] ' . $issue->title;
-                                    $html .= '</div>';
-                                    $html .= '<div style="font-size: 14px; color: #6b7280; margin-bottom: 4px;">';
-                                    $html .= $issue->description;
-                                    $html .= '</div>';
-                                    $html .= '<div style="font-size: 12px; color: #9ca3af;">';
-                                    $html .= '<a href="' . $issue->url . '" target="_blank" style="color: #3b82f6; text-decoration: underline;">';
-                                    $html .= \Str::limit($issue->url, 80);
-                                    $html .= '</a>';
-                                    $html .= '</div>';
-                                    $html .= '</div>';
-                                }
-                                $html .= '</div>';
-
-                                return new \Illuminate\Support\HtmlString($html);
-                            })
-                            ->html()
-                            ->columnSpanFull(),
-                    ])
-                    ->collapsible()
-                    ->collapsed(false),
             ]);
+    }
+
+    protected function getFooterWidgets(): array
+    {
+        return [
+            \App\Filament\Widgets\SeoIssuesTableWidget::make([
+                'recordId' => $this->getRecord()->id,
+            ]),
+        ];
     }
 }

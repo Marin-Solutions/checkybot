@@ -104,10 +104,10 @@ class Website extends Model
     public function getBaseURL(): string
     {
         $parsedUrl = parse_url($this->url);
-        $baseUrl = $parsedUrl['scheme'] . '://' . $parsedUrl['host'];
+        $baseUrl = $parsedUrl['scheme'].'://'.$parsedUrl['host'];
 
         if (isset($parsedUrl['port'])) {
-            $baseUrl .= ':' . $parsedUrl['port'];
+            $baseUrl .= ':'.$parsedUrl['port'];
         }
 
         return $baseUrl;
@@ -177,5 +177,20 @@ class Website extends Model
     public function getLatestSeoCheckFinishedAtAttribute(): ?\Illuminate\Support\Carbon
     {
         return $this->latestSeoCheck?->finished_at;
+    }
+
+    public function getLatestSeoCheckHealthScoreAttribute(): ?float
+    {
+        return $this->latestSeoCheck?->health_score;
+    }
+
+    public function getLatestSeoCheckHealthScoreFormattedAttribute(): ?string
+    {
+        return $this->latestSeoCheck?->health_score_formatted;
+    }
+
+    public function getLatestSeoCheckHealthScoreColorAttribute(): ?string
+    {
+        return $this->latestSeoCheck?->health_score_color;
     }
 }
