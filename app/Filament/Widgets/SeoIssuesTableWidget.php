@@ -17,6 +17,16 @@ class SeoIssuesTableWidget extends BaseWidget
 
     public static function canView(): bool
     {
+        $route = request()->route();
+        if ($route && $route->getName() === 'filament.admin.resources.seo-checks.view') {
+            return true;
+        }
+
+        // Also allow if we're in a context where recordId is being passed
+        if (request()->has('recordId') || session()->has('seo_check_record_id')) {
+            return true;
+        }
+
         return false;
     }
 
@@ -27,6 +37,7 @@ class SeoIssuesTableWidget extends BaseWidget
 
     public function table(Table $table): Table
     {
+        // If no recordId is provided, return empty query (this prevents showing on dashboard)
         if (! $this->recordId) {
             return $table->query(\App\Models\SeoIssue::query()->whereRaw('1 = 0'));
         }
@@ -73,34 +84,6 @@ class SeoIssuesTableWidget extends BaseWidget
                         'notice' => 'Notice',
                     ])
                     ->placeholder('All severities'),
-                SelectFilter::make('title')
-                    ->label('Filter by Issue Title')
-                    ->options(function () {
-                        $record = \App\Models\SeoCheck::find($this->recordId);
-                        if (! $record) {
-                            return [];
-                        }
-
-                        return $record->seoIssues()
-                            ->distinct()
-                            ->pluck('title', 'title')
-                            ->toArray();
-                    })
-                    ->placeholder('All issue titles'),
-                SelectFilter::make('description')
-                    ->label('Filter by Description')
-                    ->options(function () {
-                        $record = \App\Models\SeoCheck::find($this->recordId);
-                        if (! $record) {
-                            return [];
-                        }
-
-                        return $record->seoIssues()
-                            ->distinct()
-                            ->pluck('description', 'description')
-                            ->toArray();
-                    })
-                    ->placeholder('All descriptions'),
             ])
             ->defaultSort('severity')
             ->paginated([10, 25, 50, 100])
