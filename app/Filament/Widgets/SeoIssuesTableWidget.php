@@ -15,6 +15,11 @@ class SeoIssuesTableWidget extends BaseWidget
 
     public ?int $recordId = null;
 
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     public function mount(): void
     {
         // The recordId will be passed from the parent page
