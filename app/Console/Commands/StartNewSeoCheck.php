@@ -36,4 +36,3 @@ class StartNewSeoCheck extends Command
         $this->info("SEO check job dispatched for {$url}");
     }
 }
-

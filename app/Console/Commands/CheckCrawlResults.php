@@ -64,4 +64,3 @@ class CheckCrawlResults extends Command
         }
     }
 }
-
