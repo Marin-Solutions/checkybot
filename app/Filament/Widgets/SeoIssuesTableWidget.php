@@ -26,6 +26,28 @@ class SeoIssuesTableWidget extends BaseWidget
         // The recordId will be passed from the parent page
     }
 
+    protected function getPollingInterval(): ?string
+    {
+        // Check if the SEO check just completed and needs a one-time refresh
+        $route = request()->route();
+        $recordId = $route->parameter('record') ?? $this->recordId;
+
+        if ($recordId) {
+            $record = \App\Models\SeoCheck::find($recordId);
+
+            // If completed within the last 10 seconds, poll once to refresh the table
+            if ($record && $record->isCompleted() && $record->finished_at) {
+                $secondsSinceCompletion = now()->diffInSeconds($record->finished_at);
+
+                if ($secondsSinceCompletion < 10) {
+                    return '2s'; // Poll every 2 seconds for the first 10 seconds after completion
+                }
+            }
+        }
+
+        return null; // No polling otherwise
+    }
+
     public function table(Table $table): Table
     {
         // Get recordId from route parameter
