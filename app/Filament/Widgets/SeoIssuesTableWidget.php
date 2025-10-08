@@ -6,7 +6,6 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Livewire\Attributes\On;
 
 class SeoIssuesTableWidget extends BaseWidget
 {
@@ -25,29 +24,6 @@ class SeoIssuesTableWidget extends BaseWidget
     public function mount(): void
     {
         // The recordId will be passed from the parent page
-    }
-
-    #[On('seo-check-finished')]
-    public function handleSeoCheckFinished(): void
-    {
-        // Refresh the table when SEO check completes
-        // Use a safer method that doesn't require table initialization
-        try {
-            // Force a re-render by updating a property
-            $this->recordId = $this->recordId; // Trigger re-render
-        } catch (\Exception $e) {
-            // Silently handle refresh errors to prevent breaking the UI
-            \Log::warning('SEO Issues Table refresh failed on completion: ' . $e->getMessage());
-        }
-    }
-
-    #[On('refresh-seo-check-data')]
-    public function handleProgressUpdate(): void
-    {
-        // Disable real-time table updates during crawling to prevent initialization errors
-        // The table will be refreshed on completion instead
-        // This prevents the "table must not be accessed before initialization" error
-
     }
 
     public function table(Table $table): Table
