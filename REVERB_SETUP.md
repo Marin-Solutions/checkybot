@@ -1,155 +1,146 @@
-# Reverb Setup Guide for Production (Ploi.io)
-
-This guide explains how to set up Laravel Reverb for real-time broadcasting in production.
+# Laravel Reverb Setup Guide for Production (Ploi.io)
 
 ## What is Reverb?
+Laravel Reverb is a WebSocket server that enables real-time features in the application (like live SEO check progress, notifications, etc.).
 
-Laravel Reverb is a WebSocket server that enables real-time communication between your application and users. In CheckyBot, it's used for:
-- Live SEO check progress updates
-- Real-time notifications
-- Live data updates without page refresh
+---
 
-## Production Setup on Ploi.io
+## Quick Setup Steps
 
-### Step 1: Environment Variables
+### 1. Environment Configuration
 
-Copy these variables to your production `.env` file in Ploi:
+Copy `.env.example` to `.env` and configure the following:
 
+#### **Must Change:**
 ```bash
-# Broadcasting
-BROADCAST_CONNECTION=reverb
-
-# Reverb Credentials (IMPORTANT: Generate new secure keys)
-REVERB_APP_ID=1
-REVERB_APP_KEY=base64:dGhpc2lzYXJhbmRvbWtleWZvcnJldmVyYmFwcA==
-REVERB_APP_SECRET=base64:dGhpc2lzYXJhbmRvbXNlY3JldGZvcnJldmVyYg==
-
-# Production Domain (CHANGE THIS!)
-REVERB_HOST=yourdomain.com
-REVERB_PORT=443
-REVERB_SCHEME=https
-
-# Server Configuration
-REVERB_SERVER_HOST=0.0.0.0
-REVERB_SERVER_PORT=8080
-
-# Frontend Variables (IMPORTANT: Must match above)
-VITE_REVERB_APP_KEY="${REVERB_APP_KEY}"
-VITE_REVERB_HOST="${REVERB_HOST}"
-VITE_REVERB_PORT="${REVERB_PORT}"
-VITE_REVERB_SCHEME="${REVERB_SCHEME}"
+APP_URL=https://your-actual-domain.com
+REVERB_HOST=your-actual-domain.com
 ```
 
-### Step 2: Generate Secure Keys (RECOMMENDED)
-
-On your server, generate new secure keys:
-
+#### **Recommended: Generate Secure Keys**
+Run these commands to generate unique keys:
 ```bash
-# Generate App Key
-echo "base64:$(openssl rand -base64 32)"
+# Generate APP_KEY (if not already set)
+php artisan key:generate
 
-# Generate App Secret
-echo "base64:$(openssl rand -base64 32)"
+# Generate Reverb credentials
+echo "REVERB_APP_KEY=base64:$(openssl rand -base64 32)"
+echo "REVERB_APP_SECRET=base64:$(openssl rand -base64 32)"
 ```
 
-Replace the default keys in your `.env` with the generated values.
+Copy the output and update your `.env` file.
 
-### Step 3: Set Up Reverb Daemon in Ploi
+---
 
+### 2. Ploi.io Configuration
+
+#### **Step A: Set Environment Variables**
 1. Log in to Ploi.io
 2. Go to your site
-3. Navigate to **"Daemons"** tab
+3. Navigate to **Environment** tab
+4. Paste all your `.env` variables
+5. Save
+
+#### **Step B: Create Reverb Daemon**
+1. Go to **Daemons** tab
+2. Click **"Add Daemon"**
+3. Configure:
+   - **Command:** `php artisan reverb:start`
+   - **User:** Same as your site user
+   - **Directory:** Your site root directory
 4. Click **"Add Daemon"**
-5. Fill in:
-   - **Command**: `php artisan reverb:start`
-   - **User**: Your deployment user (usually `ploi`)
-   - **Directory**: Your site's root directory
-6. Click **"Add Daemon"**
 
-This keeps Reverb running 24/7 in the background.
+This will keep Reverb running 24/7 in the background.
 
-### Step 4: Configure Nginx (Optional - if needed)
+---
 
-If you need WebSocket proxy support, Ploi usually handles this automatically. If not, add this to your Nginx config:
+### 3. Build Frontend Assets
 
-```nginx
-location /app/ {
-    proxy_pass http://127.0.0.1:8080;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "Upgrade";
-    proxy_set_header Host $host;
-    proxy_cache_bypass $http_upgrade;
-}
-```
+After setting environment variables, build the frontend:
 
-### Step 5: Build Frontend Assets
-
-After updating `.env`, rebuild your frontend:
-
-```bash
-npm run build
-```
-
-Or in Ploi, add this to your deployment script:
 ```bash
 npm install
 npm run build
 ```
 
-### Step 6: Test the Connection
+Or in Ploi.io, you can set this as a **Deploy Script**.
 
-After deployment, check if Reverb is running:
+---
+
+### 4. Verify Reverb is Running
+
+Check if Reverb is active:
 
 ```bash
-# SSH into your server
-ps aux | grep reverb
+# Via SSH or Ploi.io terminal
+php artisan reverb:ping
 ```
 
-You should see the Reverb process running.
+Or check the daemon status in Ploi.io dashboard.
+
+---
+
+## Configuration Reference
+
+### Environment Variables Explained
+
+| Variable | Example | Description |
+|----------|---------|-------------|
+| `REVERB_HOST` | `checkybot.com` | Your production domain (no https://) |
+| `REVERB_PORT` | `443` | Port for client connections (443 for HTTPS) |
+| `REVERB_SCHEME` | `https` | Protocol (always `https` in production) |
+| `REVERB_APP_ID` | `1` | Application ID (can be any unique string) |
+| `REVERB_APP_KEY` | `base64:...` | Secret key for authentication |
+| `REVERB_APP_SECRET` | `base64:...` | Secret for server authentication |
+| `REVERB_SERVER_HOST` | `0.0.0.0` | Server bind address (don't change) |
+| `REVERB_SERVER_PORT` | `8080` | Internal port (don't change) |
+
+---
 
 ## Troubleshooting
 
-### Reverb Not Connecting?
+### Issue: Reverb Won't Start
+- Check daemon logs in Ploi.io
+- Ensure port 8080 is not blocked
+- Verify `.env` variables are correct
 
-1. **Check daemon status** in Ploi - make sure it's running
-2. **Check logs**: `tail -f storage/logs/laravel.log`
-3. **Verify environment variables** are set correctly
-4. **Ensure SSL certificate** is active for your domain
-5. **Check firewall** - port 8080 should be accessible (Ploi usually handles this)
+### Issue: WebSocket Connection Failed
+- Ensure SSL certificate is active
+- Check `REVERB_HOST` matches your domain
+- Verify `VITE_*` variables are set correctly
+- Rebuild frontend: `npm run build`
 
-### Console Errors in Browser?
+### Issue: "Connection Refused"
+- Make sure Reverb daemon is running
+- Check Redis is running: `redis-cli ping`
+- Verify firewall settings in Ploi.io
 
-Check browser console for WebSocket errors. Common issues:
-- Wrong `REVERB_HOST` (should match your domain)
-- Frontend assets not rebuilt after `.env` changes
-- Mixed content (HTTP/HTTPS) issues
+---
 
-## Security Notes
+## Testing Reverb Locally
 
-- **Always use HTTPS** in production (`REVERB_SCHEME=https`)
-- **Generate unique keys** - don't use the defaults in production
-- **Keep keys secret** - never commit actual keys to git
-- Consider enabling `REVERB_SCALING_ENABLED=true` with Redis for multiple servers
+For development/testing:
 
-## What Values to Change
+```bash
+# Start Reverb server
+php artisan reverb:start
 
-✅ **MUST CHANGE:**
-- `REVERB_HOST` - Your actual production domain
+# In another terminal, start frontend dev server
+npm run dev
+```
 
-⚠️ **SHOULD CHANGE (for security):**
-- `REVERB_APP_KEY` - Generate new random key
-- `REVERB_APP_SECRET` - Generate new random secret
+Visit your application and check browser console for WebSocket connection status.
 
-✓ **Can keep as-is:**
-- `REVERB_APP_ID` (can be `1` or any identifier)
-- `REVERB_PORT` (443 for HTTPS)
-- `REVERB_SCHEME` (https for production)
-- `REVERB_SERVER_PORT` (8080 is standard)
+---
 
-## Support
+## Additional Resources
 
-If you encounter issues, check:
-1. Laravel logs: `storage/logs/laravel.log`
-2. Ploi daemon logs in the Ploi dashboard
-3. Browser console for frontend errors
+- [Laravel Reverb Documentation](https://laravel.com/docs/11.x/reverb)
+- [Ploi.io Documentation](https://ploi.io/documentation)
+- Check `config/reverb.php` for advanced configuration
+
+---
+
+**Last Updated:** October 2025  
+**Laravel Version:** 11.x  
+**Reverb Package:** laravel/reverb
