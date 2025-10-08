@@ -188,7 +188,7 @@ class ViewSeoCheck extends ViewRecord implements HasTable
                                     ->badge()
                                     ->color(fn($record): string => $record->health_score_color),
                                 TextEntry::make('urls_with_errors_count')
-                                    ->label('URLs with Errors')
+                                    ->label('URLs with Issues')
                                     ->formatStateUsing(function ($record) {
                                         $total = $record->total_urls_crawled;
                                         $errors = $record->getUrlsWithErrorsCount();

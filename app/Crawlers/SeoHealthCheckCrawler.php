@@ -30,26 +30,13 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected int $crawledCount = 0;
 
-    protected int $discoveredCount = 0; // Track total discovered URLs for dynamic discovery
-
-    protected int $estimatedTotal = 0; // Stable estimated total that only increases
-
-    protected int $maxUrls = 200; // Reasonable limit based on previous working version
-
-    protected int $maxCrawlTime = 300; // 5 minutes max crawl time
-
-    protected float $startedAt; // Track crawl start time for ETC calculation
-
-    protected ?float $lastCrawlTime = null; // Track last crawl time for duration calculation
-
-    protected array $lastTimes = []; // Moving average for more stable ETA
+    protected int $maxUrls = 200; // Limit to prevent infinite crawling
 
     protected int $lastBroadcastCount = 0; // Track when we last broadcasted
 
     protected int $broadcastFailures = 0; // Track broadcast failures
 
     protected RobotsSitemapService $robotsSitemapService;
-
     protected SeoIssueDetectionService $issueDetectionService;
 
     public function __construct(SeoCheck $seoCheck)
@@ -58,57 +45,48 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $this->baseDomain = parse_url($seoCheck->website->url, PHP_URL_HOST);
         $this->robotsSitemapService = app(RobotsSitemapService::class);
         $this->issueDetectionService = app(SeoIssueDetectionService::class);
-        $this->startedAt = microtime(true); // Initialize start time for ETC calculation
     }
 
     public function willCrawl(UriInterface $url, ?string $linkText): void
     {
-        Log::info("SEO Crawler: willCrawl called for URL: {$url}");
-
         // Check if URL is allowed by robots.txt
         if (! $this->robotsSitemapService->isUrlAllowed((string) $url)) {
             Log::info("SEO Crawler: Skipping {$url} - disallowed by robots.txt");
-
             return;
         }
 
-        // Skip if we've reached the maximum URLs limit
-        if ($this->discoveredCount >= $this->maxUrls) {
-            Log::info("SEO Crawler: Reached maximum discovered URLs limit ({$this->maxUrls}), skipping {$url}");
+        // Check if we've reached the maximum URLs limit
+        if ($this->crawledCount >= $this->maxUrls) {
+            Log::info("SEO Crawler: Reached maximum URLs limit ({$this->maxUrls}), skipping {$url}");
             return;
         }
 
-        // Skip if we've exceeded the maximum crawl time
-        $elapsedTime = time() - $this->startedAt;
-        if ($elapsedTime >= $this->maxCrawlTime) {
-            Log::info("SEO Crawler: Reached maximum crawl time ({$this->maxCrawlTime}s), skipping {$url}");
-            return;
+        // Update progress
+        $this->crawledCount++;
+
+        // Only update total_crawlable_urls if it's still at the initial value (1) or if we need to increase it significantly
+        $currentTotal = $this->seoCheck->total_crawlable_urls;
+        $newTotal = $currentTotal;
+
+        // If we're still at the initial estimate (1), set a reasonable estimate
+        if ($currentTotal <= 1) {
+            $newTotal = max(50, $this->crawledCount * 2); // Start with 50 or 2x crawled count
+        } else if ($this->crawledCount > $currentTotal) {
+            // Only increase if we've exceeded the current total by a significant margin
+            $newTotal = max($currentTotal, $this->crawledCount + 20); // Add buffer of 20 URLs
         }
 
-        // Update discovered count for dynamic discovery (URLs found but not yet crawled)
-        $this->discoveredCount++;
+        $this->seoCheck->update([
+            'total_urls_crawled' => $this->crawledCount,
+            'total_crawlable_urls' => $newTotal,
+        ]);
 
-        // For dynamic discovery, estimate total URLs based on discovery rate
-        $crawlStrategy = $this->seoCheck->crawl_summary['crawl_strategy'] ?? 'dynamic_discovery';
-        if ($crawlStrategy === 'dynamic_discovery') {
-            // Calculate new estimated total
-            $newEstimatedTotal = $this->estimateTotalUrls();
-
-            // Only update if the new estimate is higher (to avoid decreasing totals)
-            if ($newEstimatedTotal > $this->estimatedTotal) {
-                $this->estimatedTotal = $newEstimatedTotal;
-                $this->seoCheck->update([
-                    'total_crawlable_urls' => $this->estimatedTotal,
-                ]);
-            }
-        }
-
-        // Broadcast progress update (every 5 URLs or on first URL)
+        // Broadcast progress update (every 5 URLs)
         if ($this->crawledCount % 5 === 0 || $this->crawledCount === 1) {
             $this->broadcastProgress((string) $url);
         }
 
-        Log::info("SEO Crawler: Crawling {$url} (URL #{$this->crawledCount}/{$this->discoveredCount})");
+        Log::info("SEO Crawler: Crawling {$url} (URL #{$this->crawledCount})");
     }
 
     public function crawled(
@@ -118,39 +96,11 @@ class SeoHealthCheckCrawler extends CrawlObserver
         ?string $linkText = null
     ): void {
         $urlString = (string) $url;
-        Log::info("SEO Crawler: crawled called for URL: {$urlString}");
 
         // Skip if we've reached the maximum URLs limit
         if ($this->crawledCount >= $this->maxUrls) {
-            Log::info("SEO Crawler: Reached maximum URLs limit ({$this->maxUrls}), skipping {$urlString}");
             return;
         }
-
-        // Skip if we've exceeded the maximum crawl time
-        $elapsedTime = time() - $this->startedAt;
-        if ($elapsedTime >= $this->maxCrawlTime) {
-            Log::info("SEO Crawler: Reached maximum crawl time ({$this->maxCrawlTime}s), skipping {$urlString}");
-            return;
-        }
-
-        // Increment crawled count (URLs actually processed)
-        $this->crawledCount++;
-
-        // Calculate timing for ETC
-        $now = microtime(true);
-        $duration = $now - ($this->lastCrawlTime ?? $this->startedAt);
-        $this->lastCrawlTime = $now;
-
-        // Add to moving average (keep last 10 times for stability)
-        $this->lastTimes[] = $duration;
-        if (count($this->lastTimes) > 10) {
-            array_shift($this->lastTimes);
-        }
-
-        // Update database with crawled count
-        $this->seoCheck->update([
-            'total_urls_crawled' => $this->crawledCount,
-        ]);
 
         try {
             $crawlData = $this->extractSeoData($urlString, $response);
@@ -171,11 +121,6 @@ class SeoHealthCheckCrawler extends CrawlObserver
                 'created_at' => now(),
                 'updated_at' => now(),
             ];
-        }
-
-        // Broadcast progress with ETC calculation (every 5 URLs or on first URL)
-        if ($this->crawledCount % 5 === 0 || $this->crawledCount === 1) {
-            $this->broadcastProgress($urlString);
         }
     }
 
@@ -205,16 +150,6 @@ class SeoHealthCheckCrawler extends CrawlObserver
     {
         Log::info("SEO Crawler: Finished crawling. Processed {$this->crawledCount} URLs.");
 
-        // Check if we actually crawled any URLs successfully
-        if ($this->crawledCount === 0) {
-            Log::warning("SEO Crawler: No URLs were successfully crawled. Marking as failed.");
-            $this->seoCheck->update([
-                'status' => 'failed',
-                'finished_at' => now(),
-            ]);
-            return;
-        }
-
         // Bulk insert crawl results
         if (! empty($this->crawlResults)) {
             foreach ($this->crawlResults as $result) {
@@ -236,6 +171,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $this->seoCheck->update([
             'status' => 'completed',
             'finished_at' => now(),
+            'total_crawlable_urls' => $this->crawledCount, // Set final total to actual crawled count
         ]);
 
         // Broadcast completion event
@@ -249,19 +185,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $startTime = microtime(true);
         $statusCode = $response->getStatusCode();
         $headers = $this->extractHeaders($response);
-
-        // Read response body once and store it
-        $bodyStream = $response->getBody();
-        $bodyStream->rewind(); // Ensure we're at the beginning of the stream
-        $body = $bodyStream->getContents();
+        $body = $response->getBody()->getContents();
         $bodySize = strlen($body);
-
-        // Debug logging for response body
-        if ($statusCode === 200 && $bodySize === 0) {
-            Log::warning("SEO Crawler: HTTP 200 response but empty body for {$url}");
-        } elseif ($statusCode === 200 && $bodySize > 0) {
-            Log::info("SEO Crawler: HTTP 200 response with {$bodySize} bytes for {$url}");
-        }
 
         // Measure response time
         $responseTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
@@ -272,16 +197,11 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
         // Parse HTML content only if body is not empty
         if (! empty($body)) {
-            try {
-                $dom = new DOMDocument;
-                // Use LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD to avoid issues
-                @$dom->loadHTML($body, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
-                $xpath = new DOMXPath($dom);
-            } catch (\Exception $e) {
-                Log::warning("SEO Crawler: Failed to parse HTML for {$url}: " . $e->getMessage());
-            }
-        } else {
-            Log::warning("SEO Crawler: Empty response body for {$url} (status: {$statusCode})");
+            $dom = new DOMDocument;
+            // Suppress warnings but enable error reporting for debugging
+            libxml_use_internal_errors(true);
+            $dom->loadHTML($body, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            $xpath = new DOMXPath($dom);
         }
 
         // Extract SEO data
@@ -349,22 +269,44 @@ class SeoHealthCheckCrawler extends CrawlObserver
     protected function extractTitle(DOMXPath $xpath): ?string
     {
         $titleNodes = $xpath->query('//title');
+        if ($titleNodes->length > 0) {
+            return trim($titleNodes->item(0)->textContent);
+        }
 
-        return $titleNodes->length > 0 ? trim($titleNodes->item(0)->textContent) : null;
+        // Try og:title as fallback
+        $ogNodes = $xpath->query('//meta[@property="og:title"]/@content');
+        if ($ogNodes->length > 0) {
+            return trim($ogNodes->item(0)->textContent);
+        }
+
+        return null;
     }
 
     protected function extractMetaDescription(DOMXPath $xpath): ?string
     {
+        // Try different meta description formats
         $metaNodes = $xpath->query('//meta[@name="description"]/@content');
+        if ($metaNodes->length > 0) {
+            return trim($metaNodes->item(0)->textContent);
+        }
 
-        return $metaNodes->length > 0 ? trim($metaNodes->item(0)->textContent) : null;
+        // Try property="og:description"
+        $ogNodes = $xpath->query('//meta[@property="og:description"]/@content');
+        if ($ogNodes->length > 0) {
+            return trim($ogNodes->item(0)->textContent);
+        }
+
+        return null;
     }
 
     protected function extractH1(DOMXPath $xpath): ?string
     {
         $h1Nodes = $xpath->query('//h1');
+        if ($h1Nodes->length > 0) {
+            return trim($h1Nodes->item(0)->textContent);
+        }
 
-        return $h1Nodes->length > 0 ? trim($h1Nodes->item(0)->textContent) : null;
+        return null;
     }
 
     protected function extractCanonicalUrl(DOMXPath $xpath): ?string
@@ -530,18 +472,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         try {
             $progress = $this->seoCheck->getProgressPercentage();
             $issuesFound = $this->seoCheck->seoIssues()->count();
-
-            // Use stable estimated total for dynamic discovery, otherwise use total_crawlable_urls
-            $crawlStrategy = $this->seoCheck->crawl_summary['crawl_strategy'] ?? 'dynamic_discovery';
-            $totalUrls = $crawlStrategy === 'dynamic_discovery'
-                ? max($this->estimatedTotal, $this->crawledCount + 10) // Use stable estimated total
-                : $this->seoCheck->total_crawlable_urls;
-
-            // Calculate ETC (Estimated Time to Completion)
-            $etaSeconds = $this->calculateETA($totalUrls);
-
-            // Update progress in database for persistence
-            $this->seoCheck->update(['progress' => $progress]);
+            $totalUrls = $this->seoCheck->total_crawlable_urls;
 
             // Only broadcast if we have new data to share
             if ($this->crawledCount > $this->lastBroadcastCount) {
@@ -555,7 +486,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
                         issuesFound: $issuesFound,
                         progress: $progress,
                         currentUrl: $currentUrl,
-                        etaSeconds: $etaSeconds
+                        etaSeconds: null
                     ));
                 } catch (\Exception $e) {
                     Log::warning('Failed to broadcast progress update: ' . $e->getMessage());
@@ -574,56 +505,6 @@ class SeoHealthCheckCrawler extends CrawlObserver
                 Log::warning("SEO Crawler: Disabling broadcasting after {$this->broadcastFailures} consecutive failures");
             }
         }
-    }
-
-    /**
-     * Estimate total URLs for dynamic discovery
-     */
-    protected function estimateTotalUrls(): int
-    {
-        // If we haven't crawled many URLs yet, use a conservative estimate
-        if ($this->crawledCount < 10) {
-            return max($this->discoveredCount, 100); // Start with reasonable estimate for small sites
-        }
-
-        // Calculate discovery rate (new URLs discovered per crawled URL)
-        $discoveryRate = $this->discoveredCount / max(1, $this->crawledCount);
-
-        // Estimate remaining URLs based on discovery rate
-        // More conservative estimates for typical small-medium sites
-        if ($discoveryRate > 1.5) {
-            // Still discovering many new URLs, estimate 1.5-2x current discovered
-            $estimatedTotal = (int) ($this->discoveredCount * 1.8);
-        } elseif ($discoveryRate > 1.1) {
-            // Moderate discovery, estimate 1.2-1.5x current discovered
-            $estimatedTotal = (int) ($this->discoveredCount * 1.4);
-        } else {
-            // Low discovery rate, we're probably near the end
-            $estimatedTotal = (int) ($this->discoveredCount * 1.1);
-        }
-
-        // Ensure we don't go below discovered count
-        return max($this->discoveredCount, $estimatedTotal);
-    }
-
-    /**
-     * Calculate Estimated Time to Completion (ETC)
-     */
-    protected function calculateETA(int $totalUrls): int
-    {
-        // Don't show ETA until we have enough data points for accuracy
-        if ($this->crawledCount < 3 || empty($this->lastTimes)) {
-            return 0;
-        }
-
-        // Use moving average for more stable ETA
-        $avgTimePerUrl = array_sum($this->lastTimes) / count($this->lastTimes);
-        $remainingUrls = max(0, $totalUrls - $this->crawledCount);
-
-        // Calculate ETA in seconds
-        $etaSeconds = (int) round($avgTimePerUrl * $remainingUrls);
-
-        return $etaSeconds;
     }
 
     /**

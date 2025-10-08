@@ -49,10 +49,20 @@ class SeoCheckProgress extends Component
     #[On('seo-check-progress-updated')]
     public function updateProgress(): void
     {
-        // Don't refresh from database to avoid stale data during progress
-        // The WebSocket events update the DOM directly via JavaScript
+        // Refresh from database to get latest progress data
+        $this->seoCheck->refresh();
 
-        // Only dispatch event to update the parent page sections
+        // Update component properties
+        $this->isRunning = $this->seoCheck->isRunning();
+        $this->urlsCrawled = $this->seoCheck->total_urls_crawled ?? 0;
+        $this->totalUrls = $this->seoCheck->total_crawlable_urls ?? 1;
+        $this->progress = $this->seoCheck->getProgressPercentage();
+        $this->issuesFound = $this->seoCheck->seoIssues()->count();
+
+        // Recalculate estimated time
+        $this->calculateEstimatedTime();
+
+        // Dispatch event to update the parent page sections
         $this->dispatch('refresh-seo-check-data');
     }
 

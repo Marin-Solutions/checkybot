@@ -45,7 +45,15 @@ class SeoIssuesTableWidget extends BaseWidget
 
     public function table(Table $table): Table
     {
-        // If no recordId is provided, return empty query (this prevents showing on dashboard)
+        // If no recordId is provided, try to get it from the route
+        if (! $this->recordId) {
+            $route = request()->route();
+            if ($route && $route->getName() === 'filament.admin.resources.seo-checks.view') {
+                $this->recordId = $route->parameter('record');
+            }
+        }
+
+        // If still no recordId, return empty query (this prevents showing on dashboard)
         if (! $this->recordId) {
             return $table->query(\App\Models\SeoIssue::query()->whereRaw('1 = 0'));
         }

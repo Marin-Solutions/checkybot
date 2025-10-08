@@ -70,7 +70,9 @@ class SeoIssueDetectionService
 
         // Create DOM document for parsing
         $dom = new \DOMDocument;
-        @$dom->loadHTML($htmlContent);
+        // Suppress warnings but enable error reporting for debugging
+        libxml_use_internal_errors(true);
+        $dom->loadHTML($htmlContent, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         $xpath = new DOMXPath($dom);
 
         // Detect various issues
@@ -85,6 +87,7 @@ class SeoIssueDetectionService
         $issues = $issues->merge($this->detectMissingAltText($result, $xpath));
         $issues = $issues->merge($this->detectTitleIssues($result));
         $issues = $issues->merge($this->detectInternalLinkCount($result));
+        $issues = $issues->merge($this->detectTooManyInternalLinks($result));
 
         return $issues;
     }
@@ -559,7 +562,7 @@ class SeoIssueDetectionService
                     'seo_check_id' => $result->seo_check_id,
                     'seo_crawl_result_id' => $result->id,
                     'type' => 'orphaned_page',
-                    'severity' => SeoIssueSeverity::Error->value,
+                    'severity' => SeoIssueSeverity::Warning->value, // Changed from Error to Warning
                     'url' => $result->url,
                     'title' => 'Orphaned Page',
                     'description' => 'Page is not linked to by any other internal page',
@@ -568,6 +571,33 @@ class SeoIssueDetectionService
                     'updated_at' => now(),
                 ]);
             }
+        }
+
+        return $issues;
+    }
+
+    protected function detectTooManyInternalLinks(SeoCrawlResult $result): Collection
+    {
+        $issues = collect();
+
+        $internalLinkCount = count($result->internal_links ?? []);
+
+        // Flag pages with more than 100 internal links as potentially problematic
+        if ($internalLinkCount > 100) {
+            $issues->push([
+                'seo_check_id' => $result->seo_check_id,
+                'seo_crawl_result_id' => $result->id,
+                'type' => 'too_many_internal_links',
+                'severity' => SeoIssueSeverity::Notice->value,
+                'url' => $result->url,
+                'title' => 'Too Many Internal Links',
+                'description' => "Page has {$internalLinkCount} internal links, which may dilute link equity",
+                'data' => [
+                    'link_count' => $internalLinkCount,
+                ],
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
         }
 
         return $issues;

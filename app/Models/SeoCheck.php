@@ -80,15 +80,19 @@ class SeoCheck extends Model
             return 0;
         }
 
-        // For dynamic discovery, we need to handle the case where discovered URLs might be less than crawled
+        // For dynamic discovery, use a more stable progress calculation
         $crawlStrategy = $this->crawl_summary['crawl_strategy'] ?? 'dynamic_discovery';
 
         if ($crawlStrategy === 'dynamic_discovery') {
-            // For dynamic discovery, progress is based on discovered URLs
-            // If we've discovered fewer URLs than crawled, it means we're still discovering
-            $totalUrls = max($this->total_crawlable_urls, $this->total_urls_crawled);
+            // For dynamic discovery, use the current total but cap progress at 95% until completed
+            $progress = ($this->total_urls_crawled / $this->total_crawlable_urls) * 100;
 
-            return min(100, (int) (($this->total_urls_crawled / $totalUrls) * 100));
+            // Cap at 95% until the crawl is actually completed to avoid showing 100% prematurely
+            if ($this->status === 'running') {
+                return min(95, (int) $progress);
+            } else {
+                return min(100, (int) $progress);
+            }
         } else {
             // For sitemap preload, use the exact total
             return min(100, (int) (($this->total_urls_crawled / $this->total_crawlable_urls) * 100));
@@ -159,7 +163,7 @@ class SeoCheck extends Model
     /**
      * Calculate the SEO Health Score based on Ahrefs-style scoring
      * Health Score (%) = (Total internal URLs without Errors ÷ Total internal URLs crawled) × 100
-     * Warnings and Notices do not reduce score but are shown in the report
+     * Errors (both HTTP and SEO) reduce the score, Warnings and Notices do not reduce score but are shown in the report
      */
     public function getHealthScoreAttribute(): float
     {
@@ -266,7 +270,7 @@ class SeoCheck extends Model
      */
     public function getHealthScoreFormattedAttribute(): string
     {
-        return $this->getHealthScoreAttribute().'%';
+        return $this->getHealthScoreAttribute() . '%';
     }
 
     /**

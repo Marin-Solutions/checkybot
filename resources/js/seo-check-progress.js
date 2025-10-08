@@ -73,7 +73,13 @@ class SeoCheckProgress {
     handleProgressUpdate(data) {
         console.log('📊 Processing progress update with data:', data);
         
-        // Add small delay to ensure DOM is ready
+        // Dispatch Livewire event to update the component
+        if (window.Livewire) {
+            window.Livewire.dispatch('seo-check-progress-updated');
+            console.log('🔄 Dispatching Livewire event: seo-check-progress-updated');
+        }
+        
+        // Also update DOM directly as backup
         setTimeout(() => {
             // Update progress bar
             this.updateProgressBar(data.progress);
@@ -85,13 +91,6 @@ class SeoCheckProgress {
                 issuesFound: data.issuesFound,
                 currentUrl: data.currentUrl
             });
-
-            // Debug: Check what elements are available
-            console.log('🔍 Available DOM elements:');
-            console.log('- .urls-crawled:', document.querySelector('.urls-crawled'));
-            console.log('- .total-urls:', document.querySelector('.total-urls'));
-            console.log('- .progress-bar:', document.querySelector('.progress-bar'));
-            console.log('- .progress-text:', document.querySelector('.progress-text'));
 
             // Update estimated time with ETA from server
             this.updateEstimatedTime(data.urlsCrawled, data.totalUrls, data.etaSeconds);
