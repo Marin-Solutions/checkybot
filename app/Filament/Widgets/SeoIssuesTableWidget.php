@@ -6,6 +6,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
+use Livewire\Attributes\On;
 
 class SeoIssuesTableWidget extends BaseWidget
 {
@@ -24,6 +25,13 @@ class SeoIssuesTableWidget extends BaseWidget
     public function mount(): void
     {
         // The recordId will be passed from the parent page
+    }
+
+    #[On('seo-check-finished')]
+    public function refreshWidget(): void
+    {
+        // Force re-render of the widget when SEO check completes
+        $this->resetTable();
     }
 
     protected function getPollingInterval(): ?string

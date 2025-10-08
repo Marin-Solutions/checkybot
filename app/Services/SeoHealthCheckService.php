@@ -27,7 +27,7 @@ class SeoHealthCheckService
             throw new \Exception("No crawlable URLs found for {$website->url}. Check robots.txt restrictions.");
         }
 
-        Log::info('Found '.count($crawlableUrls)." crawlable URLs for {$website->url}");
+        Log::info('Found ' . count($crawlableUrls) . " crawlable URLs for {$website->url}");
 
         // Create new SEO check record
         $seoCheck = SeoCheck::create([

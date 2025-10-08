@@ -30,7 +30,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected int $crawledCount = 0;
 
-    protected int $maxUrls = 200; // Limit to prevent infinite crawling
+    protected int $maxUrls = 1000; // Limit to prevent infinite crawling
 
     protected int $lastBroadcastCount = 0; // Track when we last broadcasted
 
