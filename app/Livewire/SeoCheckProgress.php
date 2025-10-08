@@ -49,73 +49,104 @@ class SeoCheckProgress extends Component
     #[On('seo-check-progress-updated')]
     public function updateProgress(): void
     {
-        // Refresh from database to get latest progress data
-        $this->seoCheck->refresh();
+        try {
+            // Refresh from database to get latest progress data
+            $this->seoCheck->refresh();
 
-        // Update component properties
-        $this->isRunning = $this->seoCheck->isRunning();
-        $this->urlsCrawled = $this->seoCheck->total_urls_crawled ?? 0;
-        $this->totalUrls = $this->seoCheck->total_crawlable_urls ?? 1;
-        $this->progress = $this->seoCheck->getProgressPercentage();
-        $this->issuesFound = $this->seoCheck->seoIssues()->count();
+            // Skip if check is no longer running (prevents updates after completion)
+            if (! $this->seoCheck->isRunning()) {
+                return;
+            }
 
-        // Recalculate estimated time
-        $this->calculateEstimatedTime();
+            // Update component properties
+            $this->isRunning = $this->seoCheck->isRunning();
+            $this->urlsCrawled = $this->seoCheck->total_urls_crawled ?? 0;
+            $this->totalUrls = $this->seoCheck->total_crawlable_urls ?? 1;
+            $this->progress = $this->seoCheck->getProgressPercentage();
+            $this->issuesFound = $this->seoCheck->seoIssues()->count();
 
-        // Dispatch event to update the parent page sections
-        $this->dispatch('refresh-seo-check-data');
+            // Recalculate estimated time
+            $this->calculateEstimatedTime();
+
+            // Dispatch event to update the parent page sections
+            $this->dispatch('refresh-seo-check-data');
+        } catch (\Exception $e) {
+            // Silently handle any errors
+            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress updateProgress: ' . $e->getMessage());
+        }
     }
 
     #[On('seo-check-completed')]
     public function handleCompletion(): void
     {
-        // Refresh from database only on completion to get final data
-        $this->seoCheck->refresh();
+        try {
+            // Refresh from database only on completion to get final data
+            $this->seoCheck->refresh();
 
-        // Force update all properties
-        $this->isRunning = false; // Explicitly set to false since crawl is completed
-        $this->urlsCrawled = $this->seoCheck->total_urls_crawled;
-        $this->totalUrls = $this->seoCheck->total_crawlable_urls;
-        $this->progress = 100; // Set to 100% on completion
-        $this->issuesFound = $this->seoCheck->seoIssues()->count();
-        $this->startedAt = $this->seoCheck->started_at;
-        $this->estimatedTime = null; // Clear estimated time on completion
+            // Check if still exists and is actually completed
+            if (! $this->seoCheck->exists || ! $this->seoCheck->isCompleted()) {
+                return;
+            }
 
-        // Dispatch completion event to update all sections
-        $this->dispatch('seo-check-finished');
+            // Force update all properties
+            $this->isRunning = false; // Explicitly set to false since crawl is completed
+            $this->urlsCrawled = $this->seoCheck->total_urls_crawled;
+            $this->totalUrls = $this->seoCheck->total_crawlable_urls;
+            $this->progress = 100; // Set to 100% on completion
+            $this->issuesFound = $this->seoCheck->seoIssues()->count();
+            $this->startedAt = $this->seoCheck->started_at;
+            $this->estimatedTime = null; // Clear estimated time on completion
 
-        // Show completion notification
-        \Filament\Notifications\Notification::make()
-            ->title('SEO Check Completed!')
-            ->body("Found {$this->issuesFound} issues.")
-            ->success()
-            ->send();
+            // Dispatch completion event to update all sections
+            $this->dispatch('seo-check-finished');
+
+            // Show completion notification
+            \Filament\Notifications\Notification::make()
+                ->title('SEO Check Completed!')
+                ->body("Found {$this->issuesFound} issues.")
+                ->success()
+                ->send();
+
+            // Skip further rendering since component will be hidden
+            $this->skipRender();
+        } catch (\Exception $e) {
+            // Silently handle any errors to prevent console errors
+            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress handleCompletion: ' . $e->getMessage());
+        }
     }
 
     #[On('seo-check-failed')]
     public function handleFailure(): void
     {
-        // Refresh from database to get final data
-        $this->seoCheck->refresh();
+        try {
+            // Refresh from database to get final data
+            $this->seoCheck->refresh();
 
-        // Force update all properties
-        $this->isRunning = false; // Explicitly set to false since crawl failed
-        $this->urlsCrawled = $this->seoCheck->total_urls_crawled;
-        $this->totalUrls = $this->seoCheck->total_crawlable_urls;
-        $this->progress = 0; // Reset progress on failure
-        $this->issuesFound = $this->seoCheck->seoIssues()->count();
-        $this->startedAt = $this->seoCheck->started_at;
-        $this->estimatedTime = null; // Clear estimated time on failure
+            // Force update all properties
+            $this->isRunning = false; // Explicitly set to false since crawl failed
+            $this->urlsCrawled = $this->seoCheck->total_urls_crawled;
+            $this->totalUrls = $this->seoCheck->total_crawlable_urls;
+            $this->progress = 0; // Reset progress on failure
+            $this->issuesFound = $this->seoCheck->seoIssues()->count();
+            $this->startedAt = $this->seoCheck->started_at;
+            $this->estimatedTime = null; // Clear estimated time on failure
 
-        // Dispatch failure event to update all sections
-        $this->dispatch('seo-check-finished');
+            // Dispatch failure event to update all sections
+            $this->dispatch('seo-check-finished');
 
-        // Show failure notification
-        \Filament\Notifications\Notification::make()
-            ->title('SEO Check Failed')
-            ->body('The crawl encountered an error and could not complete.')
-            ->danger()
-            ->send();
+            // Show failure notification
+            \Filament\Notifications\Notification::make()
+                ->title('SEO Check Failed')
+                ->body('The crawl encountered an error and could not complete.')
+                ->danger()
+                ->send();
+
+            // Skip further rendering since component will be hidden
+            $this->skipRender();
+        } catch (\Exception $e) {
+            // Silently handle any errors
+            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress handleFailure: ' . $e->getMessage());
+        }
     }
 
     protected function calculateEstimatedTime(): void

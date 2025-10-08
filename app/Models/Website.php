@@ -149,6 +149,11 @@ class Website extends Model
         return $this->hasOne(SeoCheck::class)->latest();
     }
 
+    public function seoSchedule(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(SeoSchedule::class);
+    }
+
     public function getLatestSeoCheckStatusAttribute(): ?string
     {
         // Use loaded relationship if available to avoid N+1 queries

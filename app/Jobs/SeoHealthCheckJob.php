@@ -3,10 +3,12 @@
 namespace App\Jobs;
 
 use App\Crawlers\SeoHealthCheckCrawler;
+use App\Mail\SeoCheckCompleted;
 use App\Models\SeoCheck;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Spatie\Crawler\Crawler;
 use Spatie\Crawler\CrawlProfiles\CrawlInternalUrls;
 
@@ -37,7 +39,7 @@ class SeoHealthCheckJob implements ShouldQueue
             $website = $this->seoCheck->website;
             Log::info("Website loaded: {$website->url}");
         } catch (\Exception $e) {
-            Log::error('Error loading website: ' . $e->getMessage());
+            Log::error('Error loading website: '.$e->getMessage());
             throw $e;
         }
 
@@ -74,13 +76,19 @@ class SeoHealthCheckJob implements ShouldQueue
                 }
 
                 Log::info("SEO health check completed successfully for website: {$website->url}");
+
+                // Send email notification if this was a scheduled check
+                $this->sendNotificationIfScheduled();
             } catch (\Exception $crawlerException) {
-                Log::warning('SEO Crawler encountered an exception but may have completed: ' . $crawlerException->getMessage());
+                Log::warning('SEO Crawler encountered an exception but may have completed: '.$crawlerException->getMessage());
 
                 // Check if the crawler actually completed by looking at the status
                 $this->seoCheck->refresh();
                 if ($this->seoCheck->status === 'completed') {
                     Log::info("SEO health check completed successfully despite exception for website: {$website->url}");
+
+                    // Send email notification if this was a scheduled check
+                    $this->sendNotificationIfScheduled();
 
                     return; // Don't throw exception if it actually completed
                 }
@@ -89,7 +97,7 @@ class SeoHealthCheckJob implements ShouldQueue
                 throw $crawlerException;
             }
         } catch (\Exception $e) {
-            Log::error("SEO health check failed for website {$this->seoCheck->website->url}: " . $e->getMessage());
+            Log::error("SEO health check failed for website {$this->seoCheck->website->url}: ".$e->getMessage());
 
             // Update status to failed
             $this->seoCheck->update([
@@ -103,7 +111,7 @@ class SeoHealthCheckJob implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
-        Log::error("SEO health check job failed for website {$this->seoCheck->website->url}: " . $exception->getMessage());
+        Log::error("SEO health check job failed for website {$this->seoCheck->website->url}: ".$exception->getMessage());
 
         $this->seoCheck->update([
             'status' => 'failed',
@@ -118,7 +126,44 @@ class SeoHealthCheckJob implements ShouldQueue
                 errorMessage: $exception->getMessage()
             ));
         } catch (\Exception $e) {
-            Log::warning('Failed to broadcast crawl failure event: ' . $e->getMessage());
+            Log::warning('Failed to broadcast crawl failure event: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Send email notification if this check was scheduled
+     */
+    protected function sendNotificationIfScheduled(): void
+    {
+        try {
+            $this->seoCheck->refresh();
+            $crawlSummary = $this->seoCheck->crawl_summary ?? [];
+            $isScheduled = $crawlSummary['is_scheduled'] ?? false;
+
+            if (! $isScheduled) {
+                return; // Only send for scheduled checks
+            }
+
+            $website = $this->seoCheck->website;
+            $scheduledBy = $crawlSummary['scheduled_by'] ?? null;
+
+            // Send to user who configured the schedule
+            if ($scheduledBy) {
+                $user = \App\Models\User::find($scheduledBy);
+                if ($user && $user->email) {
+                    Mail::to($user->email)->send(new SeoCheckCompleted($this->seoCheck, isScheduled: true));
+                    Log::info("Sent scheduled SEO check completion email to: {$user->email}");
+                }
+            }
+
+            // Also send to website owner if different from scheduler
+            if ($website->user && $website->user->id !== $scheduledBy) {
+                Mail::to($website->user->email)->send(new SeoCheckCompleted($this->seoCheck, isScheduled: true));
+                Log::info("Sent scheduled SEO check completion email to website owner: {$website->user->email}");
+            }
+        } catch (\Exception $e) {
+            Log::error('Failed to send SEO check completion email: '.$e->getMessage());
+            // Don't throw - email failure shouldn't fail the job
         }
     }
 }

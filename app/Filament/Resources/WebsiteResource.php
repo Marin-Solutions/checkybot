@@ -126,6 +126,55 @@ class WebsiteResource extends Resource
                                                     // ->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
                                                     ->required(),
                                             ])->columnSpan(1),
+                                        fieldset::make('SEO Health Check Schedule')
+                                            ->schema([
+                                                Forms\Components\Toggle::make('seo_schedule_enabled')
+                                                    ->label('Enable Scheduled SEO Checks')
+                                                    ->onColor('success')
+                                                    ->inline(false)
+                                                    ->live()
+                                                    ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                                        if (! $state) {
+                                                            $set('seo_schedule_frequency', null);
+                                                            $set('seo_schedule_time', null);
+                                                            $set('seo_schedule_day', null);
+                                                        }
+                                                    })
+                                                    ->dehydrated(false),
+                                                Forms\Components\Select::make('seo_schedule_frequency')
+                                                    ->label('Frequency')
+                                                    ->options([
+                                                        'daily' => 'Daily',
+                                                        'weekly' => 'Weekly',
+                                                    ])
+                                                    ->live()
+                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->dehydrated(false),
+                                                Forms\Components\TimePicker::make('seo_schedule_time')
+                                                    ->label('Run Time')
+                                                    ->default('02:00')
+                                                    ->seconds(false)
+                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->helperText('Time when the check will run (server timezone)')
+                                                    ->dehydrated(false),
+                                                Forms\Components\Select::make('seo_schedule_day')
+                                                    ->label('Day of Week')
+                                                    ->options([
+                                                        'Monday' => 'Monday',
+                                                        'Tuesday' => 'Tuesday',
+                                                        'Wednesday' => 'Wednesday',
+                                                        'Thursday' => 'Thursday',
+                                                        'Friday' => 'Friday',
+                                                        'Saturday' => 'Saturday',
+                                                        'Sunday' => 'Sunday',
+                                                    ])
+                                                    ->default('Monday')
+                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
+                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
+                                                    ->dehydrated(false),
+                                            ])->columnSpan(1),
                                     ]),
                             ])->columns(1),
                     ]),
@@ -143,7 +192,7 @@ class WebsiteResource extends Resource
                     ->formatStateUsing(function ($state, Website $record) {
                         $latestCheck = $record->latestSeoCheck;
                         if ($latestCheck && in_array($latestCheck->status, ['running', 'pending'])) {
-                            return $state.' 🔄';
+                            return $state . ' 🔄';
                         }
 
                         return $state;
@@ -161,7 +210,7 @@ class WebsiteResource extends Resource
                             ->where('created_at', '>=', now()->subHours(24))
                             ->orderBy('created_at')
                             ->get()
-                            ->map(fn ($log) => [
+                            ->map(fn($log) => [
                                 'date' => $log->created_at->format('M j, H:i'),
                                 'value' => $log->speed,
                             ])
@@ -173,7 +222,7 @@ class WebsiteResource extends Resource
                     ->state(function (Website $record): string {
                         $avg = $record->average_response_time;
 
-                        return $avg ? round($avg).'ms' : 'N/A';
+                        return $avg ? round($avg) . 'ms' : 'N/A';
                     })
                     ->sortable()
                     ->alignCenter(),
@@ -215,13 +264,13 @@ class WebsiteResource extends Resource
                 Tables\Columns\TextColumn::make('global_notifications_count')
                     ->label('Global Notifications Channels')
                     ->state(function (Website $record): string {
-                        return $record->globalNotifications->count().'  🌍';
+                        return $record->globalNotifications->count() . '  🌍';
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('individual_notifications_count')
                     ->label('Individual Notifications Channels')
                     ->state(function (Website $record): string {
-                        return $record->individualNotifications->count().'  📌';
+                        return $record->individualNotifications->count() . '  📌';
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
@@ -354,7 +403,7 @@ class WebsiteResource extends Resource
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->title('Error Starting SEO Check')
-                                ->body('Failed to start SEO check: '.$e->getMessage())
+                                ->body('Failed to start SEO check: ' . $e->getMessage())
                                 ->danger()
                                 ->send();
                         }

@@ -63,18 +63,16 @@ class SeoIssuesTableWidget extends BaseWidget
         $route = request()->route();
         $recordId = $route->parameter('record') ?? $this->recordId;
 
-        // If no recordId, return empty query
-        if (! $recordId) {
-            return $table->query(\App\Models\SeoIssue::query()->whereRaw('1 = 0'));
-        }
+        // Get the record
+        $record = $recordId ? \App\Models\SeoCheck::find($recordId) : null;
 
-        $record = \App\Models\SeoCheck::find($recordId);
-        if (! $record) {
-            return $table->query(\App\Models\SeoIssue::query()->whereRaw('1 = 0'));
-        }
+        // Set up query - use empty query if no record found
+        $query = $record
+            ? $record->seoIssues()->getQuery()
+            : \App\Models\SeoIssue::query()->whereRaw('1 = 0');
 
         return $table
-            ->query($record->seoIssues()->getQuery())
+            ->query($query)
             ->columns([
                 TextColumn::make('severity')
                     ->badge()

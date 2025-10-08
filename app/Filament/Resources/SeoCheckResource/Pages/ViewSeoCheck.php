@@ -120,10 +120,17 @@ class ViewSeoCheck extends ViewRecord
 
     protected function getFooterWidgets(): array
     {
-        return [
-            \App\Filament\Widgets\SeoIssuesTableWidget::make([
-                'recordId' => $this->getRecord()->id,
-            ]),
-        ];
+        $record = $this->getRecord();
+
+        // Only show widget if check is completed or has issues
+        if ($record->isCompleted() || $record->seoIssues()->exists()) {
+            return [
+                \App\Filament\Widgets\SeoIssuesTableWidget::make([
+                    'recordId' => $record->id,
+                ]),
+            ];
+        }
+
+        return [];
     }
 }

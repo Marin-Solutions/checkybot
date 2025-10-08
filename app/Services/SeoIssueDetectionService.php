@@ -70,6 +70,7 @@ class SeoIssueDetectionService
         // Skip if no HTML content or failed status
         if ($result->status_code < 200 || $result->status_code >= 300) {
             Log::debug("SEO Issue Detection: Skipping {$result->url} - status code {$result->status_code}");
+
             return $issues;
         }
 
@@ -77,10 +78,11 @@ class SeoIssueDetectionService
         $htmlContent = $result->html_content;
         if (! $htmlContent) {
             Log::debug("SEO Issue Detection: Skipping {$result->url} - no HTML content");
+
             return $issues;
         }
 
-        Log::debug("SEO Issue Detection: Processing {$result->url} with " . strlen($htmlContent) . " bytes of HTML");
+        Log::debug("SEO Issue Detection: Processing {$result->url} with ".strlen($htmlContent).' bytes of HTML');
 
         // Create DOM document for parsing
         $dom = new \DOMDocument;
@@ -112,8 +114,12 @@ class SeoIssueDetectionService
 
         // Detect duplicate content/titles
         $issues = $issues->merge($this->detectDuplicateContent($allResults));
-        // Disabled orphaned page detection as it's not accurate
-        // $issues = $issues->merge($this->detectOrphanedPages($allResults));
+
+        // Detect duplicate meta descriptions
+        $issues = $issues->merge($this->detectDuplicateMetaDescriptions($allResults));
+
+        // Detect orphaned pages (now more accurate)
+        $issues = $issues->merge($this->detectOrphanedPages($allResults));
 
         return $issues;
     }
@@ -540,6 +546,45 @@ class SeoIssueDetectionService
         return $issues;
     }
 
+    protected function detectDuplicateMetaDescriptions(Collection $allResults): Collection
+    {
+        $issues = collect();
+
+        // Group by meta description to find duplicates
+        $metaDescriptionGroups = $allResults
+            ->filter(fn ($result) => ! empty($result->meta_description))
+            ->groupBy('meta_description');
+
+        foreach ($metaDescriptionGroups as $metaDescription => $results) {
+            if ($results->count() <= 1) {
+                continue;
+            }
+
+            $urls = $results->pluck('url')->toArray();
+
+            foreach ($results as $result) {
+                $issues->push([
+                    'seo_check_id' => $result->seo_check_id,
+                    'seo_crawl_result_id' => $result->id,
+                    'type' => 'duplicate_meta_description',
+                    'severity' => SeoIssueSeverity::Warning->value,
+                    'url' => $result->url,
+                    'title' => 'Duplicate Meta Description',
+                    'description' => "Meta description is used on {$results->count()} pages",
+                    'data' => [
+                        'duplicate_meta_description' => $metaDescription,
+                        'duplicate_urls' => $urls,
+                        'duplicate_count' => $results->count(),
+                    ],
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+        }
+
+        return $issues;
+    }
+
     protected function detectOrphanedPages(Collection $allResults): Collection
     {
         $issues = collect();
@@ -554,10 +599,13 @@ class SeoIssueDetectionService
         }
 
         $linkedUrls = $allInternalLinks->unique()->filter()->toArray();
+
+        // Get homepage and sitemap pages
         $homepageUrl = $allResults->first()->url ?? '';
+        $sitemapPages = $allResults->where('crawl_source', 'sitemap')->pluck('url')->toArray();
 
         // Only check pages that are likely to be content pages (not admin, API, etc.)
-        $contentPages = $allResults->filter(function ($result) use ($homepageUrl) {
+        $contentPages = $allResults->filter(function ($result) use ($homepageUrl, $sitemapPages) {
             $url = $result->url;
 
             // Skip homepage
@@ -565,7 +613,12 @@ class SeoIssueDetectionService
                 return false;
             }
 
-            // Skip admin, API, auth pages
+            // Skip pages that are in sitemap (they're intentionally crawlable)
+            if (in_array($url, $sitemapPages)) {
+                return false;
+            }
+
+            // Skip admin, API, auth pages, and common utility URLs
             if (
                 str_contains($url, '/admin') ||
                 str_contains($url, '/api/') ||
@@ -574,7 +627,10 @@ class SeoIssueDetectionService
                 str_contains($url, '/logout') ||
                 str_contains($url, '/dashboard') ||
                 str_contains($url, '/profile') ||
-                str_contains($url, '/settings')
+                str_contains($url, '/settings') ||
+                str_contains($url, '/privacy') ||
+                str_contains($url, '/terms') ||
+                str_contains($url, '/contact')
             ) {
                 return false;
             }
@@ -584,24 +640,32 @@ class SeoIssueDetectionService
                 return false;
             }
 
+            // Skip common file types that shouldn't be flagged
+            $fileExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.gif', '.css', '.js', '.xml', '.json'];
+            foreach ($fileExtensions as $ext) {
+                if (str_ends_with(strtolower($url), $ext)) {
+                    return false;
+                }
+            }
+
             return true;
         });
 
-        // Check all content pages for accurate orphaned page detection
-        // Note: This might create more issues but will be more accurate
-        $pagesToCheck = $contentPages;
-
-        foreach ($pagesToCheck as $result) {
+        // Check content pages for orphaned status
+        foreach ($contentPages as $result) {
+            // Page is orphaned if it's not linked from any other page
             if (! in_array($result->url, $linkedUrls)) {
                 $issues->push([
                     'seo_check_id' => $result->seo_check_id,
                     'seo_crawl_result_id' => $result->id,
                     'type' => 'orphaned_page',
-                    'severity' => SeoIssueSeverity::Notice->value, // Changed to Notice since it's less critical
+                    'severity' => SeoIssueSeverity::Warning->value,
                     'url' => $result->url,
-                    'title' => 'Orphaned Page',
-                    'description' => 'Page is not linked to by any other internal page',
-                    'data' => [],
+                    'title' => 'Orphaned Page Detected',
+                    'description' => 'Page has no internal links pointing to it (not in sitemap, not linked from other pages)',
+                    'data' => [
+                        'recommendation' => 'Add internal links to this page or include it in your XML sitemap',
+                    ],
                     'created_at' => now(),
                     'updated_at' => now(),
                 ]);
@@ -658,7 +722,7 @@ class SeoIssueDetectionService
 
         // Handle protocol-relative URLs
         if (str_starts_with($url, '//')) {
-            return parse_url($baseUrl, PHP_URL_SCHEME) . ':' . $url;
+            return parse_url($baseUrl, PHP_URL_SCHEME).':'.$url;
         }
 
         // Handle relative URLs
@@ -666,7 +730,7 @@ class SeoIssueDetectionService
         $basePath = $baseParts['path'] ?? '/';
 
         if (str_starts_with($url, '/')) {
-            return $baseParts['scheme'] . '://' . $baseParts['host'] . $url;
+            return $baseParts['scheme'].'://'.$baseParts['host'].$url;
         }
 
         // Handle relative paths
@@ -675,7 +739,7 @@ class SeoIssueDetectionService
             $baseDir = '/';
         }
 
-        return $baseParts['scheme'] . '://' . $baseParts['host'] . $baseDir . '/' . $url;
+        return $baseParts['scheme'].'://'.$baseParts['host'].$baseDir.'/'.$url;
     }
 
     protected function isLikelyLargeImage(string $url): bool

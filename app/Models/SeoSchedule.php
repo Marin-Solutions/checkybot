@@ -13,7 +13,10 @@ class SeoSchedule extends Model
 
     protected $fillable = [
         'website_id',
+        'created_by',
         'frequency',
+        'schedule_time',
+        'schedule_day',
         'last_run_at',
         'next_run_at',
         'is_active',
@@ -28,6 +31,11 @@ class SeoSchedule extends Model
     public function website(): BelongsTo
     {
         return $this->belongsTo(Website::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     /**
@@ -51,15 +59,34 @@ class SeoSchedule extends Model
     }
 
     /**
-     * Calculate the next run time based on frequency
+     * Calculate the next run time based on frequency, time, and day
      */
     protected function calculateNextRun(): Carbon
     {
+        $time = $this->schedule_time ?? '02:00:00';
+        [$hours, $minutes] = explode(':', $time);
+
         return match ($this->frequency) {
-            'daily' => now()->addDay(),
-            'weekly' => now()->addWeek(),
-            'monthly' => now()->addMonth(),
-            default => now()->addDay(),
+            'daily' => now()->addDay()->setTime((int) $hours, (int) $minutes),
+            'weekly' => $this->calculateNextWeeklyRun($hours, $minutes),
+            'monthly' => now()->addMonth()->setTime((int) $hours, (int) $minutes),
+            default => now()->addDay()->setTime((int) $hours, (int) $minutes),
         };
+    }
+
+    /**
+     * Calculate next weekly run based on selected day
+     */
+    protected function calculateNextWeeklyRun(int $hours, int $minutes): Carbon
+    {
+        $day = $this->schedule_day ?? 'Monday';
+        $nextRun = now()->next($day)->setTime($hours, $minutes);
+
+        // If the next occurrence is today but the time has passed, get next week's occurrence
+        if ($nextRun->isPast()) {
+            $nextRun = now()->addWeek()->next($day)->setTime($hours, $minutes);
+        }
+
+        return $nextRun;
     }
 }
