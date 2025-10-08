@@ -20,6 +20,28 @@ class ViewSeoCheck extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('cancel')
+                ->label('Cancel Check')
+                ->icon('heroicon-o-x-circle')
+                ->color('danger')
+                ->requiresConfirmation()
+                ->modalHeading('Cancel SEO Check')
+                ->modalDescription('Are you sure you want to cancel this SEO check? This action cannot be undone.')
+                ->action(function () {
+                    $record = $this->getRecord();
+                    $record->update([
+                        'status' => 'failed',
+                        'finished_at' => now(),
+                    ]);
+
+                    \Filament\Notifications\Notification::make()
+                        ->title('SEO Check Cancelled')
+                        ->success()
+                        ->send();
+
+                    $this->refreshFormData(['record']);
+                })
+                ->visible(fn() => $this->getRecord()->isCancellable()),
             Actions\Action::make('refresh')
                 ->label('Refresh Data')
                 ->icon('heroicon-o-arrow-path')
@@ -152,7 +174,10 @@ class ViewSeoCheck extends ViewRecord
             ->count();
 
         if ($previousChecks > 0) {
-            $widgets[] = \App\Filament\Widgets\SeoHealthScoreTrendWidget::make();
+            $widgets[] = \App\Filament\Widgets\SeoHealthScoreTrendWidget::make([
+                'recordId' => $record->id,
+                'websiteId' => $record->website_id,
+            ]);
         }
 
         // Add issues table if check is completed or has issues

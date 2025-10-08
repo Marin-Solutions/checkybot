@@ -65,6 +65,16 @@ class SeoCheck extends Model
         return $this->status === 'failed';
     }
 
+    public function isPending(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function isCancellable(): bool
+    {
+        return in_array($this->status, ['pending', 'running']);
+    }
+
     public function getDurationInSeconds(): ?int
     {
         if ($this->started_at && $this->finished_at) {
