@@ -16,23 +16,44 @@ class ListSeoChecks extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [
-            Actions\CreateAction::make(),
-        ];
+        $actions = [];
+
+        // Add "Back to All Websites" action when filtering by website
+        if ($this->website) {
+            $actions[] = Actions\Action::make('back_to_all')
+                ->label('Back to All Websites')
+                ->icon('heroicon-o-arrow-left')
+                ->color('gray')
+                ->url(route('filament.admin.resources.website-seo-checks.index'));
+        }
+
+        $actions[] = Actions\CreateAction::make();
+
+        return $actions;
     }
 
     protected function getTableQuery(): Builder
     {
+        // The filtering is now handled in the resource's getEloquentQuery method
         $query = parent::getTableQuery();
 
-        // Filter by website if website_id is provided in the URL
+        // Set the website for title and breadcrumbs
         if (request()->has('website_id')) {
             $websiteId = request()->get('website_id');
             $this->website = Website::find($websiteId);
-            $query->where('website_id', $websiteId);
         }
 
         return $query;
+    }
+
+    protected function getDefaultTableSortColumn(): ?string
+    {
+        return 'finished_at';
+    }
+
+    protected function getDefaultTableSortDirection(): ?string
+    {
+        return 'asc';
     }
 
     public function getTitle(): string

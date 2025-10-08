@@ -35,13 +35,13 @@ class SeoCheckResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('website.url')
                     ->label('URL')
-                    ->url(fn($record) => $record->website->url)
+                    ->url(fn ($record) => $record->website->url)
                     ->openUrlInNewTab()
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn(string $state): string => match ($state) {
+                    ->color(fn (string $state): string => match ($state) {
                         'completed' => 'success',
                         'running' => 'warning',
                         'failed' => 'danger',
@@ -55,8 +55,8 @@ class SeoCheckResource extends Resource
                 Tables\Columns\TextColumn::make('health_score_formatted')
                     ->label('Health Score')
                     ->badge()
-                    ->color(fn($record): string => $record->health_score_color)
-                    ->formatStateUsing(fn($record): string => $record->isCompleted() ? $record->health_score_formatted : 'N/A')
+                    ->color(fn ($record): string => $record->health_score_color)
+                    ->formatStateUsing(fn ($record): string => $record->isCompleted() ? $record->health_score_formatted : 'N/A')
                     ->sortable(query: function ($query, string $direction) {
                         // Custom sorting for health score calculation
                         return $query->orderBy('total_urls_crawled', $direction);
@@ -123,7 +123,7 @@ class SeoCheckResource extends Resource
 
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
     {
-        return parent::getEloquentQuery()
+        $query = parent::getEloquentQuery()
             ->with(['seoIssues', 'website', 'crawlResults'])
             ->withCount([
                 'seoIssues as errors_count' => function ($query) {
@@ -140,5 +140,13 @@ class SeoCheckResource extends Resource
                         ->where('status_code', '<', 600);
                 },
             ]);
+
+        // Filter by website_id if provided in URL parameters
+        $websiteId = request()->get('website_id');
+        if ($websiteId) {
+            $query->where('website_id', $websiteId);
+        }
+
+        return $query;
     }
 }

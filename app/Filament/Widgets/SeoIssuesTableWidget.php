@@ -3,11 +3,9 @@
 namespace App\Filament\Widgets;
 
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\On;
 
 class SeoIssuesTableWidget extends BaseWidget
@@ -104,32 +102,9 @@ class SeoIssuesTableWidget extends BaseWidget
                     ->weight('bold')
                     ->searchable()
                     ->sortable(),
-                TextColumn::make('seoCrawlResult.status_code')
-                    ->label('Status Code')
-                    ->badge()
-                    ->color(fn ($state): string => match (true) {
-                        $state >= 500 => 'danger',
-                        $state >= 400 => 'warning',
-                        $state >= 300 => 'info',
-                        $state >= 200 => 'success',
-                        default => 'gray',
-                    })
-                    ->sortable(),
-                TextColumn::make('seoCrawlResult.response_time')
-                    ->label('Response Time')
-                    ->formatStateUsing(fn ($state) => $state ? $state.'ms' : 'N/A')
-                    ->sortable(),
-                TextColumn::make('seoCrawlResult.page_size')
-                    ->label('Page Size')
-                    ->formatStateUsing(fn ($state) => $state ? number_format($state / 1024, 1).' KB' : 'N/A')
-                    ->sortable(),
                 TextColumn::make('description')
                     ->limit(80)
                     ->searchable()
-                    ->sortable(),
-                TextColumn::make('created_at')
-                    ->label('Found At')
-                    ->dateTime('M j, Y g:i A')
                     ->sortable(),
             ])
             ->filters([
@@ -161,37 +136,6 @@ class SeoIssuesTableWidget extends BaseWidget
                     ])
                     ->placeholder('All issue types')
                     ->searchable(),
-                Filter::make('status_code')
-                    ->form([
-                        \Filament\Forms\Components\Select::make('status_code_filter')
-                            ->label('Status Code')
-                            ->options([
-                                '2xx' => '2xx (Success)',
-                                '3xx' => '3xx (Redirect)',
-                                '4xx' => '4xx (Client Error)',
-                                '5xx' => '5xx (Server Error)',
-                            ])
-                            ->placeholder('All status codes'),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['status_code_filter'],
-                                fn (Builder $query, $statusCode): Builder => $query->whereHas('seoCrawlResult', function ($q) use ($statusCode) {
-                                    $start = match ($statusCode) {
-                                        '2xx' => 200,
-                                        '3xx' => 300,
-                                        '4xx' => 400,
-                                        '5xx' => 500,
-                                        default => null,
-                                    };
-                                    if ($start !== null) {
-                                        $q->where('status_code', '>=', $start)
-                                            ->where('status_code', '<', $start + 100);
-                                    }
-                                })
-                            );
-                    }),
             ])
             ->defaultSort('severity')
             ->paginated([10, 25, 50, 100])
