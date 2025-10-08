@@ -37,6 +37,11 @@ class SeoIssue extends Model
         return $this->belongsTo(SeoCrawlResult::class);
     }
 
+    public function crawlResult(): BelongsTo
+    {
+        return $this->seoCrawlResult();
+    }
+
     public function isError(): bool
     {
         return $this->severity === SeoIssueSeverity::Error;

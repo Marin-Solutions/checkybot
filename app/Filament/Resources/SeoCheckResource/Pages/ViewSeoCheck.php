@@ -3,6 +3,8 @@
 namespace App\Filament\Resources\SeoCheckResource\Pages;
 
 use App\Filament\Resources\SeoCheckResource;
+use App\Models\SeoCheck;
+use App\Services\SeoReportGenerationService;
 use Filament\Actions;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Section;
@@ -24,6 +26,26 @@ class ViewSeoCheck extends ViewRecord
                 ->action(function () {
                     $this->refreshFormData(['record']);
                 }),
+            Actions\ActionGroup::make([
+                Actions\Action::make('export_pdf')
+                    ->label('Export PDF Report')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->color('success')
+                    ->url(fn() => $this->getExportUrl('html'))
+                    ->openUrlInNewTab()
+                    ->visible(fn() => $this->getRecord()->isCompleted()),
+                Actions\Action::make('export_csv')
+                    ->label('Export CSV Data')
+                    ->icon('heroicon-o-table-cells')
+                    ->color('info')
+                    ->url(fn() => $this->getExportUrl('csv'))
+                    ->openUrlInNewTab()
+                    ->visible(fn() => $this->getRecord()->isCompleted()),
+            ])
+                ->label('Export')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->button()
+                ->visible(fn() => $this->getRecord()->isCompleted()),
         ];
     }
 
@@ -121,16 +143,45 @@ class ViewSeoCheck extends ViewRecord
     protected function getFooterWidgets(): array
     {
         $record = $this->getRecord();
+        $widgets = [];
 
-        // Only show widget if check is completed or has issues
-        if ($record->isCompleted() || $record->seoIssues()->exists()) {
-            return [
-                \App\Filament\Widgets\SeoIssuesTableWidget::make([
-                    'recordId' => $record->id,
-                ]),
-            ];
+        // Add trend widget if there are previous checks
+        $previousChecks = SeoCheck::where('website_id', $record->website_id)
+            ->where('status', 'completed')
+            ->where('id', '!=', $record->id)
+            ->count();
+
+        if ($previousChecks > 0) {
+            $widgets[] = \App\Filament\Widgets\SeoHealthScoreTrendWidget::make();
         }
 
-        return [];
+        // Add issues table if check is completed or has issues
+        if ($record->isCompleted() || $record->seoIssues()->exists()) {
+            $widgets[] = \App\Filament\Widgets\SeoIssuesTableWidget::make([
+                'recordId' => $record->id,
+            ]);
+        }
+
+        return $widgets;
+    }
+
+    public function getExportUrl(string $format): string
+    {
+        $seoCheck = $this->getRecord();
+        $reportService = app(SeoReportGenerationService::class);
+
+        $filename = $reportService->generateComprehensiveReport($seoCheck, $format);
+
+        return $reportService->getReportDownloadUrl($filename);
+    }
+
+    public function exportToPdf()
+    {
+        return redirect($this->getExportUrl('html'));
+    }
+
+    public function exportToCsv()
+    {
+        return redirect($this->getExportUrl('csv'));
     }
 }

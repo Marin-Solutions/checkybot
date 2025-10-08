@@ -14,7 +14,6 @@ class SeoCheckProgress {
 
     init() {
         if (typeof window.Echo === 'undefined') {
-            console.warn('Echo is not available. Falling back to polling.');
             this.fallbackToPolling();
             return;
         }
@@ -24,75 +23,60 @@ class SeoCheckProgress {
 
     connectToWebSocket() {
         try {
-            console.log(`Attempting to connect to SEO check progress channel: seo-checks.${this.seoCheckId}`);
-            console.log('Echo object available:', !!window.Echo);
-            
             // Listen for progress updates
             const channel = window.Echo.channel(`seo-checks.${this.seoCheckId}`);
             
             // Add connection event listeners
             channel.subscribed(() => {
-                console.log(`✅ Successfully subscribed to channel: seo-checks.${this.seoCheckId}`);
                 this.isConnected = true;
                 this.updateConnectionStatus('WebSocket connected');
             });
             
             channel.error((error) => {
-                console.error('❌ Channel subscription error:', error);
                 this.updateConnectionStatus('WebSocket subscription failed');
                 this.fallbackToPolling();
             });
             
             // Listen for crawl progress updates - try different event name formats
             channel.listen('crawl-progress-updated', (e) => {
-                console.log('📊 Received crawl progress event (no dot):', e);
                 this.handleProgressUpdate(e);
             });
             
             channel.listen('.crawl-progress-updated', (e) => {
-                console.log('📊 Received crawl progress event (with dot):', e);
                 this.handleProgressUpdate(e);
             });
             
             // Listen for crawl completion
             channel.listen('crawl-completed', (e) => {
-                console.log('✅ Received crawl completion event (no dot):', e);
                 this.handleCompletion(e);
             });
             
             channel.listen('.crawl-completed', (e) => {
-                console.log('✅ Received crawl completion event (with dot):', e);
                 this.handleCompletion(e);
             });
             
             // Listen for crawl failure
             channel.listen('crawl-failed', (e) => {
-                console.log('❌ Received crawl failure event (no dot):', e);
                 this.handleFailure(e);
             });
             
             channel.listen('.crawl-failed', (e) => {
-                console.log('❌ Received crawl failure event (with dot):', e);
                 this.handleFailure(e);
             });
             
         } catch (error) {
-            console.error('❌ Failed to connect to WebSocket:', error);
             this.updateConnectionStatus('WebSocket connection failed');
             this.fallbackToPolling();
         }
     }
 
     handleProgressUpdate(data) {
-        console.log('📊 Processing progress update with data:', data);
-        
         // Dispatch Livewire event to update the component
         if (window.Livewire) {
             try {
                 window.Livewire.dispatch('seo-check-progress-updated');
-                console.log('🔄 Dispatching Livewire event: seo-check-progress-updated');
             } catch (e) {
-                console.log('Livewire component no longer available for progress updates');
+                // Livewire component no longer available
             }
         }
         
@@ -135,7 +119,7 @@ class SeoCheckProgress {
                 window.Livewire.dispatch('seo-check-completed');
                 window.Livewire.dispatch('seo-check-finished'); // Also dispatch for parent page updates
             } catch (e) {
-                console.log('Livewire component no longer available for completion events');
+                // Livewire component no longer available
             }
         }
         
@@ -145,8 +129,6 @@ class SeoCheckProgress {
     }
 
     handleFailure(data) {
-        console.log('❌ Received crawl failure event:', data);
-        
         // Hide progress elements
         const progressSection = document.querySelector('.progress-section');
         if (progressSection) {
@@ -177,7 +159,7 @@ class SeoCheckProgress {
                 window.Livewire.dispatch('seo-check-failed');
                 window.Livewire.dispatch('seo-check-finished'); // Also dispatch for parent page updates
             } catch (e) {
-                console.log('Livewire component no longer available for failure events');
+                // Livewire component no longer available
             }
         }
         
@@ -192,16 +174,10 @@ class SeoCheckProgress {
 
         if (progressBar) {
             progressBar.style.width = `${progress}%`;
-            console.log('📊 Updated progress bar to:', progress + '%');
-        } else {
-            console.warn('⚠️ Progress bar element not found');
         }
 
         if (progressText) {
             progressText.textContent = `${progress}%`;
-            console.log('📊 Updated progress text to:', progress + '%');
-        } else {
-            console.warn('⚠️ Progress text element not found');
         }
     }
 
@@ -217,10 +193,6 @@ class SeoCheckProgress {
         
         if (urlsCrawledElement) {
             urlsCrawledElement.textContent = stats.urlsCrawled;
-            console.log('📊 Updated URLs crawled to:', stats.urlsCrawled);
-        } else {
-            console.warn('⚠️ URLs crawled element not found');
-            console.log('🔍 All elements with "crawled" in class:', document.querySelectorAll('[class*="crawled"]'));
         }
 
         // Update total URLs - try multiple selectors
@@ -234,10 +206,6 @@ class SeoCheckProgress {
         
         if (totalUrlsElement) {
             totalUrlsElement.textContent = stats.totalUrls;
-            console.log('📊 Updated total URLs to:', stats.totalUrls);
-        } else {
-            console.warn('⚠️ Total URLs element not found');
-            console.log('🔍 All elements with "total" in class:', document.querySelectorAll('[class*="total"]'));
         }
 
         // Update issues found
@@ -375,29 +343,22 @@ class SeoCheckProgress {
         // Clear any other references
         this.isConnected = false;
         this.lastTableRefresh = 0;
-        
-        console.log('🧹 SEO Check Progress cleanup completed');
     }
 
 }
 
 // Auto-initialize if seoCheckId is available
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, looking for SEO check ID...');
     const seoCheckIdElement = document.querySelector('[data-seo-check-id]');
-    console.log('SEO check ID element:', seoCheckIdElement);
     
     if (seoCheckIdElement) {
         const seoCheckId = seoCheckIdElement.getAttribute('data-seo-check-id');
-        console.log('Found SEO check ID:', seoCheckId);
         window.seoCheckProgress = new SeoCheckProgress(seoCheckId);
     } else {
-        console.log('No SEO check ID element found');
         // Try to find SEO check ID from URL
         const urlMatch = window.location.pathname.match(/\/seo-checks\/(\d+)/);
         if (urlMatch) {
             const seoCheckId = urlMatch[1];
-            console.log('Found SEO check ID from URL:', seoCheckId);
             window.seoCheckProgress = new SeoCheckProgress(seoCheckId);
         }
     }
