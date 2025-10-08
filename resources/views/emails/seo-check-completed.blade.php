@@ -7,17 +7,17 @@
 
     @if($scoreDiff !== null)
     @if($scoreDiff > 0)
-    <div style="color: #10b981; font-weight: bold;">
-        ↑ {{ number_format(abs($scoreDiff), 1) }}% improvement from last check
-    </div>
+    <x-mail::panel>
+        <span style="color: #10b981; font-weight: bold;">↑ {{ number_format(abs($scoreDiff), 1) }}% improvement from last check</span>
+    </x-mail::panel>
     @elseif($scoreDiff < 0)
-        <div style="color: #ef4444; font-weight: bold;">
-        ↓ {{ number_format(abs($scoreDiff), 1) }}% decline from last check
-        </div>
+        <x-mail::panel>
+        <span style="color: #ef4444; font-weight: bold;">↓ {{ number_format(abs($scoreDiff), 1) }}% decline from last check</span>
+        </x-mail::panel>
         @else
-        <div style="color: #6b7280;">
-            → No change from last check
-        </div>
+        <x-mail::panel>
+            <span style="color: #6b7280;">→ No change from last check</span>
+        </x-mail::panel>
         @endif
         @endif
 
