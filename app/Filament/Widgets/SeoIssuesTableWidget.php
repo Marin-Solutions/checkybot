@@ -30,8 +30,9 @@ class SeoIssuesTableWidget extends BaseWidget
     #[On('seo-check-finished')]
     public function refreshWidget(): void
     {
-        // Force re-render of the widget when SEO check completes
-        $this->resetTable();
+        // Refresh the widget data when SEO check completes
+        // Use a safe refresh that doesn't break Alpine.js bindings
+        $this->dispatch('$refresh');
     }
 
     protected function getPollingInterval(): ?string
