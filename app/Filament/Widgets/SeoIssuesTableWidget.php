@@ -18,17 +18,8 @@ class SeoIssuesTableWidget extends BaseWidget
 
     public static function canView(): bool
     {
-        $route = request()->route();
-        if ($route && $route->getName() === 'filament.admin.resources.seo-checks.view') {
-            return true;
-        }
-
-        // Also allow if we're in a context where recordId is being passed
-        if (request()->has('recordId') || session()->has('seo_check_record_id')) {
-            return true;
-        }
-
-        return false;
+        // Always show the widget - let the parent page control visibility
+        return true;
     }
 
     public function mount(): void
@@ -40,25 +31,37 @@ class SeoIssuesTableWidget extends BaseWidget
     public function handleSeoCheckFinished(): void
     {
         // Refresh the table when SEO check completes
-        $this->dispatch('$refresh');
+        // Use a safer method that doesn't require table initialization
+        try {
+            // Force a re-render by updating a property
+            $this->recordId = $this->recordId; // Trigger re-render
+        } catch (\Exception $e) {
+            // Silently handle refresh errors to prevent breaking the UI
+            \Log::warning('SEO Issues Table refresh failed on completion: ' . $e->getMessage());
+        }
+    }
+
+    #[On('refresh-seo-check-data')]
+    public function handleProgressUpdate(): void
+    {
+        // Disable real-time table updates during crawling to prevent initialization errors
+        // The table will be refreshed on completion instead
+        // This prevents the "table must not be accessed before initialization" error
+
     }
 
     public function table(Table $table): Table
     {
-        // If no recordId is provided, try to get it from the route
-        if (! $this->recordId) {
-            $route = request()->route();
-            if ($route && $route->getName() === 'filament.admin.resources.seo-checks.view') {
-                $this->recordId = $route->parameter('record');
-            }
-        }
+        // Get recordId from route parameter
+        $route = request()->route();
+        $recordId = $route->parameter('record') ?? $this->recordId;
 
-        // If still no recordId, return empty query (this prevents showing on dashboard)
-        if (! $this->recordId) {
+        // If no recordId, return empty query
+        if (! $recordId) {
             return $table->query(\App\Models\SeoIssue::query()->whereRaw('1 = 0'));
         }
 
-        $record = \App\Models\SeoCheck::find($this->recordId);
+        $record = \App\Models\SeoCheck::find($recordId);
         if (! $record) {
             return $table->query(\App\Models\SeoIssue::query()->whereRaw('1 = 0'));
         }

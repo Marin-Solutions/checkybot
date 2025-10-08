@@ -37,6 +37,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
     protected int $broadcastFailures = 0; // Track broadcast failures
 
     protected RobotsSitemapService $robotsSitemapService;
+
     protected SeoIssueDetectionService $issueDetectionService;
 
     public function __construct(SeoCheck $seoCheck)
@@ -52,12 +53,14 @@ class SeoHealthCheckCrawler extends CrawlObserver
         // Check if URL is allowed by robots.txt
         if (! $this->robotsSitemapService->isUrlAllowed((string) $url)) {
             Log::info("SEO Crawler: Skipping {$url} - disallowed by robots.txt");
+
             return;
         }
 
         // Check if we've reached the maximum URLs limit
         if ($this->crawledCount >= $this->maxUrls) {
             Log::info("SEO Crawler: Reached maximum URLs limit ({$this->maxUrls}), skipping {$url}");
+
             return;
         }
 
@@ -71,7 +74,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         // If we're still at the initial estimate (1), set a reasonable estimate
         if ($currentTotal <= 1) {
             $newTotal = max(50, $this->crawledCount * 2); // Start with 50 or 2x crawled count
-        } else if ($this->crawledCount > $currentTotal) {
+        } elseif ($this->crawledCount > $currentTotal) {
             // Only increase if we've exceeded the current total by a significant margin
             $newTotal = max($currentTotal, $this->crawledCount + 20); // Add buffer of 20 URLs
         }
@@ -185,8 +188,47 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $startTime = microtime(true);
         $statusCode = $response->getStatusCode();
         $headers = $this->extractHeaders($response);
-        $body = $response->getBody()->getContents();
-        $bodySize = strlen($body);
+        // Get response body content - handle stream consumption properly
+        $body = '';
+        $bodySize = 0;
+
+        try {
+            // Get the response body stream
+            $stream = $response->getBody();
+
+            // Check if stream is readable and has content
+            if ($stream->isReadable() && $stream->getSize() > 0) {
+                // Rewind to beginning if possible
+                if ($stream->isSeekable()) {
+                    $stream->rewind();
+                }
+
+                // Read the content
+                $body = $stream->getContents();
+                $bodySize = strlen($body);
+
+                // If we got empty content, try alternative method
+                if ($bodySize === 0) {
+                    $body = (string) $response->getBody();
+                    $bodySize = strlen($body);
+                }
+            } else {
+                Log::warning("SEO Crawler: Response stream not readable or empty for {$url}");
+                $body = '';
+                $bodySize = 0;
+            }
+        } catch (\Exception $e) {
+            Log::error("SEO Crawler: Error reading response body for {$url}: " . $e->getMessage());
+            $body = '';
+            $bodySize = 0;
+        }
+
+        // Debug logging
+        if ($bodySize === 0) {
+            Log::warning("SEO Crawler: Empty response body for {$url} (Status: {$statusCode})");
+        } else {
+            Log::info("SEO Crawler: Response body size for {$url}: {$bodySize} bytes");
+        }
 
         // Measure response time
         $responseTime = (microtime(true) - $startTime) * 1000; // Convert to milliseconds
@@ -200,7 +242,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
             $dom = new DOMDocument;
             // Suppress warnings but enable error reporting for debugging
             libxml_use_internal_errors(true);
-            $dom->loadHTML($body, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+            $dom->loadHTML($body);
             $xpath = new DOMXPath($dom);
         }
 
@@ -220,6 +262,14 @@ class SeoHealthCheckCrawler extends CrawlObserver
         // Count images
         $imageCount = $xpath ? $xpath->query('//img')->length : 0;
 
+        // Truncate HTML content to prevent MySQL packet size errors (max 500KB)
+        $maxHtmlSize = 500 * 1024; // 500KB limit
+        $truncatedHtml = $body;
+        if (strlen($body) > $maxHtmlSize) {
+            $truncatedHtml = substr($body, 0, $maxHtmlSize);
+            Log::warning("SEO Crawler: Truncated HTML content for {$url} from " . strlen($body) . " to {$maxHtmlSize} bytes");
+        }
+
         return [
             'seo_check_id' => $this->seoCheck->id,
             'url' => $url,
@@ -232,7 +282,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
             'external_links' => $externalLinks,
             'page_size_bytes' => $bodySize,
             'html_size_bytes' => $bodySize,
-            'html_content' => $body, // Store the HTML content for issue detection
+            'html_content' => $truncatedHtml, // Store truncated HTML content for issue detection
             'resource_sizes' => $resourceSizes,
             'headers' => $headers,
             'response_time_ms' => round($responseTime, 2),
@@ -525,9 +575,21 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
             // Calculate health score
             $totalUrls = $this->seoCheck->total_urls_crawled;
-            $urlsWithErrors = $this->seoCheck->crawlResults()
+
+            // Count URLs with HTTP errors (4xx, 5xx)
+            $httpErrorUrls = $this->seoCheck->crawlResults()
                 ->where('status_code', '>=', 400)
+                ->where('status_code', '<', 600)
                 ->count();
+
+            // Count unique URLs with SEO errors
+            $seoErrorUrls = $this->seoCheck->seoIssues()
+                ->where('severity', 'error')
+                ->distinct('url')
+                ->count('url');
+
+            // Total URLs with any type of error
+            $urlsWithErrors = $httpErrorUrls + $seoErrorUrls;
 
             $healthScore = $totalUrls > 0 ? (($totalUrls - $urlsWithErrors) / $totalUrls) * 100 : 0;
 

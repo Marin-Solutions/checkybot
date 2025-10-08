@@ -7,6 +7,8 @@ class SeoCheckProgress {
     constructor(seoCheckId) {
         this.seoCheckId = seoCheckId;
         this.isConnected = false;
+        this.lastTableRefresh = 0;
+        this.refreshTimeout = null;
         this.init();
     }
 
@@ -63,6 +65,17 @@ class SeoCheckProgress {
                 this.handleCompletion(e);
             });
             
+            // Listen for crawl failure
+            channel.listen('crawl-failed', (e) => {
+                console.log('❌ Received crawl failure event (no dot):', e);
+                this.handleFailure(e);
+            });
+            
+            channel.listen('.crawl-failed', (e) => {
+                console.log('❌ Received crawl failure event (with dot):', e);
+                this.handleFailure(e);
+            });
+            
         } catch (error) {
             console.error('❌ Failed to connect to WebSocket:', error);
             this.updateConnectionStatus('WebSocket connection failed');
@@ -75,8 +88,12 @@ class SeoCheckProgress {
         
         // Dispatch Livewire event to update the component
         if (window.Livewire) {
-            window.Livewire.dispatch('seo-check-progress-updated');
-            console.log('🔄 Dispatching Livewire event: seo-check-progress-updated');
+            try {
+                window.Livewire.dispatch('seo-check-progress-updated');
+                console.log('🔄 Dispatching Livewire event: seo-check-progress-updated');
+            } catch (e) {
+                console.log('Livewire component no longer available for progress updates');
+            }
         }
         
         // Also update DOM directly as backup
@@ -114,8 +131,59 @@ class SeoCheckProgress {
         
         // Dispatch completion event to refresh parent page sections
         if (window.Livewire) {
-            window.Livewire.dispatch('seo-check-finished');
+            try {
+                window.Livewire.dispatch('seo-check-completed');
+                window.Livewire.dispatch('seo-check-finished'); // Also dispatch for parent page updates
+            } catch (e) {
+                console.log('Livewire component no longer available for completion events');
+            }
         }
+        
+        // Stop any ongoing operations
+        this.stopPolling();
+        this.cleanup();
+    }
+
+    handleFailure(data) {
+        console.log('❌ Received crawl failure event:', data);
+        
+        // Hide progress elements
+        const progressSection = document.querySelector('.progress-section');
+        if (progressSection) {
+            progressSection.style.display = 'none';
+        }
+
+        // Hide live progress section (Filament Livewire component)
+        const liveProgressSection = document.querySelector('[wire\\:id*="seo-check-progress"]');
+        if (liveProgressSection) {
+            liveProgressSection.style.display = 'none';
+        }
+
+        // Show failure message
+        const completionSection = document.querySelector('.completion-section');
+        if (completionSection) {
+            completionSection.style.display = 'block';
+        }
+
+        const completionMessage = document.querySelector('.completion-message');
+        if (completionMessage) {
+            completionMessage.textContent = 'SEO Health Check failed. Please try again.';
+            completionMessage.classList.add('text-danger');
+        }
+        
+        // Dispatch failure event to refresh parent page sections
+        if (window.Livewire) {
+            try {
+                window.Livewire.dispatch('seo-check-failed');
+                window.Livewire.dispatch('seo-check-finished'); // Also dispatch for parent page updates
+            } catch (e) {
+                console.log('Livewire component no longer available for failure events');
+            }
+        }
+        
+        // Stop any ongoing operations
+        this.stopPolling();
+        this.cleanup();
     }
 
     updateProgressBar(progress) {
@@ -273,9 +341,12 @@ class SeoCheckProgress {
                 const data = await response.json();
                 this.handleProgressUpdate(data);
                 
-                // If completed, stop polling
+                // If completed or failed, stop polling
                 if (data.status === 'completed') {
                     this.handleCompletion(data);
+                    this.stopPolling();
+                } else if (data.status === 'failed') {
+                    this.handleFailure(data);
                     this.stopPolling();
                 }
             }
@@ -289,6 +360,23 @@ class SeoCheckProgress {
             clearInterval(this.pollingInterval);
             this.pollingInterval = null;
         }
+    }
+
+    cleanup() {
+        // Clear any pending timeouts
+        if (this.refreshTimeout) {
+            clearTimeout(this.refreshTimeout);
+            this.refreshTimeout = null;
+        }
+        
+        // Stop polling
+        this.stopPolling();
+        
+        // Clear any other references
+        this.isConnected = false;
+        this.lastTableRefresh = 0;
+        
+        console.log('🧹 SEO Check Progress cleanup completed');
     }
 
 }

@@ -10,6 +10,7 @@ use DOMXPath;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class SeoIssueDetectionService
 {
@@ -29,14 +30,23 @@ class SeoIssueDetectionService
         $crawlResults = $seoCheck->crawlResults;
         $allIssues = collect();
 
+        Log::info("SEO Issue Detection: Starting for SEO Check {$seoCheck->id} with {$crawlResults->count()} crawl results");
+
+        $pageIssueCount = 0;
         foreach ($crawlResults as $result) {
             $issues = $this->detectIssuesForPage($result, $crawlResults);
+            $pageIssueCount += $issues->count();
             $allIssues = $allIssues->merge($issues);
         }
+
+        Log::info("SEO Issue Detection: Found {$pageIssueCount} page-level issues");
 
         // Detect cross-page issues
         $crossPageIssues = $this->detectCrossPageIssues($crawlResults);
         $allIssues = $allIssues->merge($crossPageIssues);
+
+        Log::info("SEO Issue Detection: Found {$crossPageIssues->count()} cross-page issues");
+        Log::info("SEO Issue Detection: Total issues to insert: {$allIssues->count()}");
 
         // Bulk insert issues in batches to avoid MySQL packet size limits
         if ($allIssues->isNotEmpty()) {
@@ -59,20 +69,24 @@ class SeoIssueDetectionService
 
         // Skip if no HTML content or failed status
         if ($result->status_code < 200 || $result->status_code >= 300) {
+            Log::debug("SEO Issue Detection: Skipping {$result->url} - status code {$result->status_code}");
             return $issues;
         }
 
         // Get HTML content from stored crawl result
         $htmlContent = $result->html_content;
         if (! $htmlContent) {
+            Log::debug("SEO Issue Detection: Skipping {$result->url} - no HTML content");
             return $issues;
         }
+
+        Log::debug("SEO Issue Detection: Processing {$result->url} with " . strlen($htmlContent) . " bytes of HTML");
 
         // Create DOM document for parsing
         $dom = new \DOMDocument;
         // Suppress warnings but enable error reporting for debugging
         libxml_use_internal_errors(true);
-        $dom->loadHTML($htmlContent, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        $dom->loadHTML($htmlContent);
         $xpath = new DOMXPath($dom);
 
         // Detect various issues
@@ -98,7 +112,8 @@ class SeoIssueDetectionService
 
         // Detect duplicate content/titles
         $issues = $issues->merge($this->detectDuplicateContent($allResults));
-        $issues = $issues->merge($this->detectOrphanedPages($allResults));
+        // Disabled orphaned page detection as it's not accurate
+        // $issues = $issues->merge($this->detectOrphanedPages($allResults));
 
         return $issues;
     }
@@ -539,30 +554,50 @@ class SeoIssueDetectionService
         }
 
         $linkedUrls = $allInternalLinks->unique()->filter()->toArray();
-
-        // Find pages that are not linked to by any other page
-        // Only check a limited number of pages to avoid too many issues
-        $pagesToCheck = $allResults->take(50); // Limit to first 50 pages
         $homepageUrl = $allResults->first()->url ?? '';
 
-        foreach ($pagesToCheck as $result) {
-            // Skip homepage and common pages that might not be linked
-            if (
-                $result->url === $homepageUrl ||
-                str_contains($result->url, '/admin') ||
-                str_contains($result->url, '/api/') ||
-                str_contains($result->url, '/login') ||
-                str_contains($result->url, '/register')
-            ) {
-                continue;
+        // Only check pages that are likely to be content pages (not admin, API, etc.)
+        $contentPages = $allResults->filter(function ($result) use ($homepageUrl) {
+            $url = $result->url;
+
+            // Skip homepage
+            if ($url === $homepageUrl) {
+                return false;
             }
 
+            // Skip admin, API, auth pages
+            if (
+                str_contains($url, '/admin') ||
+                str_contains($url, '/api/') ||
+                str_contains($url, '/login') ||
+                str_contains($url, '/register') ||
+                str_contains($url, '/logout') ||
+                str_contains($url, '/dashboard') ||
+                str_contains($url, '/profile') ||
+                str_contains($url, '/settings')
+            ) {
+                return false;
+            }
+
+            // Skip pages with query parameters or fragments
+            if (str_contains($url, '?') || str_contains($url, '#')) {
+                return false;
+            }
+
+            return true;
+        });
+
+        // Check all content pages for accurate orphaned page detection
+        // Note: This might create more issues but will be more accurate
+        $pagesToCheck = $contentPages;
+
+        foreach ($pagesToCheck as $result) {
             if (! in_array($result->url, $linkedUrls)) {
                 $issues->push([
                     'seo_check_id' => $result->seo_check_id,
                     'seo_crawl_result_id' => $result->id,
                     'type' => 'orphaned_page',
-                    'severity' => SeoIssueSeverity::Warning->value, // Changed from Error to Warning
+                    'severity' => SeoIssueSeverity::Notice->value, // Changed to Notice since it's less critical
                     'url' => $result->url,
                     'title' => 'Orphaned Page',
                     'description' => 'Page is not linked to by any other internal page',
@@ -623,7 +658,7 @@ class SeoIssueDetectionService
 
         // Handle protocol-relative URLs
         if (str_starts_with($url, '//')) {
-            return parse_url($baseUrl, PHP_URL_SCHEME).':'.$url;
+            return parse_url($baseUrl, PHP_URL_SCHEME) . ':' . $url;
         }
 
         // Handle relative URLs
@@ -631,7 +666,7 @@ class SeoIssueDetectionService
         $basePath = $baseParts['path'] ?? '/';
 
         if (str_starts_with($url, '/')) {
-            return $baseParts['scheme'].'://'.$baseParts['host'].$url;
+            return $baseParts['scheme'] . '://' . $baseParts['host'] . $url;
         }
 
         // Handle relative paths
@@ -640,7 +675,7 @@ class SeoIssueDetectionService
             $baseDir = '/';
         }
 
-        return $baseParts['scheme'].'://'.$baseParts['host'].$baseDir.'/'.$url;
+        return $baseParts['scheme'] . '://' . $baseParts['host'] . $baseDir . '/' . $url;
     }
 
     protected function isLikelyLargeImage(string $url): bool

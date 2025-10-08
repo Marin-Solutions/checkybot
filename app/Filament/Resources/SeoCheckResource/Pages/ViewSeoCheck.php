@@ -9,19 +9,10 @@ use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Concerns\InteractsWithTable;
-use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
-use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\On;
 
-class ViewSeoCheck extends ViewRecord implements HasTable
+class ViewSeoCheck extends ViewRecord
 {
-    use InteractsWithTable;
-
     protected static string $resource = SeoCheckResource::class;
 
     protected function getHeaderActions(): array
@@ -48,82 +39,8 @@ class ViewSeoCheck extends ViewRecord implements HasTable
         // Refresh all data when SEO check completes
         $this->refreshFormData(['record']);
 
-        // Show success notification
-        \Filament\Notifications\Notification::make()
-            ->title('SEO Check Completed')
-            ->success()
-            ->send();
-    }
-
-    public function table(Table $table): Table
-    {
-        return $table
-            ->query(fn() => $this->getRecord()->seoIssues()->with('seoCrawlResult'))
-            ->columns([
-                TextColumn::make('severity')
-                    ->badge()
-                    ->color(fn($state): string => match ($state->value) {
-                        'error' => 'danger',
-                        'warning' => 'warning',
-                        'notice' => 'info',
-                        default => 'gray',
-                    })
-                    ->formatStateUsing(fn($state): string => strtoupper($state->value))
-                    ->sortable(),
-                TextColumn::make('title')
-                    ->label('Issue')
-                    ->weight('bold')
-                    ->searchable()
-                    ->sortable(),
-                TextColumn::make('url')
-                    ->label('URL')
-                    ->url(fn($state) => $state)
-                    ->openUrlInNewTab()
-                    ->limit(50)
-                    ->searchable(),
-                TextColumn::make('description')
-                    ->limit(100)
-                    ->searchable()
-                    ->sortable(),
-            ])
-            ->filters([
-                SelectFilter::make('severity')
-                    ->options([
-                        'error' => 'Error',
-                        'warning' => 'Warning',
-                        'notice' => 'Notice',
-                    ])
-                    ->placeholder('All severities'),
-                Filter::make('title')
-                    ->form([
-                        \Filament\Forms\Components\TextInput::make('title')
-                            ->label('Filter by Issue Title')
-                            ->placeholder('Search issue titles...'),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['title'],
-                                fn(Builder $query, $title): Builder => $query->where('title', 'like', "%{$title}%"),
-                            );
-                    }),
-                Filter::make('description')
-                    ->form([
-                        \Filament\Forms\Components\TextInput::make('description')
-                            ->label('Filter by Description')
-                            ->placeholder('Search descriptions...'),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['description'],
-                                fn(Builder $query, $description): Builder => $query->where('description', 'like', "%{$description}%"),
-                            );
-                    }),
-            ])
-            ->defaultSort('severity')
-            ->paginated([10, 25, 50, 100])
-            ->defaultPaginationPageOption(25);
+        // Don't send notification here to avoid duplicates
+        // The Livewire component will handle the notification
     }
 
     public function infolist(Infolist $infolist): Infolist
@@ -136,7 +53,7 @@ class ViewSeoCheck extends ViewRecord implements HasTable
                             'seoCheck' => $this->getRecord(),
                         ]),
                     ])
-                    ->visible(fn() => $this->getRecord()->isRunning() || $this->getRecord()->isCompleted() || $this->getRecord()->isFailed()),
+                    ->visible(fn() => $this->getRecord()->isRunning()),
                 Section::make('SEO Check Overview')
                     ->schema([
                         Grid::make(2)
@@ -163,7 +80,7 @@ class ViewSeoCheck extends ViewRecord implements HasTable
                                 TextEntry::make('finished_at')
                                     ->label('Finished At')
                                     ->dateTime(),
-                                TextEntry::make('duration')
+                                TextEntry::make('started_at')
                                     ->label('Duration')
                                     ->formatStateUsing(function ($record) {
                                         if ($record->started_at && $record->finished_at) {
@@ -174,35 +91,15 @@ class ViewSeoCheck extends ViewRecord implements HasTable
                                     }),
                             ]),
                     ]),
-                Section::make('Health Score')
+                Section::make('SEO Summary')
                     ->schema([
-                        Grid::make(3)
+                        Grid::make(4)
                             ->schema([
                                 TextEntry::make('health_score_formatted')
                                     ->label('Health Score')
                                     ->badge()
                                     ->color(fn($record): string => $record->health_score_color)
                                     ->formatStateUsing(fn($record): string => $record->health_score_formatted),
-                                TextEntry::make('health_score_status')
-                                    ->label('Status')
-                                    ->badge()
-                                    ->color(fn($record): string => $record->health_score_color),
-                                TextEntry::make('urls_with_errors_count')
-                                    ->label('URLs with Issues')
-                                    ->formatStateUsing(function ($record) {
-                                        $total = $record->total_urls_crawled;
-                                        $errors = $record->getUrlsWithErrorsCount();
-
-                                        return "{$errors} of {$total} URLs";
-                                    })
-                                    ->default('Loading...'),
-                            ]),
-                    ])
-                    ->visible(fn($record): bool => $record->isCompleted()),
-                Section::make('Issues Summary')
-                    ->schema([
-                        Grid::make(3)
-                            ->schema([
                                 TextEntry::make('errors_count')
                                     ->label('Errors')
                                     ->badge()
@@ -216,7 +113,8 @@ class ViewSeoCheck extends ViewRecord implements HasTable
                                     ->badge()
                                     ->color('info'),
                             ]),
-                    ]),
+                    ])
+                    ->visible(fn($record): bool => $record->isCompleted() || $record->isFailed()),
             ]);
     }
 

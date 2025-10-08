@@ -104,6 +104,42 @@ class WebsiteSeeder extends Seeder
                 'uptime_interval' => 1,
                 'ssl_check' => true,
             ],
+            [
+                'name' => 'Example.com (Test Site)',
+                'url' => 'https://example.com',
+                'description' => 'Example.com - Official test domain with known SEO issues',
+                'created_by' => 1,
+                'uptime_check' => true,
+                'uptime_interval' => 1,
+                'ssl_check' => true,
+            ],
+            [
+                'name' => 'HTTPBin.org',
+                'url' => 'https://httpbin.org',
+                'description' => 'HTTPBin - HTTP testing service with various response codes',
+                'created_by' => 1,
+                'uptime_check' => true,
+                'uptime_interval' => 1,
+                'ssl_check' => true,
+            ],
+            [
+                'name' => 'W3Schools',
+                'url' => 'https://www.w3schools.com',
+                'description' => 'W3Schools - Web development tutorials with mixed SEO quality',
+                'created_by' => 1,
+                'uptime_check' => true,
+                'uptime_interval' => 1,
+                'ssl_check' => true,
+            ],
+            [
+                'name' => 'TutorialsPoint',
+                'url' => 'https://www.tutorialspoint.com',
+                'description' => 'TutorialsPoint - Educational content with potential SEO issues',
+                'created_by' => 1,
+                'uptime_check' => true,
+                'uptime_interval' => 1,
+                'ssl_check' => true,
+            ],
         ];
 
         foreach ($websites as $websiteData) {

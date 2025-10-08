@@ -30,7 +30,16 @@ class SeoHealthCheckJob implements ShouldQueue
 
     public function handle(): void
     {
-        Log::info("Starting SEO health check for website: {$this->seoCheck->website->url}");
+        Log::info("Starting SEO health check for SEO check ID: {$this->seoCheck->id}");
+
+        try {
+            Log::info('Loading website relationship...');
+            $website = $this->seoCheck->website;
+            Log::info("Website loaded: {$website->url}");
+        } catch (\Exception $e) {
+            Log::error('Error loading website: ' . $e->getMessage());
+            throw $e;
+        }
 
         try {
             // Update status to running
@@ -51,23 +60,28 @@ class SeoHealthCheckJob implements ShouldQueue
                 ->ignoreRobots(false); // Respect robots.txt
 
             try {
+                Log::info("Starting crawl for {$baseUrl}");
+
                 // Start crawling from specific URLs if provided, otherwise from base URL
                 if (! empty($this->crawlableUrls)) {
                     foreach ($this->crawlableUrls as $url) {
+                        Log::info("Starting crawl for specific URL: {$url}");
                         $crawler->startCrawling($url);
                     }
                 } else {
+                    Log::info("Starting crawl for base URL: {$baseUrl}");
                     $crawler->startCrawling($baseUrl);
                 }
 
                 Log::info("SEO health check completed successfully for website: {$website->url}");
             } catch (\Exception $crawlerException) {
-                Log::warning("SEO Crawler encountered an exception but may have completed: " . $crawlerException->getMessage());
+                Log::warning('SEO Crawler encountered an exception but may have completed: ' . $crawlerException->getMessage());
 
                 // Check if the crawler actually completed by looking at the status
                 $this->seoCheck->refresh();
                 if ($this->seoCheck->status === 'completed') {
                     Log::info("SEO health check completed successfully despite exception for website: {$website->url}");
+
                     return; // Don't throw exception if it actually completed
                 }
 
@@ -95,5 +109,16 @@ class SeoHealthCheckJob implements ShouldQueue
             'status' => 'failed',
             'finished_at' => now(),
         ]);
+
+        // Broadcast failure event
+        try {
+            broadcast(new \App\Events\CrawlFailed(
+                seoCheckId: $this->seoCheck->id,
+                totalUrlsCrawled: $this->seoCheck->total_urls_crawled ?? 0,
+                errorMessage: $exception->getMessage()
+            ));
+        } catch (\Exception $e) {
+            Log::warning('Failed to broadcast crawl failure event: ' . $e->getMessage());
+        }
     }
 }

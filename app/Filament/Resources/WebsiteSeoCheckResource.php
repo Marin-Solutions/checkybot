@@ -72,13 +72,16 @@ class WebsiteSeoCheckResource extends Resource
                         $score = $seoCheck->computed_health_score ?? 0;
 
                         if ($score >= 90) {
-                            return 'success';
+                            return 'success'; // Green - Excellent (90-100%)
                         }
                         if ($score >= 70) {
-                            return 'warning';
+                            return 'warning'; // Yellow - Good (70-89%)
+                        }
+                        if ($score >= 31) {
+                            return 'info'; // Orange/Blue - Fair (31-69%)
                         }
 
-                        return 'danger';
+                        return 'danger'; // Red - Poor (0-30%)
                     })
                     ->formatStateUsing(function ($record): string {
                         $seoCheck = $record->latestSeoCheck;

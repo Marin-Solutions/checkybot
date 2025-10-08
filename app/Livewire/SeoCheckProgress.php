@@ -72,15 +72,50 @@ class SeoCheckProgress extends Component
         // Refresh from database only on completion to get final data
         $this->seoCheck->refresh();
 
-        $this->isRunning = $this->seoCheck->isRunning();
+        // Force update all properties
+        $this->isRunning = false; // Explicitly set to false since crawl is completed
         $this->urlsCrawled = $this->seoCheck->total_urls_crawled;
         $this->totalUrls = $this->seoCheck->total_crawlable_urls;
-        $this->progress = $this->seoCheck->getProgressPercentage();
+        $this->progress = 100; // Set to 100% on completion
         $this->issuesFound = $this->seoCheck->seoIssues()->count();
         $this->startedAt = $this->seoCheck->started_at;
+        $this->estimatedTime = null; // Clear estimated time on completion
 
         // Dispatch completion event to update all sections
         $this->dispatch('seo-check-finished');
+
+        // Show completion notification
+        \Filament\Notifications\Notification::make()
+            ->title('SEO Check Completed!')
+            ->body("Found {$this->issuesFound} issues.")
+            ->success()
+            ->send();
+    }
+
+    #[On('seo-check-failed')]
+    public function handleFailure(): void
+    {
+        // Refresh from database to get final data
+        $this->seoCheck->refresh();
+
+        // Force update all properties
+        $this->isRunning = false; // Explicitly set to false since crawl failed
+        $this->urlsCrawled = $this->seoCheck->total_urls_crawled;
+        $this->totalUrls = $this->seoCheck->total_crawlable_urls;
+        $this->progress = 0; // Reset progress on failure
+        $this->issuesFound = $this->seoCheck->seoIssues()->count();
+        $this->startedAt = $this->seoCheck->started_at;
+        $this->estimatedTime = null; // Clear estimated time on failure
+
+        // Dispatch failure event to update all sections
+        $this->dispatch('seo-check-finished');
+
+        // Show failure notification
+        \Filament\Notifications\Notification::make()
+            ->title('SEO Check Failed')
+            ->body('The crawl encountered an error and could not complete.')
+            ->danger()
+            ->send();
     }
 
     protected function calculateEstimatedTime(): void

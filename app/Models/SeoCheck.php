@@ -281,11 +281,13 @@ class SeoCheck extends Model
         $score = $this->getHealthScoreAttribute();
 
         if ($score >= 90) {
-            return 'success'; // Green
+            return 'success'; // Green - Excellent (90-100%)
         } elseif ($score >= 70) {
-            return 'warning'; // Yellow
+            return 'warning'; // Yellow - Good (70-89%)
+        } elseif ($score >= 31) {
+            return 'info'; // Orange/Blue - Fair (31-69%) - using info as closest to orange
         } else {
-            return 'danger'; // Red
+            return 'danger'; // Red - Poor (0-30%)
         }
     }
 
@@ -300,7 +302,7 @@ class SeoCheck extends Model
             return 'Excellent';
         } elseif ($score >= 70) {
             return 'Good';
-        } elseif ($score >= 50) {
+        } elseif ($score >= 31) {
             return 'Fair';
         } else {
             return 'Poor';
