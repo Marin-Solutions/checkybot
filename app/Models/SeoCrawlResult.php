@@ -22,6 +22,7 @@ class SeoCrawlResult extends Model
         'external_links',
         'page_size_bytes',
         'html_size_bytes',
+        'html_content',
         'resource_sizes',
         'headers',
         'response_time_ms',

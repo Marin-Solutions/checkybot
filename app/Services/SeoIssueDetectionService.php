@@ -57,17 +57,18 @@ class SeoIssueDetectionService
     {
         $issues = collect();
 
-        // Skip if no HTML content
+        // Skip if no HTML content or failed status
         if ($result->status_code < 200 || $result->status_code >= 300) {
             return $issues;
         }
 
-        // Get HTML content for DOM parsing
-        $htmlContent = $this->getHtmlContent($result->url);
+        // Get HTML content from stored crawl result
+        $htmlContent = $result->html_content;
         if (! $htmlContent) {
             return $issues;
         }
 
+        // Create DOM document for parsing
         $dom = new \DOMDocument;
         @$dom->loadHTML($htmlContent);
         $xpath = new DOMXPath($dom);
@@ -540,14 +541,16 @@ class SeoIssueDetectionService
         // Only check a limited number of pages to avoid too many issues
         $pagesToCheck = $allResults->take(50); // Limit to first 50 pages
         $homepageUrl = $allResults->first()->url ?? '';
-        
+
         foreach ($pagesToCheck as $result) {
             // Skip homepage and common pages that might not be linked
-            if ($result->url === $homepageUrl || 
+            if (
+                $result->url === $homepageUrl ||
                 str_contains($result->url, '/admin') ||
                 str_contains($result->url, '/api/') ||
                 str_contains($result->url, '/login') ||
-                str_contains($result->url, '/register')) {
+                str_contains($result->url, '/register')
+            ) {
                 continue;
             }
 
@@ -590,7 +593,7 @@ class SeoIssueDetectionService
 
         // Handle protocol-relative URLs
         if (str_starts_with($url, '//')) {
-            return parse_url($baseUrl, PHP_URL_SCHEME) . ':' . $url;
+            return parse_url($baseUrl, PHP_URL_SCHEME).':'.$url;
         }
 
         // Handle relative URLs
@@ -598,7 +601,7 @@ class SeoIssueDetectionService
         $basePath = $baseParts['path'] ?? '/';
 
         if (str_starts_with($url, '/')) {
-            return $baseParts['scheme'] . '://' . $baseParts['host'] . $url;
+            return $baseParts['scheme'].'://'.$baseParts['host'].$url;
         }
 
         // Handle relative paths
@@ -607,7 +610,7 @@ class SeoIssueDetectionService
             $baseDir = '/';
         }
 
-        return $baseParts['scheme'] . '://' . $baseParts['host'] . $baseDir . '/' . $url;
+        return $baseParts['scheme'].'://'.$baseParts['host'].$baseDir.'/'.$url;
     }
 
     protected function isLikelyLargeImage(string $url): bool

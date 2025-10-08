@@ -14,11 +14,11 @@ class SeoHealthCheckJob implements ShouldQueue
 {
     use Queueable;
 
-    public int $timeout = 3600; // 1 hour timeout
+    public int $timeout = 300; // 5 minutes timeout
 
-    public int $tries = 3;
+    public int $tries = 1; // Only try once to prevent stuck jobs
 
-    protected SeoCheck $seoCheck;
+    public SeoCheck $seoCheck;
 
     protected array $crawlableUrls;
 
@@ -33,29 +33,81 @@ class SeoHealthCheckJob implements ShouldQueue
         Log::info("Starting SEO health check for website: {$this->seoCheck->website->url}");
 
         try {
-            // Update status to running
-            $this->seoCheck->update([
-                'status' => 'running',
-                'started_at' => now(),
-            ]);
-
             $website = $this->seoCheck->website;
             $baseUrl = $website->getBaseURL();
 
-            // Create crawler with SEO-specific configuration
+            // Get crawlable URLs from sitemap or robots.txt
+            $robotsSitemapService = app(\App\Services\RobotsSitemapService::class);
+            $sitemapUrls = $robotsSitemapService->getSitemapUrls($baseUrl);
+            $crawlableUrls = $robotsSitemapService->getCrawlableUrls($baseUrl);
+
+            Log::info("SEO Job: Base URL: {$baseUrl}");
+            Log::info("SEO Job: Sitemap URLs found: " . count($sitemapUrls));
+            Log::info("SEO Job: Crawlable URLs found: " . count($crawlableUrls));
+            if (!empty($sitemapUrls)) {
+                Log::info("SEO Job: First few sitemap URLs: " . implode(', ', array_slice($sitemapUrls, 0, 5)));
+            }
+            if (!empty($crawlableUrls)) {
+                Log::info("SEO Job: First few crawlable URLs: " . implode(', ', array_slice($crawlableUrls, 0, 5)));
+            }
+
+            // Determine total URLs and crawling strategy
+            $totalUrls = 0;
+            $sitemapUsed = false;
+
+            if (! empty($sitemapUrls)) {
+                // Option 1: Use sitemap URLs (best approach)
+                $totalUrls = count($sitemapUrls);
+                $sitemapUsed = true;
+                $this->seoCheck->update([
+                    'status' => 'running',
+                    'started_at' => now(),
+                    'total_crawlable_urls' => $totalUrls,
+                    'sitemap_used' => true,
+                    'robots_txt_checked' => true,
+                    'crawl_summary' => [
+                        'sitemap_urls_found' => $totalUrls,
+                        'robots_txt_checked' => true,
+                        'crawl_strategy' => 'sitemap_preload',
+                    ],
+                ]);
+
+                Log::info("SEO Crawler: Using sitemap with {$totalUrls} URLs for {$baseUrl}");
+            } else {
+                // Option 2: Dynamic discovery (fallback)
+                $totalUrls = 1; // Start with base URL, will be updated dynamically
+                $sitemapUsed = false;
+                $this->seoCheck->update([
+                    'status' => 'running',
+                    'started_at' => now(),
+                    'total_crawlable_urls' => $totalUrls,
+                    'sitemap_used' => false,
+                    'robots_txt_checked' => true,
+                    'crawl_summary' => [
+                        'sitemap_urls_found' => 0,
+                        'robots_txt_checked' => true,
+                        'crawl_strategy' => 'dynamic_discovery',
+                    ],
+                ]);
+
+                Log::info("SEO Crawler: No sitemap found, using dynamic discovery for {$baseUrl}");
+            }
+
+            // Create crawler with default Spatie configuration
             $crawler = Crawler::create()
                 ->setCrawlObserver(new SeoHealthCheckCrawler($this->seoCheck))
-                ->setCrawlProfile(new CrawlInternalUrls($baseUrl))
-                ->setDelayBetweenRequests(1000) // 1 second delay between requests
-                ->setUserAgent('CheckyBot SEO Crawler/1.0 (+https://checkybot.com/bot)')
-                ->ignoreRobots(false); // Respect robots.txt
+                ->setCrawlProfile(new CrawlInternalUrls($baseUrl));
 
-            // Start crawling from specific URLs if provided, otherwise from base URL
-            if (! empty($this->crawlableUrls)) {
-                foreach ($this->crawlableUrls as $url) {
+            // Start crawling based on strategy
+            if ($sitemapUsed && ! empty($sitemapUrls)) {
+                // Strategy 1: Preload from sitemap - crawl all sitemap URLs
+                Log::info("Starting crawl with {$totalUrls} preloaded URLs from sitemap");
+                foreach ($sitemapUrls as $url) {
                     $crawler->startCrawling($url);
                 }
             } else {
+                // Strategy 2: Dynamic discovery - start from base URL and discover as we go
+                Log::info('Starting dynamic discovery crawl from base URL');
                 $crawler->startCrawling($baseUrl);
             }
 

@@ -6,6 +6,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
+use Livewire\Attributes\On;
 
 class SeoIssuesTableWidget extends BaseWidget
 {
@@ -33,6 +34,13 @@ class SeoIssuesTableWidget extends BaseWidget
     public function mount(): void
     {
         // The recordId will be passed from the parent page
+    }
+
+    #[On('seo-check-finished')]
+    public function handleSeoCheckFinished(): void
+    {
+        // Refresh the table when SEO check completes
+        $this->dispatch('$refresh');
     }
 
     public function table(Table $table): Table

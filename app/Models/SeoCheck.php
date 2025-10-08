@@ -14,6 +14,7 @@ class SeoCheck extends Model
     protected $fillable = [
         'website_id',
         'status',
+        'progress',
         'total_urls_crawled',
         'total_crawlable_urls',
         'sitemap_used',
@@ -21,6 +22,11 @@ class SeoCheck extends Model
         'started_at',
         'finished_at',
         'crawl_summary',
+        'computed_errors_count',
+        'computed_warnings_count',
+        'computed_notices_count',
+        'computed_http_errors_count',
+        'computed_health_score',
     ];
 
     protected $casts = [
@@ -74,22 +80,79 @@ class SeoCheck extends Model
             return 0;
         }
 
-        // Calculate progress based on URLs crawled vs total crawlable URLs
-        return min(100, (int) (($this->total_urls_crawled / $this->total_crawlable_urls) * 100));
+        // For dynamic discovery, we need to handle the case where discovered URLs might be less than crawled
+        $crawlStrategy = $this->crawl_summary['crawl_strategy'] ?? 'dynamic_discovery';
+
+        if ($crawlStrategy === 'dynamic_discovery') {
+            // For dynamic discovery, progress is based on discovered URLs
+            // If we've discovered fewer URLs than crawled, it means we're still discovering
+            $totalUrls = max($this->total_crawlable_urls, $this->total_urls_crawled);
+
+            return min(100, (int) (($this->total_urls_crawled / $totalUrls) * 100));
+        } else {
+            // For sitemap preload, use the exact total
+            return min(100, (int) (($this->total_urls_crawled / $this->total_crawlable_urls) * 100));
+        }
     }
 
     public function getErrorsCountAttribute(): int
     {
+        // Use computed column if available (most efficient)
+        if (isset($this->attributes['computed_errors_count'])) {
+            return (int) $this->attributes['computed_errors_count'];
+        }
+
+        // Use pre-calculated count if available (from withCount)
+        if (isset($this->attributes['errors_count'])) {
+            return (int) $this->attributes['errors_count'];
+        }
+
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('seoIssues')) {
+            return $this->seoIssues->where('severity', 'error')->count();
+        }
+
+        // Fallback to database query
         return $this->seoIssues()->where('severity', 'error')->count();
     }
 
     public function getWarningsCountAttribute(): int
     {
+        // Use computed column if available (most efficient)
+        if (isset($this->attributes['computed_warnings_count'])) {
+            return (int) $this->attributes['computed_warnings_count'];
+        }
+
+        // Use pre-calculated count if available (from withCount)
+        if (isset($this->attributes['warnings_count'])) {
+            return (int) $this->attributes['warnings_count'];
+        }
+
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('seoIssues')) {
+            return $this->seoIssues->where('severity', 'warning')->count();
+        }
+
         return $this->seoIssues()->where('severity', 'warning')->count();
     }
 
     public function getNoticesCountAttribute(): int
     {
+        // Use computed column if available (most efficient)
+        if (isset($this->attributes['computed_notices_count'])) {
+            return (int) $this->attributes['computed_notices_count'];
+        }
+
+        // Use pre-calculated count if available (from withCount)
+        if (isset($this->attributes['notices_count'])) {
+            return (int) $this->attributes['notices_count'];
+        }
+
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('seoIssues')) {
+            return $this->seoIssues->where('severity', 'notice')->count();
+        }
+
         return $this->seoIssues()->where('severity', 'notice')->count();
     }
 
@@ -104,10 +167,32 @@ class SeoCheck extends Model
             return 0.0;
         }
 
-        // Get count of URLs that have errors (status 4xx, 5xx, or SEO issues with severity 'error')
-        $urlsWithErrors = $this->getUrlsWithErrorsCount();
+        // Use computed column if available (most efficient)
+        if (isset($this->attributes['computed_health_score'])) {
+            return (float) $this->attributes['computed_health_score'];
+        }
 
-        // Calculate health score: (URLs without errors / Total URLs) × 100
+        // Use pre-calculated counts if available to avoid expensive queries
+        $httpErrorCount = isset($this->attributes['http_errors_count'])
+            ? (int) $this->attributes['http_errors_count']
+            : 0;
+
+        $seoErrorCount = isset($this->attributes['errors_count'])
+            ? (int) $this->attributes['errors_count']
+            : 0;
+
+        $urlsWithErrors = $httpErrorCount + $seoErrorCount;
+
+        // If we have pre-calculated counts, use them directly
+        if ($httpErrorCount > 0 || $seoErrorCount > 0) {
+            $urlsWithoutErrors = $this->total_urls_crawled - $urlsWithErrors;
+            $healthScore = ($urlsWithoutErrors / $this->total_urls_crawled) * 100;
+
+            return round($healthScore, 1);
+        }
+
+        // Fallback to the expensive method only if pre-calculated counts are not available
+        $urlsWithErrors = $this->getUrlsWithErrorsCount();
         $urlsWithoutErrors = $this->total_urls_crawled - $urlsWithErrors;
         $healthScore = ($urlsWithoutErrors / $this->total_urls_crawled) * 100;
 
@@ -119,24 +204,61 @@ class SeoCheck extends Model
      */
     public function getUrlsWithErrorsCount(): int
     {
-        // Count URLs with HTTP errors (4xx, 5xx)
-        $httpErrorUrls = $this->crawlResults()
-            ->where(function ($query) {
-                $query->where('status_code', '>=', 400)
-                    ->where('status_code', '<', 600);
-            })
+        // Use computed columns if available (most efficient)
+        $httpErrorCount = isset($this->attributes['computed_http_errors_count'])
+            ? (int) $this->attributes['computed_http_errors_count']
+            : 0;
+
+        $seoErrorCount = isset($this->attributes['computed_errors_count'])
+            ? (int) $this->attributes['computed_errors_count']
+            : 0;
+
+        if ($httpErrorCount > 0 || $seoErrorCount > 0) {
+            return $httpErrorCount + $seoErrorCount;
+        }
+
+        // Use pre-calculated counts if available (from withCount)
+        $httpErrorCount = isset($this->attributes['http_errors_count'])
+            ? (int) $this->attributes['http_errors_count']
+            : 0;
+
+        $seoErrorCount = isset($this->attributes['errors_count'])
+            ? (int) $this->attributes['errors_count']
+            : 0;
+
+        if ($httpErrorCount > 0 || $seoErrorCount > 0) {
+            return $httpErrorCount + $seoErrorCount;
+        }
+
+        // Use loaded relationships if available to avoid N+1 queries
+        if ($this->relationLoaded('crawlResults') && $this->relationLoaded('seoIssues')) {
+            // Count URLs with HTTP errors (4xx, 5xx) from loaded relationship
+            $httpErrorUrls = $this->crawlResults
+                ->where('status_code', '>=', 400)
+                ->where('status_code', '<', 600)
+                ->count();
+
+            // Count URLs with SEO errors from loaded relationship
+            $seoErrorUrls = $this->seoIssues
+                ->where('severity', 'error')
+                ->unique('url')
+                ->count();
+
+            return $httpErrorUrls + $seoErrorUrls;
+        }
+
+        // Fallback to database queries if relationships not loaded
+        $httpErrorCount = $this->crawlResults()
+            ->where('status_code', '>=', 400)
+            ->where('status_code', '<', 600)
             ->count();
 
-        // Count URLs with SEO errors (not including HTTP errors to avoid double counting)
-        $seoErrorUrls = $this->seoIssues()
+        $seoErrorCount = $this->seoIssues()
             ->where('severity', 'error')
-            ->whereHas('seoCrawlResult', function ($query) {
-                $query->where('status_code', '<', 400); // Only count SEO errors on successful HTTP responses
-            })
             ->distinct('url')
             ->count('url');
 
-        return $httpErrorUrls + $seoErrorUrls;
+        return $httpErrorCount + $seoErrorCount;
     }
 
     /**

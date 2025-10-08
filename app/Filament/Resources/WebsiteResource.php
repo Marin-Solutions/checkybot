@@ -139,7 +139,15 @@ class WebsiteResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->translateLabel()
-                    ->searchable(),
+                    ->searchable()
+                    ->formatStateUsing(function ($state, Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if ($latestCheck && in_array($latestCheck->status, ['running', 'pending'])) {
+                            return $state.' 🔄';
+                        }
+
+                        return $state;
+                    }),
                 Tables\Columns\TextColumn::make('url')
                     ->translateLabel()
                     ->limit(50)
@@ -153,7 +161,7 @@ class WebsiteResource extends Resource
                             ->where('created_at', '>=', now()->subHours(24))
                             ->orderBy('created_at')
                             ->get()
-                            ->map(fn($log) => [
+                            ->map(fn ($log) => [
                                 'date' => $log->created_at->format('M j, H:i'),
                                 'value' => $log->speed,
                             ])
@@ -165,7 +173,7 @@ class WebsiteResource extends Resource
                     ->state(function (Website $record): string {
                         $avg = $record->average_response_time;
 
-                        return $avg ? round($avg) . 'ms' : 'N/A';
+                        return $avg ? round($avg).'ms' : 'N/A';
                     })
                     ->sortable()
                     ->alignCenter(),
@@ -207,13 +215,13 @@ class WebsiteResource extends Resource
                 Tables\Columns\TextColumn::make('global_notifications_count')
                     ->label('Global Notifications Channels')
                     ->state(function (Website $record): string {
-                        return $record->globalNotifications->count() . '  🌍';
+                        return $record->globalNotifications->count().'  🌍';
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('individual_notifications_count')
                     ->label('Individual Notifications Channels')
                     ->state(function (Website $record): string {
-                        return $record->individualNotifications->count() . '  📌';
+                        return $record->individualNotifications->count().'  📌';
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
@@ -308,30 +316,54 @@ class WebsiteResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('view_seo_progress')
+                    ->label('View Progress')
+                    ->icon('heroicon-o-chart-bar')
+                    ->color('warning')
+                    ->url(function (Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if ($latestCheck) {
+                            return "/admin/seo-checks/{$latestCheck->id}";
+                        }
+
+                        return null;
+                    })
+                    ->openUrlInNewTab()
+                    ->visible(function (Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+
+                        return $latestCheck && in_array($latestCheck->status, ['running', 'pending']);
+                    }),
                 Tables\Actions\Action::make('run_seo_crawl')
-                    ->label('Run SEO Crawl')
+                    ->label('Run SEO Check')
                     ->icon('heroicon-o-magnifying-glass')
-                    ->color('primary')
+                    ->color('success')
                     ->requiresConfirmation()
-                    ->modalHeading('Start SEO Crawl')
-                    ->modalDescription('This will start crawling the website to collect SEO data. The process may take several minutes depending on the site size. The crawler will respect robots.txt and use sitemap.xml if available.')
+                    ->modalHeading('Start SEO Health Check')
+                    ->modalDescription('This will start a comprehensive SEO health check for this website. The process may take several minutes depending on the site size. The crawler will respect robots.txt and use sitemap.xml if available.')
                     ->action(function (Website $record) {
                         try {
                             $seoService = app(SeoHealthCheckService::class);
                             $seoCheck = $seoService->startManualCheck($record);
 
                             Notification::make()
-                                ->title('SEO Crawl Started')
-                                ->body("SEO crawl has been started for {$record->name}. The crawler will respect robots.txt and use sitemap.xml if available. You can monitor progress in the table.")
+                                ->title('SEO Check Started')
+                                ->body("SEO health check has been started for {$record->name}. You can monitor progress in real-time.")
                                 ->success()
                                 ->send();
                         } catch (\Exception $e) {
                             Notification::make()
-                                ->title('Error Starting SEO Crawl')
-                                ->body('Failed to start SEO crawl: ' . $e->getMessage())
+                                ->title('Error Starting SEO Check')
+                                ->body('Failed to start SEO check: '.$e->getMessage())
                                 ->danger()
                                 ->send();
                         }
+                    })
+                    ->visible(function (Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+
+                        // Show if no check exists or if the latest check is not running/pending
+                        return ! $latestCheck || ! in_array($latestCheck->status, ['running', 'pending']);
                     }),
             ])
             ->bulkActions([
@@ -367,6 +399,7 @@ class WebsiteResource extends Resource
                 'user:id,name',
                 'globalNotifications:id,user_id,website_id,inspection',
                 'individualNotifications:id,website_id,inspection',
+                'latestSeoCheck:id,website_id,status,started_at,total_urls_crawled,total_crawlable_urls,progress',
             ])
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([

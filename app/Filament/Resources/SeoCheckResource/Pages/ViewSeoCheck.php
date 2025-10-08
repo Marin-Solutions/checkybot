@@ -16,6 +16,7 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Livewire\Attributes\On;
 
 class ViewSeoCheck extends ViewRecord implements HasTable
 {
@@ -35,10 +36,29 @@ class ViewSeoCheck extends ViewRecord implements HasTable
         ];
     }
 
+    #[On('refresh-seo-check-data')]
+    public function refreshSeoCheckData(): void
+    {
+        $this->refreshFormData(['record']);
+    }
+
+    #[On('seo-check-finished')]
+    public function handleSeoCheckFinished(): void
+    {
+        // Refresh all data when SEO check completes
+        $this->refreshFormData(['record']);
+
+        // Show success notification
+        \Filament\Notifications\Notification::make()
+            ->title('SEO Check Completed')
+            ->success()
+            ->send();
+    }
+
     public function table(Table $table): Table
     {
         return $table
-            ->query($this->getRecord()->seoIssues()->getQuery())
+            ->query(fn() => $this->getRecord()->seoIssues()->with('seoCrawlResult'))
             ->columns([
                 TextColumn::make('severity')
                     ->badge()
@@ -110,6 +130,13 @@ class ViewSeoCheck extends ViewRecord implements HasTable
     {
         return $infolist
             ->schema([
+                Section::make('Live Progress')
+                    ->schema([
+                        \Filament\Infolists\Components\Livewire::make(\App\Livewire\SeoCheckProgress::class, [
+                            'seoCheck' => $this->getRecord(),
+                        ]),
+                    ])
+                    ->visible(fn() => $this->getRecord()->isRunning() || $this->getRecord()->isCompleted() || $this->getRecord()->isFailed()),
                 Section::make('SEO Check Overview')
                     ->schema([
                         Grid::make(2)

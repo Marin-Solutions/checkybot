@@ -12,6 +12,8 @@ class ListSeoChecks extends ListRecords
 {
     protected static string $resource = SeoCheckResource::class;
 
+    protected ?Website $website = null;
+
     protected function getHeaderActions(): array
     {
         return [
@@ -26,6 +28,7 @@ class ListSeoChecks extends ListRecords
         // Filter by website if website_id is provided in the URL
         if (request()->has('website_id')) {
             $websiteId = request()->get('website_id');
+            $this->website = Website::find($websiteId);
             $query->where('website_id', $websiteId);
         }
 
@@ -34,11 +37,8 @@ class ListSeoChecks extends ListRecords
 
     public function getTitle(): string
     {
-        if (request()->has('website_id')) {
-            $website = Website::find(request()->get('website_id'));
-            if ($website) {
-                return "SEO Checks for {$website->name}";
-            }
+        if ($this->website) {
+            return "SEO Checks for {$this->website->name}";
         }
 
         return 'All SEO Checks';
@@ -48,15 +48,12 @@ class ListSeoChecks extends ListRecords
     {
         $breadcrumbs = parent::getBreadcrumbs();
 
-        if (request()->has('website_id')) {
-            $website = Website::find(request()->get('website_id'));
-            if ($website) {
-                // Add breadcrumb to go back to website SEO checks
-                $breadcrumbs = [
-                    'SEO Checks' => route('filament.admin.resources.website-seo-checks.index'),
-                    "SEO Checks for {$website->name}" => null,
-                ];
-            }
+        if ($this->website) {
+            // Add breadcrumb to go back to website SEO checks
+            $breadcrumbs = [
+                'SEO Checks' => route('filament.admin.resources.website-seo-checks.index'),
+                "SEO Checks for {$this->website->name}" => null,
+            ];
         }
 
         return $breadcrumbs;

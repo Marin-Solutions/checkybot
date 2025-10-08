@@ -28,10 +28,18 @@ class WebsiteSeoCheckResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->label('Website')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->formatStateUsing(function ($state, $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if ($latestCheck && in_array($latestCheck->status, ['running', 'pending'])) {
+                            return $state . ' 🔄';
+                        }
+
+                        return $state;
+                    }),
                 Tables\Columns\TextColumn::make('url')
                     ->label('URL')
-                    ->url(fn ($record) => $record->url)
+                    ->url(fn($record) => $record->url)
                     ->openUrlInNewTab()
                     ->searchable()
                     ->sortable()
@@ -39,7 +47,7 @@ class WebsiteSeoCheckResource extends Resource
                 Tables\Columns\TextColumn::make('latest_seo_check_status')
                     ->label('Latest Status')
                     ->badge()
-                    ->color(fn (?string $state): string => match ($state) {
+                    ->color(fn(?string $state): string => match ($state) {
                         'completed' => 'success',
                         'running' => 'warning',
                         'failed' => 'danger',
@@ -48,27 +56,63 @@ class WebsiteSeoCheckResource extends Resource
                         default => 'gray',
                     })
                     ->placeholder('No checks'),
-                Tables\Columns\TextColumn::make('latest_seo_check_urls_crawled')
+                Tables\Columns\TextColumn::make('latestSeoCheck.total_urls_crawled')
                     ->label('URLs Crawled')
                     ->numeric(),
-                Tables\Columns\TextColumn::make('latest_seo_check_health_score_formatted')
+                Tables\Columns\TextColumn::make('latestSeoCheck.health_score')
                     ->label('Health Score')
                     ->badge()
-                    ->color(fn ($record): string => $record->latest_seo_check_health_score_color ?? 'gray')
-                    ->formatStateUsing(fn ($record): string => $record->latest_seo_check_health_score_formatted ?? 'N/A'),
-                Tables\Columns\TextColumn::make('latest_seo_check_errors_count')
+                    ->color(function ($record): string {
+                        $seoCheck = $record->latestSeoCheck;
+                        if (! $seoCheck || $seoCheck->total_urls_crawled === 0) {
+                            return 'gray';
+                        }
+
+                        // Use computed health score directly (most efficient)
+                        $score = $seoCheck->computed_health_score ?? 0;
+
+                        if ($score >= 90) {
+                            return 'success';
+                        }
+                        if ($score >= 70) {
+                            return 'warning';
+                        }
+
+                        return 'danger';
+                    })
+                    ->formatStateUsing(function ($record): string {
+                        $seoCheck = $record->latestSeoCheck;
+                        if (! $seoCheck || $seoCheck->total_urls_crawled === 0) {
+                            return 'N/A';
+                        }
+
+                        // Use computed health score directly (most efficient)
+                        $score = $seoCheck->computed_health_score ?? 0;
+
+                        return number_format($score, 1) . '%';
+                    }),
+                Tables\Columns\TextColumn::make('latestSeoCheck.computed_errors_count')
                     ->label('Errors')
                     ->badge()
-                    ->color('danger'),
-                Tables\Columns\TextColumn::make('latest_seo_check_warnings_count')
+                    ->color('danger')
+                    ->getStateUsing(function ($record) {
+                        return $record->latestSeoCheck?->computed_errors_count ?? 0;
+                    }),
+                Tables\Columns\TextColumn::make('latestSeoCheck.computed_warnings_count')
                     ->label('Warnings')
                     ->badge()
-                    ->color('warning'),
-                Tables\Columns\TextColumn::make('latest_seo_check_notices_count')
+                    ->color('warning')
+                    ->getStateUsing(function ($record) {
+                        return $record->latestSeoCheck?->computed_warnings_count ?? 0;
+                    }),
+                Tables\Columns\TextColumn::make('latestSeoCheck.computed_notices_count')
                     ->label('Notices')
                     ->badge()
-                    ->color('info'),
-                Tables\Columns\TextColumn::make('latest_seo_check_finished_at')
+                    ->color('info')
+                    ->getStateUsing(function ($record) {
+                        return $record->latestSeoCheck?->computed_notices_count ?? 0;
+                    }),
+                Tables\Columns\TextColumn::make('latestSeoCheck.finished_at')
                     ->label('Last Check')
                     ->dateTime()
                     ->sortable(),
@@ -100,8 +144,57 @@ class WebsiteSeoCheckResource extends Resource
                 Tables\Actions\Action::make('view_checks')
                     ->label('View Checks')
                     ->icon('heroicon-o-eye')
-                    ->url(fn ($record) => route('filament.admin.resources.seo-checks.index', ['website_id' => $record->id]))
+                    ->url(fn($record) => route('filament.admin.resources.seo-checks.index', ['website_id' => $record->id]))
                     ->openUrlInNewTab(),
+                Tables\Actions\Action::make('view_latest_progress')
+                    ->label('View Progress')
+                    ->icon('heroicon-o-chart-bar')
+                    ->color('warning')
+                    ->url(function ($record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if ($latestCheck) {
+                            return "/admin/seo-checks/{$latestCheck->id}";
+                        }
+
+                        return null;
+                    })
+                    ->openUrlInNewTab()
+                    ->visible(function ($record) {
+                        $latestCheck = $record->latestSeoCheck;
+
+                        return $latestCheck && in_array($latestCheck->status, ['running', 'pending']);
+                    }),
+                Tables\Actions\Action::make('run_seo_check')
+                    ->label('Run SEO Check')
+                    ->icon('heroicon-o-play')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Start SEO Health Check')
+                    ->modalDescription('This will start a comprehensive SEO health check for this website. The process may take several minutes depending on the site size.')
+                    ->action(function ($record) {
+                        try {
+                            $seoService = app(\App\Services\SeoHealthCheckService::class);
+                            $seoCheck = $seoService->startManualCheck($record);
+
+                            \Filament\Notifications\Notification::make()
+                                ->title('SEO Check Started')
+                                ->body("SEO health check has been started for {$record->name}. You can monitor the progress in real-time.")
+                                ->success()
+                                ->send();
+                        } catch (\Exception $e) {
+                            \Filament\Notifications\Notification::make()
+                                ->title('Error Starting SEO Check')
+                                ->body('Failed to start SEO check: ' . $e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    })
+                    ->visible(function ($record) {
+                        $latestCheck = $record->latestSeoCheck;
+
+                        // Show if no check exists or if the latest check is not running/pending
+                        return ! $latestCheck || ! in_array($latestCheck->status, ['running', 'pending']);
+                    }),
             ]);
     }
 
@@ -122,7 +215,25 @@ class WebsiteSeoCheckResource extends Resource
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
     {
         return parent::getEloquentQuery()
-            ->with(['latestSeoCheck'])
+            ->with([
+                'latestSeoCheck' => function ($query) {
+                    $query->withCount([
+                        'seoIssues as errors_count' => function ($query) {
+                            $query->where('severity', 'error');
+                        },
+                        'seoIssues as warnings_count' => function ($query) {
+                            $query->where('severity', 'warning');
+                        },
+                        'seoIssues as notices_count' => function ($query) {
+                            $query->where('severity', 'notice');
+                        },
+                        'crawlResults as http_errors_count' => function ($query) {
+                            $query->where('status_code', '>=', 400)
+                                ->where('status_code', '<', 600);
+                        },
+                    ]);
+                },
+            ])
             ->has('seoChecks') // Only show websites that have SEO checks
             ->orderBy('created_at', 'desc');
     }

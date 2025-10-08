@@ -151,46 +151,91 @@ class Website extends Model
 
     public function getLatestSeoCheckStatusAttribute(): ?string
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->status;
+        }
+
         return $this->latestSeoCheck?->status;
     }
 
     public function getLatestSeoCheckUrlsCrawledAttribute(): int
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->total_urls_crawled ?? 0;
+        }
+
         return $this->latestSeoCheck?->total_urls_crawled ?? 0;
     }
 
     public function getLatestSeoCheckErrorsCountAttribute(): int
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->errors_count ?? 0;
+        }
+
         return $this->latestSeoCheck?->errors_count ?? 0;
     }
 
     public function getLatestSeoCheckWarningsCountAttribute(): int
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->warnings_count ?? 0;
+        }
+
         return $this->latestSeoCheck?->warnings_count ?? 0;
     }
 
     public function getLatestSeoCheckNoticesCountAttribute(): int
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->notices_count ?? 0;
+        }
+
         return $this->latestSeoCheck?->notices_count ?? 0;
     }
 
     public function getLatestSeoCheckFinishedAtAttribute(): ?\Illuminate\Support\Carbon
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->finished_at;
+        }
+
         return $this->latestSeoCheck?->finished_at;
     }
 
     public function getLatestSeoCheckHealthScoreAttribute(): ?float
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->health_score;
+        }
+
         return $this->latestSeoCheck?->health_score;
     }
 
     public function getLatestSeoCheckHealthScoreFormattedAttribute(): ?string
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->health_score_formatted;
+        }
+
         return $this->latestSeoCheck?->health_score_formatted;
     }
 
     public function getLatestSeoCheckHealthScoreColorAttribute(): ?string
     {
+        // Use loaded relationship if available to avoid N+1 queries
+        if ($this->relationLoaded('latestSeoCheck')) {
+            return $this->latestSeoCheck?->health_score_color;
+        }
+
         return $this->latestSeoCheck?->health_score_color;
     }
 }
