@@ -30,11 +30,10 @@ class EditBackupRemoteStorage extends EditRecord
 
         if ($testConnection['error']) {
             Notification::make()
-                ->{$testConnection[ 'error' ] ? 'danger' : 'success'}()
-                ->title($testConnection[ 'title' ])
-                ->body($testConnection[ 'message' ])
-                ->send()
-            ;
+                ->{$testConnection['error'] ? 'danger' : 'success'}()
+                ->title($testConnection['title'])
+                ->body($testConnection['message'])
+                ->send();
 
             $this->halt();
         }

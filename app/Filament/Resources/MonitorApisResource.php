@@ -5,18 +5,26 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Models\MonitorApis;
+use BackedEnum;
+use Filament\Actions\Action;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use UnitEnum;
 
 class MonitorApisResource extends Resource
 {
     protected static ?string $model = MonitorApis::class;
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 3;
 
@@ -26,35 +34,43 @@ class MonitorApisResource extends Resource
 
     protected static ?string $pluralModelLabel = 'API Monitors';
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-rectangle-stack';
 
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()->withAvg('results as avg_response_time', 'response_time_ms');
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
-                Forms\Components\TextInput::make('title')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('url')
-                    ->required()
-                    ->url()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('data_path')
-                    ->helperText('The path to the data in the JSON response (e.g. "data.items")')
-                    ->maxLength(255),
-                Forms\Components\KeyValue::make('headers')
-                    ->keyLabel('Header')
-                    ->valueLabel('Value')
-                    ->keyPlaceholder('Header Name')
-                    ->valuePlaceholder('Header Value')
-                    ->helperText('Optional headers to include in the request')
+                Section::make('API Monitor Information')
                     ->columnSpanFull()
-                    ->addActionLabel('Add Header'),
+                    ->schema([
+                        Forms\Components\TextInput::make('title')
+                            ->required()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('url')
+                            ->required()
+                            ->url()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('data_path')
+                            ->helperText('The path to the data in the JSON response (e.g. "data.items")')
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\KeyValue::make('headers')
+                            ->keyLabel('Header')
+                            ->valueLabel('Value')
+                            ->keyPlaceholder('Header Name')
+                            ->valuePlaceholder('Header Value')
+                            ->helperText('Optional headers to include in the request')
+                            ->columnSpanFull()
+                            ->addActionLabel('Add Header'),
+                    ])
+                    ->columns(1),
             ]);
     }
 
@@ -71,7 +87,7 @@ class MonitorApisResource extends Resource
                 Tables\Columns\TextColumn::make('avg_response_time')
                     ->label('Avg Response Time (ms)')
                     ->default('-')
-                    ->formatStateUsing(fn ($state) => $state === '-' ? '-' : round($state))
+                    ->formatStateUsing(fn($state) => $state === '-' ? '-' : round($state))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -86,9 +102,9 @@ class MonitorApisResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\Action::make('test')
+                ViewAction::make(),
+                EditAction::make(),
+                Action::make('test')
                     ->label('Test API')
                     ->color('warning')
                     ->icon('heroicon-o-play')
@@ -97,8 +113,8 @@ class MonitorApisResource extends Resource
                     }),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ])
             ->emptyStateHeading('No APIs');

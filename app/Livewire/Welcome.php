@@ -1,13 +1,13 @@
 <?php
 
-    namespace App\Livewire;
+namespace App\Livewire;
 
-    use Livewire\Component;
+use Livewire\Component;
 
-    class Welcome extends Component
+class Welcome extends Component
+{
+    public function render()
     {
-        public function render()
-        {
-            return view('livewire.welcome')->layout('layouts.root');
-        }
+        return view('livewire.welcome')->layout('layouts.root');
     }
+}

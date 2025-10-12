@@ -20,7 +20,7 @@ class ServerInformationHistoryFactory extends Factory
             'ram_user' => $this->faker->numberBetween(10, 100),
             'disk_use' => $this->faker->numberBetween(10, 100),
             'cpu_load' => $this->faker->randomFloat(2, 0, 100),
-            'server_id' =>  $this->faker->numberBetween(1, 10)
+            'server_id' => $this->faker->numberBetween(1, 10),
         ];
     }
 }

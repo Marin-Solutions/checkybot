@@ -3,11 +3,11 @@
 namespace App\Models;
 
 use App\Enums\WebhookHttpMethod;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Database\Eloquent\Model;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class NotificationChannels extends Model
 {
@@ -23,16 +23,16 @@ class NotificationChannels extends Model
     ];
 
     protected $casts = [
-        'request_body' => 'array'
+        'request_body' => 'array',
     ];
 
     public static function testWebhook(array $data): array
     {
-        $messageTest  = "Hello, I'm from " . url('/');
-        $method       = $data['method'];
-        $url          = $data['url'];
+        $messageTest = "Hello, I'm from ".url('/');
+        $method = $data['method'];
+        $url = $data['url'];
         $responseData = [];
-        $requestBody  = @$data['request_body'] ?? [];
+        $requestBody = @$data['request_body'] ?? [];
 
         try {
             if (str_contains($url, '{message}')) {
@@ -60,31 +60,33 @@ class NotificationChannels extends Model
 
             $responseData['code'] = $webhookCallback->ok() ? 200 : 0;
             $responseData['body'] = $webhookCallback->json();
+
             return $responseData;
         } catch (RequestException $exception) {
 
-            $handlerContext         = $exception->getHandlerContext();
+            $handlerContext = $exception->getHandlerContext();
             $responseData['code'] = $handlerContext['errno'];
             $responseData['body'] = $handlerContext['error'];
+
             return $responseData;
         }
     }
 
     public function sendWebhookNotification(array $data): array
     {
-        $messageText     = @$data['message'] ?? "Hello, I'm from " . url('/');
-        $descriptionText = @$data['description'] ?? "Description Text";
-        $method          = $this->method;
-        $url             = $this->url;
-        $responseData    = ['url' => $url];
-        $requestBody     = $this->request_body;
+        $messageText = @$data['message'] ?? "Hello, I'm from ".url('/');
+        $descriptionText = @$data['description'] ?? 'Description Text';
+        $method = $this->method;
+        $url = $this->url;
+        $responseData = ['url' => $url];
+        $requestBody = $this->request_body;
 
         try {
-            Log::info("Preparing webhook notification", [
+            Log::info('Preparing webhook notification', [
                 'channel_id' => $this->id,
                 'original_url' => $url,
                 'method' => $method,
-                'original_body' => $requestBody
+                'original_body' => $requestBody,
             ]);
 
             if (str_contains($url, '{message}')) {
@@ -105,9 +107,9 @@ class NotificationChannels extends Model
                 }
             }
 
-            Log::info("Sending webhook request", [
+            Log::info('Sending webhook request', [
                 'final_url' => $url,
-                'final_body' => $requestBody
+                'final_body' => $requestBody,
             ]);
 
             $webhookCallback = match ($method) {
@@ -118,23 +120,24 @@ class NotificationChannels extends Model
             $responseData['code'] = $webhookCallback->ok() ? 200 : 0;
             $responseData['body'] = $webhookCallback->json();
 
-            Log::info("Webhook response received", [
+            Log::info('Webhook response received', [
                 'status_code' => $responseData['code'],
-                'response_body' => $responseData['body']
+                'response_body' => $responseData['body'],
             ]);
 
             return $responseData;
         } catch (RequestException $exception) {
-            Log::error("Webhook request failed", [
+            Log::error('Webhook request failed', [
                 'error_message' => $exception->getMessage(),
                 'url' => $url,
                 'method' => $method,
-                'request_body' => $requestBody
+                'request_body' => $requestBody,
             ]);
 
-            $handlerContext         = $exception->getHandlerContext();
+            $handlerContext = $exception->getHandlerContext();
             $responseData['code'] = $handlerContext['errno'];
             $responseData['body'] = $handlerContext['error'];
+
             return $responseData;
         }
     }

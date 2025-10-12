@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\StoreServerInformationHistoryRequest;
 use App\Http\Requests\UpdateServerInformationHistoryRequest;
 use App\Http\Resources\ServerInfoHistoryResource;
 use App\Models\Server;
@@ -32,24 +31,24 @@ class ServerInformationHistoryController extends Controller
      */
     public function store(Request $request)
     {
-        $ip =  $request->ip();
-        $server  = new Server();
-        $serverId = $request->s??false;
+        $ip = $request->ip();
+        $server = new Server;
+        $serverId = $request->s ?? false;
         $token = $request->bearerToken();
 
-        if(!$serverId==false){
-            $dataServer= $server->find($serverId);
+        if (! $serverId == false) {
+            $dataServer = $server->find($serverId);
 
-            if( $dataServer != null ){
-                if($dataServer->token === $token ){
-                    if($dataServer->ip == $ip){
+            if ($dataServer != null) {
+                if ($dataServer->token === $token) {
+                    if ($dataServer->ip == $ip) {
                         // Update CPU cores if changed
                         if ($request->cpu_cores && $dataServer->cpu_cores != $request->cpu_cores) {
                             $dataServer->update(['cpu_cores' => $request->cpu_cores]);
                         }
 
                         // Create history record
-                        $serverResource  = new ServerInfoHistoryResource(ServerInformationHistory::create([
+                        $serverResource = new ServerInfoHistoryResource(ServerInformationHistory::create([
                             'server_id' => $request->s,
                             'cpu_load' => $request->cpu_load,
                             'ram_free_percentage' => $request->ram_free_percentage,
@@ -57,18 +56,19 @@ class ServerInformationHistoryController extends Controller
                             'disk_free_percentage' => $request->disk_free_percentage,
                             'disk_free_bytes' => $request->disk_free_bytes,
                         ]));
+
                         return response()->json($serverResource, 200);
-                    }else{
+                    } else {
                         return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 406);
                     }
-                }else{
+                } else {
                     return response()->json(['message' => __('Error: Unauthorized')], 401);
                 }
-            }else{
+            } else {
                 return response()->json(['message' => __('Error: Server id not exists in database')], 406);
             }
-        }else{
-             return response()->json(['message' => __('The server id is not in this DB')], 406);
+        } else {
+            return response()->json(['message' => __('The server id is not in this DB')], 406);
         }
     }
 

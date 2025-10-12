@@ -2,9 +2,8 @@
 
 namespace Database\Factories;
 
-
-use Illuminate\Support\Str;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Support\Str;
 
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Server>
@@ -23,7 +22,7 @@ class ServerFactory extends Factory
             'name' => $this->faker->domainName(),
             'description' => $this->faker->text(),
             'created_by' => 1,
-            'token' => Str::random(40)
+            'token' => Str::random(40),
         ];
     }
 }

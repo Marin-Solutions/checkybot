@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
  *      version="1.0.0",
  *      title="API Documentation for CHECKYBOT",
  *      description="API Documentation",
+ *
  *      @OA\License(
  *          name="Apache 2.0",
  *          url="http://www.apache.org/licenses/LICENSE-2.0.html"
@@ -18,6 +19,4 @@ namespace App\Http\Controllers;
  *      description="API Server"
  * )
  */
-abstract class Controller
-{
-}
+abstract class Controller {}

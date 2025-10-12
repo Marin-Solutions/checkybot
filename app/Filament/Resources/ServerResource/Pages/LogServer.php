@@ -6,16 +6,16 @@ use App\Filament\Resources\ServerResource;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
 use Filament\Actions;
-use Filament\Forms\Form;
-use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Infolist;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Filament\Schemas\Schema;
 
 class LogServer extends ViewRecord
 {
     protected static string $resource = ServerResource::class;
+
     protected static ?string $breadcrumb = 'Log';
+
     protected static ?string $title = 'Server Log';
 
     protected function getHeaderWidgets(): array
@@ -24,7 +24,7 @@ class LogServer extends ViewRecord
             ServerResource\Widgets\ServerLogTimeframe::class,
             ServerResource\Widgets\CpuLoadChart::class,
             ServerResource\Widgets\RamUsedChart::class,
-            ServerResource\Widgets\DiskUsedChart::class
+            ServerResource\Widgets\DiskUsedChart::class,
         ];
     }
 
@@ -36,9 +36,9 @@ class LogServer extends ViewRecord
         ];
     }
 
-    public function form(Form $form): Form
+    public function form(Schema $schema): Schema
     {
-        return $form->schema([]);
+        return $schema->schema([]);
     }
 
     protected function getHeaderActions(): array
@@ -77,7 +77,7 @@ class LogServer extends ViewRecord
             Actions\DeleteAction::make()
                 ->modalHeading('Delete Server')
                 ->modalDescription('Are you sure you want to delete this server? This will delete all associated data.')
-                ->successNotificationTitle('Server deleted successfully')
+                ->successNotificationTitle('Server deleted successfully'),
         ];
     }
 }

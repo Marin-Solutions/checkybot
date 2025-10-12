@@ -6,20 +6,32 @@ use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\NotificationSettingResource\Pages;
 use App\Models\NotificationSetting;
+use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Fieldset;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use UnitEnum;
 
 class NotificationSettingResource extends Resource
 {
     protected static ?string $model = NotificationSetting::class;
-    protected static ?string $navigationIcon = 'heroicon-o-cog';
-    protected static ?string $navigationGroup = 'Operations';
+
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-cog';
+
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 5;
+
     protected static ?string $modelLabel = 'Global Notification';
+
     protected static ?string $pluralModelLabel = 'Global Notifications';
 
     public static function getNavigationBadge(): ?string
@@ -27,40 +39,44 @@ class NotificationSettingResource extends Resource
         return number_format(static::getModel()::where('user_id', auth()->id())->count());
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
-                Forms\Components\Fieldset::make('Notification Setting')
+                Fieldset::make('Notification Setting')
+                    ->columnSpanFull()
                     ->schema([
                         Forms\Components\Select::make('inspection')
                             ->label('Monitor')
                             ->options(WebsiteServicesEnum::toArray())
-                            ->required(),
-                    ])->columns(1),
-                Forms\Components\Fieldset::make('Notification Channel')
+                            ->required()
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(1),
+                Fieldset::make('Notification Channel')
+                    ->columnSpanFull()
                     ->schema([
                         Forms\Components\Select::make('channel_type')
                             ->options(NotificationChannelTypesEnum::toArray())
                             ->required()
                             ->reactive()
-                            ->columnSpan(1),
+                            ->columnSpanFull(),
                         Forms\Components\TextInput::make('address')
-                            ->label("Email")
+                            ->label('Email')
                             ->required()
-                            ->columnSpan(1)
+                            ->columnSpanFull()
                             ->rules(function (callable $get) {
                                 return match ($get('channel_type')) {
                                     NotificationChannelTypesEnum::MAIL->name => ['required', 'email'],
                                     NotificationChannelTypesEnum::WEBHOOK->name => ['required', 'url'],
                                 };
                             })
-                            ->hidden(fn($get) => $get("channel_type") !== NotificationChannelTypesEnum::MAIL->name),
+                            ->hidden(fn($get) => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->name),
                         Forms\Components\Select::make('notification_channel_id')
                             ->label('Notification Channel')
                             ->required()
                             ->options(fn() => auth()->user()->webhookChannels()->pluck('title', 'id'))
-                            ->hidden(fn($get) => $get("channel_type") !== NotificationChannelTypesEnum::WEBHOOK->name)
+                            ->hidden(fn($get) => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->name),
                     ])->columns(2),
             ]);
     }
@@ -83,12 +99,12 @@ class NotificationSettingResource extends Resource
             ])
             ->filters([])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                EditAction::make(),
+                DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

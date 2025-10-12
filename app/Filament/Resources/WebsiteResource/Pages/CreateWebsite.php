@@ -2,15 +2,10 @@
 
 namespace App\Filament\Resources\WebsiteResource\Pages;
 
-
-use Filament\Actions;
-use App\Models\Website;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
-use Filament\Notifications\Notification;
-use Filament\Resources\Pages\CreateRecord;
 use App\Filament\Resources\WebsiteResource;
-use GuzzleHttp\Exception\RequestException;
+use App\Models\Website;
+use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Support\Facades\Auth;
 
 class CreateWebsite extends CreateRecord
 {
@@ -21,13 +16,12 @@ class CreateWebsite extends CreateRecord
         return $this->previousUrl ?? $this->previousUrl;
     }
 
-
-    protected  function mutateFormDataBeforeCreate(array $data): array
+    protected function mutateFormDataBeforeCreate(array $data): array
     {
         $user = Auth::user();
-        $data['created_by'] =$user->id;
+        $data['created_by'] = $user->id;
         $sslExpiryDate = Website::sslExpiryDate($data['url']);
-        $data['ssl_expiry_date'] =$sslExpiryDate;
+        $data['ssl_expiry_date'] = $sslExpiryDate;
 
         return $data;
 
@@ -37,7 +31,7 @@ class CreateWebsite extends CreateRecord
     {
         \App\Services\WebsiteUrlValidator::validate(
             $this->data['url'],
-            fn() => $this->halt()
+            fn () => $this->halt()
         );
     }
 }

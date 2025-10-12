@@ -2,33 +2,35 @@
 
 namespace App\Filament\Resources;
 
-use App\Crawlers\WebsiteOutboundLinkCrawler;
-use App\Jobs\WebsiteCheckOutboundLinkJob;
-use Carbon\Carbon;
-use Filament\Forms;
-use Filament\Notifications\Notification;
-use Filament\Tables;
-use App\Models\Website;
-use Filament\Forms\Form;
-use Filament\Tables\Table;
-use Filament\Resources\Resource;
-use Filament\Forms\Components\View;
-use Filament\Forms\Components\Split;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Fieldset;
-use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\WebsiteResource\Pages;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Resources\WebsiteResource\RelationManagers;
-use Spatie\Crawler\Crawler;
+use App\Models\Website;
 use App\Tables\Columns\SparklineColumn;
+use BackedEnum;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Actions\ForceDeleteBulkAction;
+use Filament\Actions\RestoreBulkAction;
+use Filament\Forms;
+use Filament\Resources\Resource;
+use Filament\Schemas\Components\Fieldset;
+use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
+use UnitEnum;
 
 class WebsiteResource extends Resource
 {
     protected static ?string $model = Website::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-globe-alt';
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-globe-alt';
+
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 1;
 
     /**
@@ -44,52 +46,54 @@ class WebsiteResource extends Resource
         return auth()->check();
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Section::make(__(''))
+                    ->columnSpanFull()
                     ->schema([
                         Fieldset::make('Website Info')
                             ->translateLabel()
+                            ->columnSpanFull()
                             ->schema([
                                 Forms\Components\TextInput::make('name')
                                     ->translateLabel()
                                     ->required()
-                                    ->columns(2)
                                     ->autofocus()
                                     ->placeholder(__('name'))
-                                    ->maxLength(255),
+                                    ->maxLength(255)
+                                    ->columnSpanFull(),
                                 Forms\Components\TextInput::make('url')
                                     ->translateLabel()
                                     ->required()
                                     ->activeUrl()
                                     ->default('https://')
                                     ->validationMessages([
-                                        'active_url' => 'The website Url not exists, try again'
+                                        'active_url' => 'The website Url not exists, try again',
                                     ])
                                     ->url()
-                                    ->maxLength(255),
+                                    ->maxLength(255)
+                                    ->columnSpanFull(),
                                 Forms\Components\Textarea::make('description')
                                     ->translateLabel()
-                                    ->columnSpanFull()
-                            ]),
+                                    ->columnSpanFull(),
+                            ])
+                            ->columns(1),
                         Fieldset::make('Monitoring info')
                             ->translateLabel()
+                            ->columnSpanFull()
                             ->schema([
-                                Forms\Components\Grid::make()
-                                    ->columns([
-                                        'md' => 2,
-                                        'xl' => 3
-                                    ])
+                                Grid::make()
+                                    ->columns(3)
+                                    ->columnSpanFull()
                                     ->schema([
-                                        fieldset::make('Uptime settings')
+                                        Fieldset::make('Uptime settings')
                                             ->schema([
                                                 Forms\Components\Toggle::make('uptime_check')
                                                     ->translateLabel()
                                                     ->onColor('success')
                                                     ->inline(false)
-                                                    ->columnSpan('1')
                                                     ->live()
                                                     ->required(),
                                                 Forms\Components\Hidden::make('created_by'),
@@ -107,32 +111,34 @@ class WebsiteResource extends Resource
                                                     ])
                                                     ->translateLabel()
                                                     ->required(),
-                                            ])->columns(2)->columnSpan(1),
-                                        fieldset::make('SSL settings')
+                                            ])
+                                            ->columnSpan(1),
+                                        Fieldset::make('SSL settings')
                                             ->schema([
                                                 Forms\Components\Toggle::make('ssl_check')
                                                     ->translateLabel()
                                                     ->onColor('success')
                                                     ->inline(false)
-                                                    ->columnSpan(1)
                                                     ->live()
                                                     ->default(1)
-                                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
                                                     ->required(),
-                                            ])->columnSpan(1),
-                                        fieldset::make('Outbound settings')
+                                            ])
+                                            ->columnSpan(1),
+                                        Fieldset::make('Outbound settings')
                                             ->schema([
                                                 Forms\Components\Toggle::make('outbound_check')
                                                     ->translateLabel()
                                                     ->onColor('success')
                                                     ->inline(false)
                                                     ->live()
-                                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
                                                     ->required(),
-                                            ])->columnSpan(1),
+                                            ])
+                                            ->columnSpan(1),
                                     ]),
-                            ])->columns(1)
+                            ])
+                            ->columns(1),
                     ])
+                    ->columns(1),
             ]);
     }
 
@@ -159,7 +165,7 @@ class WebsiteResource extends Resource
                             ->get()
                             ->map(fn($log) => [
                                 'date' => $log->created_at->format('M j, H:i'),
-                                'value' => $log->speed
+                                'value' => $log->speed,
                             ])
                             ->toArray();
                     }),
@@ -242,19 +248,18 @@ class WebsiteResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //Tables\Filters\TrashedFilter::make(),
+                // Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
+                EditAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                    Tables\Actions\ForceDeleteBulkAction::make(),
-                    Tables\Actions\RestoreBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                    ForceDeleteBulkAction::make(),
+                    RestoreBulkAction::make(),
                 ]),
-            ])
-        ;
+            ]);
     }
 
     public static function getRelations(): array
@@ -267,9 +272,9 @@ class WebsiteResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListWebsites::route('/'),
+            'index' => Pages\ListWebsites::route('/'),
             'create' => Pages\CreateWebsite::route('/create'),
-            'edit'   => Pages\EditWebsite::route('/{record}/edit'),
+            'edit' => Pages\EditWebsite::route('/{record}/edit'),
         ];
     }
 
@@ -285,8 +290,7 @@ class WebsiteResource extends Resource
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
-            ])
-        ;
+            ]);
     }
 
     public static function getModelLabel(): string

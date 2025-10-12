@@ -2,28 +2,36 @@
 
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\CreateAction;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 
 class AssertionsRelationManager extends RelationManager
 {
     protected static string $relationship = 'assertions';
+
     protected static ?string $title = 'API Assertions';
+
     protected static ?string $recordTitleAttribute = 'data_path';
 
     protected static ?string $inverseRelationship = 'monitorApi';
 
-    public function form(Form $form): Form
+    public function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\TextInput::make('data_path')
                     ->required()
                     ->label('JSON Path')
-                    ->helperText('The path to the value in the JSON response (e.g. data.user.id)'),
+                    ->helperText('The path to the value in the JSON response (e.g. data.user.id)')
+                    ->columnSpanFull(),
 
                 Forms\Components\Select::make('assertion_type')
                     ->required()
@@ -33,10 +41,11 @@ class AssertionsRelationManager extends RelationManager
                         'exists' => 'Value Exists',
                         'not_exists' => 'Value Does Not Exist',
                         'array_length' => 'Array Length',
-                        'regex_match' => 'Regex Match'
+                        'regex_match' => 'Regex Match',
                     ])
                     ->reactive()
-                    ->afterStateUpdated(fn($state, Forms\Set $set) => $set('comparison_operator', null)),
+                    ->afterStateUpdated(fn($state, Forms\Set $set) => $set('comparison_operator', null))
+                    ->columnSpanFull(),
 
                 Forms\Components\Select::make('expected_type')
                     ->options([
@@ -46,10 +55,11 @@ class AssertionsRelationManager extends RelationManager
                         'array' => 'Array',
                         'object' => 'Object',
                         'float' => 'Float',
-                        'null' => 'Null'
+                        'null' => 'Null',
                     ])
                     ->required(fn(Forms\Get $get) => $get('assertion_type') === 'type_check')
-                    ->visible(fn(Forms\Get $get) => $get('assertion_type') === 'type_check'),
+                    ->visible(fn(Forms\Get $get) => $get('assertion_type') === 'type_check')
+                    ->columnSpanFull(),
 
                 Forms\Components\Select::make('comparison_operator')
                     ->options([
@@ -59,32 +69,38 @@ class AssertionsRelationManager extends RelationManager
                         '<' => 'Less Than',
                         '>=' => 'Greater Than or Equal',
                         '<=' => 'Less Than or Equal',
-                        'contains' => 'Contains'
+                        'contains' => 'Contains',
                     ])
                     ->required(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->visible(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length'])),
+                    ->visible(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
+                    ->columnSpanFull(),
 
                 Forms\Components\TextInput::make('expected_value')
                     ->required(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
                     ->visible(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->label(fn(Forms\Get $get) => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value'),
+                    ->label(fn(Forms\Get $get) => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value')
+                    ->columnSpanFull(),
 
                 Forms\Components\TextInput::make('regex_pattern')
                     ->required(fn(Forms\Get $get) => $get('assertion_type') === 'regex_match')
                     ->visible(fn(Forms\Get $get) => $get('assertion_type') === 'regex_match')
                     ->helperText('Regular expression pattern (e.g. /^[0-9]+$/)')
-                    ->placeholder('/pattern/'),
+                    ->placeholder('/pattern/')
+                    ->columnSpanFull(),
 
                 Forms\Components\Toggle::make('is_active')
                     ->label('Active')
-                    ->default(true),
+                    ->default(true)
+                    ->columnSpanFull(),
 
                 Forms\Components\TextInput::make('sort_order')
                     ->numeric()
                     ->default(0)
                     ->label('Sort Order')
-                    ->helperText('Lower numbers are evaluated first'),
-            ]);
+                    ->helperText('Lower numbers are evaluated first')
+                    ->columnSpanFull(),
+            ])
+            ->columns(1);
     }
 
     public function table(Table $table): Table
@@ -123,16 +139,16 @@ class AssertionsRelationManager extends RelationManager
             ->defaultSort('sort_order')
             ->reorderable('sort_order')
             ->headerActions([
-                Tables\Actions\CreateAction::make()
+                CreateAction::make()
                     ->label('Add Assertion'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                EditAction::make(),
+                DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

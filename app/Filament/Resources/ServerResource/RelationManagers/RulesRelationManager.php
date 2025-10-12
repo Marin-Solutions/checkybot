@@ -2,14 +2,18 @@
 
 namespace App\Filament\Resources\ServerResource\RelationManagers;
 
+use App\Models\NotificationChannels;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\CreateAction;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Grid;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Models\NotificationChannels;
 
 class RulesRelationManager extends RelationManager
 {
@@ -19,9 +23,9 @@ class RulesRelationManager extends RelationManager
 
     protected static ?string $title = 'Monitoring Rules';
 
-    public function form(Form $form): Form
+    public function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\Select::make('metric')
                     ->required()
@@ -32,7 +36,8 @@ class RulesRelationManager extends RelationManager
                         'disk_usage' => 'Disk Usage',
                     ])
                     ->columnSpan(2),
-                Forms\Components\Grid::make(3)
+                Grid::make(3)
+                    ->columnSpanFull()
                     ->schema([
                         Forms\Components\Select::make('operator')
                             ->required()
@@ -87,23 +92,22 @@ class RulesRelationManager extends RelationManager
                         return NotificationChannels::find($state)?->title ?? $state;
                     }),
                 Tables\Columns\ToggleColumn::make('is_active')
-                    ->label('Active')
+                    ->label('Active'),
             ])
             ->filters([
                 //
             ])
             ->headerActions([
-                Tables\Actions\CreateAction::make()->authorize(true),
+                CreateAction::make()->authorize(true),
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->authorize(true),
-                Tables\Actions\DeleteAction::make(),
+                EditAction::make()->authorize(true),
+                DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
-            ])
-        ;
+            ]);
     }
 }

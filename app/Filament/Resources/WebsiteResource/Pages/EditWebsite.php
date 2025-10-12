@@ -2,11 +2,11 @@
 
 namespace App\Filament\Resources\WebsiteResource\Pages;
 
-use Filament\Actions;
+use App\Filament\Resources\WebsiteResource;
 use App\Models\Website;
+use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
-use App\Filament\Resources\WebsiteResource;
 
 class EditWebsite extends EditRecord
 {
@@ -23,29 +23,29 @@ class EditWebsite extends EditRecord
 
     protected function beforeSave()
     {
-        $url=$this->data['url'];
-        $id=$this->data['id'];
-        $urlExistsInDB = Website::whereUrl($url)->where('id','!=',$id)->count();
+        $url = $this->data['url'];
+        $id = $this->data['id'];
+        $urlExistsInDB = Website::whereUrl($url)->where('id', '!=', $id)->count();
         $urlCheckExists = Website::checkWebsiteExists($url);
         $urlResponseCode = Website::checkResponseCode($url);
         $responseStatus = false;
 
-        if( $urlResponseCode['code'] != 200 ) {
+        if ($urlResponseCode['code'] != 200) {
             $responseStatus = true;
-            if($urlResponseCode['code'] == 60){
+            if ($urlResponseCode['code'] == 60) {
                 $title = 'URL website, problem with certificate';
                 $body = $urlResponseCode['body'];
-            }else if($urlResponseCode['body']==1){
-                $title ='URL Website Response error';
-                $body ='The website response is not 200!';
-            }else{
+            } elseif ($urlResponseCode['body'] == 1) {
+                $title = 'URL Website Response error';
+                $body = 'The website response is not 200!';
+            } else {
                 $title = 'URL website a unknown error';
-                $body = 'code errno:'. $urlResponseCode;
+                $body = 'code errno:'.$urlResponseCode;
                 $responseStatus = true;
             }
         }
 
-        if($responseStatus){
+        if ($responseStatus) {
             Notification::make()
                 ->danger()
                 ->title(__($title))
@@ -54,7 +54,7 @@ class EditWebsite extends EditRecord
             $this->halt();
         }
 
-        if ($urlExistsInDB>0) {
+        if ($urlExistsInDB > 0) {
             Notification::make()
                 ->danger()
                 ->title(__('URL Website Exists in database'))
@@ -62,7 +62,7 @@ class EditWebsite extends EditRecord
                 ->send();
         }
 
-        if (!$urlCheckExists) {
+        if (! $urlCheckExists) {
             Notification::make()
                 ->danger()
                 ->title(__('website was not registered'))
@@ -70,8 +70,7 @@ class EditWebsite extends EditRecord
                 ->send();
         }
 
-
-        if($urlExistsInDB>0 || !$urlCheckExists ){
+        if ($urlExistsInDB > 0 || ! $urlCheckExists) {
             $this->halt();
         }
 

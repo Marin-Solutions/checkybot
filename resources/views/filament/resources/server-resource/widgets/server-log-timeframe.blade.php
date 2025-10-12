@@ -1,3 +1,3 @@
 <x-filament-widgets::widget>
-    {{ $this->form }}
+    {{ $this->schema }}
 </x-filament-widgets::widget>

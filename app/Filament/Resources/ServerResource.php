@@ -8,24 +8,34 @@ use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
 use App\Tables\Columns\UsageBarColumn;
+use BackedEnum;
+use Filament\Actions\Action;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
+use Filament\Actions\ForceDeleteBulkAction;
+use Filament\Actions\RestoreBulkAction;
+use Filament\Actions\ViewAction;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Tables;
-use Filament\Tables\Actions\Action;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Carbon;
+use UnitEnum;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class ServerResource extends Resource
 {
     protected static ?string $model = Server::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-server-stack';
+    protected static string|BackedEnum|null $navigationIcon = 'heroicon-o-server-stack';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static string|UnitEnum|null $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 2;
 
@@ -42,20 +52,28 @@ class ServerResource extends Resource
         return auth()->check();
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
-                Forms\Components\TextInput::make('ip')
-                    ->required()
-                    ->ip()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('name')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('description')
-                    ->required()
-                    ->maxLength(255),
+                Section::make('Server Information')
+                    ->columnSpanFull()
+                    ->schema([
+                        Forms\Components\TextInput::make('ip')
+                            ->required()
+                            ->ip()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('name')
+                            ->required()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('description')
+                            ->required()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(1),
             ]);
     }
 
@@ -220,21 +238,21 @@ class ServerResource extends Resource
             ])
             ->actions([
                 CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
+                    ->copyable(fn(Server $record) => ServerInformationHistory::copyCommand($record->id))
                     ->label(__('Copy script')),
                 CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
+                    ->copyable(fn(Server $record) => ServerLogFileHistory::copyCommand($record->id))
                     ->label(__('Copy log script')),
-                Tables\Actions\ViewAction::make('view_statistics')
+                ViewAction::make('view_statistics')
                     ->label('View statistics')
                     ->icon('heroicon-o-presentation-chart-line')
                     ->color('warning'),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                    Tables\Actions\ForceDeleteBulkAction::make(),
-                    Tables\Actions\RestoreBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
+                    ForceDeleteBulkAction::make(),
+                    RestoreBulkAction::make(),
                 ]),
             ]);
     }
@@ -273,15 +291,15 @@ class ServerResource extends Resource
                 ->url('localhsot'),
             Action::make('delete')
                 ->requiresConfirmation()
-                ->action(fn () => $this->post->delete()),
+                ->action(fn() => $this->post->delete()),
         ];
     }
 
     public static function getTableActions(): array
     {
         return [
-            Tables\Actions\EditAction::make(),
-            Tables\Actions\DeleteAction::make(),
+            EditAction::make(),
+            DeleteAction::make(),
         ];
     }
 }

@@ -4,7 +4,6 @@ namespace App\Policies;
 
 use App\Models\User;
 use App\Models\Website;
-use Illuminate\Auth\Access\Response;
 
 class WebsitePolicy
 {
@@ -45,7 +44,7 @@ class WebsitePolicy
      */
     public function delete(User $user, Website $website): bool
     {
-       return $user->can('update_user');
+        return $user->can('update_user');
     }
 
     /**

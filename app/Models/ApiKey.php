@@ -30,6 +30,6 @@ class ApiKey extends Model
 
     public static function generateKey(): string
     {
-        return 'ck_' . Str::random(32);
+        return 'ck_'.Str::random(32);
     }
-} 
+}

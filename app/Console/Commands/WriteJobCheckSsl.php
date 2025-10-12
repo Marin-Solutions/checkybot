@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
-use Carbon\Carbon;
-use App\Models\Website;
-use Illuminate\Console\Command;
 use App\Jobs\CheckSslExpiryDateJob;
+use App\Models\Website;
+use Carbon\Carbon;
+use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 
 class WriteJobCheckSsl extends Command
@@ -38,6 +38,7 @@ class WriteJobCheckSsl extends Command
         }
 
         $this->info('SSL check completed successfully.');
+
         return Command::SUCCESS;
     }
 
@@ -61,7 +62,7 @@ class WriteJobCheckSsl extends Command
                         'ssl_expiry_date' => $web->ssl_expiry_date,
                         'check' => true,
                         'expired' => false,
-                        'days_left' => $diffInDays
+                        'days_left' => $diffInDays,
                     ];
                 } elseif ($diffInDays < 0) {
 
@@ -71,7 +72,7 @@ class WriteJobCheckSsl extends Command
                         'ssl_expiry_date' => $web->ssl_expiry_date,
                         'check' => false,
                         'expired' => true,
-                        'days_left' => $diffInDays
+                        'days_left' => $diffInDays,
                     ];
                 }
 

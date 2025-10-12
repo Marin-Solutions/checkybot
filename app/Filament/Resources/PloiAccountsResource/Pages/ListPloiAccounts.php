@@ -13,7 +13,7 @@ class ListPloiAccounts extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
-            Actions\CreateAction::make()->label('Add Ploi Account')
+            Actions\CreateAction::make()->label('Add Ploi Account'),
         ];
     }
 }

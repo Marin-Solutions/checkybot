@@ -13,7 +13,7 @@ class UsageBarColumn extends Column
         parent::setUp();
 
         $this->extraAttributes([
-            'class' => 'px-4 py-3'
+            'class' => 'px-4 py-3',
         ]);
     }
-} 
+}

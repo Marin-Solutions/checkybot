@@ -3,21 +3,21 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Models\Contracts\HasAvatar;
 use Filament\Panel;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
+use Jeffgreco13\FilamentBreezy\Traits\TwoFactorAuthenticatable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-use Illuminate\Support\Facades\Storage;
-use Filament\Models\Contracts\HasAvatar;
-use Illuminate\Notifications\Notifiable;
-use Filament\Models\Contracts\FilamentUser;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Jeffgreco13\FilamentBreezy\Traits\TwoFactorAuthenticatable;
 
 class User extends Authenticatable implements FilamentUser, HasAvatar
 {
-    use HasFactory, Notifiable, TwoFactorAuthenticatable, HasRoles,HasApiTokens;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable,TwoFactorAuthenticatable;
 
     /**
      * The attributes that are mass assignable.
@@ -28,7 +28,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
         'name',
         'email',
         'password',
-        'avatar_url'
+        'avatar_url',
     ];
 
     /**
@@ -56,7 +56,7 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
 
     public function getFilamentAvatarUrl(): ?string
     {
-        return $this->avatar_url ? url(Storage::url($this->avatar_url)) : null ;
+        return $this->avatar_url ? url(Storage::url($this->avatar_url)) : null;
     }
 
     public function canAccessPanel(Panel $panel): bool
@@ -66,12 +66,12 @@ class User extends Authenticatable implements FilamentUser, HasAvatar
 
     public function websites(): HasMany
     {
-        return $this->hasMany(Website::class,'created_by');
+        return $this->hasMany(Website::class, 'created_by');
     }
 
     public function servers(): HasMany
     {
-        return $this->hasMany(Server::class,'created_by');
+        return $this->hasMany(Server::class, 'created_by');
     }
 
     public function globalNotificationChannels(): HasMany

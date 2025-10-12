@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Schedule;
 //     $this->comment(Inspiring::quote());
 // })->purpose('Display an inspiring quote')->hourly();
 
-
 Schedule::command('ssl:check')->everyMinute();
 Schedule::command('website:log-uptime-ssl')->everyMinute();
 Schedule::command('website:scan-outbound-check')->daily();

@@ -25,4 +25,4 @@ class ServerRule extends Model
     {
         return $this->belongsTo(Server::class);
     }
-} 
+}

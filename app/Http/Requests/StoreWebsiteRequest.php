@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests;
 
-use Illuminate\Http\JsonResponse;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Contracts\Validation\Validator;
 
 class StoreWebsiteRequest extends FormRequest
 {
@@ -24,15 +22,14 @@ class StoreWebsiteRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name'=> ['required'],
-            'url'=> ['required','url'],
-            'description'=> ['required'],
-            'created_by'=> ['required'],
-            'uptime_check'=> ['required'],
-            'uptime_interval'=> ['required']
+            'name' => ['required'],
+            'url' => ['required', 'url'],
+            'description' => ['required'],
+            'created_by' => ['required'],
+            'uptime_check' => ['required'],
+            'uptime_interval' => ['required'],
         ];
     }
-
 
     public function messages()
     {
@@ -46,5 +43,4 @@ class StoreWebsiteRequest extends FormRequest
             'uptime_interval.required' => __('Required'),
         ];
     }
-
 }

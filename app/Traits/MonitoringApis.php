@@ -4,7 +4,6 @@ namespace App\Traits;
 
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
-use Illuminate\Support\Arr;
 
 trait MonitoringApis
 {
@@ -19,27 +18,27 @@ trait MonitoringApis
                 $responseFail = 'danger';
                 if ($callback['code'] == 60) {
                     $title = 'URL website, problem with certificate';
-                    $body  = $callback['body'];
-                } else if ($callback['body'] == 1) {
+                    $body = $callback['body'];
+                } elseif ($callback['body'] == 1) {
                     $title = 'URL Website Response error';
-                    $body  = 'The website response is not 200!';
+                    $body = 'The website response is not 200!';
                 } else {
                     $title = 'URL website a unknown error. try other url';
-                    $body  = $callback['body'] . ' code errno:' . $callback['code'];
+                    $body = $callback['body'].' code errno:'.$callback['code'];
                 }
             } else {
                 // Initialize response type as success
                 $responseFail = 'success';
-                $title = "API response received";
+                $title = 'API response received';
                 $body = [];
 
                 // Check if we have any assertions to validate
-                if (!empty($callback['assertions'])) {
-                    $failedAssertions = array_filter($callback['assertions'], fn($assertion) => !$assertion['passed']);
+                if (! empty($callback['assertions'])) {
+                    $failedAssertions = array_filter($callback['assertions'], fn ($assertion) => ! $assertion['passed']);
 
-                    if (!empty($failedAssertions)) {
+                    if (! empty($failedAssertions)) {
                         $responseFail = 'warning';
-                        $title = "Some API assertions failed";
+                        $title = 'Some API assertions failed';
                     }
 
                     // Build the response message
@@ -49,10 +48,10 @@ trait MonitoringApis
                         $type = $assertion['type'] ?? 'exists';
                         $message = $assertion['message'];
 
-                        $body[] = "{$icon} Path: {$path}" . ($type !== 'exists' ? " [{$type}]" : "") . " - {$message}";
+                        $body[] = "{$icon} Path: {$path}".($type !== 'exists' ? " [{$type}]" : '')." - {$message}";
                     }
                 } else {
-                    $body[] = "No assertions configured for this API endpoint.";
+                    $body[] = 'No assertions configured for this API endpoint.';
                 }
 
                 // Join all messages with line breaks
@@ -63,8 +62,7 @@ trait MonitoringApis
                 ->{$responseFail}()
                 ->title(__($title))
                 ->body(__($body))
-                ->send()
-            ;
+                ->send();
 
             //                if ( $responseFail ) {
             //                    Notification::make()
@@ -91,7 +89,6 @@ trait MonitoringApis
             ->color('warning')
             ->button()
             ->outlined()
-            ->action('doMonitoring')
-        ;
+            ->action('doMonitoring');
     }
 }

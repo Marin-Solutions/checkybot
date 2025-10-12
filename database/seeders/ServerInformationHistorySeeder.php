@@ -3,7 +3,6 @@
 namespace Database\Seeders;
 
 use App\Models\ServerInformationHistory;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
 class ServerInformationHistorySeeder extends Seeder
@@ -14,7 +13,7 @@ class ServerInformationHistorySeeder extends Seeder
     public function run(): void
     {
         ServerInformationHistory::factory()
-        ->count(10)
-        ->create();
+            ->count(10)
+            ->create();
     }
 }

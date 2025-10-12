@@ -36,7 +36,7 @@ class AdminPanelProvider extends PanelProvider
                         hasAvatars: true
                     )
                     ->enableTwoFactorAuthentication(),
-                FilamentShieldPlugin::make()
+                FilamentShieldPlugin::make(),
             ])
             ->colors([
                 'primary' => Color::Blue,
@@ -63,7 +63,6 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ])
-            ->viteTheme('resources/css/filament.css');
+            ]);
     }
 }
