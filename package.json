@@ -16,6 +16,8 @@
         "vite": "^5.0"
     },
     "dependencies": {
+        "laravel-echo": "^2.2.4",
+        "pusher-js": "^8.4.0",
         "tailwind-scrollbar-hide": "^2.0.0"
     }
 }

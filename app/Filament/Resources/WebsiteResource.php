@@ -2,33 +2,29 @@
 
 namespace App\Filament\Resources;
 
-use App\Crawlers\WebsiteOutboundLinkCrawler;
-use App\Jobs\WebsiteCheckOutboundLinkJob;
-use Carbon\Carbon;
-use Filament\Forms;
-use Filament\Notifications\Notification;
-use Filament\Tables;
-use App\Models\Website;
-use Filament\Forms\Form;
-use Filament\Tables\Table;
-use Filament\Resources\Resource;
-use Filament\Forms\Components\View;
-use Filament\Forms\Components\Split;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Components\Fieldset;
-use Illuminate\Database\Eloquent\Builder;
 use App\Filament\Resources\WebsiteResource\Pages;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Filament\Resources\WebsiteResource\RelationManagers;
-use Spatie\Crawler\Crawler;
+use App\Models\Website;
+use App\Services\SeoHealthCheckService;
 use App\Tables\Columns\SparklineColumn;
+use Filament\Forms;
+use Filament\Forms\Components\Fieldset;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Form;
+use Filament\Notifications\Notification;
+use Filament\Resources\Resource;
+use Filament\Tables;
+use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class WebsiteResource extends Resource
 {
     protected static ?string $model = Website::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-globe-alt';
+
     protected static ?string $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 1;
 
     /**
@@ -66,13 +62,13 @@ class WebsiteResource extends Resource
                                     ->activeUrl()
                                     ->default('https://')
                                     ->validationMessages([
-                                        'active_url' => 'The website Url not exists, try again'
+                                        'active_url' => 'The website Url not exists, try again',
                                     ])
                                     ->url()
                                     ->maxLength(255),
                                 Forms\Components\Textarea::make('description')
                                     ->translateLabel()
-                                    ->columnSpanFull()
+                                    ->columnSpanFull(),
                             ]),
                         Fieldset::make('Monitoring info')
                             ->translateLabel()
@@ -80,7 +76,7 @@ class WebsiteResource extends Resource
                                 Forms\Components\Grid::make()
                                     ->columns([
                                         'md' => 2,
-                                        'xl' => 3
+                                        'xl' => 3,
                                     ])
                                     ->schema([
                                         fieldset::make('Uptime settings')
@@ -117,7 +113,7 @@ class WebsiteResource extends Resource
                                                     ->columnSpan(1)
                                                     ->live()
                                                     ->default(1)
-                                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
+                                                    // ->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
                                                     ->required(),
                                             ])->columnSpan(1),
                                         fieldset::make('Outbound settings')
@@ -127,12 +123,61 @@ class WebsiteResource extends Resource
                                                     ->onColor('success')
                                                     ->inline(false)
                                                     ->live()
-                                                    //->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
+                                                    // ->extraFieldWrapperAttributes(['style' => 'margin-left:4rem',])
                                                     ->required(),
                                             ])->columnSpan(1),
+                                        fieldset::make('SEO Health Check Schedule')
+                                            ->schema([
+                                                Forms\Components\Toggle::make('seo_schedule_enabled')
+                                                    ->label('Enable Scheduled SEO Checks')
+                                                    ->onColor('success')
+                                                    ->inline(false)
+                                                    ->live()
+                                                    ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                                        if (! $state) {
+                                                            $set('seo_schedule_frequency', null);
+                                                            $set('seo_schedule_time', null);
+                                                            $set('seo_schedule_day', null);
+                                                        }
+                                                    })
+                                                    ->dehydrated(false),
+                                                Forms\Components\Select::make('seo_schedule_frequency')
+                                                    ->label('Frequency')
+                                                    ->options([
+                                                        'daily' => 'Daily',
+                                                        'weekly' => 'Weekly',
+                                                    ])
+                                                    ->live()
+                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->dehydrated(false),
+                                                Forms\Components\TimePicker::make('seo_schedule_time')
+                                                    ->label('Run Time')
+                                                    ->default('02:00')
+                                                    ->seconds(false)
+                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->helperText('Time when the check will run (server timezone)')
+                                                    ->dehydrated(false),
+                                                Forms\Components\Select::make('seo_schedule_day')
+                                                    ->label('Day of Week')
+                                                    ->options([
+                                                        'Monday' => 'Monday',
+                                                        'Tuesday' => 'Tuesday',
+                                                        'Wednesday' => 'Wednesday',
+                                                        'Thursday' => 'Thursday',
+                                                        'Friday' => 'Friday',
+                                                        'Saturday' => 'Saturday',
+                                                        'Sunday' => 'Sunday',
+                                                    ])
+                                                    ->default('Monday')
+                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
+                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
+                                                    ->dehydrated(false),
+                                            ])->columnSpan(1),
                                     ]),
-                            ])->columns(1)
-                    ])
+                            ])->columns(1),
+                    ]),
             ]);
     }
 
@@ -143,7 +188,15 @@ class WebsiteResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->translateLabel()
-                    ->searchable(),
+                    ->searchable()
+                    ->formatStateUsing(function ($state, Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if ($latestCheck && in_array($latestCheck->status, ['running', 'pending'])) {
+                            return $state . ' 🔄';
+                        }
+
+                        return $state;
+                    }),
                 Tables\Columns\TextColumn::make('url')
                     ->translateLabel()
                     ->limit(50)
@@ -159,7 +212,7 @@ class WebsiteResource extends Resource
                             ->get()
                             ->map(fn($log) => [
                                 'date' => $log->created_at->format('M j, H:i'),
-                                'value' => $log->speed
+                                'value' => $log->speed,
                             ])
                             ->toArray();
                     }),
@@ -235,6 +288,72 @@ class WebsiteResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('latest_seo_check.status')
+                    ->label('SEO Crawl Status')
+                    ->formatStateUsing(function ($state, $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if (! $latestCheck) {
+                            return 'Not crawled';
+                        }
+
+                        $status = $latestCheck->status;
+                        $progress = $latestCheck->getProgressPercentage();
+
+                        if ($status === 'running') {
+                            return "Crawling ({$progress}%)";
+                        } elseif ($status === 'failed') {
+                            return 'Failed';
+                        } elseif ($status === 'completed') {
+                            return 'Completed';
+                        }
+
+                        return ucfirst($status);
+                    })
+                    ->badge()
+                    ->color(function ($state) {
+                        if (str_contains($state, 'Not crawled') || str_contains($state, 'Failed')) {
+                            return 'danger';
+                        }
+                        if (str_contains($state, 'Crawling') || str_contains($state, 'Pending')) {
+                            return 'warning';
+                        }
+                        if (str_contains($state, 'Completed')) {
+                            return 'success';
+                        }
+
+                        return 'gray';
+                    })
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('latest_seo_check.started_at')
+                    ->label('Last SEO Crawl')
+                    ->formatStateUsing(function ($state, $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if (! $latestCheck || ! $latestCheck->started_at) {
+                            return 'Never';
+                        }
+
+                        return $latestCheck->started_at->diffForHumans();
+                    })
+                    ->sortable(),
+                Tables\Columns\TextColumn::make('latest_seo_check.total_urls_crawled')
+                    ->label('URLs Crawled')
+                    ->formatStateUsing(function ($state, $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if (! $latestCheck) {
+                            return '-';
+                        }
+
+                        $crawled = $latestCheck->total_urls_crawled;
+                        $total = $latestCheck->total_crawlable_urls;
+                        $status = $latestCheck->status;
+
+                        if ($status === 'running') {
+                            return "{$crawled}/{$total} (running...)";
+                        }
+
+                        return $total > 0 ? "{$crawled}/{$total}" : ($crawled ?: '-');
+                    })
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('deleted_at')
                     ->translateLabel()
                     ->dateTime()
@@ -242,10 +361,59 @@ class WebsiteResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //Tables\Filters\TrashedFilter::make(),
+                // Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make(),
+                Tables\Actions\Action::make('view_seo_progress')
+                    ->label('View Progress')
+                    ->icon('heroicon-o-chart-bar')
+                    ->color('warning')
+                    ->url(function (Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+                        if ($latestCheck) {
+                            return "/admin/seo-checks/{$latestCheck->id}";
+                        }
+
+                        return null;
+                    })
+                    ->openUrlInNewTab()
+                    ->visible(function (Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+
+                        return $latestCheck && in_array($latestCheck->status, ['running', 'pending']);
+                    }),
+                Tables\Actions\Action::make('run_seo_crawl')
+                    ->label('Run SEO Check')
+                    ->icon('heroicon-o-magnifying-glass')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Start SEO Health Check')
+                    ->modalDescription('This will start a comprehensive SEO health check for this website. The process may take several minutes depending on the site size. The crawler will respect robots.txt and use sitemap.xml if available.')
+                    ->action(function (Website $record) {
+                        try {
+                            $seoService = app(SeoHealthCheckService::class);
+                            $seoCheck = $seoService->startManualCheck($record);
+
+                            Notification::make()
+                                ->title('SEO Check Started')
+                                ->body("SEO health check has been started for {$record->name}. You can monitor progress in real-time.")
+                                ->success()
+                                ->send();
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('Error Starting SEO Check')
+                                ->body('Failed to start SEO check: ' . $e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    })
+                    ->visible(function (Website $record) {
+                        $latestCheck = $record->latestSeoCheck;
+
+                        // Show if no check exists or if the latest check is not running/pending
+                        return ! $latestCheck || ! in_array($latestCheck->status, ['running', 'pending']);
+                    }),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
@@ -253,8 +421,7 @@ class WebsiteResource extends Resource
                     Tables\Actions\ForceDeleteBulkAction::make(),
                     Tables\Actions\RestoreBulkAction::make(),
                 ]),
-            ])
-        ;
+            ]);
     }
 
     public static function getRelations(): array
@@ -267,9 +434,9 @@ class WebsiteResource extends Resource
     public static function getPages(): array
     {
         return [
-            'index'  => Pages\ListWebsites::route('/'),
+            'index' => Pages\ListWebsites::route('/'),
             'create' => Pages\CreateWebsite::route('/create'),
-            'edit'   => Pages\EditWebsite::route('/{record}/edit'),
+            'edit' => Pages\EditWebsite::route('/{record}/edit'),
         ];
     }
 
@@ -281,12 +448,12 @@ class WebsiteResource extends Resource
                 'user:id,name',
                 'globalNotifications:id,user_id,website_id,inspection',
                 'individualNotifications:id,website_id,inspection',
+                'latestSeoCheck:id,website_id,status,started_at,total_urls_crawled,total_crawlable_urls,progress',
             ])
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
-            ])
-        ;
+            ]);
     }
 
     public static function getModelLabel(): string
