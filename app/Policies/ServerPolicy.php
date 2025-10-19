@@ -1,66 +1,70 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
+use Illuminate\Foundation\Auth\User as AuthUser;
 use App\Models\Server;
-use App\Models\User;
-use Illuminate\Auth\Access\Response;
+use Illuminate\Auth\Access\HandlesAuthorization;
 
 class ServerPolicy
 {
-    /**
-     * Determine whether the user can view any models.
-     */
-    public function viewAny(User $user): bool
+    use HandlesAuthorization;
+    
+    public function viewAny(AuthUser $authUser): bool
     {
-        return $user->can('view_any_user');
+        return $authUser->can('ViewAny:Server');
     }
 
-    /**
-     * Determine whether the user can view the model.
-     */
-    public function view(User $user, Server $server): bool
+    public function view(AuthUser $authUser, Server $server): bool
     {
-        return $user->can('view_any_user');
+        return $authUser->can('View:Server');
     }
 
-    /**
-     * Determine whether the user can create models.
-     */
-    public function create(User $user): bool
+    public function create(AuthUser $authUser): bool
     {
-        return $user->can('view_user');
+        return $authUser->can('Create:Server');
     }
 
-    /**
-     * Determine whether the user can update the model.
-     */
-    public function update(User $user, Server $server): bool
+    public function update(AuthUser $authUser, Server $server): bool
     {
-        return $user->can('create_user');
+        return $authUser->can('Update:Server');
     }
 
-    /**
-     * Determine whether the user can delete the model.
-     */
-    public function delete(User $user, Server $server): bool
+    public function delete(AuthUser $authUser, Server $server): bool
     {
-        return $user->can('update_user');
+        return $authUser->can('Delete:Server');
     }
 
-    /**
-     * Determine whether the user can restore the model.
-     */
-    public function restore(User $user, Server $server): bool
+    public function restore(AuthUser $authUser, Server $server): bool
     {
-        return $user->can('delete_user');
+        return $authUser->can('Restore:Server');
     }
 
-    /**
-     * Determine whether the user can permanently delete the model.
-     */
-    public function forceDelete(User $user, Server $server): bool
+    public function forceDelete(AuthUser $authUser, Server $server): bool
     {
-        return false;
+        return $authUser->can('ForceDelete:Server');
     }
+
+    public function forceDeleteAny(AuthUser $authUser): bool
+    {
+        return $authUser->can('ForceDeleteAny:Server');
+    }
+
+    public function restoreAny(AuthUser $authUser): bool
+    {
+        return $authUser->can('RestoreAny:Server');
+    }
+
+    public function replicate(AuthUser $authUser, Server $server): bool
+    {
+        return $authUser->can('Replicate:Server');
+    }
+
+    public function reorder(AuthUser $authUser): bool
+    {
+        return $authUser->can('Reorder:Server');
+    }
+
 }

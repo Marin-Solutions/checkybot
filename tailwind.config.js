@@ -1,9 +1,9 @@
-import preset from './vendor/filament/support/tailwind.config.preset'
 import scrollbarHide from 'tailwind-scrollbar-hide'
 import colors from 'tailwindcss/colors'
+import forms from '@tailwindcss/forms'
+import typography from '@tailwindcss/typography'
 
 export default {
-    presets: [preset],
     content: [
         "./app/**/*.php",
         "./resources/**/*.{blade.php,js}",
@@ -33,6 +33,8 @@ export default {
         },
     },
     plugins: [
+        forms,
+        typography,
         scrollbarHide
     ],
 }

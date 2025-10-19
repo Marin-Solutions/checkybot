@@ -7,11 +7,11 @@ use App\Models\Website;
 use App\Services\SeoHealthCheckService;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Forms;
-use Filament\Forms\Components\Fieldset;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Form;
+use Filament\Schemas\Components\Fieldset;
+use Filament\Schemas\Components\Section;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,9 +21,9 @@ class WebsiteResource extends Resource
 {
     protected static ?string $model = Website::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-globe-alt';
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-globe-alt';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static \UnitEnum|string|null $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 1;
 
@@ -40,23 +40,24 @@ class WebsiteResource extends Resource
         return auth()->check();
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
-                Section::make(__(''))
+                \Filament\Schemas\Components\Section::make(__(''))
+                    ->columnSpanFull()
                     ->schema([
-                        Fieldset::make('Website Info')
+                        \Filament\Schemas\Components\Fieldset::make('Website Info')
                             ->translateLabel()
                             ->schema([
-                                Forms\Components\TextInput::make('name')
+                                \Filament\Forms\Components\TextInput::make('name')
                                     ->translateLabel()
                                     ->required()
                                     ->columns(2)
                                     ->autofocus()
                                     ->placeholder(__('name'))
                                     ->maxLength(255),
-                                Forms\Components\TextInput::make('url')
+                                \Filament\Forms\Components\TextInput::make('url')
                                     ->translateLabel()
                                     ->required()
                                     ->activeUrl()
@@ -66,14 +67,14 @@ class WebsiteResource extends Resource
                                     ])
                                     ->url()
                                     ->maxLength(255),
-                                Forms\Components\Textarea::make('description')
+                                \Filament\Forms\Components\Textarea::make('description')
                                     ->translateLabel()
                                     ->columnSpanFull(),
                             ]),
-                        Fieldset::make('Monitoring info')
+                        \Filament\Schemas\Components\Fieldset::make('Monitoring info')
                             ->translateLabel()
                             ->schema([
-                                Forms\Components\Grid::make()
+                                \Filament\Schemas\Components\Grid::make()
                                     ->columns([
                                         'md' => 2,
                                         'xl' => 3,
@@ -81,15 +82,15 @@ class WebsiteResource extends Resource
                                     ->schema([
                                         fieldset::make('Uptime settings')
                                             ->schema([
-                                                Forms\Components\Toggle::make('uptime_check')
+                                                \Filament\Forms\Components\Toggle::make('uptime_check')
                                                     ->translateLabel()
                                                     ->onColor('success')
                                                     ->inline(false)
                                                     ->columnSpan('1')
                                                     ->live()
                                                     ->required(),
-                                                Forms\Components\Hidden::make('created_by'),
-                                                Forms\Components\Select::make('uptime_interval')
+                                                \Filament\Forms\Components\Hidden::make('created_by'),
+                                                \Filament\Forms\Components\Select::make('uptime_interval')
                                                     ->options([
                                                         1 => 'Every minute',
                                                         5 => 'Every 5 minutes',
@@ -106,7 +107,7 @@ class WebsiteResource extends Resource
                                             ])->columns(2)->columnSpan(1),
                                         fieldset::make('SSL settings')
                                             ->schema([
-                                                Forms\Components\Toggle::make('ssl_check')
+                                                \Filament\Forms\Components\Toggle::make('ssl_check')
                                                     ->translateLabel()
                                                     ->onColor('success')
                                                     ->inline(false)
@@ -118,7 +119,7 @@ class WebsiteResource extends Resource
                                             ])->columnSpan(1),
                                         fieldset::make('Outbound settings')
                                             ->schema([
-                                                Forms\Components\Toggle::make('outbound_check')
+                                                \Filament\Forms\Components\Toggle::make('outbound_check')
                                                     ->translateLabel()
                                                     ->onColor('success')
                                                     ->inline(false)
@@ -128,12 +129,12 @@ class WebsiteResource extends Resource
                                             ])->columnSpan(1),
                                         fieldset::make('SEO Health Check Schedule')
                                             ->schema([
-                                                Forms\Components\Toggle::make('seo_schedule_enabled')
+                                                \Filament\Forms\Components\Toggle::make('seo_schedule_enabled')
                                                     ->label('Enable Scheduled SEO Checks')
                                                     ->onColor('success')
                                                     ->inline(false)
                                                     ->live()
-                                                    ->afterStateUpdated(function ($state, Forms\Set $set) {
+                                                    ->afterStateUpdated(function ($state, \Filament\Schemas\Components\Utilities\Set $set) {
                                                         if (! $state) {
                                                             $set('seo_schedule_frequency', null);
                                                             $set('seo_schedule_time', null);
@@ -141,25 +142,25 @@ class WebsiteResource extends Resource
                                                         }
                                                     })
                                                     ->dehydrated(false),
-                                                Forms\Components\Select::make('seo_schedule_frequency')
+                                                \Filament\Forms\Components\Select::make('seo_schedule_frequency')
                                                     ->label('Frequency')
                                                     ->options([
                                                         'daily' => 'Daily',
                                                         'weekly' => 'Weekly',
                                                     ])
                                                     ->live()
-                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
-                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->visible(fn(\Filament\Schemas\Components\Utilities\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->required(fn(\Filament\Schemas\Components\Utilities\Get $get) => $get('seo_schedule_enabled'))
                                                     ->dehydrated(false),
-                                                Forms\Components\TimePicker::make('seo_schedule_time')
+                                                \Filament\Forms\Components\TimePicker::make('seo_schedule_time')
                                                     ->label('Run Time')
                                                     ->default('02:00')
                                                     ->seconds(false)
-                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
-                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->visible(fn(\Filament\Schemas\Components\Utilities\Get $get) => $get('seo_schedule_enabled'))
+                                                    ->required(fn(\Filament\Schemas\Components\Utilities\Get $get) => $get('seo_schedule_enabled'))
                                                     ->helperText('Time when the check will run (server timezone)')
                                                     ->dehydrated(false),
-                                                Forms\Components\Select::make('seo_schedule_day')
+                                                \Filament\Forms\Components\Select::make('seo_schedule_day')
                                                     ->label('Day of Week')
                                                     ->options([
                                                         'Monday' => 'Monday',
@@ -171,8 +172,8 @@ class WebsiteResource extends Resource
                                                         'Sunday' => 'Sunday',
                                                     ])
                                                     ->default('Monday')
-                                                    ->visible(fn(Forms\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
-                                                    ->required(fn(Forms\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
+                                                    ->visible(fn(\Filament\Schemas\Components\Utilities\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
+                                                    ->required(fn(\Filament\Schemas\Components\Utilities\Get $get) => $get('seo_schedule_enabled') && $get('seo_schedule_frequency') === 'weekly')
                                                     ->dehydrated(false),
                                             ])->columnSpan(1),
                                     ]),
@@ -364,8 +365,8 @@ class WebsiteResource extends Resource
                 // Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\Action::make('view_seo_progress')
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\Action::make('view_seo_progress')
                     ->label('View Progress')
                     ->icon('heroicon-o-chart-bar')
                     ->color('warning')
@@ -383,7 +384,7 @@ class WebsiteResource extends Resource
 
                         return $latestCheck && in_array($latestCheck->status, ['running', 'pending']);
                     }),
-                Tables\Actions\Action::make('run_seo_crawl')
+                \Filament\Actions\Action::make('run_seo_crawl')
                     ->label('Run SEO Check')
                     ->icon('heroicon-o-magnifying-glass')
                     ->color('success')
@@ -416,10 +417,10 @@ class WebsiteResource extends Resource
                     }),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                    Tables\Actions\ForceDeleteBulkAction::make(),
-                    Tables\Actions\RestoreBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
+                    \Filament\Actions\ForceDeleteBulkAction::make(),
+                    \Filament\Actions\RestoreBulkAction::make(),
                 ]),
             ]);
     }

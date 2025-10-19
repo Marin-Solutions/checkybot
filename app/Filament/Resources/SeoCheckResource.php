@@ -12,9 +12,9 @@ class SeoCheckResource extends Resource
 {
     protected static ?string $model = SeoCheck::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-magnifying-glass';
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-magnifying-glass';
 
-    protected static ?string $navigationGroup = 'SEO';
+    protected static \UnitEnum|string|null $navigationGroup = 'SEO';
 
     protected static ?int $navigationSort = 3;
 
@@ -35,13 +35,13 @@ class SeoCheckResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('website.url')
                     ->label('URL')
-                    ->url(fn ($record) => $record->website->url)
+                    ->url(fn($record) => $record->website->url)
                     ->openUrlInNewTab()
                     ->searchable()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
+                    ->color(fn(string $state): string => match ($state) {
                         'completed' => 'success',
                         'running' => 'warning',
                         'failed' => 'danger',
@@ -55,8 +55,8 @@ class SeoCheckResource extends Resource
                 Tables\Columns\TextColumn::make('health_score_formatted')
                     ->label('Health Score')
                     ->badge()
-                    ->color(fn ($record): string => $record->health_score_color)
-                    ->formatStateUsing(fn ($record): string => $record->isCompleted() ? $record->health_score_formatted : 'N/A')
+                    ->color(fn($record): string => $record->health_score_color)
+                    ->formatStateUsing(fn($record): string => $record->isCompleted() ? $record->health_score_formatted : 'N/A')
                     ->sortable(query: function ($query, string $direction) {
                         // Custom sorting for health score calculation
                         return $query->orderBy('total_urls_crawled', $direction);
@@ -95,7 +95,7 @@ class SeoCheckResource extends Resource
                     ]),
             ])
             ->actions([
-                Tables\Actions\ViewAction::make(),
+                \Filament\Actions\ViewAction::make(),
             ])
             // Bulk actions disabled to prevent JavaScript errors
             // ->bulkActions([

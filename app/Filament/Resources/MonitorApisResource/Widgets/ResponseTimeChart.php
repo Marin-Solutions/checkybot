@@ -8,11 +8,11 @@ use Filament\Widgets\ChartWidget;
 
 class ResponseTimeChart extends ChartWidget
 {
-    protected static ?string $heading = 'Response Times';
+    protected ?string $heading = 'Response Times';
 
-    protected static ?string $maxHeight = '300px';
+    protected ?string $maxHeight = '300px';
 
-    protected static ?string $pollingInterval = '10s';
+    protected ?string $pollingInterval = '10s';
 
     public string|int|array $columnSpan = 'full';
 

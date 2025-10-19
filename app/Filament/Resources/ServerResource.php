@@ -9,10 +9,10 @@ use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
 use App\Tables\Columns\UsageBarColumn;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
-use Filament\Tables\Actions\Action;
+use Filament\Actions\Action;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -23,9 +23,9 @@ class ServerResource extends Resource
 {
     protected static ?string $model = Server::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-server-stack';
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-server-stack';
 
-    protected static ?string $navigationGroup = 'Operations';
+    protected static \UnitEnum|string|null $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 2;
 
@@ -42,9 +42,9 @@ class ServerResource extends Resource
         return auth()->check();
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\TextInput::make('ip')
                     ->required()
@@ -220,21 +220,21 @@ class ServerResource extends Resource
             ])
             ->actions([
                 CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
+                    ->copyable(fn(Server $record) => ServerInformationHistory::copyCommand($record->id))
                     ->label(__('Copy script')),
                 CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
+                    ->copyable(fn(Server $record) => ServerLogFileHistory::copyCommand($record->id))
                     ->label(__('Copy log script')),
-                Tables\Actions\ViewAction::make('view_statistics')
+                \Filament\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
                     ->icon('heroicon-o-presentation-chart-line')
                     ->color('warning'),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                    Tables\Actions\ForceDeleteBulkAction::make(),
-                    Tables\Actions\RestoreBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
+                    \Filament\Actions\ForceDeleteBulkAction::make(),
+                    \Filament\Actions\RestoreBulkAction::make(),
                 ]),
             ]);
     }
@@ -273,15 +273,15 @@ class ServerResource extends Resource
                 ->url('localhsot'),
             Action::make('delete')
                 ->requiresConfirmation()
-                ->action(fn () => $this->post->delete()),
+                ->action(fn() => $this->post->delete()),
         ];
     }
 
     public static function getTableActions(): array
     {
         return [
-            Tables\Actions\EditAction::make(),
-            Tables\Actions\DeleteAction::make(),
+            \Filament\Actions\EditAction::make(),
+            \Filament\Actions\DeleteAction::make(),
         ];
     }
 }

@@ -5,8 +5,8 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\UserResource\Pages;
 use App\Models\User;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Hash;
@@ -21,7 +21,7 @@ class UserResource extends Resource
     /**
      * The resource navigation icon.
      */
-    protected static ?string $navigationIcon = 'heroicon-o-users';
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-users';
 
     /**
      * The settings navigation group.
@@ -47,36 +47,38 @@ class UserResource extends Resource
     /**
      * The resource form.
      */
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
-                Forms\Components\Grid::make()->schema([
-                    Forms\Components\TextInput::make('name')
-                        ->required()
-                        ->unique(ignoreRecord: true)
-                        ->maxLength(255),
+                \Filament\Schemas\Components\Grid::make()
+                    ->columnSpanFull()
+                    ->schema([
+                        \Filament\Forms\Components\TextInput::make('name')
+                            ->required()
+                            ->unique(ignoreRecord: true)
+                            ->maxLength(255),
 
-                    Forms\Components\TextInput::make('email')
-                        ->email()
-                        ->required()
-                        ->unique(ignoreRecord: true)
-                        ->maxLength(255),
+                        \Filament\Forms\Components\TextInput::make('email')
+                            ->email()
+                            ->required()
+                            ->unique(ignoreRecord: true)
+                            ->maxLength(255),
 
-                    Forms\Components\TextInput::make('password')
-                        ->dehydrateStateUsing(fn (string $state): string => Hash::make($state))
-                        ->dehydrated(fn (?string $state): bool => filled($state))
-                        ->required(fn (string $operation): bool => $operation === 'create')
-                        ->password()
-                        ->confirmed()
-                        ->maxLength(255),
+                        \Filament\Forms\Components\TextInput::make('password')
+                            ->dehydrateStateUsing(fn(string $state): string => Hash::make($state))
+                            ->dehydrated(fn(?string $state): bool => filled($state))
+                            ->required(fn(string $operation): bool => $operation === 'create')
+                            ->password()
+                            ->confirmed()
+                            ->maxLength(255),
 
-                    Forms\Components\TextInput::make('password_confirmation')
-                        ->label('Confirm password')
-                        ->password()
-                        ->required(fn (string $operation): bool => $operation === 'create')
-                        ->maxLength(255),
-                ]),
+                        \Filament\Forms\Components\TextInput::make('password_confirmation')
+                            ->label('Confirm password')
+                            ->password()
+                            ->required(fn(string $operation): bool => $operation === 'create')
+                            ->maxLength(255),
+                    ]),
                 //                Forms\Components\Section::make('Role')
                 //                    ->schema([
                 //                        Forms\Components\Select::make('roles')
@@ -111,16 +113,17 @@ class UserResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ])
             ->emptyStateActions([
-                Tables\Actions\CreateAction::make(),
+                \Filament\Actions\CreateAction::make()
+                    ->modalWidth('7xl'),
             ]);
     }
 

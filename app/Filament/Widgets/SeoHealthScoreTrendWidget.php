@@ -7,13 +7,13 @@ use Filament\Widgets\ChartWidget;
 
 class SeoHealthScoreTrendWidget extends ChartWidget
 {
-    protected static ?string $heading = 'SEO Health Score Trend';
+    protected ?string $heading = 'SEO Health Score Trend';
 
     protected static ?int $sort = 2;
 
     protected int|string|array $columnSpan = 'full';
 
-    protected static ?string $pollingInterval = '30s';
+    protected ?string $pollingInterval = '30s';
 
     public ?string $filter = '30days';
 
@@ -147,9 +147,6 @@ class SeoHealthScoreTrendWidget extends ChartWidget
                 'y' => [
                     'beginAtZero' => true,
                     'max' => 100,
-                    'ticks' => [
-                        'callback' => 'function(value) { return value + "%"; }',
-                    ],
                 ],
             ],
             'plugins' => [
@@ -157,15 +154,7 @@ class SeoHealthScoreTrendWidget extends ChartWidget
                     'display' => true,
                 ],
                 'tooltip' => [
-                    'callbacks' => [
-                        'label' => 'function(context) { 
-                            if (context.parsed.y === 0) {
-                                return "Failed Check";
-                            } else {
-                                return "Health Score: " + context.parsed.y + "%";
-                            }
-                        }',
-                    ],
+                    'display' => true,
                 ],
             ],
             'elements' => [

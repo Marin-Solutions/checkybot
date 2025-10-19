@@ -36,7 +36,7 @@ class AdminPanelProvider extends PanelProvider
                         hasAvatars: true
                     )
                     ->enableTwoFactorAuthentication(),
-                FilamentShieldPlugin::make()
+                FilamentShieldPlugin::make(),
             ])
             ->colors([
                 'primary' => Color::Blue,
@@ -63,20 +63,6 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ])
-            ->viteTheme('resources/css/filament.css')
-            ->renderHook(
-                'panels::body.end',
-                function (): string {
-                    $manifest = json_decode(file_get_contents(public_path('build/manifest.json')), true);
-                    $appJs = $manifest['resources/js/app.js']['file'] ?? null;
-
-                    if ($appJs) {
-                        return '<script type="module" src="' . asset('build/' . $appJs) . '"></script>';
-                    }
-
-                    return '';
-                }
-            );
+            ]);
     }
 }
