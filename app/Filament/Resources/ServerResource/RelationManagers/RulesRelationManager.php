@@ -2,14 +2,12 @@
 
 namespace App\Filament\Resources\ServerResource\RelationManagers;
 
+use App\Models\NotificationChannels;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use App\Models\NotificationChannels;
 
 class RulesRelationManager extends RelationManager
 {
@@ -19,9 +17,9 @@ class RulesRelationManager extends RelationManager
 
     protected static ?string $title = 'Monitoring Rules';
 
-    public function form(Form $form): Form
+    public function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\Select::make('metric')
                     ->required()
@@ -87,23 +85,22 @@ class RulesRelationManager extends RelationManager
                         return NotificationChannels::find($state)?->title ?? $state;
                     }),
                 Tables\Columns\ToggleColumn::make('is_active')
-                    ->label('Active')
+                    ->label('Active'),
             ])
             ->filters([
                 //
             ])
             ->headerActions([
-                Tables\Actions\CreateAction::make()->authorize(true),
+                \Filament\Actions\CreateAction::make()->authorize(true),
             ])
             ->actions([
-                Tables\Actions\EditAction::make()->authorize(true),
-                Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make()->authorize(true),
+                \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
-            ])
-        ;
+            ]);
     }
 }

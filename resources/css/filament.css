@@ -11,3 +11,15 @@
 .waiting-for-error-section .fi-section-content-ctn > .fi-section-content {
     padding: 0;
 }
+
+/* Fix modal full width for Filament v4 */
+.fi-modal-content {
+    max-width: none !important;
+    width: 100% !important;
+}
+
+/* Ensure modal body content is full width */
+.fi-modal-body {
+    max-width: none !important;
+    width: 100% !important;
+}

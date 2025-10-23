@@ -13,9 +13,9 @@ class WebsiteSeoCheckResource extends Resource
 {
     protected static ?string $model = Website::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-magnifying-glass';
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-magnifying-glass';
 
-    protected static ?string $navigationGroup = 'SEO';
+    protected static \UnitEnum|string|null $navigationGroup = 'SEO';
 
     protected static ?int $navigationSort = 2;
 
@@ -144,12 +144,12 @@ class WebsiteSeoCheckResource extends Resource
                     }),
             ])
             ->actions([
-                Tables\Actions\Action::make('view_checks')
+                \Filament\Actions\Action::make('view_checks')
                     ->label('View Checks')
                     ->icon('heroicon-o-eye')
                     ->url(fn($record) => route('filament.admin.resources.seo-checks.index', ['website_id' => $record->id]))
                     ->openUrlInNewTab(),
-                Tables\Actions\Action::make('view_latest_progress')
+                \Filament\Actions\Action::make('view_latest_progress')
                     ->label('View Progress')
                     ->icon('heroicon-o-chart-bar')
                     ->color('warning')
@@ -167,7 +167,7 @@ class WebsiteSeoCheckResource extends Resource
 
                         return $latestCheck && in_array($latestCheck->status, ['running', 'pending']);
                     }),
-                Tables\Actions\Action::make('run_seo_check')
+                \Filament\Actions\Action::make('run_seo_check')
                     ->label('Run SEO Check')
                     ->icon('heroicon-o-play')
                     ->color('success')

@@ -9,8 +9,8 @@ use Filament\Actions;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
+use Filament\Schemas\Schema;
 use Livewire\Attributes\On;
 
 class ViewSeoCheck extends ViewRecord
@@ -87,28 +87,31 @@ class ViewSeoCheck extends ViewRecord
         // The Livewire component will handle the notification
     }
 
-    public function infolist(Infolist $infolist): Infolist
+    public function infolist(Schema $schema): Schema
     {
-        return $infolist
+        return $schema
             ->schema([
-                Section::make('Live Progress')
+                \Filament\Schemas\Components\Section::make('Live Progress')
                     ->schema([
-                        \Filament\Infolists\Components\Livewire::make(\App\Livewire\SeoCheckProgress::class, [
+                        \Filament\Schemas\Components\Livewire::make(\App\Livewire\SeoCheckProgress::class, [
                             'seoCheck' => $this->getRecord(),
-                        ]),
+                        ])
+                            ->key('seo-check-progress-' . $this->getRecord()->id),
                     ])
-                    ->visible(fn() => $this->getRecord()->isRunning()),
-                Section::make('SEO Check Overview')
+                    ->visible(fn() => $this->getRecord()->isRunning())
+                    ->columnSpanFull(),
+                \Filament\Schemas\Components\Section::make('SEO Check Overview')
+                    ->columnSpanFull()
                     ->schema([
-                        Grid::make(2)
+                        \Filament\Schemas\Components\Grid::make(2)
                             ->schema([
-                                TextEntry::make('website.name')
+                                \Filament\Infolists\Components\TextEntry::make('website.name')
                                     ->label('Website'),
-                                TextEntry::make('website.url')
+                                \Filament\Infolists\Components\TextEntry::make('website.url')
                                     ->label('URL')
                                     ->url(fn($record) => $record->website->url)
                                     ->openUrlInNewTab(),
-                                TextEntry::make('status')
+                                \Filament\Infolists\Components\TextEntry::make('status')
                                     ->badge()
                                     ->color(fn(string $state): string => match ($state) {
                                         'completed' => 'success',
@@ -116,15 +119,15 @@ class ViewSeoCheck extends ViewRecord
                                         'failed' => 'danger',
                                         'pending' => 'gray',
                                     }),
-                                TextEntry::make('total_urls_crawled')
+                                \Filament\Infolists\Components\TextEntry::make('total_urls_crawled')
                                     ->label('URLs Crawled'),
-                                TextEntry::make('started_at')
+                                \Filament\Infolists\Components\TextEntry::make('started_at')
                                     ->label('Started At')
                                     ->dateTime(),
-                                TextEntry::make('finished_at')
+                                \Filament\Infolists\Components\TextEntry::make('finished_at')
                                     ->label('Finished At')
                                     ->dateTime(),
-                                TextEntry::make('started_at')
+                                \Filament\Infolists\Components\TextEntry::make('started_at')
                                     ->label('Duration')
                                     ->formatStateUsing(function ($record) {
                                         if ($record->started_at && $record->finished_at) {
@@ -135,24 +138,25 @@ class ViewSeoCheck extends ViewRecord
                                     }),
                             ]),
                     ]),
-                Section::make('SEO Summary')
+                \Filament\Schemas\Components\Section::make('SEO Summary')
+                    ->columnSpanFull()
                     ->schema([
-                        Grid::make(4)
+                        \Filament\Schemas\Components\Grid::make(4)
                             ->schema([
-                                TextEntry::make('health_score_formatted')
+                                \Filament\Infolists\Components\TextEntry::make('health_score_formatted')
                                     ->label('Health Score')
                                     ->badge()
                                     ->color(fn($record): string => $record->health_score_color)
                                     ->formatStateUsing(fn($record): string => $record->health_score_formatted),
-                                TextEntry::make('errors_count')
+                                \Filament\Infolists\Components\TextEntry::make('errors_count')
                                     ->label('Errors')
                                     ->badge()
                                     ->color('danger'),
-                                TextEntry::make('warnings_count')
+                                \Filament\Infolists\Components\TextEntry::make('warnings_count')
                                     ->label('Warnings')
                                     ->badge()
                                     ->color('warning'),
-                                TextEntry::make('notices_count')
+                                \Filament\Infolists\Components\TextEntry::make('notices_count')
                                     ->label('Notices')
                                     ->badge()
                                     ->color('info'),

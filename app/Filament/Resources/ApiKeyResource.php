@@ -5,8 +5,8 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ApiKeyResource\Pages;
 use App\Models\ApiKey;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -14,17 +14,19 @@ use Illuminate\Database\Eloquent\Builder;
 class ApiKeyResource extends Resource
 {
     protected static ?string $model = ApiKey::class;
-    protected static ?string $navigationIcon = 'heroicon-o-key';
-    protected static ?string $navigationGroup = 'Settings';
+
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-key';
+
+    protected static \UnitEnum|string|null $navigationGroup = 'Settings';
 
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()->where('user_id', auth()->id());
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\TextInput::make('name')
                     ->required()
@@ -62,14 +64,14 @@ class ApiKeyResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make()
-                    ->authorize(fn (?ApiKey $record) => $record?->user_id === auth()->id()),
-                Tables\Actions\DeleteAction::make()
-                    ->authorize(fn (?ApiKey $record) => $record?->user_id === auth()->id()),
+                \Filament\Actions\EditAction::make()
+                    ->authorize(fn(?ApiKey $record) => $record?->user_id === auth()->id()),
+                \Filament\Actions\DeleteAction::make()
+                    ->authorize(fn(?ApiKey $record) => $record?->user_id === auth()->id()),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }
@@ -82,4 +84,4 @@ class ApiKeyResource extends Resource
             'edit' => Pages\EditApiKey::route('/{record}/edit'),
         ];
     }
-} 
+}

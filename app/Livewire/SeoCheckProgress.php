@@ -46,7 +46,7 @@ class SeoCheckProgress extends Component
         $this->calculateEstimatedTime();
     }
 
-    #[On('seo-check-progress-updated')]
+    #[On('crawl-progress-updated')]
     public function updateProgress(): void
     {
         try {
@@ -76,7 +76,7 @@ class SeoCheckProgress extends Component
         }
     }
 
-    #[On('seo-check-completed')]
+    #[On('crawl-completed')]
     public function handleCompletion(): void
     {
         try {
@@ -115,7 +115,7 @@ class SeoCheckProgress extends Component
         }
     }
 
-    #[On('seo-check-failed')]
+    #[On('crawl-failed')]
     public function handleFailure(): void
     {
         try {

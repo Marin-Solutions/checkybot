@@ -7,8 +7,8 @@ use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\NotificationSettingResource\Pages;
 use App\Models\NotificationSetting;
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,10 +16,15 @@ use Illuminate\Database\Eloquent\Builder;
 class NotificationSettingResource extends Resource
 {
     protected static ?string $model = NotificationSetting::class;
-    protected static ?string $navigationIcon = 'heroicon-o-cog';
-    protected static ?string $navigationGroup = 'Operations';
+
+    protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-cog';
+
+    protected static \UnitEnum|string|null $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 5;
+
     protected static ?string $modelLabel = 'Global Notification';
+
     protected static ?string $pluralModelLabel = 'Global Notifications';
 
     public static function getNavigationBadge(): ?string
@@ -27,18 +32,18 @@ class NotificationSettingResource extends Resource
         return number_format(static::getModel()::where('user_id', auth()->id())->count());
     }
 
-    public static function form(Form $form): Form
+    public static function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
-                Forms\Components\Fieldset::make('Notification Setting')
+                \Filament\Schemas\Components\Fieldset::make('Notification Setting')
                     ->schema([
                         Forms\Components\Select::make('inspection')
                             ->label('Monitor')
                             ->options(WebsiteServicesEnum::toArray())
                             ->required(),
                     ])->columns(1),
-                Forms\Components\Fieldset::make('Notification Channel')
+                \Filament\Schemas\Components\Fieldset::make('Notification Channel')
                     ->schema([
                         Forms\Components\Select::make('channel_type')
                             ->options(NotificationChannelTypesEnum::toArray())
@@ -46,7 +51,7 @@ class NotificationSettingResource extends Resource
                             ->reactive()
                             ->columnSpan(1),
                         Forms\Components\TextInput::make('address')
-                            ->label("Email")
+                            ->label('Email')
                             ->required()
                             ->columnSpan(1)
                             ->rules(function (callable $get) {
@@ -55,12 +60,12 @@ class NotificationSettingResource extends Resource
                                     NotificationChannelTypesEnum::WEBHOOK->name => ['required', 'url'],
                                 };
                             })
-                            ->hidden(fn($get) => $get("channel_type") !== NotificationChannelTypesEnum::MAIL->name),
+                            ->hidden(fn($get) => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->name),
                         Forms\Components\Select::make('notification_channel_id')
                             ->label('Notification Channel')
                             ->required()
                             ->options(fn() => auth()->user()->webhookChannels()->pluck('title', 'id'))
-                            ->hidden(fn($get) => $get("channel_type") !== NotificationChannelTypesEnum::WEBHOOK->name)
+                            ->hidden(fn($get) => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->name),
                     ])->columns(2),
             ]);
     }
@@ -83,12 +88,12 @@ class NotificationSettingResource extends Resource
             ])
             ->filters([])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }

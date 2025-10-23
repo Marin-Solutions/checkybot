@@ -3,22 +3,24 @@
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
 use Filament\Forms;
-use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 
 class AssertionsRelationManager extends RelationManager
 {
     protected static string $relationship = 'assertions';
+
     protected static ?string $title = 'API Assertions';
+
     protected static ?string $recordTitleAttribute = 'data_path';
 
     protected static ?string $inverseRelationship = 'monitorApi';
 
-    public function form(Form $form): Form
+    public function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->schema([
                 Forms\Components\TextInput::make('data_path')
                     ->required()
@@ -33,7 +35,7 @@ class AssertionsRelationManager extends RelationManager
                         'exists' => 'Value Exists',
                         'not_exists' => 'Value Does Not Exist',
                         'array_length' => 'Array Length',
-                        'regex_match' => 'Regex Match'
+                        'regex_match' => 'Regex Match',
                     ])
                     ->reactive()
                     ->afterStateUpdated(fn($state, Forms\Set $set) => $set('comparison_operator', null)),
@@ -46,7 +48,7 @@ class AssertionsRelationManager extends RelationManager
                         'array' => 'Array',
                         'object' => 'Object',
                         'float' => 'Float',
-                        'null' => 'Null'
+                        'null' => 'Null',
                     ])
                     ->required(fn(Forms\Get $get) => $get('assertion_type') === 'type_check')
                     ->visible(fn(Forms\Get $get) => $get('assertion_type') === 'type_check'),
@@ -59,7 +61,7 @@ class AssertionsRelationManager extends RelationManager
                         '<' => 'Less Than',
                         '>=' => 'Greater Than or Equal',
                         '<=' => 'Less Than or Equal',
-                        'contains' => 'Contains'
+                        'contains' => 'Contains',
                     ])
                     ->required(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
                     ->visible(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length'])),
@@ -123,16 +125,16 @@ class AssertionsRelationManager extends RelationManager
             ->defaultSort('sort_order')
             ->reorderable('sort_order')
             ->headerActions([
-                Tables\Actions\CreateAction::make()
+                \Filament\Actions\CreateAction::make()
                     ->label('Add Assertion'),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }
