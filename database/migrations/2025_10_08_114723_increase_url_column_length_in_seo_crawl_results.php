@@ -22,10 +22,8 @@ return new class extends Migration
             $table->string('url', 1000)->change();
         });
 
-        Schema::table('seo_crawl_results', function (Blueprint $table) {
-            // Recreate the index with a prefix (first 191 chars to stay within limits)
-            $table->index(DB::raw('url(191)'), 'seo_crawl_results_url_index');
-        });
+        // Recreate the index with a prefix using raw SQL (first 191 chars to stay within limits)
+        DB::statement('ALTER TABLE seo_crawl_results ADD INDEX seo_crawl_results_url_index (url(191))');
     }
 
     /**
