@@ -12,10 +12,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('seo_crawl_results', function (Blueprint $table) {
-            // Drop the index first to avoid key length issues
-            $table->dropIndex('seo_crawl_results_url_index');
-        });
+        // Check if index exists before dropping it
+        $indexExists = DB::select("SHOW INDEX FROM seo_crawl_results WHERE Key_name = 'seo_crawl_results_url_index'");
+
+        if (! empty($indexExists)) {
+            Schema::table('seo_crawl_results', function (Blueprint $table) {
+                // Drop the index first to avoid key length issues
+                $table->dropIndex('seo_crawl_results_url_index');
+            });
+        }
 
         Schema::table('seo_crawl_results', function (Blueprint $table) {
             // Increase URL column length to handle long URLs (especially from GitHub)
@@ -23,7 +28,12 @@ return new class extends Migration
         });
 
         // Recreate the index with a prefix using raw SQL (first 191 chars to stay within limits)
-        DB::statement('ALTER TABLE seo_crawl_results ADD INDEX seo_crawl_results_url_index (url(191))');
+        // Only create if it doesn't already exist
+        $indexExists = DB::select("SHOW INDEX FROM seo_crawl_results WHERE Key_name = 'seo_crawl_results_url_index'");
+
+        if (empty($indexExists)) {
+            DB::statement('ALTER TABLE seo_crawl_results ADD INDEX seo_crawl_results_url_index (url(191))');
+        }
     }
 
     /**
