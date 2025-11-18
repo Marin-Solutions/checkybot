@@ -19,7 +19,7 @@ class WebsiteFactory extends Factory
     {
         return [
             'name' => $this->faker->name(),
-            'url' => $this->faker->url(),
+            'url' => $this->faker->unique()->url(),
             'description' => $this->faker->text(),
             'created_by' => User::factory(),
             'uptime_check' => 1,

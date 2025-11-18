@@ -129,6 +129,11 @@ class SeoIssueDetectionService
         $issues = collect();
         $internalLinks = $result->internal_links ?? [];
 
+        // Ensure internal_links is an array
+        if (is_string($internalLinks)) {
+            $internalLinks = json_decode($internalLinks, true) ?? [];
+        }
+
         foreach ($internalLinks as $link) {
             $linkUrl = $link['url'] ?? '';
             if (empty($linkUrl)) {
@@ -593,6 +598,12 @@ class SeoIssueDetectionService
         $allInternalLinks = collect();
         foreach ($allResults as $result) {
             $internalLinks = $result->internal_links ?? [];
+
+            // Ensure internal_links is an array
+            if (is_string($internalLinks)) {
+                $internalLinks = json_decode($internalLinks, true) ?? [];
+            }
+
             foreach ($internalLinks as $link) {
                 $allInternalLinks->push($link['url'] ?? '');
             }
@@ -679,7 +690,14 @@ class SeoIssueDetectionService
     {
         $issues = collect();
 
-        $internalLinkCount = count($result->internal_links ?? []);
+        $internalLinks = $result->internal_links ?? [];
+
+        // Ensure internal_links is an array
+        if (is_string($internalLinks)) {
+            $internalLinks = json_decode($internalLinks, true) ?? [];
+        }
+
+        $internalLinkCount = count($internalLinks);
 
         // Flag pages with more than 100 internal links as potentially problematic
         if ($internalLinkCount > 100) {

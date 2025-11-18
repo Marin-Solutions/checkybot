@@ -20,24 +20,24 @@ class SeoCrawlResultFactory extends Factory
             'title' => fake()->sentence(),
             'meta_description' => fake()->paragraph(),
             'h1' => fake()->sentence(),
-            'internal_links' => json_encode([
+            'internal_links' => [
                 ['url' => fake()->url(), 'text' => fake()->words(3, true)],
                 ['url' => fake()->url(), 'text' => fake()->words(3, true)],
-            ]),
-            'external_links' => json_encode([
+            ],
+            'external_links' => [
                 ['url' => fake()->url(), 'text' => fake()->words(2, true)],
-            ]),
+            ],
             'page_size_bytes' => fake()->numberBetween(10000, 500000),
             'html_size_bytes' => fake()->numberBetween(5000, 200000),
             'html_content' => '<html><body>'.fake()->paragraph().'</body></html>',
-            'resource_sizes' => json_encode([
+            'resource_sizes' => [
                 'css' => fake()->numberBetween(1000, 50000),
                 'js' => fake()->numberBetween(5000, 100000),
-            ]),
-            'headers' => json_encode([
+            ],
+            'headers' => [
                 'content-type' => 'text/html; charset=utf-8',
                 'server' => 'nginx',
-            ]),
+            ],
             'response_time_ms' => fake()->numberBetween(100, 3000),
             'robots_txt_allowed' => true,
             'crawl_source' => 'discovery',

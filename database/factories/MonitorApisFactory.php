@@ -20,6 +20,7 @@ class MonitorApisFactory extends Factory
                 'Accept' => 'application/json',
                 'User-Agent' => 'CheckyBot/1.0',
             ]),
+            'save_failed_response' => true,
             'created_by' => User::factory(),
         ];
     }
