@@ -43,8 +43,11 @@ class SeoHealthCheckCrawlerTest extends TestCase
         $robotsService = Mockery::mock(RobotsSitemapService::class);
         $robotsService->shouldReceive('isUrlAllowed')->andReturn(true);
 
+        $issueDetectionService = Mockery::mock(SeoIssueDetectionService::class);
+        $issueDetectionService->shouldReceive('detectIssues')->byDefault();
+
         $this->app->instance(RobotsSitemapService::class, $robotsService);
-        $this->app->instance(SeoIssueDetectionService::class, Mockery::mock(SeoIssueDetectionService::class));
+        $this->app->instance(SeoIssueDetectionService::class, $issueDetectionService);
 
         $this->crawler = new SeoHealthCheckCrawler($this->seoCheck);
     }
@@ -114,11 +117,13 @@ class SeoHealthCheckCrawlerTest extends TestCase
 
     public function test_finished_crawling_updates_seo_check_status(): void
     {
-        $this->app->instance(SeoIssueDetectionService::class, Mockery::mock(SeoIssueDetectionService::class, function ($mock) {
-            $mock->shouldReceive('detectIssues')->once();
-        }));
+        $issueDetectionMock = Mockery::mock(SeoIssueDetectionService::class);
+        $issueDetectionMock->shouldReceive('detectIssues')->once();
+        $this->app->instance(SeoIssueDetectionService::class, $issueDetectionMock);
 
-        $this->crawler->finishedCrawling();
+        // Recreate crawler to use the new mock
+        $crawler = new SeoHealthCheckCrawler($this->seoCheck);
+        $crawler->finishedCrawling();
 
         $this->seoCheck->refresh();
         $this->assertEquals('completed', $this->seoCheck->status);
@@ -129,11 +134,13 @@ class SeoHealthCheckCrawlerTest extends TestCase
     {
         Event::fake();
 
-        $this->app->instance(SeoIssueDetectionService::class, Mockery::mock(SeoIssueDetectionService::class, function ($mock) {
-            $mock->shouldReceive('detectIssues')->once();
-        }));
+        $issueDetectionMock = Mockery::mock(SeoIssueDetectionService::class);
+        $issueDetectionMock->shouldReceive('detectIssues')->once();
+        $this->app->instance(SeoIssueDetectionService::class, $issueDetectionMock);
 
-        $this->crawler->finishedCrawling();
+        // Recreate crawler to use the new mock
+        $crawler = new SeoHealthCheckCrawler($this->seoCheck);
+        $crawler->finishedCrawling();
 
         Event::assertDispatched(CrawlCompleted::class);
     }
@@ -227,11 +234,13 @@ class SeoHealthCheckCrawlerTest extends TestCase
 
     public function test_populates_computed_columns_on_completion(): void
     {
-        $this->app->instance(SeoIssueDetectionService::class, Mockery::mock(SeoIssueDetectionService::class, function ($mock) {
-            $mock->shouldReceive('detectIssues')->once();
-        }));
+        $issueDetectionMock = Mockery::mock(SeoIssueDetectionService::class);
+        $issueDetectionMock->shouldReceive('detectIssues')->once();
+        $this->app->instance(SeoIssueDetectionService::class, $issueDetectionMock);
 
-        $this->crawler->finishedCrawling();
+        // Recreate crawler to use the new mock
+        $crawler = new SeoHealthCheckCrawler($this->seoCheck);
+        $crawler->finishedCrawling();
 
         $this->seoCheck->refresh();
         $this->assertNotNull($this->seoCheck->computed_health_score);
