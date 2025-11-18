@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MonitorApiResult extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'monitor_api_id',
         'is_success',
@@ -31,9 +34,14 @@ class MonitorApiResult extends Model
 
     public static function recordResult(MonitorApis $api, array $testResult, float $startTime): self
     {
-        // Determine if all assertions passed
+        // Determine if all assertions passed and HTTP code is successful
         $isSuccess = true;
         $failedAssertions = [];
+
+        // Check if HTTP code indicates failure
+        if (isset($testResult['code']) && $testResult['code'] >= 400) {
+            $isSuccess = false;
+        }
 
         if (! empty($testResult['assertions'])) {
             foreach ($testResult['assertions'] as $assertion) {
@@ -51,8 +59,8 @@ class MonitorApiResult extends Model
         // Calculate response time
         $responseTime = (int) ((microtime(true) - $startTime) * 1000);
 
-        // Only save the response body if there was an error
-        $savedResponseBody = $isSuccess ? null : $testResult['body'];
+        // Only save the response body if there was an error and the setting is enabled
+        $savedResponseBody = ($isSuccess || ! $api->save_failed_response) ? null : $testResult['body'];
 
         // Create new result for every request
         return self::create([
