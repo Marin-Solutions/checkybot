@@ -11,7 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Check if token column exists before attempting to drop
+        if (! Schema::hasColumn('server_information_history', 'token')) {
+            return;
+        }
+
         Schema::table('server_information_history', function (Blueprint $table) {
+            // Drop unique index if it exists (SQLite requirement)
+            if (Schema::hasIndex('server_information_history', 'server_information_history_token_unique')) {
+                $table->dropUnique('server_information_history_token_unique');
+            }
+
             $table->dropColumn('token');
         });
     }

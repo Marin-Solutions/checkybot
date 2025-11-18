@@ -17,7 +17,7 @@ class EditMonitorApis extends EditRecord
     {
         return $this->previousUrl ?? $this->getResource()::getUrl('index');
     }
-    
+
     protected function getFooterWidgets(): array
     {
         return [
@@ -40,7 +40,7 @@ class EditMonitorApis extends EditRecord
     protected function getFormActions(): array
     {
         return array_merge([
-            $this->doMonitorApiAction()
+            $this->doMonitorApiAction(),
         ], parent::getFormActions());
     }
 }

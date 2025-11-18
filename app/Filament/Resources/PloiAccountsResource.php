@@ -49,7 +49,7 @@ class PloiAccountsResource extends Resource
                     ->boolean()
                     ->trueIcon('heroicon-o-check-circle')
                     ->falseIcon('heroicon-o-x-circle')
-                    ->tooltip(fn(PloiAccounts $record) => $record->error_message ?: 'No error message'),
+                    ->tooltip(fn (PloiAccounts $record) => $record->error_message ?: 'No error message'),
                 Tables\Columns\TextColumn::make('servers_count')
                     ->label('Servers')
                     ->counts('servers')
@@ -70,7 +70,7 @@ class PloiAccountsResource extends Resource
                     ->requiresConfirmation()
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
-                    ->disabled(fn(PloiAccounts $record) => $record->is_verified),
+                    ->disabled(fn (PloiAccounts $record) => $record->is_verified),
                 \Filament\Actions\Action::make('import_servers')
                     ->action(function (PloiAccounts $record) {
                         try {
@@ -100,7 +100,7 @@ class PloiAccountsResource extends Resource
                 ]),
             ])
             ->recordUrl(
-                fn(PloiAccounts $record) => static::getUrl('view', ['record' => $record->getKey()])
+                fn (PloiAccounts $record) => static::getUrl('view', ['record' => $record->getKey()])
             );
     }
 

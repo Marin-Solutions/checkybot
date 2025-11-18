@@ -34,17 +34,17 @@ class SeoDashboardStatsWidget extends BaseWidget
                 ->color('primary'),
 
             Stat::make('SEO Checks Run', $totalChecks)
-                ->description($completedChecks . ' completed, ' . $runningChecks . ' running')
+                ->description($completedChecks.' completed, '.$runningChecks.' running')
                 ->descriptionIcon('heroicon-m-magnifying-glass')
                 ->color('info'),
 
-            Stat::make('Average Health Score', $avgHealthScore ? number_format($avgHealthScore, 1) . '%' : 'N/A')
+            Stat::make('Average Health Score', $avgHealthScore ? number_format($avgHealthScore, 1).'%' : 'N/A')
                 ->description('Across all completed checks')
                 ->descriptionIcon('heroicon-m-chart-bar')
                 ->color($avgHealthScore >= 80 ? 'success' : ($avgHealthScore >= 60 ? 'warning' : 'danger')),
 
             Stat::make('Total Issues Found', $totalIssues)
-                ->description($criticalIssues . ' critical, ' . $warningIssues . ' warnings')
+                ->description($criticalIssues.' critical, '.$warningIssues.' warnings')
                 ->descriptionIcon('heroicon-m-exclamation-triangle')
                 ->color($criticalIssues > 0 ? 'danger' : ($warningIssues > 0 ? 'warning' : 'success')),
         ];

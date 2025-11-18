@@ -3,9 +3,9 @@
 namespace App\Filament\Resources\ApiKeyResource\Pages;
 
 use App\Filament\Resources\ApiKeyResource;
+use App\Models\ApiKey;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
-use App\Models\ApiKey;
 
 class ListApiKeys extends ListRecords
 {
@@ -18,8 +18,9 @@ class ListApiKeys extends ListRecords
                 ->using(function (array $data): ApiKey {
                     $data['user_id'] = auth()->id();
                     $data['key'] = ApiKey::generateKey();
+
                     return ApiKey::create($data);
                 }),
         ];
     }
-} 
+}

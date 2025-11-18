@@ -4,8 +4,8 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\BackupRemoteStorageResource\Pages;
 use App\Models\BackupRemoteStorageConfig;
-use Filament\Forms;
 use Filament\Actions\Action;
+use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -28,7 +28,7 @@ class BackupRemoteStorageResource extends Resource
 
     protected static function isHiddenForStorageType(array $types): \Closure
     {
-        return fn(callable $get) => $get('backup_remote_storage_type_id') === null || in_array($get('backup_remote_storage_type_id'), $types);
+        return fn (callable $get) => $get('backup_remote_storage_type_id') === null || in_array($get('backup_remote_storage_type_id'), $types);
     }
 
     protected static function onlyVisibleForSftpFtp(): \Closure
@@ -70,7 +70,7 @@ class BackupRemoteStorageResource extends Resource
                             ->relationship(
                                 name: 'storageType',
                                 titleAttribute: 'name',
-                                modifyQueryUsing: fn(Builder $query): Builder => $query->where('flag_active', true)->orderBy('id'),
+                                modifyQueryUsing: fn (Builder $query): Builder => $query->where('flag_active', true)->orderBy('id'),
                             )
                             ->reactive(),
                         /* For FTP or SFTP */

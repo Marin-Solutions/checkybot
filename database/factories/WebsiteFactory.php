@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -20,7 +21,7 @@ class WebsiteFactory extends Factory
             'name' => $this->faker->name(),
             'url' => $this->faker->url(),
             'description' => $this->faker->text(),
-            'created_by' => 1,
+            'created_by' => User::factory(),
             'uptime_check' => 1,
             'uptime_interval' => 1,
             'ssl_check' => 1,

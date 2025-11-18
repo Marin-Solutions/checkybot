@@ -5,6 +5,7 @@ namespace Tests\Unit\Services;
 use App\Models\SeoCheck;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class SeoHealthCheckServiceTest extends TestCase

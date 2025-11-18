@@ -41,7 +41,7 @@ class EditWebsite extends EditRecord
     protected function beforeSave()
     {
         $url = $this->data['url'];
-        $id = $this->data['id'];
+        $id = $this->getRecord()->id;
         $urlExistsInDB = Website::whereUrl($url)->where('id', '!=', $id)->count();
         $urlCheckExists = Website::checkWebsiteExists($url);
         $urlResponseCode = Website::checkResponseCode($url);
@@ -57,7 +57,7 @@ class EditWebsite extends EditRecord
                 $body = 'The website response is not 200!';
             } else {
                 $title = 'URL website a unknown error';
-                $body = 'code errno:' . $urlResponseCode;
+                $body = 'code errno:'.$urlResponseCode;
                 $responseStatus = true;
             }
         }
@@ -115,7 +115,7 @@ class EditWebsite extends EditRecord
 
             $scheduleData = [
                 'frequency' => $scheduleFrequency,
-                'schedule_time' => $scheduleTime . ':00',
+                'schedule_time' => $scheduleTime.':00',
                 'schedule_day' => $scheduleFrequency === 'weekly' ? $scheduleDay : null,
                 'is_active' => true,
                 'next_run_at' => $nextRunAt,

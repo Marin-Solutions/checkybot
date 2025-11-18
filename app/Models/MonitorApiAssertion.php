@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class MonitorApiAssertion extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'monitor_api_id',
         'data_path',
@@ -16,12 +19,12 @@ class MonitorApiAssertion extends Model
         'expected_value',
         'regex_pattern',
         'sort_order',
-        'is_active'
+        'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
-        'sort_order' => 'integer'
+        'sort_order' => 'integer',
     ];
 
     public function monitorApi(): BelongsTo
@@ -33,7 +36,7 @@ class MonitorApiAssertion extends Model
     {
         $result = [
             'passed' => false,
-            'message' => ''
+            'message' => '',
         ];
 
         switch ($this->assertion_type) {
@@ -52,20 +55,20 @@ class MonitorApiAssertion extends Model
             case 'exists':
                 $result['passed'] = isset($value);
                 $result['message'] = $result['passed']
-                    ? "Value exists at path"
-                    : "Value does not exist at path";
+                    ? 'Value exists at path'
+                    : 'Value does not exist at path';
                 break;
 
             case 'not_exists':
-                $result['passed'] = !isset($value);
+                $result['passed'] = ! isset($value);
                 $result['message'] = $result['passed']
-                    ? "Value does not exist at path"
-                    : "Value exists at path but should not";
+                    ? 'Value does not exist at path'
+                    : 'Value exists at path but should not';
                 break;
 
             case 'array_length':
-                if (!is_array($value)) {
-                    $result['message'] = "Value is not an array";
+                if (! is_array($value)) {
+                    $result['message'] = 'Value is not an array';
                     break;
                 }
                 $length = count($value);
@@ -73,14 +76,14 @@ class MonitorApiAssertion extends Model
                 break;
 
             case 'regex_match':
-                if (!is_string($value)) {
-                    $result['message'] = "Value is not a string";
+                if (! is_string($value)) {
+                    $result['message'] = 'Value is not a string';
                     break;
                 }
-                $result['passed'] = preg_match($this->regex_pattern, $value);
+                $result['passed'] = (bool) preg_match($this->regex_pattern, $value);
                 $result['message'] = $result['passed']
-                    ? "Value matches pattern"
-                    : "Value does not match pattern";
+                    ? 'Value matches pattern'
+                    : 'Value does not match pattern';
                 break;
         }
 
@@ -89,13 +92,28 @@ class MonitorApiAssertion extends Model
 
     private function getValueType($value): string
     {
-        if (is_bool($value)) return 'boolean';
-        if (is_int($value)) return 'integer';
-        if (is_string($value)) return 'string';
-        if (is_array($value)) return 'array';
-        if (is_object($value)) return 'object';
-        if (is_float($value)) return 'float';
-        if (is_null($value)) return 'null';
+        if (is_bool($value)) {
+            return 'boolean';
+        }
+        if (is_int($value)) {
+            return 'integer';
+        }
+        if (is_string($value)) {
+            return 'string';
+        }
+        if (is_array($value)) {
+            return 'array';
+        }
+        if (is_object($value)) {
+            return 'object';
+        }
+        if (is_float($value)) {
+            return 'float';
+        }
+        if (is_null($value)) {
+            return 'null';
+        }
+
         return 'unknown';
     }
 
@@ -135,7 +153,7 @@ class MonitorApiAssertion extends Model
         }
 
         $result['message'] = $result['passed']
-            ? "Value comparison passed"
+            ? 'Value comparison passed'
             : "Value comparison failed: expected {$this->comparison_operator} {$this->expected_value}";
 
         return $result;
@@ -152,6 +170,7 @@ class MonitorApiAssertion extends Model
         if (is_float($actualValue)) {
             return (float) $this->expected_value;
         }
+
         return $this->expected_value;
     }
 }

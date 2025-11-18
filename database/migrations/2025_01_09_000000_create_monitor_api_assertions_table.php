@@ -18,7 +18,7 @@ return new class extends Migration
                 'exists',         // Check if value exists
                 'not_exists',     // Check if value does not exist
                 'array_length',   // Check array length
-                'regex_match'     // Match against regex pattern
+                'regex_match',     // Match against regex pattern
             ]);
             $table->string('expected_type')->nullable(); // For type_check: string, integer, boolean, array, object
             $table->enum('comparison_operator', ['=', '>', '<', '>=', '<=', '!=', 'contains'])->nullable(); // For value_compare

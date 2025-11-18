@@ -12,7 +12,7 @@ class AlterResponseBodyColumnInMonitorApiResultsTable extends Migration
     public function up(): void
     {
         Schema::table('monitor_api_results', function (Blueprint $table) {
-            $table->longText('response_body')->change();
+            $table->longText('response_body')->nullable()->change();
         });
     }
 
@@ -22,7 +22,7 @@ class AlterResponseBodyColumnInMonitorApiResultsTable extends Migration
     public function down(): void
     {
         Schema::table('monitor_api_results', function (Blueprint $table) {
-            $table->text('response_body')->change();
+            $table->text('response_body')->nullable()->change();
         });
     }
 }

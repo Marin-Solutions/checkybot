@@ -130,7 +130,7 @@ class SitesRelationManager extends RelationManager
                                         1440 => 'Every 24 hours',
                                     ])
                                     ->translateLabel()
-                                    ->required(fn(Forms\Get $get): bool => $get('uptime_check')),
+                                    ->required(fn (Forms\Get $get): bool => $get('uptime_check')),
                             ]),
                         Forms\Components\Grid::make()
                             ->columns([
@@ -163,18 +163,18 @@ class SitesRelationManager extends RelationManager
                     ])
                     ->before(function (\Filament\Actions\Action $action, Model $record) {
                         \App\Services\WebsiteUrlValidator::validate(
-                            'https://' . $record->domain,
-                            fn() => $action->halt()
+                            'https://'.$record->domain,
+                            fn () => $action->halt()
                         );
                     })
                     ->mutateFormDataUsing(function (array $data, Model $record, \Filament\Actions\Action $action): array {
                         try {
-                            $data['name'] = $record->server->name . '_' . $record->domain;
-                            $data['url'] = 'https://' . $record->domain;
+                            $data['name'] = $record->server->name.'_'.$record->domain;
+                            $data['url'] = 'https://'.$record->domain;
                             $data['description'] = 'Imported from Ploi';
                             $data['ploi_website_id'] = $record->id;
 
-                            $sslExpiryDate = Website::sslExpiryDate('https://' . $record->domain);
+                            $sslExpiryDate = Website::sslExpiryDate('https://'.$record->domain);
                             $data['ssl_expiry_date'] = $sslExpiryDate;
                             $data['created_by'] = auth()->id();
                         } catch (\Exception $e) {
@@ -216,7 +216,7 @@ class SitesRelationManager extends RelationManager
                     })
                     ->icon('heroicon-o-presentation-chart-line')
                     ->disabled(
-                        fn(Model $record) => $record->checkybot_website_exists
+                        fn (Model $record) => $record->checkybot_website_exists
                     ),
             ])
             ->bulkActions([

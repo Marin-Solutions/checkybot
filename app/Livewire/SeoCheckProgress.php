@@ -72,7 +72,7 @@ class SeoCheckProgress extends Component
             $this->dispatch('refresh-seo-check-data');
         } catch (\Exception $e) {
             // Silently handle any errors
-            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress updateProgress: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress updateProgress: '.$e->getMessage());
         }
     }
 
@@ -111,7 +111,7 @@ class SeoCheckProgress extends Component
             $this->skipRender();
         } catch (\Exception $e) {
             // Silently handle any errors to prevent console errors
-            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress handleCompletion: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress handleCompletion: '.$e->getMessage());
         }
     }
 
@@ -145,7 +145,7 @@ class SeoCheckProgress extends Component
             $this->skipRender();
         } catch (\Exception $e) {
             // Silently handle any errors
-            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress handleFailure: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::warning('Error in SeoCheckProgress handleFailure: '.$e->getMessage());
         }
     }
 

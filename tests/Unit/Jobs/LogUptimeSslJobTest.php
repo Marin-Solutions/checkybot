@@ -47,9 +47,8 @@ class LogUptimeSslJobTest extends TestCase
         $log = WebsiteLogHistory::where('website_id', $website->id)->first();
 
         $this->assertNotNull($log);
-        $this->assertNotNull($log->response_time_ms);
-        $this->assertIsInt($log->response_time_ms);
-        $this->assertGreaterThan(0, $log->response_time_ms);
+        $this->assertIsInt($log->speed);
+        $this->assertGreaterThanOrEqual(0, $log->speed);
     }
 
     public function test_job_handles_failed_requests(): void

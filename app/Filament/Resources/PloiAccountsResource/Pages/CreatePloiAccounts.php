@@ -1,26 +1,24 @@
 <?php
 
-    namespace App\Filament\Resources\PloiAccountsResource\Pages;
+namespace App\Filament\Resources\PloiAccountsResource\Pages;
 
-    use App\Filament\Resources\PloiAccountsResource;
-    use App\Models\Website;
-    use Filament\Actions;
-    use Filament\Resources\Pages\CreateRecord;
-    use Illuminate\Support\Facades\Auth;
+use App\Filament\Resources\PloiAccountsResource;
+use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Support\Facades\Auth;
 
-    class CreatePloiAccounts extends CreateRecord
+class CreatePloiAccounts extends CreateRecord
+{
+    protected static string $resource = PloiAccountsResource::class;
+
+    protected function getRedirectUrl(): string
     {
-        protected static string $resource = PloiAccountsResource::class;
-
-        protected function getRedirectUrl(): string
-        {
-            return $this->previousUrl ?? $this->previousUrl;
-        }
-
-        protected function mutateFormDataBeforeCreate( array $data ): array
-        {
-            $data[ 'created_by' ]      = Auth::id();
-
-            return $data;
-        }
+        return $this->previousUrl ?? $this->previousUrl;
     }
+
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        $data['created_by'] = Auth::id();
+
+        return $data;
+    }
+}

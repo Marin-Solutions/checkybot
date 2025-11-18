@@ -8,11 +8,11 @@ use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
 use App\Tables\Columns\UsageBarColumn;
+use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
-use Filament\Actions\Action;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -220,10 +220,10 @@ class ServerResource extends Resource
             ])
             ->actions([
                 CopyAction::make()
-                    ->copyable(fn(Server $record) => ServerInformationHistory::copyCommand($record->id))
+                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
                     ->label(__('Copy script')),
                 CopyAction::make()
-                    ->copyable(fn(Server $record) => ServerLogFileHistory::copyCommand($record->id))
+                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
                     ->label(__('Copy log script')),
                 \Filament\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
@@ -273,7 +273,7 @@ class ServerResource extends Resource
                 ->url('localhsot'),
             Action::make('delete')
                 ->requiresConfirmation()
-                ->action(fn() => $this->post->delete()),
+                ->action(fn () => $this->post->delete()),
         ];
     }
 

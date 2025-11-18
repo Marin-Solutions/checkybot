@@ -29,6 +29,9 @@ class Website extends Model
     ];
 
     protected $casts = [
+        'uptime_check' => 'boolean',
+        'ssl_check' => 'boolean',
+        'outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
     ];
 

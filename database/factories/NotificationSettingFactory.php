@@ -2,9 +2,9 @@
 
 namespace Database\Factories;
 
-use App\Enums\InspectionTypesEnum;
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
+use App\Enums\WebsiteServicesEnum;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\User;
@@ -21,7 +21,7 @@ class NotificationSettingFactory extends Factory
             'user_id' => User::factory(),
             'website_id' => null,
             'scope' => NotificationScopesEnum::GLOBAL,
-            'inspection' => InspectionTypesEnum::ALL_CHECK,
+            'inspection' => WebsiteServicesEnum::ALL_CHECK,
             'channel_type' => NotificationChannelTypesEnum::MAIL,
             'notification_channel_id' => null,
             'address' => fake()->email(),
@@ -60,6 +60,20 @@ class NotificationSettingFactory extends Factory
             'channel_type' => NotificationChannelTypesEnum::WEBHOOK,
             'notification_channel_id' => NotificationChannels::factory(),
             'address' => null,
+        ]);
+    }
+
+    public function active(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'flag_active' => true,
+        ]);
+    }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'flag_active' => false,
         ]);
     }
 }

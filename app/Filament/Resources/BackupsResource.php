@@ -79,9 +79,9 @@ class BackupsResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('dir_path')->label('Folder'),
                 Tables\Columns\TextColumn::make('server.name')
-                    ->description(fn(Backup $record) => $record->server->ip),
+                    ->description(fn (Backup $record) => $record->server->ip),
                 Tables\Columns\TextColumn::make('remoteStorage.label')
-                    ->description(fn(Backup $record) => $record->remoteStorage->host),
+                    ->description(fn (Backup $record) => $record->remoteStorage->host),
                 Tables\Columns\TextColumn::make('first_run_at')->dateTime(),
             ])
             ->filters([
@@ -91,7 +91,7 @@ class BackupsResource extends Resource
                 \Filament\Actions\EditAction::make(),
                 CopyAction::make()
                     ->label('Copy Backup Script')
-                    ->copyable(fn(Backup $record) => $record->copyCommand($record)),
+                    ->copyable(fn (Backup $record) => $record->copyCommand($record)),
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([

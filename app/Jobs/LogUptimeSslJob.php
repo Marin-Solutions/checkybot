@@ -52,6 +52,10 @@ class LogUptimeSslJob implements ShouldQueue
             return;
         }
 
+        if (! $website->uptime_check) {
+            return;
+        }
+
         $ssl_expiry_date = null;
         $http_status_code = null;
         $speed = null;
@@ -71,8 +75,9 @@ class LogUptimeSslJob implements ShouldQueue
 
             try {
                 $response = Http::timeout(10) // Set timeout to 10 seconds
-                    ->retry(2, 1000) // Retry 2 times with 1 second delay
+                    ->retry(2, 1000, throw: false) // Retry 2 times with 1 second delay, don't throw on failure
                     ->connectTimeout(5) // Connection timeout of 5 seconds
+                    ->withoutVerifying() // Don't verify SSL certificates to avoid failures
                     ->get($this->website['url']);
 
                 $responseTimeEnd = microtime(true);

@@ -2,10 +2,10 @@
 
 namespace App\Console\Commands;
 
-use Carbon\Carbon;
-use App\Models\Website;
-use Illuminate\Console\Command;
 use App\Jobs\CheckSslExpiryDateJob;
+use App\Models\Website;
+use Carbon\Carbon;
+use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
 
 class WriteJobCheckSsl extends Command
@@ -38,6 +38,7 @@ class WriteJobCheckSsl extends Command
         }
 
         $this->info('SSL check completed successfully.');
+
         return Command::SUCCESS;
     }
 
@@ -47,37 +48,17 @@ class WriteJobCheckSsl extends Command
         $now = Carbon::today();
 
         $websites = Website::where('ssl_check', '1')
-            ->get(['id', 'url', 'ssl_expiry_date'])
-            ->map(function (Website $web) use ($days, $now) {
-
-                $expiryDate = Carbon::parse($web->ssl_expiry_date);
-                $diffInDays = $now->diffInDays($expiryDate, false);
-
-                if (in_array($diffInDays, $days) || $web->ssl_expiry_date == null) {
-
-                    return [
-                        'id' => $web->id,
-                        'url' => $web->url,
-                        'ssl_expiry_date' => $web->ssl_expiry_date,
-                        'check' => true,
-                        'expired' => false,
-                        'days_left' => $diffInDays
-                    ];
-                } elseif ($diffInDays < 0) {
-
-                    return [
-                        'id' => $web->id,
-                        'url' => $web->url,
-                        'ssl_expiry_date' => $web->ssl_expiry_date,
-                        'check' => false,
-                        'expired' => true,
-                        'days_left' => $diffInDays
-                    ];
+            ->get()
+            ->filter(function (Website $website) use ($days, $now) {
+                if ($website->ssl_expiry_date === null) {
+                    return true;
                 }
 
-                return null;
+                $expiryDate = Carbon::parse($website->ssl_expiry_date);
+                $diffInDays = $now->diffInDays($expiryDate, false);
+
+                return in_array($diffInDays, $days) || $diffInDays < 0;
             })
-            ->filter()
             ->values();
 
         return $websites;

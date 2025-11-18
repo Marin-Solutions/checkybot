@@ -13,10 +13,6 @@ class ServerInformationHistory extends Model
 
     protected $table = 'server_information_history';
 
-    public string $server_id;
-
-    public string $token;
-
     protected $fillable = [
         'server_id',
         'cpu_load',

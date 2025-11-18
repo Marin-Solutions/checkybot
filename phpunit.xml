@@ -42,5 +42,7 @@
         <env name="HORIZON_ENABLED" value="false"/>
         <env name="BROADCAST_DRIVER" value="log"/>
         <env name="CACHE_PREFIX" value="test_"/>
+        <env name="MONITOR_API_TIMEOUT" value="1"/>
+        <env name="MONITOR_API_RETRIES" value="0"/>
     </php>
 </phpunit>

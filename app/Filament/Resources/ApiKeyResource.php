@@ -65,9 +65,9 @@ class ApiKeyResource extends Resource
             ])
             ->actions([
                 \Filament\Actions\EditAction::make()
-                    ->authorize(fn(?ApiKey $record) => $record?->user_id === auth()->id()),
+                    ->authorize(fn (?ApiKey $record) => $record?->user_id === auth()->id()),
                 \Filament\Actions\DeleteAction::make()
-                    ->authorize(fn(?ApiKey $record) => $record?->user_id === auth()->id()),
+                    ->authorize(fn (?ApiKey $record) => $record?->user_id === auth()->id()),
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([

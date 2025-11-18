@@ -112,7 +112,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
             // Extract and categorize links
             $this->extractLinks($crawlData['internal_links'], $crawlData['external_links']);
         } catch (\Exception $e) {
-            Log::error("SEO Crawler: Error processing {$urlString}: " . $e->getMessage());
+            Log::error("SEO Crawler: Error processing {$urlString}: ".$e->getMessage());
 
             // Still record the failed crawl
             $this->crawlResults[] = [
@@ -135,7 +135,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
     ): void {
         $urlString = (string) $url;
 
-        Log::warning("SEO Crawler: Failed to crawl {$urlString}: " . $requestException->getMessage());
+        Log::warning("SEO Crawler: Failed to crawl {$urlString}: ".$requestException->getMessage());
 
         // Record failed crawl
         $this->crawlResults[] = [
@@ -218,7 +218,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
                 $bodySize = 0;
             }
         } catch (\Exception $e) {
-            Log::error("SEO Crawler: Error reading response body for {$url}: " . $e->getMessage());
+            Log::error("SEO Crawler: Error reading response body for {$url}: ".$e->getMessage());
             $body = '';
             $bodySize = 0;
         }
@@ -267,7 +267,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $truncatedHtml = $body;
         if (strlen($body) > $maxHtmlSize) {
             $truncatedHtml = substr($body, 0, $maxHtmlSize);
-            Log::warning("SEO Crawler: Truncated HTML content for {$url} from " . strlen($body) . " to {$maxHtmlSize} bytes");
+            Log::warning("SEO Crawler: Truncated HTML content for {$url} from ".strlen($body)." to {$maxHtmlSize} bytes");
         }
 
         return [
@@ -478,7 +478,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
         // Handle protocol-relative URLs
         if (str_starts_with($url, '//')) {
-            return parse_url($baseUrl, PHP_URL_SCHEME) . ':' . $url;
+            return parse_url($baseUrl, PHP_URL_SCHEME).':'.$url;
         }
 
         // Handle relative URLs
@@ -486,7 +486,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $basePath = $baseParts['path'] ?? '/';
 
         if (str_starts_with($url, '/')) {
-            return $baseParts['scheme'] . '://' . $baseParts['host'] . $url;
+            return $baseParts['scheme'].'://'.$baseParts['host'].$url;
         }
 
         // Handle relative paths
@@ -495,7 +495,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
             $baseDir = '/';
         }
 
-        return $baseParts['scheme'] . '://' . $baseParts['host'] . $baseDir . '/' . $url;
+        return $baseParts['scheme'].'://'.$baseParts['host'].$baseDir.'/'.$url;
     }
 
     protected function extractLinks(array $internalLinks, array $externalLinks): void
@@ -539,7 +539,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
                         etaSeconds: null
                     ));
                 } catch (\Exception $e) {
-                    Log::warning('Failed to broadcast progress update: ' . $e->getMessage());
+                    Log::warning('Failed to broadcast progress update: '.$e->getMessage());
                     // Continue crawling even if broadcast fails
                 }
 
@@ -548,7 +548,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         } catch (\Exception $e) {
             // Log the error but don't let it stop the crawling process
             $this->broadcastFailures++;
-            Log::warning("SEO Crawler: Failed to broadcast progress update ({$this->broadcastFailures} failures): " . $e->getMessage());
+            Log::warning("SEO Crawler: Failed to broadcast progress update ({$this->broadcastFailures} failures): ".$e->getMessage());
 
             // Disable broadcasting after 5 consecutive failures
             if ($this->broadcastFailures >= 5) {
@@ -604,7 +604,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
             Log::info("SEO Crawler: Computed columns updated - Errors: {$errorsCount}, Warnings: {$warningsCount}, Notices: {$noticesCount}, Health Score: {$healthScore}%");
         } catch (\Exception $e) {
-            Log::error('SEO Crawler: Failed to populate computed columns: ' . $e->getMessage());
+            Log::error('SEO Crawler: Failed to populate computed columns: '.$e->getMessage());
         }
     }
 
@@ -628,12 +628,12 @@ class SeoHealthCheckCrawler extends CrawlObserver
                     healthScore: $healthScore
                 ));
             } catch (\Exception $e) {
-                Log::warning('Failed to broadcast completion event: ' . $e->getMessage());
+                Log::warning('Failed to broadcast completion event: '.$e->getMessage());
                 // Continue even if broadcast fails
             }
         } catch (\Exception $e) {
             // Log the error but don't let it stop the completion process
-            Log::warning('SEO Crawler: Failed to broadcast completion event: ' . $e->getMessage());
+            Log::warning('SEO Crawler: Failed to broadcast completion event: '.$e->getMessage());
         }
     }
 }

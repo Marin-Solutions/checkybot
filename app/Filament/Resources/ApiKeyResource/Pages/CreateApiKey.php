@@ -3,8 +3,8 @@
 namespace App\Filament\Resources\ApiKeyResource\Pages;
 
 use App\Filament\Resources\ApiKeyResource;
-use Filament\Resources\Pages\CreateRecord;
 use App\Models\ApiKey;
+use Filament\Resources\Pages\CreateRecord;
 
 class CreateApiKey extends CreateRecord
 {
@@ -17,4 +17,4 @@ class CreateApiKey extends CreateRecord
 
         return $data;
     }
-} 
+}

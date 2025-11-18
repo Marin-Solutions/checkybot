@@ -20,6 +20,15 @@ class SeoHealthCheckService
     {
         Log::info("Starting manual SEO health check for website: {$website->url}");
 
+        // Check if there's already a running check for this website
+        $existingCheck = SeoCheck::where('website_id', $website->id)
+            ->whereIn('status', ['pending', 'running'])
+            ->exists();
+
+        if ($existingCheck) {
+            throw new \Exception('A check is already running for this website.');
+        }
+
         // Get crawlable URLs from sitemap or base URL
         $crawlableUrls = $this->robotsSitemapService->getCrawlableUrls($website->url);
 
@@ -27,7 +36,7 @@ class SeoHealthCheckService
             throw new \Exception("No crawlable URLs found for {$website->url}. Check robots.txt restrictions.");
         }
 
-        Log::info('Found ' . count($crawlableUrls) . " crawlable URLs for {$website->url}");
+        Log::info('Found '.count($crawlableUrls)." crawlable URLs for {$website->url}");
 
         // Create new SEO check record
         $seoCheck = SeoCheck::create([
