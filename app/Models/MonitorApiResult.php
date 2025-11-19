@@ -39,8 +39,19 @@ class MonitorApiResult extends Model
         $failedAssertions = [];
 
         // Check if HTTP code indicates failure
-        if (isset($testResult['code']) && $testResult['code'] >= 400) {
-            $isSuccess = false;
+        // Code 0 = connection error (failure)
+        // Code 200-299 = successful responses (success)
+        // Code 300-399 = redirection messages (usually successful)
+        // Code 400-499 = client error responses (failure)
+        // Code 500-599 = server error responses (failure)
+        // Code 100-199 = informational responses (rare, treat as success)
+        if (isset($testResult['code'])) {
+            $code = $testResult['code'];
+            // Treat as failure: connection errors (0) and HTTP errors (400+)
+            if ($code === 0 || $code >= 400) {
+                $isSuccess = false;
+            }
+            // Codes 100-399 are considered successful (unless assertions fail)
         }
 
         if (! empty($testResult['assertions'])) {
@@ -60,7 +71,17 @@ class MonitorApiResult extends Model
         $responseTime = (int) ((microtime(true) - $startTime) * 1000);
 
         // Only save the response body if there was an error and the setting is enabled
-        $savedResponseBody = ($isSuccess || ! $api->save_failed_response) ? null : $testResult['body'];
+        // For connection errors (code = 0), save the error message if body is null
+        if ($isSuccess || ! $api->save_failed_response) {
+            $savedResponseBody = null;
+        } else {
+            // If body is null but there's an error message (connection errors), save the error
+            if ($testResult['body'] === null && isset($testResult['error']) && $testResult['error']) {
+                $savedResponseBody = ['error' => $testResult['error']];
+            } else {
+                $savedResponseBody = $testResult['body'];
+            }
+        }
 
         // Create new result for every request
         return self::create([
