@@ -2,7 +2,6 @@
 
 use App\Crawlers\WebsiteOutboundLinkCrawler;
 use App\Mail\EmailErrorOutgoingUrl;
-use App\Models\User;
 use App\Models\Website;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
