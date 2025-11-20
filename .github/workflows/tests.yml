@@ -44,7 +44,7 @@ jobs:
         run: php artisan migrate --env=testing --force
 
       - name: Execute tests
-        run: vendor/bin/phpunit --testdox
+        run: vendor/bin/pest --compact
 
   pint:
     runs-on: ubuntu-latest
