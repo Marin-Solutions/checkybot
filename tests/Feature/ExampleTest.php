@@ -1,21 +1,11 @@
 <?php
 
-namespace Tests\Feature;
-
 use App\Models\User;
-use Tests\TestCase;
 
-class ExampleTest extends TestCase
-{
-    /**
-     * A basic test example.
-     */
-    public function test_the_application_returns_a_successful_response(): void
-    {
-        $user = User::factory()->create();
+test('the application returns a successful response', function () {
+    $user = User::factory()->create();
 
-        $response = $this->actingAs($user)->get('/');
+    $response = $this->actingAs($user)->get('/');
 
-        $response->assertRedirect('/admin');
-    }
-}
+    $response->assertRedirect('/admin');
+});
