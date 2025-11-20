@@ -1,247 +1,200 @@
 <?php
 
-namespace Tests\Unit\Commands;
-
 use App\Jobs\SeoHealthCheckJob;
 use App\Models\SeoCheck;
 use App\Models\SeoSchedule;
 use App\Models\User;
 use App\Models\Website;
 use App\Services\RobotsSitemapService;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
-use Tests\TestCase;
 
-class RunScheduledSeoChecksTest extends TestCase
-{
-    use RefreshDatabase;
+test('command can be executed', function () {
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful()
+        ->assertExitCode(0);
+});
 
-    public function test_command_can_be_executed(): void
-    {
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful()
-            ->assertExitCode(0);
-    }
+test('command finds no scheduled checks', function () {
+    $this->artisan('seo:run-scheduled')
+        ->expectsOutput('Checking for scheduled SEO health checks...')
+        ->expectsOutput('No scheduled SEO checks are due to run.')
+        ->assertSuccessful();
+});
 
-    public function test_command_finds_no_scheduled_checks(): void
-    {
-        $this->artisan('seo:run-scheduled')
-            ->expectsOutput('Checking for scheduled SEO health checks...')
-            ->expectsOutput('No scheduled SEO checks are due to run.')
-            ->assertSuccessful();
-    }
+test('command dispatches job for due schedule', function () {
+    Queue::fake();
 
-    public function test_command_dispatches_job_for_due_schedule(): void
-    {
-        Queue::fake();
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        $schedule = SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->with($website->url)
+        ->andReturn(['https://example.com', 'https://example.com/about']);
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->with($website->url)
-            ->andReturn(['https://example.com', 'https://example.com/about']);
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
 
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
+    Queue::assertPushed(SeoHealthCheckJob::class);
+});
 
-        Queue::assertPushed(SeoHealthCheckJob::class);
-    }
+test('command creates seo check for due schedule', function () {
+    Queue::fake();
 
-    public function test_command_creates_seo_check_for_due_schedule(): void
-    {
-        Queue::fake();
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        $schedule = SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andReturn(['https://example.com']);
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andReturn(['https://example.com']);
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
 
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
+    assertDatabaseHas('seo_checks', [
+        'website_id' => $website->id,
+        'status' => 'pending',
+    ]);
+});
 
-        $this->assertDatabaseHas('seo_checks', [
-            'website_id' => $website->id,
-            'status' => 'pending',
-        ]);
-    }
+test('command updates schedule next run time', function () {
+    Queue::fake();
 
-    public function test_command_updates_schedule_next_run_time(): void
-    {
-        Queue::fake();
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        $schedule = SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    $originalNextRun = $schedule->next_run_at;
 
-        $originalNextRun = $schedule->next_run_at;
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andReturn(['https://example.com']);
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andReturn(['https://example.com']);
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
 
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
+    $schedule->refresh();
+    expect($schedule->next_run_at)->not->toEqual($originalNextRun);
+    expect($schedule->last_run_at)->not->toBeNull();
+});
 
-        $schedule->refresh();
-        $this->assertNotEquals($originalNextRun, $schedule->next_run_at);
-        $this->assertNotNull($schedule->last_run_at);
-    }
+test('command skips schedules not due', function () {
+    Queue::fake();
 
-    public function test_command_skips_schedules_not_due(): void
-    {
-        Queue::fake();
+    $user = User::factory()->create();
+    $website = Website::factory()->create();
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create();
+    SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->addHour(),
+    ]);
 
-        SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->addHour(),
-        ]);
+    $this->artisan('seo:run-scheduled')
+        ->expectsOutput('No scheduled SEO checks are due to run.')
+        ->assertSuccessful();
 
-        $this->artisan('seo:run-scheduled')
-            ->expectsOutput('No scheduled SEO checks are due to run.')
-            ->assertSuccessful();
+    Queue::assertNotPushed(SeoHealthCheckJob::class);
+});
 
-        Queue::assertNotPushed(SeoHealthCheckJob::class);
-    }
+test('command skips inactive schedules', function () {
+    Queue::fake();
 
-    public function test_command_skips_inactive_schedules(): void
-    {
-        Queue::fake();
+    $user = User::factory()->create();
+    $website = Website::factory()->create();
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create();
+    SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => false,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => false,
-            'next_run_at' => now()->subHour(),
-        ]);
+    $this->artisan('seo:run-scheduled')
+        ->expectsOutput('No scheduled SEO checks are due to run.')
+        ->assertSuccessful();
 
-        $this->artisan('seo:run-scheduled')
-            ->expectsOutput('No scheduled SEO checks are due to run.')
-            ->assertSuccessful();
+    Queue::assertNotPushed(SeoHealthCheckJob::class);
+});
 
-        Queue::assertNotPushed(SeoHealthCheckJob::class);
-    }
+test('command skips schedules with no crawlable urls', function () {
+    Queue::fake();
+    Log::spy();
 
-    public function test_command_skips_schedules_with_no_crawlable_urls(): void
-    {
-        Queue::fake();
-        Log::spy();
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        $schedule = SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->with($website->url)
+        ->andReturn([]);
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->with($website->url)
-            ->andReturn([]);
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
 
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
+    Queue::assertNotPushed(SeoHealthCheckJob::class);
 
-        Queue::assertNotPushed(SeoHealthCheckJob::class);
+    Log::shouldHaveReceived('warning')
+        ->with("No crawlable URLs found for scheduled check: {$website->url}")
+        ->once();
+});
 
-        Log::shouldHaveReceived('warning')
-            ->with("No crawlable URLs found for scheduled check: {$website->url}")
-            ->once();
-    }
+test('command processes multiple due schedules', function () {
+    Queue::fake();
 
-    public function test_command_processes_multiple_due_schedules(): void
-    {
-        Queue::fake();
+    $user = User::factory()->create();
+    $websites = Website::factory()->count(3)->create();
 
-        $user = User::factory()->create();
-        $websites = Website::factory()->count(3)->create();
-
-        foreach ($websites as $website) {
-            SeoSchedule::create([
-                'website_id' => $website->id,
-                'created_by' => $user->id,
-                'frequency' => 'daily',
-                'schedule_time' => '02:00:00',
-                'is_active' => true,
-                'next_run_at' => now()->subHour(),
-            ]);
-        }
-
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andReturn(['https://example.com']);
-
-        $this->artisan('seo:run-scheduled')
-            ->expectsOutput('Found 3 scheduled SEO checks to run.')
-            ->assertSuccessful();
-
-        Queue::assertPushed(SeoHealthCheckJob::class, 3);
-    }
-
-    public function test_command_dispatches_job_to_correct_queue(): void
-    {
-        Queue::fake();
-
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
-
+    foreach ($websites as $website) {
         SeoSchedule::create([
             'website_id' => $website->id,
             'created_by' => $user->id,
@@ -250,143 +203,167 @@ class RunScheduledSeoChecksTest extends TestCase
             'is_active' => true,
             'next_run_at' => now()->subHour(),
         ]);
-
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andReturn(['https://example.com']);
-
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
-
-        Queue::assertPushedOn('seo-checks', SeoHealthCheckJob::class);
     }
 
-    public function test_command_creates_seo_check_with_correct_data(): void
-    {
-        Queue::fake();
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andReturn(['https://example.com']);
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $this->artisan('seo:run-scheduled')
+        ->expectsOutput('Found 3 scheduled SEO checks to run.')
+        ->assertSuccessful();
 
-        $schedule = SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    Queue::assertPushed(SeoHealthCheckJob::class, 3);
+});
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andReturn(['https://example.com', 'https://example.com/about']);
+test('command dispatches job to correct queue', function () {
+    Queue::fake();
 
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $this->assertDatabaseHas('seo_checks', [
-            'website_id' => $website->id,
-            'status' => 'pending',
-            'total_crawlable_urls' => 2,
-            'sitemap_used' => true,
-            'robots_txt_checked' => true,
-        ]);
+    SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        $seoCheck = SeoCheck::where('website_id', $website->id)->first();
-        $this->assertEquals($user->id, $seoCheck->crawl_summary['scheduled_by']);
-        $this->assertEquals($schedule->id, $seoCheck->crawl_summary['schedule_id']);
-        $this->assertTrue($seoCheck->crawl_summary['is_scheduled']);
-    }
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andReturn(['https://example.com']);
 
-    public function test_command_handles_exceptions_gracefully(): void
-    {
-        Queue::fake();
-        Log::spy();
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    Queue::assertPushedOn('seo-checks', SeoHealthCheckJob::class);
+});
 
-        SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+test('command creates seo check with correct data', function () {
+    Queue::fake();
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andThrow(new \Exception('Service error'));
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        Log::shouldHaveReceived('error')->once();
-    }
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andReturn(['https://example.com', 'https://example.com/about']);
 
-    public function test_command_displays_progress_bar(): void
-    {
-        Queue::fake();
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    assertDatabaseHas('seo_checks', [
+        'website_id' => $website->id,
+        'status' => 'pending',
+        'total_crawlable_urls' => 2,
+        'sitemap_used' => true,
+        'robots_txt_checked' => true,
+    ]);
 
-        SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    $seoCheck = SeoCheck::where('website_id', $website->id)->first();
+    expect($seoCheck->crawl_summary['scheduled_by'])->toBe($user->id);
+    expect($seoCheck->crawl_summary['schedule_id'])->toBe($schedule->id);
+    expect($seoCheck->crawl_summary['is_scheduled'])->toBeTrue();
+});
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andReturn(['https://example.com']);
+test('command handles exceptions gracefully', function () {
+    Queue::fake();
+    Log::spy();
 
-        $this->artisan('seo:run-scheduled')
-            ->expectsOutput('Found 1 scheduled SEO checks to run.')
-            ->assertSuccessful();
-    }
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-    public function test_command_logs_scheduled_check_start(): void
-    {
-        Queue::fake();
-        Log::spy();
+    SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        $user = User::factory()->create();
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andThrow(new \Exception('Service error'));
 
-        $schedule = SeoSchedule::create([
-            'website_id' => $website->id,
-            'created_by' => $user->id,
-            'frequency' => 'daily',
-            'schedule_time' => '02:00:00',
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
 
-        $mockService = $this->mock(RobotsSitemapService::class);
-        $mockService->shouldReceive('getCrawlableUrls')
-            ->andReturn(['https://example.com']);
+    Log::shouldHaveReceived('error')->once();
+});
 
-        $this->artisan('seo:run-scheduled')
-            ->assertSuccessful();
+test('command displays progress bar', function () {
+    Queue::fake();
 
-        Log::shouldHaveReceived('info')
-            ->withArgs(function ($message) use ($schedule, $website) {
-                return str_contains($message, $website->url)
-                    && str_contains($message, (string) $schedule->id);
-            })
-            ->once();
-    }
-}
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
+
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andReturn(['https://example.com']);
+
+    $this->artisan('seo:run-scheduled')
+        ->expectsOutput('Found 1 scheduled SEO checks to run.')
+        ->assertSuccessful();
+});
+
+test('command logs scheduled check start', function () {
+    Queue::fake();
+    Log::spy();
+
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
+
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->andReturn(['https://example.com']);
+
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(function ($message) use ($schedule, $website) {
+            return str_contains($message, $website->url)
+                && str_contains($message, (string) $schedule->id);
+        })
+        ->once();
+});
