@@ -1,169 +1,151 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
-use Tests\TestCase;
 
-class MonitorApiResultTest extends TestCase
-{
-    public function test_monitor_api_result_belongs_to_monitor_api(): void
-    {
-        $monitor = MonitorApis::factory()->create();
-        $result = MonitorApiResult::factory()->create(['monitor_api_id' => $monitor->id]);
+test('monitor api result belongs to monitor api', function () {
+    $monitor = MonitorApis::factory()->create();
+    $result = MonitorApiResult::factory()->create(['monitor_api_id' => $monitor->id]);
 
-        $this->assertInstanceOf(MonitorApis::class, $result->monitorApi);
-        $this->assertEquals($monitor->id, $result->monitorApi->id);
-    }
+    expect($result->monitorApi)->toBeInstanceOf(MonitorApis::class);
+    expect($result->monitorApi->id)->toBe($monitor->id);
+});
 
-    public function test_monitor_api_result_can_be_successful(): void
-    {
-        $result = MonitorApiResult::factory()->successful()->create();
+test('monitor api result can be successful', function () {
+    $result = MonitorApiResult::factory()->successful()->create();
 
-        $this->assertTrue($result->is_success);
-        $this->assertEquals(200, $result->http_code);
-        $this->assertNull($result->failed_assertions);
-    }
+    expect($result->is_success)->toBeTrue();
+    expect($result->http_code)->toBe(200);
+    expect($result->failed_assertions)->toBeNull();
+});
 
-    public function test_monitor_api_result_can_be_failed(): void
-    {
-        $result = MonitorApiResult::factory()->failed()->create();
+test('monitor api result can be failed', function () {
+    $result = MonitorApiResult::factory()->failed()->create();
 
-        $this->assertFalse($result->is_success);
-        $this->assertNotEquals(200, $result->http_code);
-        $this->assertNotNull($result->failed_assertions);
-    }
+    expect($result->is_success)->toBeFalse();
+    expect($result->http_code)->not->toBe(200);
+    expect($result->failed_assertions)->not->toBeNull();
+});
 
-    public function test_monitor_api_result_casts_is_success_to_boolean(): void
-    {
-        $result = MonitorApiResult::factory()->create(['is_success' => 1]);
+test('monitor api result casts is success to boolean', function () {
+    $result = MonitorApiResult::factory()->create(['is_success' => 1]);
 
-        $this->assertIsBool($result->is_success);
-    }
+    expect($result->is_success)->toBeBool();
+});
 
-    public function test_monitor_api_result_casts_response_time_to_integer(): void
-    {
-        $result = MonitorApiResult::factory()->create(['response_time_ms' => '150']);
+test('monitor api result casts response time to integer', function () {
+    $result = MonitorApiResult::factory()->create(['response_time_ms' => '150']);
 
-        $this->assertIsInt($result->response_time_ms);
-        $this->assertEquals(150, $result->response_time_ms);
-    }
+    expect($result->response_time_ms)->toBeInt();
+    expect($result->response_time_ms)->toBe(150);
+});
 
-    public function test_monitor_api_result_casts_http_code_to_integer(): void
-    {
-        $result = MonitorApiResult::factory()->create(['http_code' => '200']);
+test('monitor api result casts http code to integer', function () {
+    $result = MonitorApiResult::factory()->create(['http_code' => '200']);
 
-        $this->assertIsInt($result->http_code);
-        $this->assertEquals(200, $result->http_code);
-    }
+    expect($result->http_code)->toBeInt();
+    expect($result->http_code)->toBe(200);
+});
 
-    public function test_monitor_api_result_casts_failed_assertions_to_array(): void
-    {
-        $result = MonitorApiResult::factory()->create([
-            'failed_assertions' => ['error' => 'Test failed'],
-        ]);
+test('monitor api result casts failed assertions to array', function () {
+    $result = MonitorApiResult::factory()->create([
+        'failed_assertions' => ['error' => 'Test failed'],
+    ]);
 
-        $this->assertIsArray($result->failed_assertions);
-        $this->assertEquals(['error' => 'Test failed'], $result->failed_assertions);
-    }
+    expect($result->failed_assertions)->toBeArray();
+    expect($result->failed_assertions)->toBe(['error' => 'Test failed']);
+});
 
-    public function test_monitor_api_result_casts_response_body_to_array(): void
-    {
-        $result = MonitorApiResult::factory()->create([
-            'response_body' => ['data' => ['status' => 'ok']],
-        ]);
+test('monitor api result casts response body to array', function () {
+    $result = MonitorApiResult::factory()->create([
+        'response_body' => ['data' => ['status' => 'ok']],
+    ]);
 
-        $this->assertIsArray($result->response_body);
-        $this->assertEquals(['data' => ['status' => 'ok']], $result->response_body);
-    }
+    expect($result->response_body)->toBeArray();
+    expect($result->response_body)->toBe(['data' => ['status' => 'ok']]);
+});
 
-    public function test_record_result_creates_successful_result(): void
-    {
-        $monitor = MonitorApis::factory()->create();
-        $startTime = microtime(true);
+test('record result creates successful result', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
 
-        $testResult = [
-            'code' => 200,
-            'body' => ['status' => 'ok'],
-            'assertions' => [
-                ['passed' => true, 'path' => 'status', 'message' => 'OK'],
+    $testResult = [
+        'code' => 200,
+        'body' => ['status' => 'ok'],
+        'assertions' => [
+            ['passed' => true, 'path' => 'status', 'message' => 'OK'],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->is_success)->toBeTrue();
+    expect($result->http_code)->toBe(200);
+    expect($result->failed_assertions)->toBeEmpty();
+    expect($result->response_time_ms)->toBeGreaterThanOrEqual(0);
+});
+
+test('record result creates failed result with assertions', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 500,
+        'body' => ['status' => 'error'],
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'status',
+                'type' => 'value_compare',
+                'message' => 'Expected ok, got error',
             ],
-        ];
+        ],
+    ];
 
-        $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
 
-        $this->assertTrue($result->is_success);
-        $this->assertEquals(200, $result->http_code);
-        $this->assertEmpty($result->failed_assertions);
-        $this->assertGreaterThanOrEqual(0, $result->response_time_ms);
-    }
+    expect($result->is_success)->toBeFalse();
+    expect($result->http_code)->toBe(500);
+    expect($result->failed_assertions)->not->toBeEmpty();
+    expect($result->failed_assertions)->toHaveCount(1);
+    expect($result->failed_assertions[0]['path'])->toBe('status');
+});
 
-    public function test_record_result_creates_failed_result_with_assertions(): void
-    {
-        $monitor = MonitorApis::factory()->create();
-        $startTime = microtime(true);
+test('record result only saves response body on error', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
 
-        $testResult = [
-            'code' => 500,
-            'body' => ['status' => 'error'],
-            'assertions' => [
-                [
-                    'passed' => false,
-                    'path' => 'status',
-                    'type' => 'value_compare',
-                    'message' => 'Expected ok, got error',
-                ],
-            ],
-        ];
+    $successResult = [
+        'code' => 200,
+        'body' => ['status' => 'ok'],
+        'assertions' => [['passed' => true]],
+    ];
 
-        $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+    $result = MonitorApiResult::recordResult($monitor, $successResult, $startTime);
+    expect($result->response_body)->toBeNull();
 
-        $this->assertFalse($result->is_success);
-        $this->assertEquals(500, $result->http_code);
-        $this->assertNotEmpty($result->failed_assertions);
-        $this->assertCount(1, $result->failed_assertions);
-        $this->assertEquals('status', $result->failed_assertions[0]['path']);
-    }
+    $failedResult = [
+        'code' => 500,
+        'body' => ['status' => 'error'],
+        'assertions' => [['passed' => false, 'message' => 'Failed']],
+    ];
 
-    public function test_record_result_only_saves_response_body_on_error(): void
-    {
-        $monitor = MonitorApis::factory()->create();
-        $startTime = microtime(true);
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime);
+    expect($result->response_body)->not->toBeNull();
+});
 
-        $successResult = [
-            'code' => 200,
-            'body' => ['status' => 'ok'],
-            'assertions' => [['passed' => true]],
-        ];
+test('record result calculates response time', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true) - 0.15; // 150ms ago
 
-        $result = MonitorApiResult::recordResult($monitor, $successResult, $startTime);
-        $this->assertNull($result->response_body);
+    $testResult = [
+        'code' => 200,
+        'body' => [],
+        'assertions' => [],
+    ];
 
-        $failedResult = [
-            'code' => 500,
-            'body' => ['status' => 'error'],
-            'assertions' => [['passed' => false, 'message' => 'Failed']],
-        ];
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
 
-        $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime);
-        $this->assertNotNull($result->response_body);
-    }
-
-    public function test_record_result_calculates_response_time(): void
-    {
-        $monitor = MonitorApis::factory()->create();
-        $startTime = microtime(true) - 0.15; // 150ms ago
-
-        $testResult = [
-            'code' => 200,
-            'body' => [],
-            'assertions' => [],
-        ];
-
-        $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
-
-        $this->assertGreaterThan(100, $result->response_time_ms);
-        $this->assertLessThan(200, $result->response_time_ms);
-    }
-}
+    expect($result->response_time_ms)->toBeGreaterThan(100);
+    expect($result->response_time_ms)->toBeLessThan(200);
+});

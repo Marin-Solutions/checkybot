@@ -1,140 +1,121 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
 use App\Models\NotificationSetting;
 use App\Models\User;
 use App\Models\Website;
-use Tests\TestCase;
 
-class NotificationSettingTest extends TestCase
-{
-    public function test_notification_setting_belongs_to_user(): void
-    {
-        $user = User::factory()->create();
-        $setting = NotificationSetting::factory()->create(['user_id' => $user->id]);
+test('notification setting belongs to user', function () {
+    $user = User::factory()->create();
+    $setting = NotificationSetting::factory()->create(['user_id' => $user->id]);
 
-        $this->assertInstanceOf(User::class, $setting->user);
-        $this->assertEquals($user->id, $setting->user->id);
-    }
+    expect($setting->user)->toBeInstanceOf(User::class);
+    expect($setting->user->id)->toBe($user->id);
+});
 
-    public function test_notification_setting_can_belong_to_website(): void
-    {
-        $website = Website::factory()->create();
-        $setting = NotificationSetting::factory()->websiteScope()->create([
-            'website_id' => $website->id,
-        ]);
+test('notification setting can belong to website', function () {
+    $website = Website::factory()->create();
+    $setting = NotificationSetting::factory()->websiteScope()->create([
+        'website_id' => $website->id,
+    ]);
 
-        $this->assertInstanceOf(Website::class, $setting->website);
-        $this->assertEquals($website->id, $setting->website->id);
-    }
+    expect($setting->website)->toBeInstanceOf(Website::class);
+    expect($setting->website->id)->toBe($website->id);
+});
 
-    public function test_notification_setting_can_be_global_scope(): void
-    {
-        $setting = NotificationSetting::factory()->globalScope()->create();
+test('notification setting can be global scope', function () {
+    $setting = NotificationSetting::factory()->globalScope()->create();
 
-        $this->assertEquals(NotificationScopesEnum::GLOBAL, $setting->scope);
-        $this->assertNull($setting->website_id);
-    }
+    expect($setting->scope)->toBe(NotificationScopesEnum::GLOBAL);
+    expect($setting->website_id)->toBeNull();
+});
 
-    public function test_notification_setting_can_be_website_scope(): void
-    {
-        $setting = NotificationSetting::factory()->websiteScope()->create();
+test('notification setting can be website scope', function () {
+    $setting = NotificationSetting::factory()->websiteScope()->create();
 
-        $this->assertEquals(NotificationScopesEnum::WEBSITE, $setting->scope);
-        $this->assertNotNull($setting->website_id);
-    }
+    expect($setting->scope)->toBe(NotificationScopesEnum::WEBSITE);
+    expect($setting->website_id)->not->toBeNull();
+});
 
-    public function test_notification_setting_can_use_email_channel(): void
-    {
-        $setting = NotificationSetting::factory()->email()->create();
+test('notification setting can use email channel', function () {
+    $setting = NotificationSetting::factory()->email()->create();
 
-        $this->assertEquals(NotificationChannelTypesEnum::MAIL, $setting->channel_type);
-        $this->assertNotNull($setting->address);
-        $this->assertNull($setting->notification_channel_id);
-    }
+    expect($setting->channel_type)->toBe(NotificationChannelTypesEnum::MAIL);
+    expect($setting->address)->not->toBeNull();
+    expect($setting->notification_channel_id)->toBeNull();
+});
 
-    public function test_notification_setting_can_use_webhook_channel(): void
-    {
-        $setting = NotificationSetting::factory()->webhook()->create();
+test('notification setting can use webhook channel', function () {
+    $setting = NotificationSetting::factory()->webhook()->create();
 
-        $this->assertEquals(NotificationChannelTypesEnum::WEBHOOK, $setting->channel_type);
-        $this->assertNotNull($setting->notification_channel_id);
-    }
+    expect($setting->channel_type)->toBe(NotificationChannelTypesEnum::WEBHOOK);
+    expect($setting->notification_channel_id)->not->toBeNull();
+});
 
-    public function test_notification_setting_can_be_for_all_checks(): void
-    {
-        $setting = NotificationSetting::factory()->create([
-            'inspection' => WebsiteServicesEnum::ALL_CHECK,
-        ]);
+test('notification setting can be for all checks', function () {
+    $setting = NotificationSetting::factory()->create([
+        'inspection' => WebsiteServicesEnum::ALL_CHECK,
+    ]);
 
-        $this->assertEquals(WebsiteServicesEnum::ALL_CHECK, $setting->inspection);
-    }
+    expect($setting->inspection)->toBe(WebsiteServicesEnum::ALL_CHECK);
+});
 
-    public function test_notification_setting_can_be_for_website_checks_only(): void
-    {
-        $setting = NotificationSetting::factory()->create([
-            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
-        ]);
+test('notification setting can be for website checks only', function () {
+    $setting = NotificationSetting::factory()->create([
+        'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+    ]);
 
-        $this->assertEquals(WebsiteServicesEnum::WEBSITE_CHECK, $setting->inspection);
-    }
+    expect($setting->inspection)->toBe(WebsiteServicesEnum::WEBSITE_CHECK);
+});
 
-    public function test_notification_setting_can_be_for_api_monitors_only(): void
-    {
-        $setting = NotificationSetting::factory()->create([
-            'inspection' => WebsiteServicesEnum::API_MONITOR,
-        ]);
+test('notification setting can be for api monitors only', function () {
+    $setting = NotificationSetting::factory()->create([
+        'inspection' => WebsiteServicesEnum::API_MONITOR,
+    ]);
 
-        $this->assertEquals(WebsiteServicesEnum::API_MONITOR, $setting->inspection);
-    }
+    expect($setting->inspection)->toBe(WebsiteServicesEnum::API_MONITOR);
+});
 
-    public function test_notification_setting_can_be_active(): void
-    {
-        $setting = NotificationSetting::factory()->create(['flag_active' => true]);
+test('notification setting can be active', function () {
+    $setting = NotificationSetting::factory()->create(['flag_active' => true]);
 
-        $this->assertTrue($setting->flag_active);
-    }
+    expect($setting->flag_active)->toBeTrue();
+});
 
-    public function test_notification_setting_scope_returns_only_global_settings(): void
-    {
-        NotificationSetting::factory()->globalScope()->count(3)->create();
-        NotificationSetting::factory()->websiteScope()->count(2)->create();
+test('notification setting scope returns only global settings', function () {
+    NotificationSetting::factory()->globalScope()->count(3)->create();
+    NotificationSetting::factory()->websiteScope()->count(2)->create();
 
-        $globalSettings = NotificationSetting::globalScope()->get();
+    $globalSettings = NotificationSetting::globalScope()->get();
 
-        $this->assertCount(3, $globalSettings);
-        $globalSettings->each(function ($setting) {
-            $this->assertEquals(NotificationScopesEnum::GLOBAL, $setting->scope);
-        });
-    }
+    expect($globalSettings)->toHaveCount(3);
+    $globalSettings->each(function ($setting) {
+        expect($setting->scope)->toBe(NotificationScopesEnum::GLOBAL);
+    });
+});
 
-    public function test_notification_setting_scope_returns_only_website_settings(): void
-    {
-        NotificationSetting::factory()->globalScope()->count(3)->create();
-        NotificationSetting::factory()->websiteScope()->count(2)->create();
+test('notification setting scope returns only website settings', function () {
+    NotificationSetting::factory()->globalScope()->count(3)->create();
+    NotificationSetting::factory()->websiteScope()->count(2)->create();
 
-        $websiteSettings = NotificationSetting::websiteScope()->get();
+    $websiteSettings = NotificationSetting::websiteScope()->get();
 
-        $this->assertCount(2, $websiteSettings);
-        $websiteSettings->each(function ($setting) {
-            $this->assertEquals(NotificationScopesEnum::WEBSITE, $setting->scope);
-        });
-    }
+    expect($websiteSettings)->toHaveCount(2);
+    $websiteSettings->each(function ($setting) {
+        expect($setting->scope)->toBe(NotificationScopesEnum::WEBSITE);
+    });
+});
 
-    public function test_notification_setting_scope_returns_only_active_settings(): void
-    {
-        NotificationSetting::factory()->count(3)->create(['flag_active' => true]);
-        NotificationSetting::factory()->count(2)->create(['flag_active' => false]);
+test('notification setting scope returns only active settings', function () {
+    NotificationSetting::factory()->count(3)->create(['flag_active' => true]);
+    NotificationSetting::factory()->count(2)->create(['flag_active' => false]);
 
-        $activeSettings = NotificationSetting::active()->get();
+    $activeSettings = NotificationSetting::active()->get();
 
-        $this->assertCount(3, $activeSettings);
-        $activeSettings->each(function ($setting) {
-            $this->assertTrue($setting->flag_active);
-        });
-    }
-}
+    expect($activeSettings)->toHaveCount(3);
+    $activeSettings->each(function ($setting) {
+        expect($setting->flag_active)->toBeTrue();
+    });
+});

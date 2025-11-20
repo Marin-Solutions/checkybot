@@ -1,98 +1,80 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
-use Tests\TestCase;
 
-class MonitorApisTest extends TestCase
-{
-    public function test_monitor_api_belongs_to_user(): void
-    {
-        $user = User::factory()->create();
-        $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+test('monitor api belongs to user', function () {
+    $user = User::factory()->create();
+    $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
 
-        $this->assertInstanceOf(User::class, $monitor->user);
-        $this->assertEquals($user->id, $monitor->user->id);
-    }
+    expect($monitor->user)->toBeInstanceOf(User::class);
+    expect($monitor->user->id)->toBe($user->id);
+});
 
-    public function test_monitor_api_has_many_assertions(): void
-    {
-        $monitor = MonitorApis::factory()->create();
-        MonitorApiAssertion::factory()->count(3)->create(['monitor_api_id' => $monitor->id]);
+test('monitor api has many assertions', function () {
+    $monitor = MonitorApis::factory()->create();
+    MonitorApiAssertion::factory()->count(3)->create(['monitor_api_id' => $monitor->id]);
 
-        $this->assertCount(3, $monitor->assertions);
-        $this->assertInstanceOf(MonitorApiAssertion::class, $monitor->assertions->first());
-    }
+    expect($monitor->assertions)->toHaveCount(3);
+    expect($monitor->assertions->first())->toBeInstanceOf(MonitorApiAssertion::class);
+});
 
-    public function test_monitor_api_assertions_are_ordered_by_sort_order(): void
-    {
-        $monitor = MonitorApis::factory()->create();
+test('monitor api assertions are ordered by sort order', function () {
+    $monitor = MonitorApis::factory()->create();
 
-        MonitorApiAssertion::factory()->create([
-            'monitor_api_id' => $monitor->id,
-            'sort_order' => 3,
-        ]);
-        MonitorApiAssertion::factory()->create([
-            'monitor_api_id' => $monitor->id,
-            'sort_order' => 1,
-        ]);
-        MonitorApiAssertion::factory()->create([
-            'monitor_api_id' => $monitor->id,
-            'sort_order' => 2,
-        ]);
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'sort_order' => 3,
+    ]);
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'sort_order' => 1,
+    ]);
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'sort_order' => 2,
+    ]);
 
-        $sortOrders = $monitor->fresh()->assertions->pluck('sort_order')->toArray();
+    $sortOrders = $monitor->fresh()->assertions->pluck('sort_order')->toArray();
 
-        $this->assertEquals([1, 2, 3], $sortOrders);
-    }
+    expect($sortOrders)->toBe([1, 2, 3]);
+});
 
-    public function test_monitor_api_has_many_results(): void
-    {
-        $monitor = MonitorApis::factory()->create();
-        MonitorApiResult::factory()->count(10)->create(['monitor_api_id' => $monitor->id]);
+test('monitor api has many results', function () {
+    $monitor = MonitorApis::factory()->create();
+    MonitorApiResult::factory()->count(10)->create(['monitor_api_id' => $monitor->id]);
 
-        $this->assertCount(10, $monitor->results);
-        $this->assertInstanceOf(MonitorApiResult::class, $monitor->results->first());
-    }
+    expect($monitor->results)->toHaveCount(10);
+    expect($monitor->results->first())->toBeInstanceOf(MonitorApiResult::class);
+});
 
-    public function test_monitor_api_requires_title(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('monitor api requires title', function () {
+    MonitorApis::factory()->create(['title' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-        MonitorApis::factory()->create(['title' => null]);
-    }
+test('monitor api requires url', function () {
+    MonitorApis::factory()->create(['url' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-    public function test_monitor_api_requires_url(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('monitor api stores headers as json', function () {
+    $headers = [
+        'Authorization' => 'Bearer token123',
+        'Accept' => 'application/json',
+    ];
 
-        MonitorApis::factory()->create(['url' => null]);
-    }
+    $monitor = MonitorApis::factory()->create([
+        'headers' => json_encode($headers),
+    ]);
 
-    public function test_monitor_api_stores_headers_as_json(): void
-    {
-        $headers = [
-            'Authorization' => 'Bearer token123',
-            'Accept' => 'application/json',
-        ];
+    expect(json_decode($monitor->headers, true))->toBe($headers);
+});
 
-        $monitor = MonitorApis::factory()->create([
-            'headers' => json_encode($headers),
-        ]);
+test('monitor api has data path for response extraction', function () {
+    $monitor = MonitorApis::factory()->create([
+        'data_path' => 'data.results.items',
+    ]);
 
-        $this->assertEquals($headers, json_decode($monitor->headers, true));
-    }
-
-    public function test_monitor_api_has_data_path_for_response_extraction(): void
-    {
-        $monitor = MonitorApis::factory()->create([
-            'data_path' => 'data.results.items',
-        ]);
-
-        $this->assertEquals('data.results.items', $monitor->data_path);
-    }
-}
+    expect($monitor->data_path)->toBe('data.results.items');
+});

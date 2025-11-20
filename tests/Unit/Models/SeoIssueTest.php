@@ -1,89 +1,74 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Enums\SeoIssueSeverity;
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
 use App\Models\SeoIssue;
-use Tests\TestCase;
 
-class SeoIssueTest extends TestCase
-{
-    public function test_seo_issue_belongs_to_seo_check(): void
-    {
-        $check = SeoCheck::factory()->create();
-        $issue = SeoIssue::factory()->create(['seo_check_id' => $check->id]);
+test('seo issue belongs to seo check', function () {
+    $check = SeoCheck::factory()->create();
+    $issue = SeoIssue::factory()->create(['seo_check_id' => $check->id]);
 
-        $this->assertInstanceOf(SeoCheck::class, $issue->seoCheck);
-        $this->assertEquals($check->id, $issue->seoCheck->id);
-    }
+    expect($issue->seoCheck)->toBeInstanceOf(SeoCheck::class);
+    expect($issue->seoCheck->id)->toBe($check->id);
+});
 
-    public function test_seo_issue_belongs_to_seo_crawl_result(): void
-    {
-        $crawlResult = SeoCrawlResult::factory()->create();
-        $issue = SeoIssue::factory()->create(['seo_crawl_result_id' => $crawlResult->id]);
+test('seo issue belongs to seo crawl result', function () {
+    $crawlResult = SeoCrawlResult::factory()->create();
+    $issue = SeoIssue::factory()->create(['seo_crawl_result_id' => $crawlResult->id]);
 
-        $this->assertInstanceOf(SeoCrawlResult::class, $issue->seoCrawlResult);
-        $this->assertEquals($crawlResult->id, $issue->seoCrawlResult->id);
-    }
+    expect($issue->seoCrawlResult)->toBeInstanceOf(SeoCrawlResult::class);
+    expect($issue->seoCrawlResult->id)->toBe($crawlResult->id);
+});
 
-    public function test_seo_issue_can_have_error_severity(): void
-    {
-        $issue = SeoIssue::factory()->error()->create();
+test('seo issue can have error severity', function () {
+    $issue = SeoIssue::factory()->error()->create();
 
-        $this->assertEquals(SeoIssueSeverity::Error, $issue->severity);
-    }
+    expect($issue->severity)->toBe(SeoIssueSeverity::Error);
+});
 
-    public function test_seo_issue_can_have_warning_severity(): void
-    {
-        $issue = SeoIssue::factory()->warning()->create();
+test('seo issue can have warning severity', function () {
+    $issue = SeoIssue::factory()->warning()->create();
 
-        $this->assertEquals(SeoIssueSeverity::Warning, $issue->severity);
-    }
+    expect($issue->severity)->toBe(SeoIssueSeverity::Warning);
+});
 
-    public function test_seo_issue_can_have_notice_severity(): void
-    {
-        $issue = SeoIssue::factory()->notice()->create();
+test('seo issue can have notice severity', function () {
+    $issue = SeoIssue::factory()->notice()->create();
 
-        $this->assertEquals(SeoIssueSeverity::Notice, $issue->severity);
-    }
+    expect($issue->severity)->toBe(SeoIssueSeverity::Notice);
+});
 
-    public function test_seo_issue_has_type_field(): void
-    {
-        $issue = SeoIssue::factory()->create(['type' => 'missing_title']);
+test('seo issue has type field', function () {
+    $issue = SeoIssue::factory()->create(['type' => 'missing_title']);
 
-        $this->assertEquals('missing_title', $issue->type);
-    }
+    expect($issue->type)->toBe('missing_title');
+});
 
-    public function test_seo_issue_has_url_field(): void
-    {
-        $url = 'https://example.com/page';
-        $issue = SeoIssue::factory()->create(['url' => $url]);
+test('seo issue has url field', function () {
+    $url = 'https://example.com/page';
+    $issue = SeoIssue::factory()->create(['url' => $url]);
 
-        $this->assertEquals($url, $issue->url);
-    }
+    expect($issue->url)->toBe($url);
+});
 
-    public function test_seo_issue_has_title_and_description(): void
-    {
-        $issue = SeoIssue::factory()->create([
-            'title' => 'Missing Page Title',
-            'description' => 'This page does not have a title tag',
-        ]);
+test('seo issue has title and description', function () {
+    $issue = SeoIssue::factory()->create([
+        'title' => 'Missing Page Title',
+        'description' => 'This page does not have a title tag',
+    ]);
 
-        $this->assertEquals('Missing Page Title', $issue->title);
-        $this->assertEquals('This page does not have a title tag', $issue->description);
-    }
+    expect($issue->title)->toBe('Missing Page Title');
+    expect($issue->description)->toBe('This page does not have a title tag');
+});
 
-    public function test_seo_issue_can_store_additional_data_as_json(): void
-    {
-        $data = [
-            'expected' => 'Some value',
-            'actual' => 'Different value',
-        ];
+test('seo issue can store additional data as json', function () {
+    $data = [
+        'expected' => 'Some value',
+        'actual' => 'Different value',
+    ];
 
-        $issue = SeoIssue::factory()->create(['data' => json_encode($data)]);
+    $issue = SeoIssue::factory()->create(['data' => json_encode($data)]);
 
-        $this->assertEquals($data, json_decode($issue->data, true));
-    }
-}
+    expect(json_decode($issue->data, true))->toBe($data);
+});

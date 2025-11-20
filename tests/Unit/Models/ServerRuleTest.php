@@ -1,106 +1,90 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\Server;
 use App\Models\ServerRule;
-use Tests\TestCase;
 
-class ServerRuleTest extends TestCase
-{
-    public function test_server_rule_belongs_to_server(): void
-    {
-        $server = Server::factory()->create();
-        $rule = ServerRule::factory()->create(['server_id' => $server->id]);
+test('server rule belongs to server', function () {
+    $server = Server::factory()->create();
+    $rule = ServerRule::factory()->create(['server_id' => $server->id]);
 
-        $this->assertInstanceOf(Server::class, $rule->server);
-        $this->assertEquals($server->id, $rule->server->id);
-    }
+    expect($rule->server)->toBeInstanceOf(Server::class);
+    expect($rule->server->id)->toBe($server->id);
+});
 
-    public function test_server_rule_has_fillable_attributes(): void
-    {
-        $rule = ServerRule::factory()->create([
-            'metric' => 'cpu_usage',
-            'operator' => '>',
-            'value' => 80.5,
-            'channel' => 'email',
-            'is_active' => true,
-        ]);
+test('server rule has fillable attributes', function () {
+    $rule = ServerRule::factory()->create([
+        'metric' => 'cpu_usage',
+        'operator' => '>',
+        'value' => 80.5,
+        'channel' => 'email',
+        'is_active' => true,
+    ]);
 
-        $this->assertEquals('cpu_usage', $rule->metric);
-        $this->assertEquals('>', $rule->operator);
-        $this->assertEquals(80.5, $rule->value);
-        $this->assertEquals('email', $rule->channel);
-        $this->assertTrue($rule->is_active);
-    }
+    expect($rule->metric)->toBe('cpu_usage');
+    expect($rule->operator)->toBe('>');
+    expect($rule->value)->toBe(80.5);
+    expect($rule->channel)->toBe('email');
+    expect($rule->is_active)->toBeTrue();
+});
 
-    public function test_server_rule_casts_value_to_float(): void
-    {
-        $rule = ServerRule::factory()->create(['value' => '85']);
+test('server rule casts value to float', function () {
+    $rule = ServerRule::factory()->create(['value' => '85']);
 
-        $this->assertIsFloat($rule->value);
-        $this->assertEquals(85.0, $rule->value);
-    }
+    expect($rule->value)->toBeFloat();
+    expect($rule->value)->toBe(85.0);
+});
 
-    public function test_server_rule_casts_is_active_to_boolean(): void
-    {
-        $rule = ServerRule::factory()->create(['is_active' => 1]);
+test('server rule casts is active to boolean', function () {
+    $rule = ServerRule::factory()->create(['is_active' => 1]);
 
-        $this->assertIsBool($rule->is_active);
-        $this->assertTrue($rule->is_active);
-    }
+    expect($rule->is_active)->toBeBool();
+    expect($rule->is_active)->toBeTrue();
+});
 
-    public function test_server_rule_can_be_inactive(): void
-    {
-        $rule = ServerRule::factory()->create(['is_active' => false]);
+test('server rule can be inactive', function () {
+    $rule = ServerRule::factory()->create(['is_active' => false]);
 
-        $this->assertFalse($rule->is_active);
-    }
+    expect($rule->is_active)->toBeFalse();
+});
 
-    public function test_server_rule_supports_cpu_usage_metric(): void
-    {
-        $rule = ServerRule::factory()->cpuUsage()->create();
+test('server rule supports cpu usage metric', function () {
+    $rule = ServerRule::factory()->cpuUsage()->create();
 
-        $this->assertEquals('cpu_usage', $rule->metric);
-        $this->assertEquals('>', $rule->operator);
-        $this->assertEquals(80, $rule->value);
-    }
+    expect($rule->metric)->toBe('cpu_usage');
+    expect($rule->operator)->toBe('>');
+    expect($rule->value)->toBe(80.0);
+});
 
-    public function test_server_rule_supports_ram_usage_metric(): void
-    {
-        $rule = ServerRule::factory()->ramUsage()->create();
+test('server rule supports ram usage metric', function () {
+    $rule = ServerRule::factory()->ramUsage()->create();
 
-        $this->assertEquals('ram_usage', $rule->metric);
-        $this->assertEquals('>', $rule->operator);
-        $this->assertEquals(90, $rule->value);
-    }
+    expect($rule->metric)->toBe('ram_usage');
+    expect($rule->operator)->toBe('>');
+    expect($rule->value)->toBe(90.0);
+});
 
-    public function test_server_rule_supports_disk_usage_metric(): void
-    {
-        $rule = ServerRule::factory()->diskUsage()->create();
+test('server rule supports disk usage metric', function () {
+    $rule = ServerRule::factory()->diskUsage()->create();
 
-        $this->assertEquals('disk_usage', $rule->metric);
-        $this->assertEquals('>', $rule->operator);
-        $this->assertEquals(85, $rule->value);
-    }
+    expect($rule->metric)->toBe('disk_usage');
+    expect($rule->operator)->toBe('>');
+    expect($rule->value)->toBe(85.0);
+});
 
-    public function test_server_rule_supports_different_operators(): void
-    {
-        $greaterThanRule = ServerRule::factory()->create(['operator' => '>']);
-        $lessThanRule = ServerRule::factory()->create(['operator' => '<']);
-        $equalsRule = ServerRule::factory()->create(['operator' => '=']);
+test('server rule supports different operators', function () {
+    $greaterThanRule = ServerRule::factory()->create(['operator' => '>']);
+    $lessThanRule = ServerRule::factory()->create(['operator' => '<']);
+    $equalsRule = ServerRule::factory()->create(['operator' => '=']);
 
-        $this->assertEquals('>', $greaterThanRule->operator);
-        $this->assertEquals('<', $lessThanRule->operator);
-        $this->assertEquals('=', $equalsRule->operator);
-    }
+    expect($greaterThanRule->operator)->toBe('>');
+    expect($lessThanRule->operator)->toBe('<');
+    expect($equalsRule->operator)->toBe('=');
+});
 
-    public function test_server_rule_supports_different_channels(): void
-    {
-        $emailRule = ServerRule::factory()->create(['channel' => 'email']);
-        $webhookRule = ServerRule::factory()->create(['channel' => 'webhook']);
+test('server rule supports different channels', function () {
+    $emailRule = ServerRule::factory()->create(['channel' => 'email']);
+    $webhookRule = ServerRule::factory()->create(['channel' => 'webhook']);
 
-        $this->assertEquals('email', $emailRule->channel);
-        $this->assertEquals('webhook', $webhookRule->channel);
-    }
-}
+    expect($emailRule->channel)->toBe('email');
+    expect($webhookRule->channel)->toBe('webhook');
+});

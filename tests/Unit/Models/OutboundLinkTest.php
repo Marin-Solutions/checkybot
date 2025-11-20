@@ -1,83 +1,72 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\OutboundLink;
-use Tests\TestCase;
 
-class OutboundLinkTest extends TestCase
-{
-    public function test_outbound_link_has_correct_table_name(): void
-    {
-        $link = new OutboundLink;
+test('outbound link has correct table name', function () {
+    $link = new OutboundLink;
 
-        $this->assertEquals('outbound_link', $link->getTable());
-    }
+    expect($link->getTable())->toBe('outbound_link');
+});
 
-    public function test_outbound_link_has_fillable_attributes(): void
-    {
-        $link = OutboundLink::create([
-            'website_id' => 1,
-            'found_on' => 'https://example.com/page',
-            'outgoing_url' => 'https://external.com',
-            'http_status_code' => 200,
-            'last_checked_at' => now(),
-        ]);
+test('outbound link has fillable attributes', function () {
+    $link = OutboundLink::create([
+        'website_id' => 1,
+        'found_on' => 'https://example.com/page',
+        'outgoing_url' => 'https://external.com',
+        'http_status_code' => 200,
+        'last_checked_at' => now(),
+    ]);
 
-        $this->assertEquals(1, $link->website_id);
-        $this->assertEquals('https://example.com/page', $link->found_on);
-        $this->assertEquals('https://external.com', $link->outgoing_url);
-        $this->assertEquals(200, $link->http_status_code);
-        $this->assertNotNull($link->last_checked_at);
-    }
+    expect($link->website_id)->toBe(1);
+    expect($link->found_on)->toBe('https://example.com/page');
+    expect($link->outgoing_url)->toBe('https://external.com');
+    expect($link->http_status_code)->toBe(200);
+    expect($link->last_checked_at)->not->toBeNull();
+});
 
-    public function test_outbound_link_tracks_found_and_outgoing_urls(): void
-    {
-        $link = OutboundLink::create([
-            'website_id' => 1,
-            'found_on' => 'https://mysite.com/blog/post',
-            'outgoing_url' => 'https://partner-site.com',
-            'http_status_code' => 200,
-            'last_checked_at' => now(),
-        ]);
+test('outbound link tracks found and outgoing urls', function () {
+    $link = OutboundLink::create([
+        'website_id' => 1,
+        'found_on' => 'https://mysite.com/blog/post',
+        'outgoing_url' => 'https://partner-site.com',
+        'http_status_code' => 200,
+        'last_checked_at' => now(),
+    ]);
 
-        $this->assertStringContainsString('mysite.com', $link->found_on);
-        $this->assertStringContainsString('partner-site.com', $link->outgoing_url);
-    }
+    expect($link->found_on)->toContain('mysite.com');
+    expect($link->outgoing_url)->toContain('partner-site.com');
+});
 
-    public function test_outbound_link_records_http_status_code(): void
-    {
-        $successLink = OutboundLink::create([
-            'website_id' => 1,
-            'found_url' => 'https://example.com',
-            'outgoing_url' => 'https://external.com',
-            'http_status_code' => 200,
-            'last_checked_at' => now(),
-        ]);
+test('outbound link records http status code', function () {
+    $successLink = OutboundLink::create([
+        'website_id' => 1,
+        'found_url' => 'https://example.com',
+        'outgoing_url' => 'https://external.com',
+        'http_status_code' => 200,
+        'last_checked_at' => now(),
+    ]);
 
-        $errorLink = OutboundLink::create([
-            'website_id' => 1,
-            'found_url' => 'https://example.com',
-            'outgoing_url' => 'https://broken.com',
-            'http_status_code' => 404,
-            'last_checked_at' => now(),
-        ]);
+    $errorLink = OutboundLink::create([
+        'website_id' => 1,
+        'found_url' => 'https://example.com',
+        'outgoing_url' => 'https://broken.com',
+        'http_status_code' => 404,
+        'last_checked_at' => now(),
+    ]);
 
-        $this->assertEquals(200, $successLink->http_status_code);
-        $this->assertEquals(404, $errorLink->http_status_code);
-    }
+    expect($successLink->http_status_code)->toBe(200);
+    expect($errorLink->http_status_code)->toBe(404);
+});
 
-    public function test_outbound_link_tracks_last_checked_timestamp(): void
-    {
-        $checkedTime = now()->subHours(2);
-        $link = OutboundLink::create([
-            'website_id' => 1,
-            'found_url' => 'https://example.com',
-            'outgoing_url' => 'https://external.com',
-            'http_status_code' => 200,
-            'last_checked_at' => $checkedTime,
-        ]);
+test('outbound link tracks last checked timestamp', function () {
+    $checkedTime = now()->subHours(2);
+    $link = OutboundLink::create([
+        'website_id' => 1,
+        'found_url' => 'https://example.com',
+        'outgoing_url' => 'https://external.com',
+        'http_status_code' => 200,
+        'last_checked_at' => $checkedTime,
+    ]);
 
-        $this->assertEquals($checkedTime->format('Y-m-d H:i'), $link->last_checked_at->format('Y-m-d H:i'));
-    }
-}
+    expect($link->last_checked_at->format('Y-m-d H:i'))->toBe($checkedTime->format('Y-m-d H:i'));
+});

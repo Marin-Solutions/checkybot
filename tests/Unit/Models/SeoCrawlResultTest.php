@@ -1,137 +1,116 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
-use Tests\TestCase;
 
-class SeoCrawlResultTest extends TestCase
-{
-    public function test_seo_crawl_result_belongs_to_seo_check(): void
-    {
-        $check = SeoCheck::factory()->create();
-        $result = SeoCrawlResult::factory()->create(['seo_check_id' => $check->id]);
+test('seo crawl result belongs to seo check', function () {
+    $check = SeoCheck::factory()->create();
+    $result = SeoCrawlResult::factory()->create(['seo_check_id' => $check->id]);
 
-        $this->assertInstanceOf(SeoCheck::class, $result->seoCheck);
-        $this->assertEquals($check->id, $result->seoCheck->id);
-    }
+    expect($result->seoCheck)->toBeInstanceOf(SeoCheck::class);
+    expect($result->seoCheck->id)->toBe($check->id);
+});
 
-    public function test_is_success_returns_true_for_2xx_status(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['status_code' => 200]);
+test('is success returns true for 2xx status', function () {
+    $result = SeoCrawlResult::factory()->create(['status_code' => 200]);
 
-        $this->assertTrue($result->isSuccess());
-    }
+    expect($result->isSuccess())->toBeTrue();
+});
 
-    public function test_is_success_returns_false_for_non_2xx_status(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['status_code' => 404]);
+test('is success returns false for non 2xx status', function () {
+    $result = SeoCrawlResult::factory()->create(['status_code' => 404]);
 
-        $this->assertFalse($result->isSuccess());
-    }
+    expect($result->isSuccess())->toBeFalse();
+});
 
-    public function test_is_redirect_returns_true_for_3xx_status(): void
-    {
-        $result = SeoCrawlResult::factory()->withRedirect()->create();
+test('is redirect returns true for 3xx status', function () {
+    $result = SeoCrawlResult::factory()->withRedirect()->create();
 
-        $this->assertTrue($result->isRedirect());
-    }
+    expect($result->isRedirect())->toBeTrue();
+});
 
-    public function test_is_client_error_returns_true_for_4xx_status(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['status_code' => 404]);
+test('is client error returns true for 4xx status', function () {
+    $result = SeoCrawlResult::factory()->create(['status_code' => 404]);
 
-        $this->assertTrue($result->isClientError());
-    }
+    expect($result->isClientError())->toBeTrue();
+});
 
-    public function test_is_server_error_returns_true_for_5xx_status(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['status_code' => 500]);
+test('is server error returns true for 5xx status', function () {
+    $result = SeoCrawlResult::factory()->create(['status_code' => 500]);
 
-        $this->assertTrue($result->isServerError());
-    }
+    expect($result->isServerError())->toBeTrue();
+});
 
-    public function test_is_error_returns_true_for_any_error_status(): void
-    {
-        $clientError = SeoCrawlResult::factory()->create(['status_code' => 404]);
-        $serverError = SeoCrawlResult::factory()->create(['status_code' => 500]);
+test('is error returns true for any error status', function () {
+    $clientError = SeoCrawlResult::factory()->create(['status_code' => 404]);
+    $serverError = SeoCrawlResult::factory()->create(['status_code' => 500]);
 
-        $this->assertTrue($clientError->isError());
-        $this->assertTrue($serverError->isError());
-    }
+    expect($clientError->isError())->toBeTrue();
+    expect($serverError->isError())->toBeTrue();
+});
 
-    public function test_get_page_size_in_kb_converts_bytes_to_kb(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['page_size_bytes' => 5120]);
+test('get page size in kb converts bytes to kb', function () {
+    $result = SeoCrawlResult::factory()->create(['page_size_bytes' => 5120]);
 
-        $this->assertEquals(5.0, $result->getPageSizeInKb());
-    }
+    expect($result->getPageSizeInKb())->toBe(5.0);
+});
 
-    public function test_get_html_size_in_kb_converts_bytes_to_kb(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['html_size_bytes' => 10240]);
+test('get html size in kb converts bytes to kb', function () {
+    $result = SeoCrawlResult::factory()->create(['html_size_bytes' => 10240]);
 
-        $this->assertEquals(10.0, $result->getHtmlSizeInKb());
-    }
+    expect($result->getHtmlSizeInKb())->toBe(10.0);
+});
 
-    public function test_get_response_time_in_seconds_converts_ms_to_seconds(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['response_time_ms' => 1500]);
+test('get response time in seconds converts ms to seconds', function () {
+    $result = SeoCrawlResult::factory()->create(['response_time_ms' => 1500]);
 
-        $this->assertEquals(1.5, $result->getResponseTimeInSeconds());
-    }
+    expect($result->getResponseTimeInSeconds())->toBe(1.5);
+});
 
-    public function test_stores_internal_links_as_json(): void
-    {
-        $links = [
-            ['url' => 'https://example.com/page1', 'text' => 'Page 1'],
-            ['url' => 'https://example.com/page2', 'text' => 'Page 2'],
-        ];
+test('stores internal links as json', function () {
+    $links = [
+        ['url' => 'https://example.com/page1', 'text' => 'Page 1'],
+        ['url' => 'https://example.com/page2', 'text' => 'Page 2'],
+    ];
 
-        $result = SeoCrawlResult::factory()->create([
-            'internal_links' => json_encode($links),
-        ]);
+    $result = SeoCrawlResult::factory()->create([
+        'internal_links' => json_encode($links),
+    ]);
 
-        $this->assertEquals($links, json_decode($result->internal_links, true));
-    }
+    expect(json_decode($result->internal_links, true))->toBe($links);
+});
 
-    public function test_stores_external_links_as_json(): void
-    {
-        $links = [
-            ['url' => 'https://external.com', 'text' => 'External Link'],
-        ];
+test('stores external links as json', function () {
+    $links = [
+        ['url' => 'https://external.com', 'text' => 'External Link'],
+    ];
 
-        $result = SeoCrawlResult::factory()->create([
-            'external_links' => json_encode($links),
-        ]);
+    $result = SeoCrawlResult::factory()->create([
+        'external_links' => json_encode($links),
+    ]);
 
-        $this->assertEquals($links, json_decode($result->external_links, true));
-    }
+    expect(json_decode($result->external_links, true))->toBe($links);
+});
 
-    public function test_tracks_link_counts(): void
-    {
-        $result = SeoCrawlResult::factory()->create([
-            'internal_link_count' => 25,
-            'external_link_count' => 5,
-        ]);
+test('tracks link counts', function () {
+    $result = SeoCrawlResult::factory()->create([
+        'internal_link_count' => 25,
+        'external_link_count' => 5,
+    ]);
 
-        $this->assertEquals(25, $result->internal_link_count);
-        $this->assertEquals(5, $result->external_link_count);
-    }
+    expect($result->internal_link_count)->toBe(25);
+    expect($result->external_link_count)->toBe(5);
+});
 
-    public function test_tracks_image_count(): void
-    {
-        $result = SeoCrawlResult::factory()->create(['image_count' => 12]);
+test('tracks image count', function () {
+    $result = SeoCrawlResult::factory()->create(['image_count' => 12]);
 
-        $this->assertEquals(12, $result->image_count);
-    }
+    expect($result->image_count)->toBe(12);
+});
 
-    public function test_stores_html_content(): void
-    {
-        $html = '<html><body><h1>Test Page</h1></body></html>';
-        $result = SeoCrawlResult::factory()->create(['html_content' => $html]);
+test('stores html content', function () {
+    $html = '<html><body><h1>Test Page</h1></body></html>';
+    $result = SeoCrawlResult::factory()->create(['html_content' => $html]);
 
-        $this->assertEquals($html, $result->html_content);
-    }
-}
+    expect($result->html_content)->toBe($html);
+});

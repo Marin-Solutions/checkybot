@@ -1,110 +1,87 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\ApiKey;
 use App\Models\NotificationSetting;
 use App\Models\Server;
 use App\Models\User;
 use App\Models\Website;
-use Tests\TestCase;
 
-class UserTest extends TestCase
-{
-    public function test_user_has_many_websites(): void
-    {
-        $user = User::factory()->create();
-        Website::factory()->count(5)->create(['created_by' => $user->id]);
+test('user has many websites', function () {
+    $user = User::factory()->create();
+    Website::factory()->count(5)->create(['created_by' => $user->id]);
 
-        $this->assertCount(5, $user->websites);
-        $this->assertInstanceOf(Website::class, $user->websites->first());
-    }
+    expect($user->websites)->toHaveCount(5);
+    expect($user->websites->first())->toBeInstanceOf(Website::class);
+});
 
-    public function test_user_has_many_servers(): void
-    {
-        $user = User::factory()->create();
-        Server::factory()->count(3)->create(['created_by' => $user->id]);
+test('user has many servers', function () {
+    $user = User::factory()->create();
+    Server::factory()->count(3)->create(['created_by' => $user->id]);
 
-        $this->assertCount(3, $user->servers);
-        $this->assertInstanceOf(Server::class, $user->servers->first());
-    }
+    expect($user->servers)->toHaveCount(3);
+    expect($user->servers->first())->toBeInstanceOf(Server::class);
+});
 
-    public function test_user_has_many_api_keys(): void
-    {
-        $user = User::factory()->create();
-        ApiKey::factory()->count(2)->create(['user_id' => $user->id]);
+test('user has many api keys', function () {
+    $user = User::factory()->create();
+    ApiKey::factory()->count(2)->create(['user_id' => $user->id]);
 
-        $this->assertCount(2, $user->apiKeys);
-    }
+    expect($user->apiKeys)->toHaveCount(2);
+});
 
-    public function test_user_has_global_notification_channels(): void
-    {
-        $user = User::factory()->create();
+test('user has global notification channels', function () {
+    $user = User::factory()->create();
 
-        NotificationSetting::factory()->globalScope()->active()->count(2)->create([
-            'user_id' => $user->id,
-        ]);
+    NotificationSetting::factory()->globalScope()->active()->count(2)->create([
+        'user_id' => $user->id,
+    ]);
 
-        NotificationSetting::factory()->websiteScope()->create([
-            'user_id' => $user->id,
-        ]);
+    NotificationSetting::factory()->websiteScope()->create([
+        'user_id' => $user->id,
+    ]);
 
-        $this->assertCount(2, $user->globalNotificationChannels);
-    }
+    expect($user->globalNotificationChannels)->toHaveCount(2);
+});
 
-    public function test_user_can_access_filament_panel(): void
-    {
-        $user = User::factory()->create();
+test('user can access filament panel', function () {
+    $user = User::factory()->create();
 
-        $panel = app(\Filament\Panel::class);
+    $panel = app(\Filament\Panel::class);
 
-        $this->assertTrue($user->canAccessPanel($panel));
-    }
+    expect($user->canAccessPanel($panel))->toBeTrue();
+});
 
-    public function test_user_requires_email(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('user requires email', function () {
+    User::factory()->create(['email' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-        User::factory()->create(['email' => null]);
-    }
+test('user requires name', function () {
+    User::factory()->create(['name' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-    public function test_user_requires_name(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('user email must be unique', function () {
+    $user = User::factory()->create(['email' => 'test@example.com']);
 
-        User::factory()->create(['name' => null]);
-    }
+    User::factory()->create(['email' => 'test@example.com']);
+})->throws(\Illuminate\Database\QueryException::class);
 
-    public function test_user_email_must_be_unique(): void
-    {
-        $user = User::factory()->create(['email' => 'test@example.com']);
+test('user password is hashed', function () {
+    $user = User::factory()->create(['password' => 'plain-password']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+    expect($user->password)->not->toBe('plain-password');
+    expect(\Hash::check('plain-password', $user->password))->toBeTrue();
+});
 
-        User::factory()->create(['email' => 'test@example.com']);
-    }
+test('user can have avatar url', function () {
+    $user = User::factory()->create(['avatar_url' => 'avatars/user.jpg']);
 
-    public function test_user_password_is_hashed(): void
-    {
-        $user = User::factory()->create(['password' => 'plain-password']);
+    $avatarUrl = $user->getFilamentAvatarUrl();
 
-        $this->assertNotEquals('plain-password', $user->password);
-        $this->assertTrue(\Hash::check('plain-password', $user->password));
-    }
+    expect($avatarUrl)->toContain('avatars/user.jpg');
+});
 
-    public function test_user_can_have_avatar_url(): void
-    {
-        $user = User::factory()->create(['avatar_url' => 'avatars/user.jpg']);
+test('user returns null avatar url when not set', function () {
+    $user = User::factory()->create(['avatar_url' => null]);
 
-        $avatarUrl = $user->getFilamentAvatarUrl();
-
-        $this->assertStringContainsString('avatars/user.jpg', $avatarUrl);
-    }
-
-    public function test_user_returns_null_avatar_url_when_not_set(): void
-    {
-        $user = User::factory()->create(['avatar_url' => null]);
-
-        $this->assertNull($user->getFilamentAvatarUrl());
-    }
-}
+    expect($user->getFilamentAvatarUrl())->toBeNull();
+});

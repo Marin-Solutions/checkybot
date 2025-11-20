@@ -1,84 +1,65 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogCategory;
 use App\Models\ServerRule;
 use App\Models\User;
-use Tests\TestCase;
 
-class ServerTest extends TestCase
-{
-    public function test_server_belongs_to_user(): void
-    {
-        $user = User::factory()->create();
-        $server = Server::factory()->create(['created_by' => $user->id]);
+test('server belongs to user', function () {
+    $user = User::factory()->create();
+    $server = Server::factory()->create(['created_by' => $user->id]);
 
-        $this->assertInstanceOf(User::class, $server->user);
-        $this->assertEquals($user->id, $server->user->id);
-    }
+    expect($server->user)->toBeInstanceOf(User::class);
+    expect($server->user->id)->toBe($user->id);
+});
 
-    public function test_server_has_many_information_history(): void
-    {
-        $server = Server::factory()->create();
-        ServerInformationHistory::factory()->count(5)->create(['server_id' => $server->id]);
+test('server has many information history', function () {
+    $server = Server::factory()->create();
+    ServerInformationHistory::factory()->count(5)->create(['server_id' => $server->id]);
 
-        $this->assertCount(5, $server->informationHistory);
-        $this->assertInstanceOf(ServerInformationHistory::class, $server->informationHistory->first());
-    }
+    expect($server->informationHistory)->toHaveCount(5);
+    expect($server->informationHistory->first())->toBeInstanceOf(ServerInformationHistory::class);
+});
 
-    public function test_server_has_many_rules(): void
-    {
-        $server = Server::factory()->create();
-        ServerRule::factory()->count(3)->create(['server_id' => $server->id]);
+test('server has many rules', function () {
+    $server = Server::factory()->create();
+    ServerRule::factory()->count(3)->create(['server_id' => $server->id]);
 
-        $this->assertCount(3, $server->rules);
-        $this->assertInstanceOf(ServerRule::class, $server->rules->first());
-    }
+    expect($server->rules)->toHaveCount(3);
+    expect($server->rules->first())->toBeInstanceOf(ServerRule::class);
+});
 
-    public function test_server_has_many_log_categories(): void
-    {
-        $server = Server::factory()->create();
-        ServerLogCategory::factory()->count(2)->create(['server_id' => $server->id]);
+test('server has many log categories', function () {
+    $server = Server::factory()->create();
+    ServerLogCategory::factory()->count(2)->create(['server_id' => $server->id]);
 
-        $this->assertCount(2, $server->logCategories);
-    }
+    expect($server->logCategories)->toHaveCount(2);
+});
 
-    public function test_server_requires_name(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('server requires name', function () {
+    Server::factory()->create(['name' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-        Server::factory()->create(['name' => null]);
-    }
+test('server requires ip', function () {
+    Server::factory()->create(['ip' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-    public function test_server_requires_ip(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('server can have ploi server id', function () {
+    $server = Server::factory()->create(['ploi_server_id' => 12345]);
 
-        Server::factory()->create(['ip' => null]);
-    }
+    expect($server->ploi_server_id)->toBe(12345);
+});
 
-    public function test_server_can_have_ploi_server_id(): void
-    {
-        $server = Server::factory()->create(['ploi_server_id' => 12345]);
+test('server has token for authentication', function () {
+    $server = Server::factory()->create();
 
-        $this->assertEquals(12345, $server->ploi_server_id);
-    }
+    expect($server->token)->not->toBeNull();
+    expect($server->token)->toBeString();
+});
 
-    public function test_server_has_token_for_authentication(): void
-    {
-        $server = Server::factory()->create();
+test('server tracks cpu cores', function () {
+    $server = Server::factory()->create(['cpu_cores' => 8]);
 
-        $this->assertNotNull($server->token);
-        $this->assertIsString($server->token);
-    }
-
-    public function test_server_tracks_cpu_cores(): void
-    {
-        $server = Server::factory()->create(['cpu_cores' => 8]);
-
-        $this->assertEquals(8, $server->cpu_cores);
-    }
-}
+    expect($server->cpu_cores)->toBe(8);
+});

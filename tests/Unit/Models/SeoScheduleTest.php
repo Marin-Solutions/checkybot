@@ -1,150 +1,131 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\SeoSchedule;
 use App\Models\User;
 use App\Models\Website;
-use Tests\TestCase;
 
-class SeoScheduleTest extends TestCase
-{
-    public function test_seo_schedule_belongs_to_website(): void
-    {
-        $website = Website::factory()->create();
-        $schedule = SeoSchedule::factory()->create(['website_id' => $website->id]);
+test('seo schedule belongs to website', function () {
+    $website = Website::factory()->create();
+    $schedule = SeoSchedule::factory()->create(['website_id' => $website->id]);
 
-        $this->assertInstanceOf(Website::class, $schedule->website);
-        $this->assertEquals($website->id, $schedule->website->id);
-    }
+    expect($schedule->website)->toBeInstanceOf(Website::class);
+    expect($schedule->website->id)->toBe($website->id);
+});
 
-    public function test_seo_schedule_belongs_to_creator(): void
-    {
-        $user = User::factory()->create();
-        $schedule = SeoSchedule::factory()->create(['created_by' => $user->id]);
+test('seo schedule belongs to creator', function () {
+    $user = User::factory()->create();
+    $schedule = SeoSchedule::factory()->create(['created_by' => $user->id]);
 
-        $this->assertInstanceOf(User::class, $schedule->creator);
-        $this->assertEquals($user->id, $schedule->creator->id);
-    }
+    expect($schedule->creator)->toBeInstanceOf(User::class);
+    expect($schedule->creator->id)->toBe($user->id);
+});
 
-    public function test_seo_schedule_can_be_daily(): void
-    {
-        $schedule = SeoSchedule::factory()->daily()->create();
+test('seo schedule can be daily', function () {
+    $schedule = SeoSchedule::factory()->daily()->create();
 
-        $this->assertEquals('daily', $schedule->frequency);
-        $this->assertNull($schedule->schedule_day);
-    }
+    expect($schedule->frequency)->toBe('daily');
+    expect($schedule->schedule_day)->toBeNull();
+});
 
-    public function test_seo_schedule_can_be_weekly(): void
-    {
-        $schedule = SeoSchedule::factory()->weekly()->create();
+test('seo schedule can be weekly', function () {
+    $schedule = SeoSchedule::factory()->weekly()->create();
 
-        $this->assertEquals('weekly', $schedule->frequency);
-        $this->assertEquals('monday', $schedule->schedule_day);
-    }
+    expect($schedule->frequency)->toBe('weekly');
+    expect($schedule->schedule_day)->toBe('monday');
+});
 
-    public function test_seo_schedule_can_be_monthly(): void
-    {
-        $schedule = SeoSchedule::factory()->monthly()->create();
+test('seo schedule can be monthly', function () {
+    $schedule = SeoSchedule::factory()->monthly()->create();
 
-        $this->assertEquals('monthly', $schedule->frequency);
-        $this->assertEquals(1, $schedule->schedule_day);
-    }
+    expect($schedule->frequency)->toBe('monthly');
+    expect($schedule->schedule_day)->toBe(1);
+});
 
-    public function test_seo_schedule_can_be_active(): void
-    {
-        $schedule = SeoSchedule::factory()->create(['is_active' => true]);
+test('seo schedule can be active', function () {
+    $schedule = SeoSchedule::factory()->create(['is_active' => true]);
 
-        $this->assertTrue($schedule->is_active);
-    }
+    expect($schedule->is_active)->toBeTrue();
+});
 
-    public function test_seo_schedule_can_be_inactive(): void
-    {
-        $schedule = SeoSchedule::factory()->inactive()->create();
+test('seo schedule can be inactive', function () {
+    $schedule = SeoSchedule::factory()->inactive()->create();
 
-        $this->assertFalse($schedule->is_active);
-    }
+    expect($schedule->is_active)->toBeFalse();
+});
 
-    public function test_seo_schedule_casts_dates(): void
-    {
-        $schedule = SeoSchedule::factory()->create([
-            'last_run_at' => now()->subDay(),
-            'next_run_at' => now()->addDay(),
-        ]);
+test('seo schedule casts dates', function () {
+    $schedule = SeoSchedule::factory()->create([
+        'last_run_at' => now()->subDay(),
+        'next_run_at' => now()->addDay(),
+    ]);
 
-        $this->assertInstanceOf(\Illuminate\Support\Carbon::class, $schedule->last_run_at);
-        $this->assertInstanceOf(\Illuminate\Support\Carbon::class, $schedule->next_run_at);
-    }
+    expect($schedule->last_run_at)->toBeInstanceOf(\Illuminate\Support\Carbon::class);
+    expect($schedule->next_run_at)->toBeInstanceOf(\Illuminate\Support\Carbon::class);
+});
 
-    public function test_seo_schedule_scope_returns_due_schedules(): void
-    {
-        SeoSchedule::factory()->create([
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+test('seo schedule scope returns due schedules', function () {
+    SeoSchedule::factory()->create([
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        SeoSchedule::factory()->create([
-            'is_active' => true,
-            'next_run_at' => now()->addHour(),
-        ]);
+    SeoSchedule::factory()->create([
+        'is_active' => true,
+        'next_run_at' => now()->addHour(),
+    ]);
 
-        $dueSchedules = SeoSchedule::due()->get();
+    $dueSchedules = SeoSchedule::due()->get();
 
-        $this->assertCount(1, $dueSchedules);
-    }
+    expect($dueSchedules)->toHaveCount(1);
+});
 
-    public function test_seo_schedule_scope_only_returns_active_schedules(): void
-    {
-        SeoSchedule::factory()->create([
-            'is_active' => false,
-            'next_run_at' => now()->subHour(),
-        ]);
+test('seo schedule scope only returns active schedules', function () {
+    SeoSchedule::factory()->create([
+        'is_active' => false,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        SeoSchedule::factory()->create([
-            'is_active' => true,
-            'next_run_at' => now()->subHour(),
-        ]);
+    SeoSchedule::factory()->create([
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
 
-        $dueSchedules = SeoSchedule::due()->get();
+    $dueSchedules = SeoSchedule::due()->get();
 
-        $this->assertCount(1, $dueSchedules);
-        $this->assertTrue($dueSchedules->first()->is_active);
-    }
+    expect($dueSchedules)->toHaveCount(1);
+    expect($dueSchedules->first()->is_active)->toBeTrue();
+});
 
-    public function test_seo_schedule_updates_next_run_time(): void
-    {
-        $schedule = SeoSchedule::factory()->daily()->create([
-            'schedule_time' => '14:30:00',
-            'next_run_at' => now(),
-        ]);
+test('seo schedule updates next run time', function () {
+    $schedule = SeoSchedule::factory()->daily()->create([
+        'schedule_time' => '14:30:00',
+        'next_run_at' => now(),
+    ]);
 
-        $schedule->updateNextRun();
+    $schedule->updateNextRun();
 
-        $this->assertNotNull($schedule->last_run_at);
-        $this->assertNotNull($schedule->next_run_at);
-        $this->assertTrue($schedule->next_run_at->isFuture());
-    }
+    expect($schedule->last_run_at)->not->toBeNull();
+    expect($schedule->next_run_at)->not->toBeNull();
+    expect($schedule->next_run_at->isFuture())->toBeTrue();
+});
 
-    public function test_seo_schedule_calculates_next_daily_run(): void
-    {
-        $schedule = SeoSchedule::factory()->daily()->create([
-            'schedule_time' => '09:00:00',
-        ]);
+test('seo schedule calculates next daily run', function () {
+    $schedule = SeoSchedule::factory()->daily()->create([
+        'schedule_time' => '09:00:00',
+    ]);
 
-        $schedule->updateNextRun();
+    $schedule->updateNextRun();
 
-        $nextRun = $schedule->fresh()->next_run_at;
-        $this->assertEquals(9, $nextRun->hour);
-        $this->assertEquals(0, $nextRun->minute);
-        $this->assertTrue($nextRun->isFuture());
-    }
+    $nextRun = $schedule->fresh()->next_run_at;
+    expect($nextRun->hour)->toBe(9);
+    expect($nextRun->minute)->toBe(0);
+    expect($nextRun->isFuture())->toBeTrue();
+});
 
-    public function test_seo_schedule_has_schedule_time(): void
-    {
-        $schedule = SeoSchedule::factory()->create([
-            'schedule_time' => '14:30:00',
-        ]);
+test('seo schedule has schedule time', function () {
+    $schedule = SeoSchedule::factory()->create([
+        'schedule_time' => '14:30:00',
+    ]);
 
-        $this->assertEquals('14:30:00', $schedule->schedule_time);
-    }
-}
+    expect($schedule->schedule_time)->toBe('14:30:00');
+});

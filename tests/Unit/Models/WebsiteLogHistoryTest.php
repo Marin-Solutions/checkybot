@@ -1,77 +1,61 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\WebsiteLogHistory;
-use Tests\TestCase;
 
-class WebsiteLogHistoryTest extends TestCase
-{
-    public function test_website_log_history_has_correct_table_name(): void
-    {
-        $log = new WebsiteLogHistory;
+test('website log history has correct table name', function () {
+    $log = new WebsiteLogHistory;
 
-        $this->assertEquals('website_log_history', $log->getTable());
-    }
+    expect($log->getTable())->toBe('website_log_history');
+});
 
-    public function test_website_log_history_has_fillable_attributes(): void
-    {
-        $website = \App\Models\Website::factory()->create();
-        $log = WebsiteLogHistory::factory()->create([
-            'website_id' => $website->id,
-            'ssl_expiry_date' => now()->addMonths(3),
-            'http_status_code' => 200,
-            'speed' => 350,
-        ]);
+test('website log history has fillable attributes', function () {
+    $website = \App\Models\Website::factory()->create();
+    $log = WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'ssl_expiry_date' => now()->addMonths(3),
+        'http_status_code' => 200,
+        'speed' => 350,
+    ]);
 
-        $this->assertEquals($website->id, $log->website_id);
-        $this->assertNotNull($log->ssl_expiry_date);
-        $this->assertEquals(200, $log->http_status_code);
-        $this->assertEquals(350, $log->speed);
-    }
+    expect($log->website_id)->toBe($website->id);
+    expect($log->ssl_expiry_date)->not->toBeNull();
+    expect($log->http_status_code)->toBe(200);
+    expect($log->speed)->toBe(350);
+});
 
-    public function test_website_log_history_records_successful_response(): void
-    {
-        $log = WebsiteLogHistory::factory()->create([
-            'http_status_code' => 200,
-        ]);
+test('website log history records successful response', function () {
+    $log = WebsiteLogHistory::factory()->create([
+        'http_status_code' => 200,
+    ]);
 
-        $this->assertEquals(200, $log->http_status_code);
-    }
+    expect($log->http_status_code)->toBe(200);
+});
 
-    public function test_website_log_history_records_error_response(): void
-    {
-        $log = WebsiteLogHistory::factory()->error()->create();
+test('website log history records error response', function () {
+    $log = WebsiteLogHistory::factory()->error()->create();
 
-        $this->assertNotEquals(200, $log->http_status_code);
-        $this->assertContains($log->http_status_code, [404, 500, 503]);
-    }
+    expect($log->http_status_code)->not->toBe(200);
+    expect($log->http_status_code)->toBeIn([404, 500, 503]);
+});
 
-    public function test_website_log_history_records_slow_response(): void
-    {
-        $log = WebsiteLogHistory::factory()->slow()->create();
+test('website log history records slow response', function () {
+    $log = WebsiteLogHistory::factory()->slow()->create();
 
-        $this->assertGreaterThan(2000, $log->speed);
-    }
+    expect($log->speed)->toBeGreaterThan(2000);
+});
 
-    public function test_website_log_history_can_track_ssl_expiry(): void
-    {
-        $expiryDate = now()->addMonths(2);
-        $log = WebsiteLogHistory::factory()->create([
-            'ssl_expiry_date' => $expiryDate,
-        ]);
+test('website log history can track ssl expiry', function () {
+    $expiryDate = now()->addMonths(2);
+    $log = WebsiteLogHistory::factory()->create([
+        'ssl_expiry_date' => $expiryDate,
+    ]);
 
-        $this->assertEquals(
-            $expiryDate->format('Y-m-d H:i'),
-            $log->ssl_expiry_date->format('Y-m-d H:i')
-        );
-    }
+    expect($log->ssl_expiry_date->format('Y-m-d H:i'))->toBe($expiryDate->format('Y-m-d H:i'));
+});
 
-    public function test_website_log_history_tracks_response_time(): void
-    {
-        $log = WebsiteLogHistory::factory()->create();
+test('website log history tracks response time', function () {
+    $log = WebsiteLogHistory::factory()->create();
 
-        $this->assertNotNull($log->speed);
-        $this->assertIsInt($log->speed);
-    }
-}
+    expect($log->speed)->not->toBeNull();
+    expect($log->speed)->toBeInt();
+});
