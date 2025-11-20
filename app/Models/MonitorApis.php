@@ -23,6 +23,10 @@ class MonitorApis extends Model
         'headers',
         'save_failed_response',
         'created_by',
+        'project_id',
+        'source',
+        'package_name',
+        'package_interval',
     ];
 
     protected $casts = [
@@ -33,6 +37,11 @@ class MonitorApis extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function project(): BelongsTo
+    {
+        return $this->belongsTo(Project::class);
     }
 
     public function assertions(): HasMany

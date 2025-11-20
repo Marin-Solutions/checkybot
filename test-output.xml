@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="/Users/marindelija/Documents/Development/checkybot/phpunit.xml" tests="1" assertions="2" errors="0" failures="1" skipped="0" time="0.676547">
+    <testsuite name="Feature" tests="1" assertions="2" errors="0" failures="1" skipped="0" time="0.676547">
+      <testsuite name="Tests\Feature\Api\V1\ProjectChecksSyncTest" file="Project Checks Sync (Tests\Feature\Api\V1\ProjectChecksSync)" tests="1" assertions="2" errors="0" failures="1" skipped="0" time="0.676547">
+        <testcase name="Syncs uptime checks successfully" file="Project Checks Sync (Tests\Feature\Api\V1\ProjectChecksSync)::Syncs uptime checks successfully" class="Tests\Feature\Api\V1\ProjectChecksSyncTest" classname="Tests.Feature.Api.V1.ProjectChecksSyncTest" assertions="2" time="0.676547">
+          <failure type="PHPUnit\Framework\ExpectationFailedException">Syncs uptime checks successfullyFailed asserting that a row in the table [websites] matches the attributes {
+    "project_id": 1,
+    "name": "homepage-uptime",
+    "url": "https:\/\/uptime-example.com",
+    "uptime_check": true,
+    "uptime_interval": 5,
+    "source": "package",
+    "package_name": "homepage-uptime",
+    "package_interval": "5m"
+}.
+
+The table is empty.
+at vendor/laravel/framework/src/Illuminate/Foundation/Testing/Concerns/InteractsWithDatabase.php:43
+at tests/Feature/Api/V1/ProjectChecksSyncTest.php:55</failure>
+        </testcase>
+      </testsuite>
+    </testsuite>
+  </testsuite>
+</testsuites>

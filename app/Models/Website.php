@@ -20,12 +20,16 @@ class Website extends Model
         'url',
         'description',
         'created_by',
+        'project_id',
         'uptime_check',
         'uptime_interval',
         'ssl_check',
         'ssl_expiry_date',
         'outbound_check',
         'last_outbound_checked_at',
+        'source',
+        'package_name',
+        'package_interval',
     ];
 
     protected $casts = [
@@ -97,6 +101,11 @@ class Website extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function project(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Project::class);
     }
 
     public function notificationChannels(): \Illuminate\Database\Eloquent\Relations\HasMany
