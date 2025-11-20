@@ -18,11 +18,40 @@ abstract class TestCase extends BaseTestCase
         config(['horizon.enabled' => false]);
         config(['pulse.enabled' => false]);
 
-        // Run migrations
-        $this->artisan('migrate:fresh');
+        // Create basic roles needed for testing
+        \Spatie\Permission\Models\Role::create(['name' => 'Super Admin', 'guard_name' => 'web']);
+        \Spatie\Permission\Models\Role::create(['name' => 'Admin', 'guard_name' => 'web']);
 
-        // Seed permissions and roles if needed
-        $this->artisan('shield:install', ['--fresh' => true, '--minimal' => true]);
+        // Create permissions for resources
+        $this->createResourcePermissions('Website');
+        $this->createResourcePermissions('User');
+    }
+
+    /**
+     * Create standard CRUD permissions for a resource
+     */
+    protected function createResourcePermissions(string $resource): void
+    {
+        $permissions = [
+            "ViewAny:{$resource}",
+            "View:{$resource}",
+            "Create:{$resource}",
+            "Update:{$resource}",
+            "Delete:{$resource}",
+            "Restore:{$resource}",
+            "ForceDelete:{$resource}",
+            "ForceDeleteAny:{$resource}",
+            "RestoreAny:{$resource}",
+            "Replicate:{$resource}",
+            "Reorder:{$resource}",
+        ];
+
+        foreach ($permissions as $permission) {
+            \Spatie\Permission\Models\Permission::create([
+                'name' => $permission,
+                'guard_name' => 'web',
+            ]);
+        }
     }
 
     /**

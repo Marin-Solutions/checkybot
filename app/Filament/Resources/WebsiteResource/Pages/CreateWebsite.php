@@ -31,7 +31,7 @@ class CreateWebsite extends CreateRecord
     {
         \App\Services\WebsiteUrlValidator::validate(
             $this->data['url'],
-            fn() => $this->halt()
+            fn () => $this->halt()
         );
     }
 
@@ -58,7 +58,7 @@ class CreateWebsite extends CreateRecord
                 'website_id' => $website->id,
                 'created_by' => Auth::id(),
                 'frequency' => $scheduleFrequency,
-                'schedule_time' => $scheduleTime . ':00',
+                'schedule_time' => $scheduleTime.':00',
                 'schedule_day' => $scheduleFrequency === 'weekly' ? $scheduleDay : null,
                 'is_active' => true,
                 'next_run_at' => $nextRunAt,

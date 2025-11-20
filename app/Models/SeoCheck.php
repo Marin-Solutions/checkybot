@@ -280,7 +280,7 @@ class SeoCheck extends Model
      */
     public function getHealthScoreFormattedAttribute(): string
     {
-        return $this->getHealthScoreAttribute() . '%';
+        return $this->getHealthScoreAttribute().'%';
     }
 
     /**

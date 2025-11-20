@@ -5,6 +5,7 @@ namespace Tests\Feature\Filament;
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
+use App\Models\User;
 use App\Models\Website;
 use Livewire\Livewire;
 use Tests\TestCase;
@@ -21,8 +22,8 @@ class WebsiteResourceTest extends TestCase
 
     public function test_super_admin_can_see_websites_in_table(): void
     {
-        $this->actingAsSuperAdmin();
-        $websites = Website::factory()->count(3)->create();
+        $user = $this->actingAsSuperAdmin();
+        $websites = Website::factory()->count(3)->create(['created_by' => $user->id]);
 
         Livewire::test(ListWebsites::class)
             ->assertCanSeeTableRecords($websites);
@@ -30,9 +31,9 @@ class WebsiteResourceTest extends TestCase
 
     public function test_super_admin_can_search_websites(): void
     {
-        $this->actingAsSuperAdmin();
-        $website1 = Website::factory()->create(['name' => 'Test Site One']);
-        $website2 = Website::factory()->create(['name' => 'Another Site']);
+        $user = $this->actingAsSuperAdmin();
+        $website1 = Website::factory()->create(['name' => 'Test Site One', 'created_by' => $user->id]);
+        $website2 = Website::factory()->create(['name' => 'Another Site', 'created_by' => $user->id]);
 
         Livewire::test(ListWebsites::class)
             ->searchTable('Test Site')
@@ -52,10 +53,11 @@ class WebsiteResourceTest extends TestCase
     {
         $user = $this->actingAsSuperAdmin();
 
+        // Use an existing valid website URL instead of mocking
         Livewire::test(CreateWebsite::class)
             ->fillForm([
                 'name' => 'Test Website',
-                'url' => 'https://test.com',
+                'url' => 'https://example.com',
                 'description' => 'Test description',
                 'uptime_check' => true,
                 'uptime_interval' => 60,
@@ -65,7 +67,7 @@ class WebsiteResourceTest extends TestCase
 
         $this->assertDatabaseHas('websites', [
             'name' => 'Test Website',
-            'url' => 'https://test.com',
+            'url' => 'https://example.com',
             'created_by' => $user->id,
         ]);
     }
@@ -85,8 +87,8 @@ class WebsiteResourceTest extends TestCase
 
     public function test_super_admin_can_render_edit_page(): void
     {
-        $this->actingAsSuperAdmin();
-        $website = Website::factory()->create();
+        $user = $this->actingAsSuperAdmin();
+        $website = Website::factory()->create(['created_by' => $user->id]);
 
         Livewire::test(EditWebsite::class, ['record' => $website->id])
             ->assertSuccessful();
@@ -94,8 +96,12 @@ class WebsiteResourceTest extends TestCase
 
     public function test_super_admin_can_update_website(): void
     {
-        $this->actingAsSuperAdmin();
-        $website = Website::factory()->create(['name' => 'Old Name']);
+        $user = $this->actingAsSuperAdmin();
+        $website = Website::factory()->create([
+            'name' => 'Old Name',
+            'created_by' => $user->id,
+            'url' => 'https://example.com',
+        ]);
 
         Livewire::test(EditWebsite::class, ['record' => $website->id])
             ->fillForm(['name' => 'New Name'])
@@ -110,8 +116,8 @@ class WebsiteResourceTest extends TestCase
 
     public function test_super_admin_can_delete_website(): void
     {
-        $this->actingAsSuperAdmin();
-        $website = Website::factory()->create();
+        $user = $this->actingAsSuperAdmin();
+        $website = Website::factory()->create(['created_by' => $user->id]);
 
         Livewire::test(EditWebsite::class, ['record' => $website->id])
             ->callAction('delete');
@@ -121,12 +127,18 @@ class WebsiteResourceTest extends TestCase
         ]);
     }
 
-    public function test_regular_user_cannot_access_website_resource(): void
+    public function test_regular_user_can_access_website_resource_but_sees_only_own_websites(): void
     {
         $user = User::factory()->create();
         $this->actingAs($user);
 
+        // Create websites for this user and another user
+        $ownWebsite = Website::factory()->create(['created_by' => $user->id]);
+        $otherWebsite = Website::factory()->create(); // Created by factory's default user
+
         Livewire::test(ListWebsites::class)
-            ->assertForbidden();
+            ->assertSuccessful()
+            ->assertCanSeeTableRecords([$ownWebsite])
+            ->assertCanNotSeeTableRecords([$otherWebsite]);
     }
 }

@@ -59,9 +59,12 @@ class WebsiteTest extends TestCase
     public function test_website_has_many_notification_channels(): void
     {
         $website = Website::factory()->create();
-        NotificationSetting::factory()->count(2)->create([
-            'website_id' => $website->id,
-        ]);
+        NotificationSetting::factory()
+            ->websiteScope()
+            ->count(2)
+            ->create([
+                'website_id' => $website->id,
+            ]);
 
         $this->assertCount(2, $website->notificationChannels);
     }

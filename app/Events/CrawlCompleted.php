@@ -2,7 +2,6 @@
 
 namespace App\Events;
 
-use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -11,7 +10,6 @@ use Illuminate\Queue\SerializesModels;
 class CrawlCompleted implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
-
 
     /**
      * Create a new event instance.
@@ -33,7 +31,7 @@ class CrawlCompleted implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new \Illuminate\Broadcasting\Channel('seo-checks.' . $this->seoCheckId),
+            new \Illuminate\Broadcasting\Channel('seo-checks.'.$this->seoCheckId),
         ];
     }
 

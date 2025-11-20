@@ -15,7 +15,7 @@ class WebsiteLogHistoryFactory extends Factory
         return [
             'website_id' => Website::factory(),
             'http_status_code' => 200,
-            'response_time_ms' => fake()->numberBetween(100, 1000),
+            'speed' => fake()->numberBetween(100, 1000),
         ];
     }
 
@@ -29,7 +29,7 @@ class WebsiteLogHistoryFactory extends Factory
     public function slow(): static
     {
         return $this->state(fn (array $attributes) => [
-            'response_time_ms' => fake()->numberBetween(3000, 10000),
+            'speed' => fake()->numberBetween(3000, 10000),
         ]);
     }
 }

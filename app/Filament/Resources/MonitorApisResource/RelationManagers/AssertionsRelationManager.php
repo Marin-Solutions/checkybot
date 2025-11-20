@@ -38,7 +38,7 @@ class AssertionsRelationManager extends RelationManager
                         'regex_match' => 'Regex Match',
                     ])
                     ->reactive()
-                    ->afterStateUpdated(fn($state, Forms\Set $set) => $set('comparison_operator', null)),
+                    ->afterStateUpdated(fn ($state, Forms\Set $set) => $set('comparison_operator', null)),
 
                 Forms\Components\Select::make('expected_type')
                     ->options([
@@ -50,8 +50,8 @@ class AssertionsRelationManager extends RelationManager
                         'float' => 'Float',
                         'null' => 'Null',
                     ])
-                    ->required(fn(Forms\Get $get) => $get('assertion_type') === 'type_check')
-                    ->visible(fn(Forms\Get $get) => $get('assertion_type') === 'type_check'),
+                    ->required(fn (Forms\Get $get) => $get('assertion_type') === 'type_check')
+                    ->visible(fn (Forms\Get $get) => $get('assertion_type') === 'type_check'),
 
                 Forms\Components\Select::make('comparison_operator')
                     ->options([
@@ -63,17 +63,17 @@ class AssertionsRelationManager extends RelationManager
                         '<=' => 'Less Than or Equal',
                         'contains' => 'Contains',
                     ])
-                    ->required(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->visible(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length'])),
+                    ->required(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
+                    ->visible(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length'])),
 
                 Forms\Components\TextInput::make('expected_value')
-                    ->required(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->visible(fn(Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->label(fn(Forms\Get $get) => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value'),
+                    ->required(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
+                    ->visible(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
+                    ->label(fn (Forms\Get $get) => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value'),
 
                 Forms\Components\TextInput::make('regex_pattern')
-                    ->required(fn(Forms\Get $get) => $get('assertion_type') === 'regex_match')
-                    ->visible(fn(Forms\Get $get) => $get('assertion_type') === 'regex_match')
+                    ->required(fn (Forms\Get $get) => $get('assertion_type') === 'regex_match')
+                    ->visible(fn (Forms\Get $get) => $get('assertion_type') === 'regex_match')
                     ->helperText('Regular expression pattern (e.g. /^[0-9]+$/)')
                     ->placeholder('/pattern/'),
 
@@ -100,19 +100,19 @@ class AssertionsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('assertion_type')
                     ->label('Type')
                     ->badge()
-                    ->formatStateUsing(fn(string $state): string => str_replace('_', ' ', ucfirst($state))),
+                    ->formatStateUsing(fn (string $state): string => str_replace('_', ' ', ucfirst($state))),
 
                 Tables\Columns\TextColumn::make('expected_type')
                     ->label('Expected Type')
-                    ->visible(fn($record) => $record && $record->assertion_type === 'type_check'),
+                    ->visible(fn ($record) => $record && $record->assertion_type === 'type_check'),
 
                 Tables\Columns\TextColumn::make('comparison_operator')
                     ->label('Operator')
-                    ->visible(fn($record) => $record && in_array($record->assertion_type, ['value_compare', 'array_length'])),
+                    ->visible(fn ($record) => $record && in_array($record->assertion_type, ['value_compare', 'array_length'])),
 
                 Tables\Columns\TextColumn::make('expected_value')
                     ->label('Expected Value')
-                    ->visible(fn($record) => $record && in_array($record->assertion_type, ['value_compare', 'array_length'])),
+                    ->visible(fn ($record) => $record && in_array($record->assertion_type, ['value_compare', 'array_length'])),
 
                 Tables\Columns\IconColumn::make('is_active')
                     ->label('Active')

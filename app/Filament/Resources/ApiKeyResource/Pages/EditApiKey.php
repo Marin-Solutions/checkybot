@@ -21,4 +21,4 @@ class EditApiKey extends EditRecord
     {
         abort_unless($this->record->user_id === auth()->id(), 403);
     }
-} 
+}

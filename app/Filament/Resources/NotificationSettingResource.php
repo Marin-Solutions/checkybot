@@ -60,12 +60,12 @@ class NotificationSettingResource extends Resource
                                     NotificationChannelTypesEnum::WEBHOOK->name => ['required', 'url'],
                                 };
                             })
-                            ->hidden(fn($get) => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->name),
+                            ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->name),
                         Forms\Components\Select::make('notification_channel_id')
                             ->label('Notification Channel')
                             ->required()
-                            ->options(fn() => auth()->user()->webhookChannels()->pluck('title', 'id'))
-                            ->hidden(fn($get) => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->name),
+                            ->options(fn () => auth()->user()->webhookChannels()->pluck('title', 'id'))
+                            ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->name),
                     ])->columns(2),
             ]);
     }
@@ -80,9 +80,9 @@ class NotificationSettingResource extends Resource
                     ->label('Channel Type'),
                 Tables\Columns\TextColumn::make('channel.title')
                     ->label('Channel Name')
-                    ->visible(fn($record) => $record && $record->channel_type === NotificationChannelTypesEnum::WEBHOOK->name),
+                    ->visible(fn ($record) => $record && $record->channel_type === NotificationChannelTypesEnum::WEBHOOK->name),
                 Tables\Columns\TextColumn::make('address')
-                    ->visible(fn($record) => $record && $record->channel_type === NotificationChannelTypesEnum::MAIL->name),
+                    ->visible(fn ($record) => $record && $record->channel_type === NotificationChannelTypesEnum::MAIL->name),
                 Tables\Columns\ToggleColumn::make('flag_active')
                     ->label('Active'),
             ])

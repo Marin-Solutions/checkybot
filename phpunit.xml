@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
-         bootstrap="vendor/autoload.php"
+         bootstrap="tests/bootstrap.php"
          colors="true"
          failOnRisky="true"
          failOnWarning="true"
@@ -42,5 +42,7 @@
         <env name="HORIZON_ENABLED" value="false"/>
         <env name="BROADCAST_DRIVER" value="log"/>
         <env name="CACHE_PREFIX" value="test_"/>
+        <env name="MONITOR_API_TIMEOUT" value="1"/>
+        <env name="MONITOR_API_RETRIES" value="0"/>
     </php>
 </phpunit>

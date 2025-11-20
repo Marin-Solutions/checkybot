@@ -1,34 +1,37 @@
 <?php
 
-    namespace App\Models;
+namespace App\Models;
 
-    use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
-    class PloiServers extends Model
+class PloiServers extends Model
+{
+    use HasFactory;
+
+    protected $fillable = [
+        'ploi_account_id',
+        'server_id',
+        'type',
+        'name',
+        'ip_address',
+        'php_version',
+        'mysql_version',
+        'sites_count',
+        'status',
+        'status_id',
+        'created_by',
+    ];
+
+    protected $casts = [];
+
+    public function PloiAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        protected $fillable = [
-            'ploi_account_id',
-            'server_id',
-            'type',
-            'name',
-            'ip_address',
-            'php_version',
-            'mysql_version',
-            'sites_count',
-            'status',
-            'status_id',
-            'created_by'
-        ];
-
-        protected $casts = [];
-
-        public function PloiAccount(): \Illuminate\Database\Eloquent\Relations\BelongsTo
-        {
-            return $this->belongsTo(PloiAccounts::class, 'ploi_account_id');
-        }
-
-        public function checkybotServer(): \Illuminate\Database\Eloquent\Relations\HasOne
-        {
-            return $this->hasOne(Server::class, 'ploi_server_id', 'id');
-        }
+        return $this->belongsTo(PloiAccounts::class, 'ploi_account_id');
     }
+
+    public function checkybotServer(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(Server::class, 'ploi_server_id', 'id');
+    }
+}

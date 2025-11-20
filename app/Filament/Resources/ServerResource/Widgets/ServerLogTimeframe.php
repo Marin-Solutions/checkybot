@@ -34,7 +34,7 @@ class ServerLogTimeframe extends Widget implements HasForms
                             ->prefix('Show')
                             ->hiddenLabel()
                             ->selectablePlaceholder(false)
-                            ->afterStateUpdated(fn(TimeFrame $state) => $this->dispatch('updateTimeframe', timeFrame: $state))
+                            ->afterStateUpdated(fn (TimeFrame $state) => $this->dispatch('updateTimeframe', timeFrame: $state))
                             ->columnStart(['sm' => 2, 'xl' => 3])->columns(1)
                             ->live(),
                     ])->columns(['sm' => 2, 'xl' => 3]),

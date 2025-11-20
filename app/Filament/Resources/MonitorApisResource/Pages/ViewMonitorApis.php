@@ -3,9 +3,8 @@
 namespace App\Filament\Resources\MonitorApisResource\Pages;
 
 use App\Filament\Resources\MonitorApisResource;
-use Filament\Resources\Pages\ViewRecord;
-use App\Models\MonitorApiResult;
 use Filament\Actions;
+use Filament\Resources\Pages\ViewRecord;
 
 class ViewMonitorApis extends ViewRecord
 {

@@ -9,10 +9,8 @@ use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
@@ -60,7 +58,7 @@ class NotificationChannelsResource extends Resource
                     ->maxLength(2083)
                     ->reactive()
                     ->rules([
-                        fn(\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
+                        fn (\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
 
                             if ($get('method') === WebhookHttpMethod::GET->value) {
                                 if (! preg_match(self::$urlPattern, $value)) {
@@ -81,7 +79,7 @@ class NotificationChannelsResource extends Resource
                 KeyValue::make('request_body')
                     ->columnSpanFull()
                     ->rules([
-                        fn(\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
+                        fn (\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
 
                             if ($get('is_post_method')) {
 
@@ -96,7 +94,7 @@ class NotificationChannelsResource extends Resource
                             }
                         },
                     ])
-                    ->visible(fn($get) => $get('is_post_method')),
+                    ->visible(fn ($get) => $get('is_post_method')),
                 Textarea::make('description')
                     ->columnSpanFull(),
             ]);

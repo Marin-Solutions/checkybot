@@ -22,7 +22,7 @@ class RamUsedChart extends ChartWidget
         $timeFrame = $this->timeFrame ?? TimeFrame::getDefaultTimeframe();
         $data = ServerInformationHistory::query()
             ->where('server_id', $this->record->id)
-            ->where('created_at', '>=', DB::raw('NOW() - INTERVAL ' . $timeFrame->value))
+            ->where('created_at', '>=', DB::raw('NOW() - INTERVAL '.$timeFrame->value))
             ->pluck('ram_free_percentage', 'created_at');
 
         return [

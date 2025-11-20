@@ -11,8 +11,8 @@ class ApiKeyAuthentication
     public function handle(Request $request, Closure $next)
     {
         $apiKey = $request->header('X-API-Key');
-        
-        if (!$apiKey) {
+
+        if (! $apiKey) {
             return response()->json(['message' => 'API key is missing'], 401);
         }
 
@@ -24,7 +24,7 @@ class ApiKeyAuthentication
             })
             ->first();
 
-        if (!$key) {
+        if (! $key) {
             return response()->json(['message' => 'Invalid or expired API key'], 401);
         }
 
@@ -33,4 +33,4 @@ class ApiKeyAuthentication
 
         return $next($request);
     }
-} 
+}

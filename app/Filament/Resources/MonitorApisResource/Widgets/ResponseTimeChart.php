@@ -28,25 +28,25 @@ class ResponseTimeChart extends ChartWidget
                 <div class="flex gap-2">
                     <button 
                         wire:click="$set(\'timeRange\', \'1h\')"
-                        class="px-3 py-1 text-xs rounded-md font-medium ' . ($this->timeRange === '1h' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500') . ' hover:opacity-80 transition-opacity"
+                        class="px-3 py-1 text-xs rounded-md font-medium '.($this->timeRange === '1h' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500').' hover:opacity-80 transition-opacity"
                     >
                         Last Hour
                     </button>
                     <button 
                         wire:click="$set(\'timeRange\', \'6h\')"
-                        class="px-3 py-1 text-xs rounded-md font-medium ' . ($this->timeRange === '6h' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500') . ' hover:opacity-80 transition-opacity"
+                        class="px-3 py-1 text-xs rounded-md font-medium '.($this->timeRange === '6h' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500').' hover:opacity-80 transition-opacity"
                     >
                         Last 6 Hours
                     </button>
                     <button 
                         wire:click="$set(\'timeRange\', \'24h\')"
-                        class="px-3 py-1 text-xs rounded-md font-medium ' . ($this->timeRange === '24h' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500') . ' hover:opacity-80 transition-opacity"
+                        class="px-3 py-1 text-xs rounded-md font-medium '.($this->timeRange === '24h' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500').' hover:opacity-80 transition-opacity"
                     >
                         Last 24 Hours
                     </button>
                     <button 
                         wire:click="$set(\'timeRange\', \'7d\')"
-                        class="px-3 py-1 text-xs rounded-md font-medium ' . ($this->timeRange === '7d' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500') . ' hover:opacity-80 transition-opacity"
+                        class="px-3 py-1 text-xs rounded-md font-medium '.($this->timeRange === '7d' ? 'bg-primary-600 text-white' : 'bg-gray-600 text-white dark:bg-gray-500').' hover:opacity-80 transition-opacity"
                     >
                         Last 7 Days
                     </button>
@@ -168,10 +168,10 @@ class ResponseTimeChart extends ChartWidget
     private function groupByInterval(\Carbon\Carbon $date, string $interval): string
     {
         return match ($interval) {
-            '5m' => $date->format('Y-m-d H:') . (floor($date->minute / 5) * 5),
-            '15m' => $date->format('Y-m-d H:') . (floor($date->minute / 15) * 15),
+            '5m' => $date->format('Y-m-d H:').(floor($date->minute / 5) * 5),
+            '15m' => $date->format('Y-m-d H:').(floor($date->minute / 15) * 15),
             '1h' => $date->format('Y-m-d H:00'),
-            '8h' => $date->format('Y-m-d') . ' ' . sprintf('%02d', floor($date->hour / 8) * 8) . ':00',
+            '8h' => $date->format('Y-m-d').' '.sprintf('%02d', floor($date->hour / 8) * 8).':00',
             default => $date->format('Y-m-d H:00')
         };
     }

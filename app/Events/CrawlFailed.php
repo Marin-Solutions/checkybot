@@ -31,7 +31,7 @@ class CrawlFailed implements ShouldBroadcastNow
     public function broadcastOn(): array
     {
         return [
-            new Channel('seo-checks.' . $this->seoCheckId),
+            new Channel('seo-checks.'.$this->seoCheckId),
         ];
     }
 

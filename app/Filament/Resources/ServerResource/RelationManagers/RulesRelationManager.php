@@ -69,9 +69,9 @@ class RulesRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('metric')
                     ->badge()
                     ->color('primary')
-                    ->formatStateUsing(fn(string $state): string => ucfirst(str_replace('_', ' ', $state))),
+                    ->formatStateUsing(fn (string $state): string => ucfirst(str_replace('_', ' ', $state))),
                 Tables\Columns\TextColumn::make('operator')
-                    ->formatStateUsing(fn(string $state): string => match ($state) {
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
                         '>' => 'Above',
                         '<' => 'Below',
                         '=' => 'Equals',

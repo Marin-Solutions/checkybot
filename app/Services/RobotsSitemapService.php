@@ -22,7 +22,7 @@ class RobotsSitemapService
 
             return $this->parseRobotsTxt($robotsContent, $url);
         } catch (\Exception $e) {
-            Log::warning("Failed to check robots.txt for {$url}: " . $e->getMessage());
+            Log::warning("Failed to check robots.txt for {$url}: ".$e->getMessage());
 
             // If we can't check robots.txt, allow crawling by default
             return true;
@@ -35,14 +35,14 @@ class RobotsSitemapService
     private function fetchRobotsTxt(string $baseUrl): string
     {
         try {
-            $robotsUrl = rtrim($baseUrl, '/') . '/robots.txt';
+            $robotsUrl = rtrim($baseUrl, '/').'/robots.txt';
             $response = Http::timeout(10)->get($robotsUrl);
 
             if ($response->successful()) {
                 return $response->body();
             }
         } catch (\Exception $e) {
-            Log::warning("Failed to fetch robots.txt from {$baseUrl}: " . $e->getMessage());
+            Log::warning("Failed to fetch robots.txt from {$baseUrl}: ".$e->getMessage());
         }
 
         return '';
@@ -125,7 +125,7 @@ class RobotsSitemapService
         $pattern = str_replace('\*', '.*', $pattern);
         $pattern = str_replace('\$', '$', $pattern);
 
-        return preg_match('/^' . $pattern . '/', $urlPath);
+        return preg_match('/^'.$pattern.'/', $urlPath);
     }
 
     /**
@@ -137,7 +137,7 @@ class RobotsSitemapService
         $scheme = $parsed['scheme'] ?? 'https';
         $host = $parsed['host'] ?? '';
 
-        return $scheme . '://' . $host;
+        return $scheme.'://'.$host;
     }
 
     /**
@@ -150,9 +150,9 @@ class RobotsSitemapService
         try {
             // Try common sitemap locations
             $sitemapLocations = [
-                $baseUrl . '/sitemap.xml',
-                $baseUrl . '/sitemap_index.xml',
-                $baseUrl . '/sitemaps.xml',
+                $baseUrl.'/sitemap.xml',
+                $baseUrl.'/sitemap_index.xml',
+                $baseUrl.'/sitemaps.xml',
             ];
 
             foreach ($sitemapLocations as $sitemapUrl) {
@@ -169,7 +169,7 @@ class RobotsSitemapService
                 $sitemapUrls = array_merge($sitemapUrls, $robotsSitemapUrls);
             }
         } catch (\Exception $e) {
-            Log::warning("Failed to get sitemap URLs for {$baseUrl}: " . $e->getMessage());
+            Log::warning("Failed to get sitemap URLs for {$baseUrl}: ".$e->getMessage());
         }
 
         return array_unique($sitemapUrls);
@@ -215,7 +215,7 @@ class RobotsSitemapService
 
             return $urls;
         } catch (\Exception $e) {
-            Log::warning("Failed to parse sitemap {$sitemapUrl}: " . $e->getMessage());
+            Log::warning("Failed to parse sitemap {$sitemapUrl}: ".$e->getMessage());
 
             return [];
         }
@@ -227,7 +227,7 @@ class RobotsSitemapService
     private function getSitemapFromRobots(string $baseUrl): array
     {
         try {
-            $robotsUrl = rtrim($baseUrl, '/') . '/robots.txt';
+            $robotsUrl = rtrim($baseUrl, '/').'/robots.txt';
             $response = Http::timeout(10)->get($robotsUrl);
 
             if (! $response->successful()) {
@@ -250,7 +250,7 @@ class RobotsSitemapService
 
             return $sitemapUrls;
         } catch (\Exception $e) {
-            Log::warning("Failed to get sitemap from robots.txt for {$baseUrl}: " . $e->getMessage());
+            Log::warning("Failed to get sitemap from robots.txt for {$baseUrl}: ".$e->getMessage());
 
             return [];
         }

@@ -14,9 +14,12 @@ class MonitorApiAssertionFactory extends Factory
     {
         return [
             'monitor_api_id' => MonitorApis::factory(),
-            'path' => 'data.status',
+            'data_path' => 'data.status',
+            'assertion_type' => 'value_compare',
+            'comparison_operator' => '=',
             'expected_value' => 'success',
             'sort_order' => fake()->numberBetween(1, 10),
+            'is_active' => true,
         ];
     }
 

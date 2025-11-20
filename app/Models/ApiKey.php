@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
 
 class ApiKey extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'name',
         'key',
@@ -30,6 +33,6 @@ class ApiKey extends Model
 
     public static function generateKey(): string
     {
-        return 'ck_' . Str::random(32);
+        return 'ck_'.Str::random(32);
     }
-} 
+}

@@ -24,36 +24,41 @@ class PurgeServerLogs extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): void
     {
         // For the last 24 hours we will keep the data of every minute
         // For data older than 24 hours but younger than 7 days we will keep the data of every ten minutes
         // For data older than 7 days we will keep the data of every hour
 
-        // get the data older than 24 hours and younger than 7 days
-        $dataOlderThan24Hours = ServerInformationHistory::query()
+        // Delete data older than 24 hours and younger than 7 days where minute is NOT a multiple of 10
+        $midRangeRecords = ServerInformationHistory::query()
             ->where('created_at', '<', now()->subHours(24))
-            ->where('created_at', '>=', now()->subDays(7));
+            ->where('created_at', '>=', now()->subDays(7))
+            ->get();
 
-        // Now delete the data where the minute is not multiple of 10
-        $dataOlderThan24Hours->where(function ($query) {
-            $query->where('minute', '0')
-                ->orWhere('minute', '10')
-                ->orWhere('minute', '20')
-                ->orWhere('minute', '30')
-                ->orWhere('minute', '40')
-                ->orWhere('minute', '50');
-        });
+        $deletedMidRange = 0;
+        foreach ($midRangeRecords as $record) {
+            $minute = (int) $record->created_at->format('i');
+            if (! in_array($minute, [0, 10, 20, 30, 40, 50])) {
+                $record->delete();
+                $deletedMidRange++;
+            }
+        }
 
-        $dataOlderThan24Hours->delete();
+        // Delete data older than 7 days where minute is NOT 00
+        $oldRecords = ServerInformationHistory::query()
+            ->where('created_at', '<', now()->subDays(7))
+            ->get();
 
-        // get the data older than 7 days
-        $dataOlderThan7Days = ServerInformationHistory::query()
-            ->where('created_at', '<', now()->subDays(7));
+        $deletedOld = 0;
+        foreach ($oldRecords as $record) {
+            $minute = (int) $record->created_at->format('i');
+            if ($minute !== 0) {
+                $record->delete();
+                $deletedOld++;
+            }
+        }
 
-        // Now delete the data where minute is not 00
-        $dataOlderThan7Days->where('minute', '!=', '00');
-
-        $dataOlderThan7Days->delete();
+        $this->comment("Purged {$deletedMidRange} mid-range logs and {$deletedOld} old logs.");
     }
 }

@@ -3,33 +3,24 @@
 namespace App\Jobs;
 
 use App\Enums\WebsiteServicesEnum;
-use App\Models\NotificationSetting;
-use Carbon\Carbon;
-use App\Models\User;
-
-
-use App\Models\Website;
 use App\Mail\EmailReminderSsl;
-use Illuminate\Support\Collection;
+use App\Models\NotificationSetting;
+use App\Models\User;
+use App\Models\Website;
+use Carbon\Carbon;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Queue\InteractsWithQueue;
 use Spatie\SslCertificate\SslCertificate;
-use Illuminate\Foundation\Queue\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
 
 class CheckSslExpiryDateJob implements ShouldQueue
 {
     use Queueable;
 
-    protected Website $website;
-
-    public function __construct(array $websiteData)
-    {
-        $this->website = Website::findOrFail($websiteData['id']);
-    }
+    public function __construct(
+        protected Website $website
+    ) {}
 
     /**
      * Execute the job.
@@ -42,6 +33,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
         if ($newExpiryDate->gt($currentExpiryDate)) {
             $this->website->update(['ssl_expiry_date' => $newExpiryDate]);
+
             return;
         }
 
@@ -49,17 +41,17 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
         if ($user) {
             $data = [
-                'user'     => $user,
+                'user' => $user,
                 'daysLeft' => $this->website->days_left,
-                'url'      => $this->website->url
+                'url' => $this->website->url,
             ];
 
             /* Individual website notification */
             $individualNotifications = $this->website->notificationChannels
                 ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name]);
 
-            if (!empty($individualNotifications)) {
-                $individualNotifications->each(function (NotificationSetting $notification) use ($user, $data) {
+            if (! empty($individualNotifications)) {
+                $individualNotifications->each(function (NotificationSetting $notification) use ($data) {
                     $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
                 });
             }
@@ -68,8 +60,8 @@ class CheckSslExpiryDateJob implements ShouldQueue
             $globalNotifications = $this->website->user->globalNotificationChannels
                 ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name]);
 
-            if (!empty($globalNotifications)) {
-                $globalNotifications->each(function (NotificationSetting $notification) use ($user, $data) {
+            if (! empty($globalNotifications)) {
+                $globalNotifications->each(function (NotificationSetting $notification) use ($data) {
                     $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
                 });
             } else {

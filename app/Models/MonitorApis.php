@@ -21,11 +21,13 @@ class MonitorApis extends Model
         'url',
         'data_path',
         'headers',
+        'save_failed_response',
         'created_by',
     ];
 
     protected $casts = [
         'headers' => 'array',
+        'save_failed_response' => 'boolean',
     ];
 
     public function user(): BelongsTo
@@ -53,7 +55,8 @@ class MonitorApis extends Model
         $httpConfig = self::getHttpConfiguration();
 
         try {
-            $httpClient = self::configureHttpClient($httpConfig, $data['headers'] ?? []);
+            $headers = self::normalizeHeaders($data['headers'] ?? []);
+            $httpClient = self::configureHttpClient($httpConfig, $headers);
             $request = $httpClient->get($url);
 
             $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data);
@@ -140,6 +143,21 @@ class MonitorApis extends Model
         ];
     }
 
+    private static function normalizeHeaders(mixed $headers): array
+    {
+        if (empty($headers)) {
+            return [];
+        }
+
+        if (is_string($headers)) {
+            $decoded = json_decode($headers, true);
+
+            return is_array($decoded) ? $decoded : [];
+        }
+
+        return is_array($headers) ? $headers : [];
+    }
+
     private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest
     {
         $client = Http::timeout($config['timeout'])
@@ -185,12 +203,19 @@ class MonitorApis extends Model
 
     private static function runAssertions(array $data, array $responseData): array
     {
-        if (isset($data['data_path'])) {
-            return self::runDataPathAssertion($data, $responseData);
+        // Prioritize stored assertions over simple data_path check
+        if (isset($data['id'])) {
+            $api = self::with('assertions')->find($data['id']);
+
+            // If monitor has stored assertions, use those
+            if ($api && $api->assertions->isNotEmpty()) {
+                return self::runStoredAssertions($data, $responseData);
+            }
         }
 
-        if (isset($data['id'])) {
-            return self::runStoredAssertions($data, $responseData);
+        // Fall back to simple data_path existence check
+        if (isset($data['data_path'])) {
+            return self::runDataPathAssertion($data, $responseData);
         }
 
         return $responseData;

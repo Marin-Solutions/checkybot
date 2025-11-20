@@ -55,6 +55,10 @@ class MonitorApisResource extends Resource
                     ->helperText('Optional headers to include in the request')
                     ->columnSpanFull()
                     ->addActionLabel('Add Header'),
+                Forms\Components\Toggle::make('save_failed_response')
+                    ->label('Save Response Body on Failure')
+                    ->helperText('When enabled, the full response body will be saved when assertions fail')
+                    ->default(true),
             ]);
     }
 
@@ -71,7 +75,7 @@ class MonitorApisResource extends Resource
                 Tables\Columns\TextColumn::make('avg_response_time')
                     ->label('Avg Response Time (ms)')
                     ->default('-')
-                    ->formatStateUsing(fn($state) => $state === '-' ? '-' : round($state))
+                    ->formatStateUsing(fn ($state) => $state === '-' ? '-' : round($state))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()

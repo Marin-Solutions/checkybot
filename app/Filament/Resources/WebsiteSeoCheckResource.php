@@ -32,14 +32,14 @@ class WebsiteSeoCheckResource extends Resource
                     ->formatStateUsing(function ($state, $record) {
                         $latestCheck = $record->latestSeoCheck;
                         if ($latestCheck && in_array($latestCheck->status, ['running', 'pending'])) {
-                            return $state . ' 🔄';
+                            return $state.' 🔄';
                         }
 
                         return $state;
                     }),
                 Tables\Columns\TextColumn::make('url')
                     ->label('URL')
-                    ->url(fn($record) => $record->url)
+                    ->url(fn ($record) => $record->url)
                     ->openUrlInNewTab()
                     ->searchable()
                     ->sortable()
@@ -47,7 +47,7 @@ class WebsiteSeoCheckResource extends Resource
                 Tables\Columns\TextColumn::make('latest_seo_check_status')
                     ->label('Latest Status')
                     ->badge()
-                    ->color(fn(?string $state): string => match ($state) {
+                    ->color(fn (?string $state): string => match ($state) {
                         'completed' => 'success',
                         'running' => 'warning',
                         'failed' => 'danger',
@@ -92,7 +92,7 @@ class WebsiteSeoCheckResource extends Resource
                         // Use computed health score directly (most efficient)
                         $score = $seoCheck->computed_health_score ?? 0;
 
-                        return number_format($score, 1) . '%';
+                        return number_format($score, 1).'%';
                     }),
                 Tables\Columns\TextColumn::make('latestSeoCheck.computed_errors_count')
                     ->label('Errors')
@@ -147,7 +147,7 @@ class WebsiteSeoCheckResource extends Resource
                 \Filament\Actions\Action::make('view_checks')
                     ->label('View Checks')
                     ->icon('heroicon-o-eye')
-                    ->url(fn($record) => route('filament.admin.resources.seo-checks.index', ['website_id' => $record->id]))
+                    ->url(fn ($record) => route('filament.admin.resources.seo-checks.index', ['website_id' => $record->id]))
                     ->openUrlInNewTab(),
                 \Filament\Actions\Action::make('view_latest_progress')
                     ->label('View Progress')
@@ -187,7 +187,7 @@ class WebsiteSeoCheckResource extends Resource
                         } catch (\Exception $e) {
                             \Filament\Notifications\Notification::make()
                                 ->title('Error Starting SEO Check')
-                                ->body('Failed to start SEO check: ' . $e->getMessage())
+                                ->body('Failed to start SEO check: '.$e->getMessage())
                                 ->danger()
                                 ->send();
                         }

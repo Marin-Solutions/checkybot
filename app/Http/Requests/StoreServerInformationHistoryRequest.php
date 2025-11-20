@@ -17,15 +17,14 @@ class StoreServerInformationHistoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'cpu_load'=> ['required'],
-            's'=> ['required'],
-            'ram_free_percentage'=> ['required'],
-            'ram_free'=> ['required'],
-            'disk_free_percentage'=> ['required'],
-            'disk_free_bytes'=> ['required']
+            'cpu_load' => ['required'],
+            's' => ['required'],
+            'ram_free_percentage' => ['required'],
+            'ram_free' => ['required'],
+            'disk_free_percentage' => ['required'],
+            'disk_free_bytes' => ['required'],
         ];
     }
-
 
     public function messages()
     {
@@ -42,7 +41,7 @@ class StoreServerInformationHistoryRequest extends FormRequest
     protected function prepareForValidation()
     {
         $this->merge([
-            'server_id'=> $this->s
+            'server_id' => $this->s,
         ]);
     }
 }
