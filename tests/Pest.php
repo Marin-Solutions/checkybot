@@ -39,7 +39,12 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+function assertDatabaseHas(string $table, array $data, ?string $connection = null): void
 {
-    // ..
+    test()->assertDatabaseHas($table, $data, $connection);
+}
+
+function assertDatabaseMissing(string $table, array $data, ?string $connection = null): void
+{
+    test()->assertDatabaseMissing($table, $data, $connection);
 }

@@ -1,84 +1,59 @@
 <?php
 
-namespace Tests\Unit\Enums;
-
 use App\Enums\WebhookHttpMethod;
-use PHPUnit\Framework\Attributes\Test;
-use Tests\TestCase;
 
-final class WebhookHttpMethodTest extends TestCase
-{
-    #[Test]
-    public function it_has_all_expected_cases(): void
-    {
-        $cases = WebhookHttpMethod::cases();
+test('it has all expected cases', function () {
+    $cases = WebhookHttpMethod::cases();
 
-        $this->assertCount(2, $cases);
+    expect($cases)->toHaveCount(2);
+});
+
+test('it contains all expected case instances', function () {
+    $cases = WebhookHttpMethod::cases();
+
+    expect($cases)->toContain(WebhookHttpMethod::GET);
+    expect($cases)->toContain(WebhookHttpMethod::POST);
+});
+
+test('it has correct values for all cases', function () {
+    expect(WebhookHttpMethod::GET->value)->toBe('GET');
+    expect(WebhookHttpMethod::POST->value)->toBe('POST');
+});
+
+test('all values are uppercase', function () {
+    foreach (WebhookHttpMethod::cases() as $method) {
+        expect($method->value)->toBe(strtoupper($method->value));
     }
+});
 
-    #[Test]
-    public function it_contains_all_expected_case_instances(): void
-    {
-        $cases = WebhookHttpMethod::cases();
+test('it can be serialized to string', function () {
+    expect((string) WebhookHttpMethod::GET->value)->toBe('GET');
+    expect((string) WebhookHttpMethod::POST->value)->toBe('POST');
+});
 
-        $this->assertContains(WebhookHttpMethod::GET, $cases);
-        $this->assertContains(WebhookHttpMethod::POST, $cases);
-    }
+test('it can be instantiated from value', function () {
+    expect(WebhookHttpMethod::from('GET'))->toBe(WebhookHttpMethod::GET);
+    expect(WebhookHttpMethod::from('POST'))->toBe(WebhookHttpMethod::POST);
+});
 
-    #[Test]
-    public function it_has_correct_values_for_all_cases(): void
-    {
-        $this->assertEquals('GET', WebhookHttpMethod::GET->value);
-        $this->assertEquals('POST', WebhookHttpMethod::POST->value);
-    }
+test('it returns null for invalid value with try from', function () {
+    expect(WebhookHttpMethod::tryFrom('PUT'))->toBeNull();
+    expect(WebhookHttpMethod::tryFrom('DELETE'))->toBeNull();
+    expect(WebhookHttpMethod::tryFrom('PATCH'))->toBeNull();
+});
 
-    #[Test]
-    public function all_values_are_uppercase(): void
-    {
-        foreach (WebhookHttpMethod::cases() as $method) {
-            $this->assertEquals(strtoupper($method->value), $method->value);
-        }
-    }
+test('it is case sensitive', function () {
+    expect(WebhookHttpMethod::tryFrom('get'))->toBeNull();
+    expect(WebhookHttpMethod::tryFrom('post'))->toBeNull();
+    expect(WebhookHttpMethod::tryFrom('Get'))->toBeNull();
+    expect(WebhookHttpMethod::tryFrom('Post'))->toBeNull();
+});
 
-    #[Test]
-    public function it_can_be_serialized_to_string(): void
-    {
-        $this->assertEquals('GET', (string) WebhookHttpMethod::GET->value);
-        $this->assertEquals('POST', (string) WebhookHttpMethod::POST->value);
-    }
+test('it can be compared with equality', function () {
+    $get1 = WebhookHttpMethod::GET;
+    $get2 = WebhookHttpMethod::GET;
+    $post = WebhookHttpMethod::POST;
 
-    #[Test]
-    public function it_can_be_instantiated_from_value(): void
-    {
-        $this->assertEquals(WebhookHttpMethod::GET, WebhookHttpMethod::from('GET'));
-        $this->assertEquals(WebhookHttpMethod::POST, WebhookHttpMethod::from('POST'));
-    }
-
-    #[Test]
-    public function it_returns_null_for_invalid_value_with_try_from(): void
-    {
-        $this->assertNull(WebhookHttpMethod::tryFrom('PUT'));
-        $this->assertNull(WebhookHttpMethod::tryFrom('DELETE'));
-        $this->assertNull(WebhookHttpMethod::tryFrom('PATCH'));
-    }
-
-    #[Test]
-    public function it_is_case_sensitive(): void
-    {
-        $this->assertNull(WebhookHttpMethod::tryFrom('get'));
-        $this->assertNull(WebhookHttpMethod::tryFrom('post'));
-        $this->assertNull(WebhookHttpMethod::tryFrom('Get'));
-        $this->assertNull(WebhookHttpMethod::tryFrom('Post'));
-    }
-
-    #[Test]
-    public function it_can_be_compared_with_equality(): void
-    {
-        $get1 = WebhookHttpMethod::GET;
-        $get2 = WebhookHttpMethod::GET;
-        $post = WebhookHttpMethod::POST;
-
-        $this->assertTrue($get1 === $get2);
-        $this->assertFalse($get1 === $post);
-    }
-}
+    expect($get1 === $get2)->toBeTrue();
+    expect($get1 === $post)->toBeFalse();
+});

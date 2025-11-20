@@ -1,116 +1,85 @@
 <?php
 
-namespace Tests\Unit\Enums;
-
 use App\Enums\SeoIssueSeverity;
-use PHPUnit\Framework\Attributes\Test;
-use Tests\TestCase;
 
-final class SeoIssueSeverityTest extends TestCase
-{
-    #[Test]
-    public function it_has_all_expected_cases(): void
-    {
-        $cases = SeoIssueSeverity::cases();
+test('it has all expected cases', function () {
+    $cases = SeoIssueSeverity::cases();
 
-        $this->assertCount(3, $cases);
-    }
+    expect($cases)->toHaveCount(3);
+});
 
-    #[Test]
-    public function it_contains_all_expected_case_instances(): void
-    {
-        $cases = SeoIssueSeverity::cases();
+test('it contains all expected case instances', function () {
+    $cases = SeoIssueSeverity::cases();
 
-        $this->assertContains(SeoIssueSeverity::Error, $cases);
-        $this->assertContains(SeoIssueSeverity::Warning, $cases);
-        $this->assertContains(SeoIssueSeverity::Notice, $cases);
-    }
+    expect($cases)->toContain(SeoIssueSeverity::Error);
+    expect($cases)->toContain(SeoIssueSeverity::Warning);
+    expect($cases)->toContain(SeoIssueSeverity::Notice);
+});
 
-    #[Test]
-    public function it_has_correct_values_for_all_cases(): void
-    {
-        $this->assertEquals('error', SeoIssueSeverity::Error->value);
-        $this->assertEquals('warning', SeoIssueSeverity::Warning->value);
-        $this->assertEquals('notice', SeoIssueSeverity::Notice->value);
-    }
+test('it has correct values for all cases', function () {
+    expect(SeoIssueSeverity::Error->value)->toBe('error');
+    expect(SeoIssueSeverity::Warning->value)->toBe('warning');
+    expect(SeoIssueSeverity::Notice->value)->toBe('notice');
+});
 
-    #[Test]
-    public function it_returns_correct_labels(): void
-    {
-        $this->assertEquals('Error', SeoIssueSeverity::Error->getLabel());
-        $this->assertEquals('Warning', SeoIssueSeverity::Warning->getLabel());
-        $this->assertEquals('Notice', SeoIssueSeverity::Notice->getLabel());
-    }
+test('it returns correct labels', function () {
+    expect(SeoIssueSeverity::Error->getLabel())->toBe('Error');
+    expect(SeoIssueSeverity::Warning->getLabel())->toBe('Warning');
+    expect(SeoIssueSeverity::Notice->getLabel())->toBe('Notice');
+});
 
-    #[Test]
-    public function it_returns_correct_colors(): void
-    {
-        $this->assertEquals('danger', SeoIssueSeverity::Error->getColor());
-        $this->assertEquals('warning', SeoIssueSeverity::Warning->getColor());
-        $this->assertEquals('info', SeoIssueSeverity::Notice->getColor());
-    }
+test('it returns correct colors', function () {
+    expect(SeoIssueSeverity::Error->getColor())->toBe('danger');
+    expect(SeoIssueSeverity::Warning->getColor())->toBe('warning');
+    expect(SeoIssueSeverity::Notice->getColor())->toBe('info');
+});
 
-    #[Test]
-    public function it_returns_correct_priorities(): void
-    {
-        $this->assertEquals(1, SeoIssueSeverity::Error->getPriority());
-        $this->assertEquals(2, SeoIssueSeverity::Warning->getPriority());
-        $this->assertEquals(3, SeoIssueSeverity::Notice->getPriority());
-    }
+test('it returns correct priorities', function () {
+    expect(SeoIssueSeverity::Error->getPriority())->toBe(1);
+    expect(SeoIssueSeverity::Warning->getPriority())->toBe(2);
+    expect(SeoIssueSeverity::Notice->getPriority())->toBe(3);
+});
 
-    #[Test]
-    public function error_has_highest_priority(): void
-    {
-        $error = SeoIssueSeverity::Error->getPriority();
-        $warning = SeoIssueSeverity::Warning->getPriority();
-        $notice = SeoIssueSeverity::Notice->getPriority();
+test('error has highest priority', function () {
+    $error = SeoIssueSeverity::Error->getPriority();
+    $warning = SeoIssueSeverity::Warning->getPriority();
+    $notice = SeoIssueSeverity::Notice->getPriority();
 
-        $this->assertTrue($error < $warning);
-        $this->assertTrue($warning < $notice);
-    }
+    expect($error < $warning)->toBeTrue();
+    expect($warning < $notice)->toBeTrue();
+});
 
-    #[Test]
-    public function it_can_be_serialized_to_string(): void
-    {
-        $this->assertEquals('error', (string) SeoIssueSeverity::Error->value);
-        $this->assertEquals('warning', (string) SeoIssueSeverity::Warning->value);
-        $this->assertEquals('notice', (string) SeoIssueSeverity::Notice->value);
-    }
+test('it can be serialized to string', function () {
+    expect((string) SeoIssueSeverity::Error->value)->toBe('error');
+    expect((string) SeoIssueSeverity::Warning->value)->toBe('warning');
+    expect((string) SeoIssueSeverity::Notice->value)->toBe('notice');
+});
 
-    #[Test]
-    public function it_can_be_instantiated_from_value(): void
-    {
-        $this->assertEquals(SeoIssueSeverity::Error, SeoIssueSeverity::from('error'));
-        $this->assertEquals(SeoIssueSeverity::Warning, SeoIssueSeverity::from('warning'));
-        $this->assertEquals(SeoIssueSeverity::Notice, SeoIssueSeverity::from('notice'));
-    }
+test('it can be instantiated from value', function () {
+    expect(SeoIssueSeverity::from('error'))->toBe(SeoIssueSeverity::Error);
+    expect(SeoIssueSeverity::from('warning'))->toBe(SeoIssueSeverity::Warning);
+    expect(SeoIssueSeverity::from('notice'))->toBe(SeoIssueSeverity::Notice);
+});
 
-    #[Test]
-    public function it_returns_null_for_invalid_value_with_try_from(): void
-    {
-        $this->assertNull(SeoIssueSeverity::tryFrom('critical'));
-        $this->assertNull(SeoIssueSeverity::tryFrom('info'));
-    }
+test('it returns null for invalid value with try from', function () {
+    expect(SeoIssueSeverity::tryFrom('critical'))->toBeNull();
+    expect(SeoIssueSeverity::tryFrom('info'))->toBeNull();
+});
 
-    #[Test]
-    public function it_can_be_compared_with_equality(): void
-    {
-        $error1 = SeoIssueSeverity::Error;
-        $error2 = SeoIssueSeverity::Error;
-        $warning = SeoIssueSeverity::Warning;
+test('it can be compared with equality', function () {
+    $error1 = SeoIssueSeverity::Error;
+    $error2 = SeoIssueSeverity::Error;
+    $warning = SeoIssueSeverity::Warning;
 
-        $this->assertTrue($error1 === $error2);
-        $this->assertFalse($error1 === $warning);
-    }
+    expect($error1 === $error2)->toBeTrue();
+    expect($error1 === $warning)->toBeFalse();
+});
 
-    #[Test]
-    public function all_severity_levels_have_unique_priorities(): void
-    {
-        $priorities = array_map(
-            fn (SeoIssueSeverity $severity) => $severity->getPriority(),
-            SeoIssueSeverity::cases()
-        );
+test('all severity levels have unique priorities', function () {
+    $priorities = array_map(
+        fn (SeoIssueSeverity $severity) => $severity->getPriority(),
+        SeoIssueSeverity::cases()
+    );
 
-        $this->assertCount(count(SeoIssueSeverity::cases()), array_unique($priorities));
-    }
-}
+    expect(array_unique($priorities))->toHaveCount(count(SeoIssueSeverity::cases()));
+});

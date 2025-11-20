@@ -1,88 +1,66 @@
 <?php
 
-namespace Tests\Unit\Models;
-
 use App\Models\ApiKey;
 use App\Models\User;
-use Tests\TestCase;
 
-class ApiKeyTest extends TestCase
-{
-    public function test_api_key_belongs_to_user(): void
-    {
-        $user = User::factory()->create();
-        $apiKey = ApiKey::factory()->create(['user_id' => $user->id]);
+test('api key belongs to user', function () {
+    $user = User::factory()->create();
+    $apiKey = ApiKey::factory()->create(['user_id' => $user->id]);
 
-        $this->assertInstanceOf(User::class, $apiKey->user);
-        $this->assertEquals($user->id, $apiKey->user->id);
-    }
+    expect($apiKey->user)->toBeInstanceOf(User::class);
+    expect($apiKey->user->id)->toBe($user->id);
+});
 
-    public function test_api_key_requires_name(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('api key requires name', function () {
+    ApiKey::factory()->create(['name' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-        ApiKey::factory()->create(['name' => null]);
-    }
+test('api key requires key', function () {
+    ApiKey::factory()->create(['key' => null]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-    public function test_api_key_requires_key(): void
-    {
-        $this->expectException(\Illuminate\Database\QueryException::class);
+test('api key has unique key', function () {
+    $key = 'ck_'.\Str::random(40);
+    ApiKey::factory()->create(['key' => $key]);
 
-        ApiKey::factory()->create(['key' => null]);
-    }
+    ApiKey::factory()->create(['key' => $key]);
+})->throws(\Illuminate\Database\QueryException::class);
 
-    public function test_api_key_has_unique_key(): void
-    {
-        $key = 'ck_'.\Str::random(40);
-        ApiKey::factory()->create(['key' => $key]);
+test('api key can be active', function () {
+    $apiKey = ApiKey::factory()->create(['is_active' => true]);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+    expect($apiKey->is_active)->toBeTrue();
+});
 
-        ApiKey::factory()->create(['key' => $key]);
-    }
+test('api key can be inactive', function () {
+    $apiKey = ApiKey::factory()->inactive()->create();
 
-    public function test_api_key_can_be_active(): void
-    {
-        $apiKey = ApiKey::factory()->create(['is_active' => true]);
+    expect($apiKey->is_active)->toBeFalse();
+});
 
-        $this->assertTrue($apiKey->is_active);
-    }
+test('api key can have expiry date', function () {
+    $expiryDate = now()->addMonths(6);
+    $apiKey = ApiKey::factory()->create(['expires_at' => $expiryDate]);
 
-    public function test_api_key_can_be_inactive(): void
-    {
-        $apiKey = ApiKey::factory()->inactive()->create();
+    expect($apiKey->expires_at->format('Y-m-d H:i'))->toBe($expiryDate->format('Y-m-d H:i'));
+});
 
-        $this->assertFalse($apiKey->is_active);
-    }
+test('api key can be expired', function () {
+    $apiKey = ApiKey::factory()->expired()->create();
 
-    public function test_api_key_can_have_expiry_date(): void
-    {
-        $expiryDate = now()->addMonths(6);
-        $apiKey = ApiKey::factory()->create(['expires_at' => $expiryDate]);
+    expect($apiKey->expires_at->isPast())->toBeTrue();
+});
 
-        $this->assertEquals($expiryDate->format('Y-m-d H:i'), $apiKey->expires_at->format('Y-m-d H:i'));
-    }
+test('api key tracks last used at', function () {
+    $apiKey = ApiKey::factory()->recentlyUsed()->create();
 
-    public function test_api_key_can_be_expired(): void
-    {
-        $apiKey = ApiKey::factory()->expired()->create();
+    expect($apiKey->last_used_at)->not->toBeNull();
+    expect($apiKey->last_used_at->isToday())->toBeTrue();
+});
 
-        $this->assertTrue($apiKey->expires_at->isPast());
-    }
+test('api key generates with ck prefix', function () {
+    $apiKey = ApiKey::factory()->create();
 
-    public function test_api_key_tracks_last_used_at(): void
-    {
-        $apiKey = ApiKey::factory()->recentlyUsed()->create();
-
-        $this->assertNotNull($apiKey->last_used_at);
-        $this->assertTrue($apiKey->last_used_at->isToday());
-    }
-
-    public function test_api_key_generates_with_ck_prefix(): void
-    {
-        $apiKey = ApiKey::factory()->create();
-
-        $this->assertStringStartsWith('ck_', $apiKey->key);
-        $this->assertEquals(43, strlen($apiKey->key)); // ck_ + 40 chars
-    }
-}
+    expect($apiKey->key)->toStartWith('ck_');
+    expect(strlen($apiKey->key))->toBe(43); // ck_ + 40 chars
+});

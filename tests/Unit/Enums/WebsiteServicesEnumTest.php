@@ -1,125 +1,94 @@
 <?php
 
-namespace Tests\Unit\Enums;
-
 use App\Enums\WebsiteServicesEnum;
-use PHPUnit\Framework\Attributes\Test;
-use Tests\TestCase;
 
-final class WebsiteServicesEnumTest extends TestCase
-{
-    #[Test]
-    public function it_has_all_expected_cases(): void
-    {
-        $cases = WebsiteServicesEnum::cases();
+test('it has all expected cases', function () {
+    $cases = WebsiteServicesEnum::cases();
 
-        $this->assertCount(3, $cases);
+    expect($cases)->toHaveCount(3);
+});
+
+test('it contains all expected case instances', function () {
+    $cases = WebsiteServicesEnum::cases();
+
+    expect($cases)->toContain(WebsiteServicesEnum::WEBSITE_CHECK);
+    expect($cases)->toContain(WebsiteServicesEnum::API_MONITOR);
+    expect($cases)->toContain(WebsiteServicesEnum::ALL_CHECK);
+});
+
+test('it has correct values for all cases', function () {
+    expect(WebsiteServicesEnum::WEBSITE_CHECK->value)->toBe('WEBSITE_CHECK');
+    expect(WebsiteServicesEnum::API_MONITOR->value)->toBe('API_MONITOR');
+    expect(WebsiteServicesEnum::ALL_CHECK->value)->toBe('ALL_CHECK');
+});
+
+test('it returns correct labels', function () {
+    expect(WebsiteServicesEnum::WEBSITE_CHECK->label())->toBe('Website Check');
+    expect(WebsiteServicesEnum::API_MONITOR->label())->toBe('API Monitor');
+    expect(WebsiteServicesEnum::ALL_CHECK->label())->toBe('All Check');
+});
+
+test('keys method returns array of case names', function () {
+    $keys = WebsiteServicesEnum::keys();
+
+    expect($keys)->toBeArray();
+    expect($keys)->toHaveCount(3);
+    expect($keys)->toContain('WEBSITE_CHECK');
+    expect($keys)->toContain('API_MONITOR');
+    expect($keys)->toContain('ALL_CHECK');
+});
+
+test('to array returns associative array of values and labels', function () {
+    $array = WebsiteServicesEnum::toArray();
+
+    expect($array)->toBeArray();
+    expect($array)->toHaveCount(3);
+    expect($array)->toBe([
+        'WEBSITE_CHECK' => 'Website Check',
+        'API_MONITOR' => 'API Monitor',
+        'ALL_CHECK' => 'All Check',
+    ]);
+});
+
+test('to array keys match enum values', function () {
+    $array = WebsiteServicesEnum::toArray();
+    $keys = array_keys($array);
+
+    foreach (WebsiteServicesEnum::cases() as $case) {
+        expect($keys)->toContain($case->value);
     }
+});
 
-    #[Test]
-    public function it_contains_all_expected_case_instances(): void
-    {
-        $cases = WebsiteServicesEnum::cases();
+test('to array values match labels', function () {
+    $array = WebsiteServicesEnum::toArray();
 
-        $this->assertContains(WebsiteServicesEnum::WEBSITE_CHECK, $cases);
-        $this->assertContains(WebsiteServicesEnum::API_MONITOR, $cases);
-        $this->assertContains(WebsiteServicesEnum::ALL_CHECK, $cases);
+    foreach (WebsiteServicesEnum::cases() as $case) {
+        expect($array[$case->value])->toBe($case->label());
     }
+});
 
-    #[Test]
-    public function it_has_correct_values_for_all_cases(): void
-    {
-        $this->assertEquals('WEBSITE_CHECK', WebsiteServicesEnum::WEBSITE_CHECK->value);
-        $this->assertEquals('API_MONITOR', WebsiteServicesEnum::API_MONITOR->value);
-        $this->assertEquals('ALL_CHECK', WebsiteServicesEnum::ALL_CHECK->value);
-    }
+test('it can be serialized to string', function () {
+    expect((string) WebsiteServicesEnum::WEBSITE_CHECK->value)->toBe('WEBSITE_CHECK');
+    expect((string) WebsiteServicesEnum::API_MONITOR->value)->toBe('API_MONITOR');
+    expect((string) WebsiteServicesEnum::ALL_CHECK->value)->toBe('ALL_CHECK');
+});
 
-    #[Test]
-    public function it_returns_correct_labels(): void
-    {
-        $this->assertEquals('Website Check', WebsiteServicesEnum::WEBSITE_CHECK->label());
-        $this->assertEquals('API Monitor', WebsiteServicesEnum::API_MONITOR->label());
-        $this->assertEquals('All Check', WebsiteServicesEnum::ALL_CHECK->label());
-    }
+test('it can be instantiated from value', function () {
+    expect(WebsiteServicesEnum::from('WEBSITE_CHECK'))->toBe(WebsiteServicesEnum::WEBSITE_CHECK);
+    expect(WebsiteServicesEnum::from('API_MONITOR'))->toBe(WebsiteServicesEnum::API_MONITOR);
+    expect(WebsiteServicesEnum::from('ALL_CHECK'))->toBe(WebsiteServicesEnum::ALL_CHECK);
+});
 
-    #[Test]
-    public function keys_method_returns_array_of_case_names(): void
-    {
-        $keys = WebsiteServicesEnum::keys();
+test('it returns null for invalid value with try from', function () {
+    expect(WebsiteServicesEnum::tryFrom('INVALID_CHECK'))->toBeNull();
+    expect(WebsiteServicesEnum::tryFrom('SERVER_MONITOR'))->toBeNull();
+});
 
-        $this->assertIsArray($keys);
-        $this->assertCount(3, $keys);
-        $this->assertContains('WEBSITE_CHECK', $keys);
-        $this->assertContains('API_MONITOR', $keys);
-        $this->assertContains('ALL_CHECK', $keys);
-    }
+test('it can be compared with equality', function () {
+    $websiteCheck1 = WebsiteServicesEnum::WEBSITE_CHECK;
+    $websiteCheck2 = WebsiteServicesEnum::WEBSITE_CHECK;
+    $apiMonitor = WebsiteServicesEnum::API_MONITOR;
 
-    #[Test]
-    public function to_array_returns_associative_array_of_values_and_labels(): void
-    {
-        $array = WebsiteServicesEnum::toArray();
-
-        $this->assertIsArray($array);
-        $this->assertCount(3, $array);
-        $this->assertEquals([
-            'WEBSITE_CHECK' => 'Website Check',
-            'API_MONITOR' => 'API Monitor',
-            'ALL_CHECK' => 'All Check',
-        ], $array);
-    }
-
-    #[Test]
-    public function to_array_keys_match_enum_values(): void
-    {
-        $array = WebsiteServicesEnum::toArray();
-        $keys = array_keys($array);
-
-        foreach (WebsiteServicesEnum::cases() as $case) {
-            $this->assertContains($case->value, $keys);
-        }
-    }
-
-    #[Test]
-    public function to_array_values_match_labels(): void
-    {
-        $array = WebsiteServicesEnum::toArray();
-
-        foreach (WebsiteServicesEnum::cases() as $case) {
-            $this->assertEquals($case->label(), $array[$case->value]);
-        }
-    }
-
-    #[Test]
-    public function it_can_be_serialized_to_string(): void
-    {
-        $this->assertEquals('WEBSITE_CHECK', (string) WebsiteServicesEnum::WEBSITE_CHECK->value);
-        $this->assertEquals('API_MONITOR', (string) WebsiteServicesEnum::API_MONITOR->value);
-        $this->assertEquals('ALL_CHECK', (string) WebsiteServicesEnum::ALL_CHECK->value);
-    }
-
-    #[Test]
-    public function it_can_be_instantiated_from_value(): void
-    {
-        $this->assertEquals(WebsiteServicesEnum::WEBSITE_CHECK, WebsiteServicesEnum::from('WEBSITE_CHECK'));
-        $this->assertEquals(WebsiteServicesEnum::API_MONITOR, WebsiteServicesEnum::from('API_MONITOR'));
-        $this->assertEquals(WebsiteServicesEnum::ALL_CHECK, WebsiteServicesEnum::from('ALL_CHECK'));
-    }
-
-    #[Test]
-    public function it_returns_null_for_invalid_value_with_try_from(): void
-    {
-        $this->assertNull(WebsiteServicesEnum::tryFrom('INVALID_CHECK'));
-        $this->assertNull(WebsiteServicesEnum::tryFrom('SERVER_MONITOR'));
-    }
-
-    #[Test]
-    public function it_can_be_compared_with_equality(): void
-    {
-        $websiteCheck1 = WebsiteServicesEnum::WEBSITE_CHECK;
-        $websiteCheck2 = WebsiteServicesEnum::WEBSITE_CHECK;
-        $apiMonitor = WebsiteServicesEnum::API_MONITOR;
-
-        $this->assertTrue($websiteCheck1 === $websiteCheck2);
-        $this->assertFalse($websiteCheck1 === $apiMonitor);
-    }
-}
+    expect($websiteCheck1 === $websiteCheck2)->toBeTrue();
+    expect($websiteCheck1 === $apiMonitor)->toBeFalse();
+});

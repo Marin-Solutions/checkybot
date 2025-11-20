@@ -1,107 +1,94 @@
 <?php
 
-namespace Tests\Unit\Services;
-
 use App\Services\PloiApiService;
 use Illuminate\Support\Facades\Http;
-use Tests\TestCase;
 
-class PloiApiServiceTest extends TestCase
-{
-    public function test_verify_key_returns_success_on_valid_key(): void
-    {
+test('verify key returns success on valid key', function () {
+    Http::fake([
+        'ploi.io/api/user' => Http::response([
+            'data' => [
+                'id' => 1,
+                'name' => 'Test User',
+                'email' => 'test@example.com',
+            ],
+        ], 200),
+    ]);
+
+    $result = PloiApiService::verifyKey('valid-key');
+
+    expect($result['is_verified'])->toBeTrue();
+    expect($result['error_message'])->toBe('The API key verification was successful.');
+});
+
+test('verify key returns failure on invalid key', function () {
+    Http::fake([
+        'ploi.io/api/user' => Http::response([
+            'error' => 'Unauthorized',
+        ], 401),
+    ]);
+
+    $result = PloiApiService::verifyKey('invalid-key');
+
+    expect($result['is_verified'])->toBeFalse();
+    expect($result['error_message'])->toContain('API verification failed');
+});
+
+test('verify key uses correct authorization header', function () {
+    Http::fake();
+
+    PloiApiService::verifyKey('my-secret-token');
+
+    Http::assertSent(function ($request) {
+        return $request->hasHeader('Authorization', 'Bearer my-secret-token');
+    });
+});
+
+test('verify key sends correct headers', function () {
+    Http::fake();
+
+    PloiApiService::verifyKey('test-key');
+
+    Http::assertSent(function ($request) {
+        return $request->hasHeader('Accept', 'application/json') &&
+               $request->hasHeader('Content-Type', 'application/json') &&
+               $request->hasHeader('Authorization', 'Bearer test-key');
+    });
+});
+
+test('verify key handles network exception', function () {
+    Http::fake([
+        'ploi.io/api/user' => function () {
+            throw new \Exception('Network error');
+        },
+    ]);
+
+    $result = PloiApiService::verifyKey('test-key');
+
+    expect($result['is_verified'])->toBeFalse();
+    expect($result['error_message'])->toContain('Network error');
+});
+
+test('verify key handles various http error codes', function () {
+    $errorCodes = [400, 403, 404, 500, 503];
+
+    foreach ($errorCodes as $code) {
         Http::fake([
-            'ploi.io/api/user' => Http::response([
-                'data' => [
-                    'id' => 1,
-                    'name' => 'Test User',
-                    'email' => 'test@example.com',
-                ],
-            ], 200),
-        ]);
-
-        $result = PloiApiService::verifyKey('valid-key');
-
-        $this->assertTrue($result['is_verified']);
-        $this->assertEquals('The API key verification was successful.', $result['error_message']);
-    }
-
-    public function test_verify_key_returns_failure_on_invalid_key(): void
-    {
-        Http::fake([
-            'ploi.io/api/user' => Http::response([
-                'error' => 'Unauthorized',
-            ], 401),
-        ]);
-
-        $result = PloiApiService::verifyKey('invalid-key');
-
-        $this->assertFalse($result['is_verified']);
-        $this->assertStringContainsString('API verification failed', $result['error_message']);
-    }
-
-    public function test_verify_key_uses_correct_authorization_header(): void
-    {
-        Http::fake();
-
-        PloiApiService::verifyKey('my-secret-token');
-
-        Http::assertSent(function ($request) {
-            return $request->hasHeader('Authorization', 'Bearer my-secret-token');
-        });
-    }
-
-    public function test_verify_key_sends_correct_headers(): void
-    {
-        Http::fake();
-
-        PloiApiService::verifyKey('test-key');
-
-        Http::assertSent(function ($request) {
-            return $request->hasHeader('Accept', 'application/json') &&
-                   $request->hasHeader('Content-Type', 'application/json') &&
-                   $request->hasHeader('Authorization', 'Bearer test-key');
-        });
-    }
-
-    public function test_verify_key_handles_network_exception(): void
-    {
-        Http::fake([
-            'ploi.io/api/user' => function () {
-                throw new \Exception('Network error');
-            },
+            'ploi.io/api/user' => Http::response(['error' => 'Error'], $code),
         ]);
 
         $result = PloiApiService::verifyKey('test-key');
 
-        $this->assertFalse($result['is_verified']);
-        $this->assertStringContainsString('Network error', $result['error_message']);
+        expect($result['is_verified'])->toBeFalse("Failed for status code {$code}");
+        expect($result['error_message'])->toContain('API verification failed');
     }
+});
 
-    public function test_verify_key_handles_various_http_error_codes(): void
-    {
-        $errorCodes = [400, 403, 404, 500, 503];
+test('verify key calls correct endpoint', function () {
+    Http::fake();
 
-        foreach ($errorCodes as $code) {
-            Http::fake([
-                'ploi.io/api/user' => Http::response(['error' => 'Error'], $code),
-            ]);
+    PloiApiService::verifyKey('test-key');
 
-            $result = PloiApiService::verifyKey('test-key');
-
-            $this->assertFalse($result['is_verified'], "Failed for status code {$code}");
-            $this->assertStringContainsString('API verification failed', $result['error_message']);
-        }
-    }
-
-    public function test_verify_key_calls_correct_endpoint(): void
-    {
-        Http::fake();
-
-        PloiApiService::verifyKey('test-key');
-
-        Http::assertSent(function ($request) {
-            return $request->url() === 'https://ploi.io/api/user';
-        });
-    }
-}
+    Http::assertSent(function ($request) {
+        return $request->url() === 'https://ploi.io/api/user';
+    });
+});

@@ -1,126 +1,93 @@
 <?php
 
-namespace Tests\Unit\Enums;
-
 use App\Enums\NotificationChannelTypesEnum;
-use PHPUnit\Framework\Attributes\Test;
-use Tests\TestCase;
 
-final class NotificationChannelTypesEnumTest extends TestCase
-{
-    #[Test]
-    public function it_has_all_expected_cases(): void
-    {
-        $cases = NotificationChannelTypesEnum::cases();
+test('it has all expected cases', function () {
+    $cases = NotificationChannelTypesEnum::cases();
 
-        $this->assertCount(2, $cases);
+    expect($cases)->toHaveCount(2);
+});
+
+test('it contains all expected case instances', function () {
+    $cases = NotificationChannelTypesEnum::cases();
+
+    expect($cases)->toContain(NotificationChannelTypesEnum::MAIL);
+    expect($cases)->toContain(NotificationChannelTypesEnum::WEBHOOK);
+});
+
+test('it has correct values for all cases', function () {
+    expect(NotificationChannelTypesEnum::MAIL->value)->toBe('MAIL');
+    expect(NotificationChannelTypesEnum::WEBHOOK->value)->toBe('WEBHOOK');
+});
+
+test('it returns correct labels', function () {
+    expect(NotificationChannelTypesEnum::MAIL->label())->toBe('Email');
+    expect(NotificationChannelTypesEnum::WEBHOOK->label())->toBe('Webhook');
+});
+
+test('label method uses match expression', function () {
+    expect(NotificationChannelTypesEnum::MAIL->label())->not->toBe('Mail');
+    expect(NotificationChannelTypesEnum::MAIL->label())->toBe('Email');
+});
+
+test('keys method returns array of case names', function () {
+    $keys = NotificationChannelTypesEnum::keys();
+
+    expect($keys)->toBeArray();
+    expect($keys)->toHaveCount(2);
+    expect($keys)->toContain('MAIL');
+    expect($keys)->toContain('WEBHOOK');
+});
+
+test('to array returns associative array of values and labels', function () {
+    $array = NotificationChannelTypesEnum::toArray();
+
+    expect($array)->toBeArray();
+    expect($array)->toHaveCount(2);
+    expect($array)->toBe([
+        'MAIL' => 'Email',
+        'WEBHOOK' => 'Webhook',
+    ]);
+});
+
+test('to array keys match enum values', function () {
+    $array = NotificationChannelTypesEnum::toArray();
+    $keys = array_keys($array);
+
+    foreach (NotificationChannelTypesEnum::cases() as $case) {
+        expect($keys)->toContain($case->value);
     }
+});
 
-    #[Test]
-    public function it_contains_all_expected_case_instances(): void
-    {
-        $cases = NotificationChannelTypesEnum::cases();
+test('to array values match labels', function () {
+    $array = NotificationChannelTypesEnum::toArray();
 
-        $this->assertContains(NotificationChannelTypesEnum::MAIL, $cases);
-        $this->assertContains(NotificationChannelTypesEnum::WEBHOOK, $cases);
+    foreach (NotificationChannelTypesEnum::cases() as $case) {
+        expect($array[$case->value])->toBe($case->label());
     }
+});
 
-    #[Test]
-    public function it_has_correct_values_for_all_cases(): void
-    {
-        $this->assertEquals('MAIL', NotificationChannelTypesEnum::MAIL->value);
-        $this->assertEquals('WEBHOOK', NotificationChannelTypesEnum::WEBHOOK->value);
-    }
+test('it can be serialized to string', function () {
+    expect((string) NotificationChannelTypesEnum::MAIL->value)->toBe('MAIL');
+    expect((string) NotificationChannelTypesEnum::WEBHOOK->value)->toBe('WEBHOOK');
+});
 
-    #[Test]
-    public function it_returns_correct_labels(): void
-    {
-        $this->assertEquals('Email', NotificationChannelTypesEnum::MAIL->label());
-        $this->assertEquals('Webhook', NotificationChannelTypesEnum::WEBHOOK->label());
-    }
+test('it can be instantiated from value', function () {
+    expect(NotificationChannelTypesEnum::from('MAIL'))->toBe(NotificationChannelTypesEnum::MAIL);
+    expect(NotificationChannelTypesEnum::from('WEBHOOK'))->toBe(NotificationChannelTypesEnum::WEBHOOK);
+});
 
-    #[Test]
-    public function label_method_uses_match_expression(): void
-    {
-        $this->assertNotEquals('Mail', NotificationChannelTypesEnum::MAIL->label());
-        $this->assertEquals('Email', NotificationChannelTypesEnum::MAIL->label());
-    }
+test('it returns null for invalid value with try from', function () {
+    expect(NotificationChannelTypesEnum::tryFrom('SMS'))->toBeNull();
+    expect(NotificationChannelTypesEnum::tryFrom('SLACK'))->toBeNull();
+    expect(NotificationChannelTypesEnum::tryFrom('PUSH'))->toBeNull();
+});
 
-    #[Test]
-    public function keys_method_returns_array_of_case_names(): void
-    {
-        $keys = NotificationChannelTypesEnum::keys();
+test('it can be compared with equality', function () {
+    $mail1 = NotificationChannelTypesEnum::MAIL;
+    $mail2 = NotificationChannelTypesEnum::MAIL;
+    $webhook = NotificationChannelTypesEnum::WEBHOOK;
 
-        $this->assertIsArray($keys);
-        $this->assertCount(2, $keys);
-        $this->assertContains('MAIL', $keys);
-        $this->assertContains('WEBHOOK', $keys);
-    }
-
-    #[Test]
-    public function to_array_returns_associative_array_of_values_and_labels(): void
-    {
-        $array = NotificationChannelTypesEnum::toArray();
-
-        $this->assertIsArray($array);
-        $this->assertCount(2, $array);
-        $this->assertEquals([
-            'MAIL' => 'Email',
-            'WEBHOOK' => 'Webhook',
-        ], $array);
-    }
-
-    #[Test]
-    public function to_array_keys_match_enum_values(): void
-    {
-        $array = NotificationChannelTypesEnum::toArray();
-        $keys = array_keys($array);
-
-        foreach (NotificationChannelTypesEnum::cases() as $case) {
-            $this->assertContains($case->value, $keys);
-        }
-    }
-
-    #[Test]
-    public function to_array_values_match_labels(): void
-    {
-        $array = NotificationChannelTypesEnum::toArray();
-
-        foreach (NotificationChannelTypesEnum::cases() as $case) {
-            $this->assertEquals($case->label(), $array[$case->value]);
-        }
-    }
-
-    #[Test]
-    public function it_can_be_serialized_to_string(): void
-    {
-        $this->assertEquals('MAIL', (string) NotificationChannelTypesEnum::MAIL->value);
-        $this->assertEquals('WEBHOOK', (string) NotificationChannelTypesEnum::WEBHOOK->value);
-    }
-
-    #[Test]
-    public function it_can_be_instantiated_from_value(): void
-    {
-        $this->assertEquals(NotificationChannelTypesEnum::MAIL, NotificationChannelTypesEnum::from('MAIL'));
-        $this->assertEquals(NotificationChannelTypesEnum::WEBHOOK, NotificationChannelTypesEnum::from('WEBHOOK'));
-    }
-
-    #[Test]
-    public function it_returns_null_for_invalid_value_with_try_from(): void
-    {
-        $this->assertNull(NotificationChannelTypesEnum::tryFrom('SMS'));
-        $this->assertNull(NotificationChannelTypesEnum::tryFrom('SLACK'));
-        $this->assertNull(NotificationChannelTypesEnum::tryFrom('PUSH'));
-    }
-
-    #[Test]
-    public function it_can_be_compared_with_equality(): void
-    {
-        $mail1 = NotificationChannelTypesEnum::MAIL;
-        $mail2 = NotificationChannelTypesEnum::MAIL;
-        $webhook = NotificationChannelTypesEnum::WEBHOOK;
-
-        $this->assertTrue($mail1 === $mail2);
-        $this->assertFalse($mail1 === $webhook);
-    }
-}
+    expect($mail1 === $mail2)->toBeTrue();
+    expect($mail1 === $webhook)->toBeFalse();
+});
