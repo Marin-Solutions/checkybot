@@ -1,71 +1,55 @@
 <?php
 
-namespace Tests\Unit\Services;
-
 use App\Models\SeoCheck;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
 use Illuminate\Support\Facades\Queue;
-use Tests\TestCase;
 
-class SeoHealthCheckServiceTest extends TestCase
-{
-    protected SeoHealthCheckService $service;
+beforeEach(function () {
+    $this->service = app(SeoHealthCheckService::class);
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->service = app(SeoHealthCheckService::class);
-    }
+test('start manual check creates seo check record', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-    public function test_start_manual_check_creates_seo_check_record(): void
-    {
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $check = $this->service->startManualCheck($website);
 
-        $check = $this->service->startManualCheck($website);
+    expect($check)->toBeInstanceOf(SeoCheck::class);
+    expect($check->website_id)->toBe($website->id);
+    expect($check->status)->toBe('pending');
+});
 
-        $this->assertInstanceOf(SeoCheck::class, $check);
-        $this->assertEquals($website->id, $check->website_id);
-        $this->assertEquals('pending', $check->status);
-    }
+test('start manual check dispatches job', function () {
+    Queue::fake();
 
-    public function test_start_manual_check_dispatches_job(): void
-    {
-        Queue::fake();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
+    $this->service->startManualCheck($website);
 
-        $this->service->startManualCheck($website);
+    Queue::assertPushed(\App\Jobs\SeoHealthCheckJob::class);
+});
 
-        Queue::assertPushed(\App\Jobs\SeoHealthCheckJob::class);
-    }
+test('cannot start check if already running', function () {
+    $website = Website::factory()->create();
 
-    public function test_cannot_start_check_if_already_running(): void
-    {
-        $website = Website::factory()->create();
+    SeoCheck::factory()->running()->create([
+        'website_id' => $website->id,
+    ]);
 
-        SeoCheck::factory()->running()->create([
-            'website_id' => $website->id,
-        ]);
+    $this->service->startManualCheck($website);
+})->throws(\Exception::class);
 
-        $this->expectException(\Exception::class);
+test('check initializes with zero progress', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
 
-        $this->service->startManualCheck($website);
-    }
+    $check = $this->service->startManualCheck($website);
 
-    public function test_check_initializes_with_zero_progress(): void
-    {
-        $website = Website::factory()->create([
-            'url' => 'https://example.com',
-        ]);
-
-        $check = $this->service->startManualCheck($website);
-
-        $this->assertEquals(0, $check->progress);
-        $this->assertEquals(0, $check->total_urls_crawled);
-    }
-}
+    expect($check->progress)->toEqual(0);
+    expect($check->total_urls_crawled)->toEqual(0);
+});

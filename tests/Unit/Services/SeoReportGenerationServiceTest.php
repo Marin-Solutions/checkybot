@@ -1,265 +1,241 @@
 <?php
 
-namespace Tests\Unit\Services;
-
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
 use App\Models\SeoIssue;
 use App\Models\Website;
 use App\Services\SeoReportGenerationService;
 use Illuminate\Support\Facades\Storage;
-use Tests\TestCase;
 
-class SeoReportGenerationServiceTest extends TestCase
-{
-    protected SeoReportGenerationService $service;
+beforeEach(function () {
+    $this->service = new SeoReportGenerationService;
+    Storage::fake('local');
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->service = new SeoReportGenerationService;
-        Storage::fake('local');
-    }
+test('generates html report', function () {
+    $website = Website::factory()->create(['name' => 'Test Site']);
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now(),
+    ]);
 
-    public function test_generates_html_report(): void
-    {
-        $website = Website::factory()->create(['name' => 'Test Site']);
-        $seoCheck = SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now(),
+    $filename = $this->service->generateComprehensiveReport($seoCheck, 'html');
+
+    expect($filename)->toContain('SEO_Report_test-site');
+    expect($filename)->toEndWith('.html');
+    Storage::assertExists("reports/{$filename}");
+});
+
+test('generates csv report', function () {
+    $website = Website::factory()->create(['name' => 'Test Site']);
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now(),
+    ]);
+
+    $filename = $this->service->generateComprehensiveReport($seoCheck, 'csv');
+
+    expect($filename)->toContain('SEO_Report_test-site');
+    expect($filename)->toEndWith('.csv');
+    Storage::assertExists("reports/{$filename}");
+
+    $content = Storage::get("reports/{$filename}");
+    expect($content)->toContain('URL,"Issue Type",Severity');
+});
+
+test('generates json report', function () {
+    $website = Website::factory()->create(['name' => 'Test Site']);
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now(),
+    ]);
+
+    $filename = $this->service->generateComprehensiveReport($seoCheck, 'json');
+
+    expect($filename)->toContain('SEO_Report_test-site');
+    expect($filename)->toEndWith('.json');
+    Storage::assertExists("reports/{$filename}");
+
+    $content = Storage::get("reports/{$filename}");
+    $data = json_decode($content, true);
+
+    expect($data)->toHaveKeys(['report_metadata', 'seo_check_summary', 'issue_summary']);
+});
+
+test('json report contains correct metadata', function () {
+    $website = Website::factory()->create(['name' => 'Example Site', 'url' => 'https://example.com']);
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now(),
+        'total_urls_crawled' => 50,
+        'computed_health_score' => 85.5,
+    ]);
+
+    $filename = $this->service->generateComprehensiveReport($seoCheck, 'json');
+    $content = Storage::get("reports/{$filename}");
+    $data = json_decode($content, true);
+
+    expect($data['report_metadata']['website']['name'])->toBe('Example Site');
+    expect($data['report_metadata']['website']['url'])->toBe('https://example.com');
+    expect($data['seo_check_summary']['total_urls_crawled'])->toBe(50);
+    expect($data['seo_check_summary']['health_score'])->toBe(85.5);
+});
+
+test('generates historical report', function () {
+    $website = Website::factory()->create(['name' => 'Test Site']);
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now()->subDays(5),
+        'computed_health_score' => 80,
+        'computed_errors_count' => 5,
+    ]);
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now()->subDays(2),
+        'computed_health_score' => 85,
+        'computed_errors_count' => 3,
+    ]);
+
+    $filename = $this->service->generateHistoricalReport($website, 30);
+
+    expect($filename)->toContain('SEO_Historical_Report_test-site');
+    Storage::assertExists("reports/{$filename}");
+
+    $content = Storage::get("reports/{$filename}");
+    $data = json_decode($content, true);
+
+    expect($data)->toHaveKeys(['trend_analysis', 'summary_statistics', 'check_history']);
+    expect($data['report_metadata']['checks_analyzed'])->toBe(2);
+});
+
+test('historical report calculates trend correctly', function () {
+    $website = Website::factory()->create();
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now()->subDays(10),
+        'computed_health_score' => 70,
+        'total_urls_crawled' => 40,
+    ]);
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now()->subDays(5),
+        'computed_health_score' => 80,
+        'total_urls_crawled' => 50,
+    ]);
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now()->subDays(1),
+        'computed_health_score' => 90,
+        'total_urls_crawled' => 60,
+    ]);
+
+    $filename = $this->service->generateHistoricalReport($website, 30);
+    $content = Storage::get("reports/{$filename}");
+    $data = json_decode($content, true);
+
+    expect($data['summary_statistics']['average_health_score'])->toBe(80);
+    expect($data['summary_statistics']['best_health_score'])->toBe(90);
+    expect($data['summary_statistics']['worst_health_score'])->toBe(70);
+});
+
+test('cleans up old reports', function () {
+    Storage::put('reports/old_report_1.json', 'old data');
+    Storage::put('reports/old_report_2.json', 'old data');
+    Storage::put('reports/recent_report.json', 'recent data');
+
+    // Mock the lastModified to return old dates for first two files
+    $oldTimestamp = now()->subDays(40)->timestamp;
+    $recentTimestamp = now()->timestamp;
+
+    Storage::shouldReceive('files')
+        ->with('reports')
+        ->andReturn([
+            'reports/old_report_1.json',
+            'reports/old_report_2.json',
+            'reports/recent_report.json',
         ]);
 
-        $filename = $this->service->generateComprehensiveReport($seoCheck, 'html');
+    Storage::shouldReceive('lastModified')
+        ->with('reports/old_report_1.json')
+        ->andReturn($oldTimestamp);
 
-        $this->assertStringContainsString('SEO_Report_test-site', $filename);
-        $this->assertStringEndsWith('.html', $filename);
-        Storage::assertExists("reports/{$filename}");
-    }
+    Storage::shouldReceive('lastModified')
+        ->with('reports/old_report_2.json')
+        ->andReturn($oldTimestamp);
 
-    public function test_generates_csv_report(): void
-    {
-        $website = Website::factory()->create(['name' => 'Test Site']);
-        $seoCheck = SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now(),
-        ]);
+    Storage::shouldReceive('lastModified')
+        ->with('reports/recent_report.json')
+        ->andReturn($recentTimestamp);
 
-        $filename = $this->service->generateComprehensiveReport($seoCheck, 'csv');
+    Storage::shouldReceive('delete')
+        ->with('reports/old_report_1.json')
+        ->once();
 
-        $this->assertStringContainsString('SEO_Report_test-site', $filename);
-        $this->assertStringEndsWith('.csv', $filename);
-        Storage::assertExists("reports/{$filename}");
+    Storage::shouldReceive('delete')
+        ->with('reports/old_report_2.json')
+        ->once();
 
-        $content = Storage::get("reports/{$filename}");
-        $this->assertStringContainsString('URL,"Issue Type",Severity', $content);
-    }
+    $deletedCount = $this->service->cleanupOldReports(30);
 
-    public function test_generates_json_report(): void
-    {
-        $website = Website::factory()->create(['name' => 'Test Site']);
-        $seoCheck = SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now(),
-        ]);
+    expect($deletedCount)->toBe(2);
+});
 
-        $filename = $this->service->generateComprehensiveReport($seoCheck, 'json');
+test('filename generation uses safe names', function () {
+    $website = Website::factory()->create(['name' => 'Test & Site with Spaces!']);
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now(),
+    ]);
 
-        $this->assertStringContainsString('SEO_Report_test-site', $filename);
-        $this->assertStringEndsWith('.json', $filename);
-        Storage::assertExists("reports/{$filename}");
+    $filename = $this->service->generateComprehensiveReport($seoCheck, 'json');
 
-        $content = Storage::get("reports/{$filename}");
-        $data = json_decode($content, true);
+    expect($filename)->toContain('test-site-with-spaces');
+    expect($filename)->not->toContain('&');
+    expect($filename)->not->toContain('!');
+});
 
-        $this->assertArrayHasKey('report_metadata', $data);
-        $this->assertArrayHasKey('seo_check_summary', $data);
-        $this->assertArrayHasKey('issue_summary', $data);
-    }
+test('csv report includes all columns', function () {
+    $website = Website::factory()->create();
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now(),
+    ]);
 
-    public function test_json_report_contains_correct_metadata(): void
-    {
-        $website = Website::factory()->create(['name' => 'Example Site', 'url' => 'https://example.com']);
-        $seoCheck = SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now(),
-            'total_urls_crawled' => 50,
-            'computed_health_score' => 85.5,
-        ]);
+    $crawlResult = SeoCrawlResult::factory()->create([
+        'seo_check_id' => $seoCheck->id,
+        'url' => 'https://example.com',
+        'title' => 'Example Page',
+        'status_code' => 200,
+    ]);
 
-        $filename = $this->service->generateComprehensiveReport($seoCheck, 'json');
-        $content = Storage::get("reports/{$filename}");
-        $data = json_decode($content, true);
+    SeoIssue::factory()->create([
+        'seo_check_id' => $seoCheck->id,
+        'seo_crawl_result_id' => $crawlResult->id,
+        'url' => 'https://example.com',
+        'type' => 'missing_h1',
+        'severity' => 'warning',
+        'title' => 'Missing H1 Tag',
+    ]);
 
-        $this->assertEquals('Example Site', $data['report_metadata']['website']['name']);
-        $this->assertEquals('https://example.com', $data['report_metadata']['website']['url']);
-        $this->assertEquals(50, $data['seo_check_summary']['total_urls_crawled']);
-        $this->assertEquals(85.5, $data['seo_check_summary']['health_score']);
-    }
+    $filename = $this->service->generateComprehensiveReport($seoCheck, 'csv');
+    $content = Storage::get("reports/{$filename}");
 
-    public function test_generates_historical_report(): void
-    {
-        $website = Website::factory()->create(['name' => 'Test Site']);
+    expect($content)->toContain('URL');
+    expect($content)->toContain('Issue Type');
+    expect($content)->toContain('Severity');
+    expect($content)->toContain('Title');
+    expect($content)->toContain('Description');
+    expect($content)->toContain('missing_h1');
+});
 
-        SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now()->subDays(5),
-            'computed_health_score' => 80,
-            'computed_errors_count' => 5,
-        ]);
+test('get report download url returns correct route', function () {
+    $filename = 'test-report.json';
+    $url = $this->service->getReportDownloadUrl($filename);
 
-        SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now()->subDays(2),
-            'computed_health_score' => 85,
-            'computed_errors_count' => 3,
-        ]);
-
-        $filename = $this->service->generateHistoricalReport($website, 30);
-
-        $this->assertStringContainsString('SEO_Historical_Report_test-site', $filename);
-        Storage::assertExists("reports/{$filename}");
-
-        $content = Storage::get("reports/{$filename}");
-        $data = json_decode($content, true);
-
-        $this->assertArrayHasKey('trend_analysis', $data);
-        $this->assertArrayHasKey('summary_statistics', $data);
-        $this->assertArrayHasKey('check_history', $data);
-        $this->assertEquals(2, $data['report_metadata']['checks_analyzed']);
-    }
-
-    public function test_historical_report_calculates_trend_correctly(): void
-    {
-        $website = Website::factory()->create();
-
-        SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now()->subDays(10),
-            'computed_health_score' => 70,
-            'total_urls_crawled' => 40,
-        ]);
-
-        SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now()->subDays(5),
-            'computed_health_score' => 80,
-            'total_urls_crawled' => 50,
-        ]);
-
-        SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now()->subDays(1),
-            'computed_health_score' => 90,
-            'total_urls_crawled' => 60,
-        ]);
-
-        $filename = $this->service->generateHistoricalReport($website, 30);
-        $content = Storage::get("reports/{$filename}");
-        $data = json_decode($content, true);
-
-        $this->assertEquals(80, $data['summary_statistics']['average_health_score']);
-        $this->assertEquals(90, $data['summary_statistics']['best_health_score']);
-        $this->assertEquals(70, $data['summary_statistics']['worst_health_score']);
-    }
-
-    public function test_cleans_up_old_reports(): void
-    {
-        Storage::put('reports/old_report_1.json', 'old data');
-        Storage::put('reports/old_report_2.json', 'old data');
-        Storage::put('reports/recent_report.json', 'recent data');
-
-        // Mock the lastModified to return old dates for first two files
-        $oldTimestamp = now()->subDays(40)->timestamp;
-        $recentTimestamp = now()->timestamp;
-
-        Storage::shouldReceive('files')
-            ->with('reports')
-            ->andReturn([
-                'reports/old_report_1.json',
-                'reports/old_report_2.json',
-                'reports/recent_report.json',
-            ]);
-
-        Storage::shouldReceive('lastModified')
-            ->with('reports/old_report_1.json')
-            ->andReturn($oldTimestamp);
-
-        Storage::shouldReceive('lastModified')
-            ->with('reports/old_report_2.json')
-            ->andReturn($oldTimestamp);
-
-        Storage::shouldReceive('lastModified')
-            ->with('reports/recent_report.json')
-            ->andReturn($recentTimestamp);
-
-        Storage::shouldReceive('delete')
-            ->with('reports/old_report_1.json')
-            ->once();
-
-        Storage::shouldReceive('delete')
-            ->with('reports/old_report_2.json')
-            ->once();
-
-        $deletedCount = $this->service->cleanupOldReports(30);
-
-        $this->assertEquals(2, $deletedCount);
-    }
-
-    public function test_filename_generation_uses_safe_names(): void
-    {
-        $website = Website::factory()->create(['name' => 'Test & Site with Spaces!']);
-        $seoCheck = SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now(),
-        ]);
-
-        $filename = $this->service->generateComprehensiveReport($seoCheck, 'json');
-
-        $this->assertStringContainsString('test-site-with-spaces', $filename);
-        $this->assertStringNotContainsString('&', $filename);
-        $this->assertStringNotContainsString('!', $filename);
-    }
-
-    public function test_csv_report_includes_all_columns(): void
-    {
-        $website = Website::factory()->create();
-        $seoCheck = SeoCheck::factory()->completed()->create([
-            'website_id' => $website->id,
-            'finished_at' => now(),
-        ]);
-
-        $crawlResult = SeoCrawlResult::factory()->create([
-            'seo_check_id' => $seoCheck->id,
-            'url' => 'https://example.com',
-            'title' => 'Example Page',
-            'status_code' => 200,
-        ]);
-
-        SeoIssue::factory()->create([
-            'seo_check_id' => $seoCheck->id,
-            'seo_crawl_result_id' => $crawlResult->id,
-            'url' => 'https://example.com',
-            'type' => 'missing_h1',
-            'severity' => 'warning',
-            'title' => 'Missing H1 Tag',
-        ]);
-
-        $filename = $this->service->generateComprehensiveReport($seoCheck, 'csv');
-        $content = Storage::get("reports/{$filename}");
-
-        $this->assertStringContainsString('URL', $content);
-        $this->assertStringContainsString('Issue Type', $content);
-        $this->assertStringContainsString('Severity', $content);
-        $this->assertStringContainsString('Title', $content);
-        $this->assertStringContainsString('Description', $content);
-        $this->assertStringContainsString('missing_h1', $content);
-    }
-
-    public function test_get_report_download_url_returns_correct_route(): void
-    {
-        $filename = 'test-report.json';
-        $url = $this->service->getReportDownloadUrl($filename);
-
-        $this->assertStringContainsString('test-report.json', $url);
-    }
-}
+    expect($url)->toContain('test-report.json');
+});

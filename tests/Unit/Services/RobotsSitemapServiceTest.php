@@ -1,243 +1,219 @@
 <?php
 
-namespace Tests\Unit\Services;
-
 use App\Services\RobotsSitemapService;
 use Illuminate\Support\Facades\Http;
-use Tests\TestCase;
 
-class RobotsSitemapServiceTest extends TestCase
-{
-    protected RobotsSitemapService $service;
+beforeEach(function () {
+    $this->service = new RobotsSitemapService;
+});
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->service = new RobotsSitemapService;
-    }
+test('allows url when no robots txt exists', function () {
+    Http::fake([
+        'https://example.com/robots.txt' => Http::response('', 404),
+    ]);
 
-    public function test_allows_url_when_no_robots_txt_exists(): void
-    {
-        Http::fake([
-            'https://example.com/robots.txt' => Http::response('', 404),
-        ]);
+    $result = $this->service->isUrlAllowed('https://example.com/test');
 
-        $result = $this->service->isUrlAllowed('https://example.com/test');
+    expect($result)->toBeTrue();
+});
 
-        $this->assertTrue($result);
-    }
+test('allows url when not disallowed', function () {
+    Http::fake([
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Disallow: /admin
+        ', 200),
+    ]);
 
-    public function test_allows_url_when_not_disallowed(): void
-    {
-        Http::fake([
-            'https://example.com/robots.txt' => Http::response('
-                User-agent: *
-                Disallow: /admin
-            ', 200),
-        ]);
+    $result = $this->service->isUrlAllowed('https://example.com/public');
 
-        $result = $this->service->isUrlAllowed('https://example.com/public');
+    expect($result)->toBeTrue();
+});
 
-        $this->assertTrue($result);
-    }
+test('disallows url when explicitly disallowed', function () {
+    Http::fake([
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Disallow: /admin
+        ', 200),
+    ]);
 
-    public function test_disallows_url_when_explicitly_disallowed(): void
-    {
-        Http::fake([
-            'https://example.com/robots.txt' => Http::response('
-                User-agent: *
-                Disallow: /admin
-            ', 200),
-        ]);
+    $result = $this->service->isUrlAllowed('https://example.com/admin');
 
-        $result = $this->service->isUrlAllowed('https://example.com/admin');
+    expect($result)->toBeFalse();
+});
 
-        $this->assertFalse($result);
-    }
+test('allows url with explicit allow rule', function () {
+    Http::fake([
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Disallow: /admin
+            Allow: /admin/public
+        ', 200),
+    ]);
 
-    public function test_allows_url_with_explicit_allow_rule(): void
-    {
-        Http::fake([
-            'https://example.com/robots.txt' => Http::response('
-                User-agent: *
-                Disallow: /admin
-                Allow: /admin/public
-            ', 200),
-        ]);
+    $result = $this->service->isUrlAllowed('https://example.com/admin/public');
 
-        $result = $this->service->isUrlAllowed('https://example.com/admin/public');
+    expect($result)->toBeTrue();
+});
 
-        $this->assertTrue($result);
-    }
+test('handles wildcard patterns', function () {
+    Http::fake([
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Disallow: /*.json$
+        ', 200),
+    ]);
 
-    public function test_handles_wildcard_patterns(): void
-    {
-        Http::fake([
-            'https://example.com/robots.txt' => Http::response('
-                User-agent: *
-                Disallow: /*.json$
-            ', 200),
-        ]);
+    $result = $this->service->isUrlAllowed('https://example.com/data.json');
 
-        $result = $this->service->isUrlAllowed('https://example.com/data.json');
+    expect($result)->toBeFalse();
+});
 
-        $this->assertFalse($result);
-    }
+test('allows url on exception', function () {
+    Http::fake([
+        'https://example.com/robots.txt' => function () {
+            throw new \Exception('Network error');
+        },
+    ]);
 
-    public function test_allows_url_on_exception(): void
-    {
-        Http::fake([
-            'https://example.com/robots.txt' => function () {
-                throw new \Exception('Network error');
-            },
-        ]);
+    $result = $this->service->isUrlAllowed('https://example.com/test');
 
-        $result = $this->service->isUrlAllowed('https://example.com/test');
+    expect($result)->toBeTrue();
+});
 
-        $this->assertTrue($result);
-    }
+test('gets sitemap urls from sitemap xml', function () {
+    Http::fake([
+        'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url>
+                    <loc>https://example.com/page1</loc>
+                </url>
+                <url>
+                    <loc>https://example.com/page2</loc>
+                </url>
+            </urlset>', 200),
+    ]);
 
-    public function test_gets_sitemap_urls_from_sitemap_xml(): void
-    {
-        Http::fake([
-            'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
-                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-                    <url>
-                        <loc>https://example.com/page1</loc>
-                    </url>
-                    <url>
-                        <loc>https://example.com/page2</loc>
-                    </url>
-                </urlset>', 200),
-        ]);
+    $urls = $this->service->getSitemapUrls('https://example.com');
 
-        $urls = $this->service->getSitemapUrls('https://example.com');
+    expect($urls)->toHaveCount(2);
+    expect($urls)->toContain('https://example.com/page1');
+    expect($urls)->toContain('https://example.com/page2');
+});
 
-        $this->assertCount(2, $urls);
-        $this->assertContains('https://example.com/page1', $urls);
-        $this->assertContains('https://example.com/page2', $urls);
-    }
+test('gets sitemap urls from sitemap index', function () {
+    Http::fake([
+        'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
+            <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <sitemap>
+                    <loc>https://example.com/sitemap-posts.xml</loc>
+                </sitemap>
+            </sitemapindex>', 200),
+        'https://example.com/sitemap-posts.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url>
+                    <loc>https://example.com/post1</loc>
+                </url>
+            </urlset>', 200),
+    ]);
 
-    public function test_gets_sitemap_urls_from_sitemap_index(): void
-    {
-        Http::fake([
-            'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
-                <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-                    <sitemap>
-                        <loc>https://example.com/sitemap-posts.xml</loc>
-                    </sitemap>
-                </sitemapindex>', 200),
-            'https://example.com/sitemap-posts.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
-                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-                    <url>
-                        <loc>https://example.com/post1</loc>
-                    </url>
-                </urlset>', 200),
-        ]);
+    $urls = $this->service->getSitemapUrls('https://example.com');
 
-        $urls = $this->service->getSitemapUrls('https://example.com');
+    expect($urls)->toHaveCount(1);
+    expect($urls)->toContain('https://example.com/post1');
+});
 
-        $this->assertCount(1, $urls);
-        $this->assertContains('https://example.com/post1', $urls);
-    }
+test('gets sitemap urls from robots txt', function () {
+    Http::fake([
+        'https://example.com/sitemap.xml' => Http::response('', 404),
+        'https://example.com/sitemap_index.xml' => Http::response('', 404),
+        'https://example.com/sitemaps.xml' => Http::response('', 404),
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Sitemap: https://example.com/custom-sitemap.xml
+        ', 200),
+        'https://example.com/custom-sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url>
+                    <loc>https://example.com/custom-page</loc>
+                </url>
+            </urlset>', 200),
+    ]);
 
-    public function test_gets_sitemap_urls_from_robots_txt(): void
-    {
-        Http::fake([
-            'https://example.com/sitemap.xml' => Http::response('', 404),
-            'https://example.com/sitemap_index.xml' => Http::response('', 404),
-            'https://example.com/sitemaps.xml' => Http::response('', 404),
-            'https://example.com/robots.txt' => Http::response('
-                User-agent: *
-                Sitemap: https://example.com/custom-sitemap.xml
-            ', 200),
-            'https://example.com/custom-sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
-                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-                    <url>
-                        <loc>https://example.com/custom-page</loc>
-                    </url>
-                </urlset>', 200),
-        ]);
+    $urls = $this->service->getSitemapUrls('https://example.com');
 
-        $urls = $this->service->getSitemapUrls('https://example.com');
+    expect($urls)->toContain('https://example.com/custom-page');
+});
 
-        $this->assertContains('https://example.com/custom-page', $urls);
-    }
+test('returns empty array when no sitemap found', function () {
+    Http::fake([
+        'https://example.com/*' => Http::response('', 404),
+    ]);
 
-    public function test_returns_empty_array_when_no_sitemap_found(): void
-    {
-        Http::fake([
-            'https://example.com/*' => Http::response('', 404),
-        ]);
+    $urls = $this->service->getSitemapUrls('https://example.com');
 
-        $urls = $this->service->getSitemapUrls('https://example.com');
+    expect($urls)->toBeEmpty();
+});
 
-        $this->assertEmpty($urls);
-    }
+test('get crawlable urls returns sitemap urls when available', function () {
+    Http::fake([
+        'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url>
+                    <loc>https://example.com/page1</loc>
+                </url>
+            </urlset>', 200),
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Allow: /
+        ', 200),
+    ]);
 
-    public function test_get_crawlable_urls_returns_sitemap_urls_when_available(): void
-    {
-        Http::fake([
-            'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
-                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-                    <url>
-                        <loc>https://example.com/page1</loc>
-                    </url>
-                </urlset>', 200),
-            'https://example.com/robots.txt' => Http::response('
-                User-agent: *
-                Allow: /
-            ', 200),
-        ]);
+    $urls = $this->service->getCrawlableUrls('https://example.com');
 
-        $urls = $this->service->getCrawlableUrls('https://example.com');
+    expect($urls)->toContain('https://example.com/page1');
+});
 
-        $this->assertContains('https://example.com/page1', $urls);
-    }
+test('get crawlable urls filters disallowed urls', function () {
+    Http::fake([
+        'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url>
+                    <loc>https://example.com/public</loc>
+                </url>
+                <url>
+                    <loc>https://example.com/admin</loc>
+                </url>
+            </urlset>', 200),
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Disallow: /admin
+        ', 200),
+    ]);
 
-    public function test_get_crawlable_urls_filters_disallowed_urls(): void
-    {
-        Http::fake([
-            'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
-                <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-                    <url>
-                        <loc>https://example.com/public</loc>
-                    </url>
-                    <url>
-                        <loc>https://example.com/admin</loc>
-                    </url>
-                </urlset>', 200),
-            'https://example.com/robots.txt' => Http::response('
-                User-agent: *
-                Disallow: /admin
-            ', 200),
-        ]);
+    $urls = $this->service->getCrawlableUrls('https://example.com');
 
-        $urls = $this->service->getCrawlableUrls('https://example.com');
+    expect($urls)->toContain('https://example.com/public');
+    expect($urls)->not->toContain('https://example.com/admin');
+});
 
-        $this->assertContains('https://example.com/public', $urls);
-        $this->assertNotContains('https://example.com/admin', $urls);
-    }
+test('get crawlable urls returns base url when no sitemap', function () {
+    Http::fake([
+        'https://example.com/*' => Http::response('', 404),
+    ]);
 
-    public function test_get_crawlable_urls_returns_base_url_when_no_sitemap(): void
-    {
-        Http::fake([
-            'https://example.com/*' => Http::response('', 404),
-        ]);
+    $urls = $this->service->getCrawlableUrls('https://example.com');
 
-        $urls = $this->service->getCrawlableUrls('https://example.com');
+    expect($urls)->toContain('https://example.com');
+});
 
-        $this->assertContains('https://example.com', $urls);
-    }
+test('handles invalid xml in sitemap', function () {
+    Http::fake([
+        'https://example.com/sitemap.xml' => Http::response('Invalid XML content', 200),
+    ]);
 
-    public function test_handles_invalid_xml_in_sitemap(): void
-    {
-        Http::fake([
-            'https://example.com/sitemap.xml' => Http::response('Invalid XML content', 200),
-        ]);
+    $urls = $this->service->getSitemapUrls('https://example.com');
 
-        $urls = $this->service->getSitemapUrls('https://example.com');
-
-        $this->assertEmpty($urls);
-    }
-}
+    expect($urls)->toBeEmpty();
+});

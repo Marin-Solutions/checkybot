@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\PloiServers;
-use App\Models\User;
 use App\Services\PloiServerImportService;
 use Illuminate\Support\Facades\Http;
 
