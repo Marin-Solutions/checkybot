@@ -3,12 +3,12 @@
 namespace App\Filament\Resources\ServerResource\Pages;
 
 use App\Filament\Resources\ServerResource;
+use App\Filament\Resources\ServerResource\RelationManagers;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
-use Filament\Schemas\Schema;
 
 class LogServer extends ViewRecord
 {
@@ -36,10 +36,6 @@ class LogServer extends ViewRecord
         ];
     }
 
-    public function form(Schema $schema): Schema
-    {
-        return $schema->schema([]);
-    }
 
     protected function getHeaderActions(): array
     {

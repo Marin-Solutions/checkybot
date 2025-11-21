@@ -3,16 +3,16 @@
 namespace App\Filament\Resources\ServerResource\Widgets;
 
 use App\Filament\Resources\ServerResource\Enums\TimeFrame;
-use Filament\Forms\Components\Grid;
+use Filament\Schemas\Components\Grid;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Concerns\InteractsWithForms;
-use Filament\Forms\Contracts\HasForms;
-use Filament\Forms\Form;
+use Filament\Schemas\Concerns\InteractsWithSchemas;
+use Filament\Schemas\Contracts\HasSchemas;
+use Filament\Schemas\Schema;
 use Filament\Widgets\Widget;
 
-class ServerLogTimeframe extends Widget implements HasForms
+class ServerLogTimeframe extends Widget implements HasSchemas
 {
-    use InteractsWithForms;
+    use InteractsWithSchemas;
 
     protected string $view = 'filament.resources.server-resource.widgets.server-log-timeframe';
 
@@ -22,9 +22,9 @@ class ServerLogTimeframe extends Widget implements HasForms
 
     public ?array $data = ['timeFrame' => TimeFrame::LAST_24_HOURS];
 
-    public function form(Form $form): Form
+    public function form(Schema $schema): Schema
     {
-        return $form
+        return $schema
             ->statePath('data')
             ->schema([
                 Grid::make()
@@ -34,7 +34,7 @@ class ServerLogTimeframe extends Widget implements HasForms
                             ->prefix('Show')
                             ->hiddenLabel()
                             ->selectablePlaceholder(false)
-                            ->afterStateUpdated(fn (TimeFrame $state) => $this->dispatch('updateTimeframe', timeFrame: $state))
+                            ->afterStateUpdated(fn(TimeFrame $state) => $this->dispatch('updateTimeframe', timeFrame: $state))
                             ->columnStart(['sm' => 2, 'xl' => 3])->columns(1)
                             ->live(),
                     ])->columns(['sm' => 2, 'xl' => 3]),

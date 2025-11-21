@@ -38,7 +38,7 @@ class ViewSeoCheck extends ViewRecord
 
                     $this->refreshFormData(['record']);
                 })
-                ->visible(fn () => $this->getRecord()->isCancellable()),
+                ->visible(fn() => $this->getRecord()->isCancellable()),
             Actions\Action::make('refresh')
                 ->label('Refresh Data')
                 ->icon('heroicon-o-arrow-path')
@@ -50,21 +50,21 @@ class ViewSeoCheck extends ViewRecord
                     ->label('Export PDF Report')
                     ->icon('heroicon-o-document-arrow-down')
                     ->color('success')
-                    ->url(fn () => $this->getExportUrl('html'))
+                    ->url(fn() => $this->getExportUrl('html'))
                     ->openUrlInNewTab()
-                    ->visible(fn () => $this->getRecord()->isCompleted()),
+                    ->visible(fn() => $this->getRecord()->isCompleted()),
                 Actions\Action::make('export_csv')
                     ->label('Export CSV Data')
                     ->icon('heroicon-o-table-cells')
                     ->color('info')
-                    ->url(fn () => $this->getExportUrl('csv'))
+                    ->url(fn() => $this->getExportUrl('csv'))
                     ->openUrlInNewTab()
-                    ->visible(fn () => $this->getRecord()->isCompleted()),
+                    ->visible(fn() => $this->getRecord()->isCompleted()),
             ])
                 ->label('Export')
                 ->icon('heroicon-o-arrow-down-tray')
                 ->button()
-                ->visible(fn () => $this->getRecord()->isCompleted()),
+                ->visible(fn() => $this->getRecord()->isCompleted()),
         ];
     }
 
@@ -93,9 +93,9 @@ class ViewSeoCheck extends ViewRecord
                         \Filament\Schemas\Components\Livewire::make(\App\Livewire\SeoCheckProgress::class, [
                             'seoCheck' => $this->getRecord(),
                         ])
-                            ->key('seo-check-progress-'.$this->getRecord()->id),
+                            ->key('seo-check-progress-' . $this->getRecord()->id),
                     ])
-                    ->visible(fn () => $this->getRecord()->isRunning())
+                    ->visible(fn() => $this->getRecord()->isRunning())
                     ->columnSpanFull(),
                 \Filament\Schemas\Components\Section::make('SEO Check Overview')
                     ->columnSpanFull()
@@ -106,11 +106,11 @@ class ViewSeoCheck extends ViewRecord
                                     ->label('Website'),
                                 \Filament\Infolists\Components\TextEntry::make('website.url')
                                     ->label('URL')
-                                    ->url(fn ($record) => $record->website->url)
+                                    ->url(fn($record) => $record->website->url)
                                     ->openUrlInNewTab(),
                                 \Filament\Infolists\Components\TextEntry::make('status')
                                     ->badge()
-                                    ->color(fn (string $state): string => match ($state) {
+                                    ->color(fn(string $state): string => match ($state) {
                                         'completed' => 'success',
                                         'running' => 'warning',
                                         'failed' => 'danger',
@@ -143,8 +143,8 @@ class ViewSeoCheck extends ViewRecord
                                 \Filament\Infolists\Components\TextEntry::make('health_score_formatted')
                                     ->label('Health Score')
                                     ->badge()
-                                    ->color(fn ($record): string => $record->health_score_color)
-                                    ->formatStateUsing(fn ($record): string => $record->health_score_formatted),
+                                    ->color(fn($record): string => $record->health_score_color)
+                                    ->formatStateUsing(fn($record): string => $record->health_score_formatted),
                                 \Filament\Infolists\Components\TextEntry::make('errors_count')
                                     ->label('Errors')
                                     ->badge()
@@ -159,7 +159,7 @@ class ViewSeoCheck extends ViewRecord
                                     ->color('info'),
                             ]),
                     ])
-                    ->visible(fn ($record): bool => $record->isCompleted() || $record->isFailed()),
+                    ->visible(fn($record): bool => $record->isCompleted() || $record->isFailed()),
             ]);
     }
 
@@ -168,13 +168,14 @@ class ViewSeoCheck extends ViewRecord
         $record = $this->getRecord();
         $widgets = [];
 
-        // Add trend widget if there are previous checks
-        $previousChecks = SeoCheck::where('website_id', $record->website_id)
-            ->where('status', 'completed')
-            ->where('id', '!=', $record->id)
-            ->count();
+        // Add trend widget if there are any completed or failed checks for this website
+        // This includes the current check, so it will show even if it's the only one
+        $hasChecks = SeoCheck::where('website_id', $record->website_id)
+            ->whereIn('status', ['completed', 'failed'])
+            ->whereNotNull('finished_at')
+            ->exists();
 
-        if ($previousChecks > 0) {
+        if ($hasChecks) {
             $widgets[] = \App\Filament\Widgets\SeoHealthScoreTrendWidget::make([
                 'recordId' => $record->id,
                 'websiteId' => $record->website_id,
