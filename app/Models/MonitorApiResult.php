@@ -44,7 +44,7 @@ class MonitorApiResult extends Model
         // Code 300-399 = redirection messages (usually successful)
         // Code 400-499 = client error responses (failure)
         // Code 500-599 = server error responses (failure)
-        // Code 100-199 = informational responses (rare, treat as success)
+        // Code 100-199 = informational responses (rareapp/Models/MonitorApiResult.php, treat as success)
         if (isset($testResult['code'])) {
             $code = $testResult['code'];
             // Treat as failure: connection errors (0) and HTTP errors (400+)

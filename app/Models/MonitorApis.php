@@ -85,7 +85,7 @@ class MonitorApis extends Model
 
             $responseData['code'] = 0;
             $responseData['body'] = null;
-            $responseData['error'] = 'Connection timeout: '.$exception->getMessage();
+            $responseData['error'] = 'Connection timeout: ' . $exception->getMessage();
 
             return $responseData;
         } catch (RequestException $exception) {
@@ -118,7 +118,7 @@ class MonitorApis extends Model
 
             $responseData['code'] = 0;
             $responseData['body'] = null;
-            $responseData['error'] = 'Unexpected error: '.$exception->getMessage();
+            $responseData['error'] = 'Unexpected error: ' . $exception->getMessage();
 
             return $responseData;
         }
@@ -179,7 +179,7 @@ class MonitorApis extends Model
             'monitor_id' => $data['id'] ?? null,
             'url' => $data['url'],
             'status' => $request->status(),
-            'response_time' => round((microtime(true) - $startTime) * 1000, 2).'ms',
+            'response_time' => round((microtime(true) - $startTime) * 1000, 2) . 'ms',
         ]);
 
         return $responseData;
@@ -191,7 +191,7 @@ class MonitorApis extends Model
             $parsedBody = json_decode($responseData['body'], true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
-                $responseData['error'] = 'Invalid JSON response: '.json_last_error_msg();
+                $responseData['error'] = 'Invalid JSON response: ' . json_last_error_msg();
                 $responseData['body'] = null;
             } else {
                 $responseData['body'] = $parsedBody;

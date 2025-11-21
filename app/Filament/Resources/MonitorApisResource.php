@@ -75,7 +75,7 @@ class MonitorApisResource extends Resource
                 Tables\Columns\TextColumn::make('avg_response_time')
                     ->label('Avg Response Time (ms)')
                     ->default('-')
-                    ->formatStateUsing(fn ($state) => $state === '-' ? '-' : round($state))
+                    ->formatStateUsing(fn($state) => $state === '-' ? '-' : round($state))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
