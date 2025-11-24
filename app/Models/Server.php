@@ -60,26 +60,24 @@ class Server extends Model
 
     /**
      * Scope to get servers with their latest information history
+     * Optimized using LATERAL join for better performance with large history tables
      */
     public function scopeWithLatestHistory($query)
     {
         return $query->select('servers.*')
-            ->leftJoinSub(
-                DB::table('server_information_history')
-                    ->select(
-                        'server_id',
-                        DB::raw("CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load) as latest_server_history_info"),
-                        'created_at as latest_server_history_created_at'
-                    )
-                    ->whereIn('id', function ($subQuery) {
-                        $subQuery->select(DB::raw('MAX(id)'))
-                            ->from('server_information_history as sih2')
-                            ->groupBy('sih2.server_id');
-                    }),
-                'latest_history',
-                'servers.id',
+            ->leftJoin(
+                DB::raw('LATERAL (
+                    SELECT
+                        CONCAT(\'disk_usage:\', disk_free_percentage, \'|ram_usage:\', ram_free_percentage, \'|cpu_usage:\', cpu_load) as latest_server_history_info,
+                        created_at as latest_server_history_created_at
+                    FROM server_information_history
+                    WHERE server_id = servers.id
+                    ORDER BY id DESC
+                    LIMIT 1
+                ) as latest_history'),
+                DB::raw('true'),
                 '=',
-                'latest_history.server_id'
+                DB::raw('true')
             )
             ->addSelect('latest_history.latest_server_history_info')
             ->addSelect('latest_history.latest_server_history_created_at');
