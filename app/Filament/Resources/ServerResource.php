@@ -17,7 +17,8 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Carbon;
-use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Js;
 
 class ServerResource extends Resource
 {
@@ -70,7 +71,7 @@ class ServerResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->formatStateUsing(function ($record) {
-                        $latestInfo = $record->latest_server_history_created_at;
+                        $latestInfo = $record->latest_server_history_created_at ?? null;
 
                         $statusColor = 'bg-danger-500';
                         $title = 'Offline (No recent data)';
@@ -105,9 +106,10 @@ class ServerResource extends Resource
                             );
                     })
                     ->state(function (Server $record): array {
-                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
+                        $info = $record->latest_server_history_info ?? null;
+                        $latestInfo = $record->parseLatestServerHistoryInfo($info);
 
-                        if (! isset($latestInfo['disk_usage'])) {
+                        if (empty($latestInfo) || ! isset($latestInfo['disk_usage'])) {
                             return [
                                 'value' => 0,
                                 'tooltip' => 'No data available',
@@ -136,9 +138,10 @@ class ServerResource extends Resource
                             );
                     })
                     ->state(function (Server $record): array {
-                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
+                        $info = $record->latest_server_history_info ?? null;
+                        $latestInfo = $record->parseLatestServerHistoryInfo($info);
 
-                        if (! isset($latestInfo['ram_usage'])) {
+                        if (empty($latestInfo) || ! isset($latestInfo['ram_usage'])) {
                             return [
                                 'label' => 'RAM',
                                 'value' => 0,
@@ -169,9 +172,10 @@ class ServerResource extends Resource
                             );
                     })
                     ->state(function (Server $record): array {
-                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
+                        $info = $record->latest_server_history_info ?? null;
+                        $latestInfo = $record->parseLatestServerHistoryInfo($info);
 
-                        if (! isset($latestInfo['cpu_usage'])) {
+                        if (empty($latestInfo) || ! isset($latestInfo['cpu_usage'])) {
                             return [
                                 'value' => 0,
                                 'tooltip' => 'No data available',
@@ -207,12 +211,36 @@ class ServerResource extends Resource
                 // Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
-                CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
-                    ->label(__('Copy script')),
-                CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
-                    ->label(__('Copy log script')),
+                \Filament\Actions\Action::make('copy_script')
+                    ->label(__('Copy script'))
+                    ->icon('heroicon-o-clipboard-document')
+                    ->requiresConfirmation(false)
+                    ->action(fn() => null)
+                    ->extraAttributes(function (Server $record) {
+                        $script = ServerInformationHistory::copyCommand($record->id);
+
+                        return [
+                            'x-on:click' => new HtmlString(
+                                'navigator.clipboard.writeText(' . Js::from($script) . '); ' .
+                                    '$tooltip(' . Js::from(__('Script copied to clipboard')) . ');'
+                            ),
+                        ];
+                    }),
+                \Filament\Actions\Action::make('copy_log_script')
+                    ->label(__('Copy log script'))
+                    ->icon('heroicon-o-clipboard-document')
+                    ->requiresConfirmation(false)
+                    ->action(fn() => null)
+                    ->extraAttributes(function (Server $record) {
+                        $script = ServerLogFileHistory::copyCommand($record->id);
+
+                        return [
+                            'x-on:click' => new HtmlString(
+                                'navigator.clipboard.writeText(' . Js::from($script) . '); ' .
+                                    '$tooltip(' . Js::from(__('Log script copied to clipboard')) . ');'
+                            ),
+                        ];
+                    }),
                 \Filament\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
                     ->icon('heroicon-o-presentation-chart-line')
@@ -261,7 +289,7 @@ class ServerResource extends Resource
                 ->url('localhsot'),
             Action::make('delete')
                 ->requiresConfirmation()
-                ->action(fn () => $this->post->delete()),
+                ->action(fn() => $this->post->delete()),
         ];
     }
 
