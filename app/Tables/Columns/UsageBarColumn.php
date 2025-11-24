@@ -11,9 +11,5 @@ class UsageBarColumn extends Column
     protected function setUp(): void
     {
         parent::setUp();
-
-        $this->extraAttributes([
-            'class' => 'px-4 py-3',
-        ]);
     }
 }

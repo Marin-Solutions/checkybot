@@ -220,8 +220,9 @@ class ServerResource extends Resource
                         $script = ServerInformationHistory::copyCommand($record->id);
 
                         return [
-                            'x-on:click' => new HtmlString(
-                                'navigator.clipboard.writeText(' . Js::from($script) . '); ' .
+                            'x-data' => '',
+                            'x-on:click.prevent' => new HtmlString(
+                                'window.navigator.clipboard.writeText(' . Js::from($script) . '); ' .
                                     '$tooltip(' . Js::from(__('Script copied to clipboard')) . ');'
                             ),
                         ];
@@ -235,8 +236,9 @@ class ServerResource extends Resource
                         $script = ServerLogFileHistory::copyCommand($record->id);
 
                         return [
-                            'x-on:click' => new HtmlString(
-                                'navigator.clipboard.writeText(' . Js::from($script) . '); ' .
+                            'x-data' => '',
+                            'x-on:click.prevent' => new HtmlString(
+                                'window.navigator.clipboard.writeText(' . Js::from($script) . '); ' .
                                     '$tooltip(' . Js::from(__('Log script copied to clipboard')) . ');'
                             ),
                         ];
