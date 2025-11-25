@@ -236,15 +236,15 @@ class ServerResource extends Resource
                     ->label(__('Copy script'))
                     ->icon('heroicon-o-clipboard-document')
                     ->requiresConfirmation(false)
-                    ->action(fn() => null)
+                    ->action(fn () => null)
                     ->extraAttributes(function (Server $record) {
                         $script = ServerInformationHistory::copyCommand($record->id);
 
                         return [
                             'x-data' => '',
                             'x-on:click.prevent' => new HtmlString(
-                                'window.navigator.clipboard.writeText(' . Js::from($script) . '); ' .
-                                    '$tooltip(' . Js::from(__('Script copied to clipboard')) . ');'
+                                'window.navigator.clipboard.writeText('.Js::from($script).'); '.
+                                    '$tooltip('.Js::from(__('Script copied to clipboard')).');'
                             ),
                         ];
                     }),
@@ -252,15 +252,15 @@ class ServerResource extends Resource
                     ->label(__('Copy log script'))
                     ->icon('heroicon-o-clipboard-document')
                     ->requiresConfirmation(false)
-                    ->action(fn() => null)
+                    ->action(fn () => null)
                     ->extraAttributes(function (Server $record) {
                         $script = ServerLogFileHistory::copyCommand($record->id);
 
                         return [
                             'x-data' => '',
                             'x-on:click.prevent' => new HtmlString(
-                                'window.navigator.clipboard.writeText(' . Js::from($script) . '); ' .
-                                    '$tooltip(' . Js::from(__('Log script copied to clipboard')) . ');'
+                                'window.navigator.clipboard.writeText('.Js::from($script).'); '.
+                                    '$tooltip('.Js::from(__('Log script copied to clipboard')).');'
                             ),
                         ];
                     }),
@@ -312,7 +312,7 @@ class ServerResource extends Resource
                 ->url('localhsot'),
             Action::make('delete')
                 ->requiresConfirmation()
-                ->action(fn() => $this->post->delete()),
+                ->action(fn () => $this->post->delete()),
         ];
     }
 
