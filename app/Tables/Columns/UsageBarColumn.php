@@ -2,18 +2,11 @@
 
 namespace App\Tables\Columns;
 
-use Filament\Tables\Columns\Column;
+use Filament\Tables\Columns\ViewColumn;
 
-class UsageBarColumn extends Column
+class UsageBarColumn extends ViewColumn
 {
     protected string $view = 'tables.columns.usage-bar-column';
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        $this->extraAttributes([
-            'class' => 'px-4 py-3',
-        ]);
-    }
+    protected bool $isHtml = true;
 }

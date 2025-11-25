@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 
 class Server extends Model
 {
@@ -60,27 +59,23 @@ class Server extends Model
 
     /**
      * Scope to get servers with their latest information history
-     * Optimized using LATERAL join for better performance with large history tables
+     * Uses correlated subqueries for MySQL/MariaDB compatibility
      */
     public function scopeWithLatestHistory($query)
     {
         return $query->select('servers.*')
-            ->leftJoin(
-                DB::raw('LATERAL (
-                    SELECT
-                        CONCAT(\'disk_usage:\', disk_free_percentage, \'|ram_usage:\', ram_free_percentage, \'|cpu_usage:\', cpu_load) as latest_server_history_info,
-                        created_at as latest_server_history_created_at
-                    FROM server_information_history
-                    WHERE server_id = servers.id
-                    ORDER BY id DESC
-                    LIMIT 1
-                ) as latest_history'),
-                DB::raw('true'),
-                '=',
-                DB::raw('true')
-            )
-            ->addSelect('latest_history.latest_server_history_info')
-            ->addSelect('latest_history.latest_server_history_created_at');
+            ->addSelect([
+                'latest_server_history_info' => ServerInformationHistory::selectRaw(
+                    "CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load)"
+                )
+                    ->whereColumn('server_id', 'servers.id')
+                    ->orderBy('id', 'desc')
+                    ->limit(1),
+                'latest_server_history_created_at' => ServerInformationHistory::select('created_at')
+                    ->whereColumn('server_id', 'servers.id')
+                    ->orderBy('id', 'desc')
+                    ->limit(1),
+            ]);
     }
 
     /**
@@ -89,5 +84,21 @@ class Server extends Model
     public function getLatestHistoryAttribute()
     {
         return $this->informationHistory()->latest()->first();
+    }
+
+    /**
+     * Ensure latest_server_history_info is always accessible, even when NULL
+     */
+    public function getLatestServerHistoryInfoAttribute($value): ?string
+    {
+        return $value;
+    }
+
+    /**
+     * Ensure latest_server_history_created_at is always accessible, even when NULL
+     */
+    public function getLatestServerHistoryCreatedAtAttribute($value): ?string
+    {
+        return $value;
     }
 }
