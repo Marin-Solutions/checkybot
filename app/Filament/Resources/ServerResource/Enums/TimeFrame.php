@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\ServerResource\Enums;
 
+use Carbon\Carbon;
+
 enum TimeFrame: string
 {
     case LAST_HOUR = '1 HOUR';
@@ -51,5 +53,22 @@ enum TimeFrame: string
     public static function getDefaultTimeframe(): self
     {
         return self::LAST_24_HOURS;
+    }
+
+    public function getStartDate(): Carbon
+    {
+        return match ($this) {
+            self::LAST_HOUR => Carbon::now()->subHour(),
+            self::LAST_2_HOURS => Carbon::now()->subHours(2),
+            self::LAST_4_HOURS => Carbon::now()->subHours(4),
+            self::LAST_6_HOURS => Carbon::now()->subHours(6),
+            self::LAST_12_HOURS => Carbon::now()->subHours(12),
+            self::LAST_24_HOURS => Carbon::now()->subHours(24),
+            self::LAST_48_HOURS => Carbon::now()->subHours(48),
+            self::LAST_3_DAYS => Carbon::now()->subDays(3),
+            self::LAST_7_DAYS => Carbon::now()->subDays(7),
+            self::LAST_14_DAYS => Carbon::now()->subDays(14),
+            self::LAST_28_DAYS => Carbon::now()->subDays(28),
+        };
     }
 }

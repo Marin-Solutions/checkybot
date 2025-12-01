@@ -2,6 +2,9 @@
 
 use App\Filament\Resources\ServerResource\Enums\TimeFrame;
 use App\Filament\Resources\ServerResource\Pages\LogServer;
+use App\Filament\Resources\ServerResource\Widgets\CpuLoadChart;
+use App\Filament\Resources\ServerResource\Widgets\DiskUsedChart;
+use App\Filament\Resources\ServerResource\Widgets\RamUsedChart;
 use App\Filament\Resources\ServerResource\Widgets\ServerLogTimeframe;
 use App\Models\Server;
 use Livewire\Livewire;
@@ -66,6 +69,30 @@ describe('LogServer Page with Widgets', function () {
         it('contains the server log timeframe widget', function () {
             $this->get(LogServer::getUrl(['record' => $this->server]))
                 ->assertSeeLivewire(ServerLogTimeframe::class);
+        });
+    });
+});
+
+describe('Chart Widgets', function () {
+    beforeEach(function () {
+        $this->user = $this->actingAsSuperAdmin();
+        $this->server = Server::factory()->create(['created_by' => $this->user->id]);
+    });
+
+    describe('smoke tests', function () {
+        it('cpu chart renders with record', function () {
+            Livewire::test(CpuLoadChart::class, ['record' => $this->server])
+                ->assertSuccessful();
+        });
+
+        it('ram chart renders with record', function () {
+            Livewire::test(RamUsedChart::class, ['record' => $this->server])
+                ->assertSuccessful();
+        });
+
+        it('disk chart renders with record', function () {
+            Livewire::test(DiskUsedChart::class, ['record' => $this->server])
+                ->assertSuccessful();
         });
     });
 });
