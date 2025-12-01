@@ -25,6 +25,7 @@
     "league/flysystem-sftp-v3": "^3.0",
     "predis/predis": "^2.0",
     "pusher/pusher-php-server": "^7.2",
+    "ryangjchandler/filament-progress-column": "^2.0",
     "spatie/crawler": "^8.2",
     "spatie/dns": "^2.6",
     "spatie/laravel-flare": "^1.1",

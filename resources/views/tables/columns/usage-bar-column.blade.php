@@ -1,24 +1,39 @@
-<div class="flex items-center w-full px-4">
-    @php
-        $state = $getState();
-        $value = $state['value'] ?? 0;
-        $color = match(true) {
-            $value >= 80 => 'bg-red-500 dark:bg-red-400',
-            $value >= 70 => 'bg-yellow-500 dark:bg-yellow-400',
-            default => 'bg-green-500 dark:bg-green-400'
-        };
-    @endphp
+@php
+$state = $getState();
 
-    <div class="flex-1 max-w-[200px]">
-        <div 
-            class="bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden" 
-            style="height: 8px;"
-            title="{{ number_format($value, 1) }}% {{ $state['tooltip'] ?? '' }}"
-        >
-            <div 
-                class="{{ $color }} transition-all shadow-sm" 
-                style="width: {{ $value }}%; height: 8px;"
-            ></div>
-        </div>
+$value = 0;
+$tooltip = '';
+
+if (is_array($state)) {
+$value = $state['value'] ?? 0;
+$tooltip = $state['tooltip'] ?? '';
+}
+
+// Only consider it "No data" if the tooltip explicitly says so
+$hasData = $tooltip !== 'No data available';
+
+// Ensure value is within 0-100 range
+$percentage = max(0, min(100, (float) $value));
+
+$colorClass = match(true) {
+!$hasData => 'bg-gray-200 dark:bg-gray-700',
+$percentage >= 90 => 'bg-red-500',
+$percentage >= 75 => 'bg-yellow-500',
+default => 'bg-green-500',
+};
+@endphp
+
+<div class="flex items-center w-full gap-3">
+    <div class="flex-grow bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden" title="{{ $tooltip }}">
+        @if($hasData)
+        <div class="{{ $colorClass }} h-full rounded-full transition-all duration-500" style="width: {{ $percentage }}%;"></div>
+        @endif
     </div>
-</div> 
+    <div class="text-xs font-medium text-gray-700 dark:text-gray-300 w-10 text-right">
+        @if($hasData)
+        {{ number_format($percentage, 1) }}%
+        @else
+        <span class="text-gray-400 dark:text-gray-500">-</span>
+        @endif
+    </div>
+</div>

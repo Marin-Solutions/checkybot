@@ -7,7 +7,6 @@ use App\Filament\Resources\ServerResource\RelationManagers;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
-use App\Tables\Columns\UsageBarColumn;
 use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Resources\Resource;
@@ -17,7 +16,9 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 use Illuminate\Support\Carbon;
-use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Js;
+use RyanChandler\FilamentProgressColumn\ProgressColumn;
 
 class ServerResource extends Resource
 {
@@ -70,7 +71,7 @@ class ServerResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->formatStateUsing(function ($record) {
-                        $latestInfo = $record->latest_server_history_created_at;
+                        $latestInfo = $record->latest_server_history_created_at ?? null;
 
                         $statusColor = 'bg-danger-500';
                         $title = 'Offline (No recent data)';
@@ -91,7 +92,7 @@ class ServerResource extends Resource
                 Tables\Columns\TextColumn::make('ip')
                     ->label('IP')
                     ->searchable(),
-                UsageBarColumn::make('disk_usage')
+                ProgressColumn::make('disk_usage')
                     ->label('Disk Usage')
                     ->translateLabel()
                     ->sortable(query: function (Builder $query, string $direction): Builder {
@@ -104,25 +105,35 @@ class ServerResource extends Resource
                                 $direction
                             );
                     })
-                    ->state(function (Server $record): array {
+                    ->progress(function (Server $record): float {
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['disk_usage'])) {
-                            return [
-                                'value' => 0,
-                                'tooltip' => 'No data available',
-                            ];
+                            return 0;
                         }
 
                         $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo['disk_usage']);
                         $usedPercentage = 100 - $freePercentage;
 
-                        return [
-                            'value' => $usedPercentage,
-                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage),
-                        ];
+                        return max(0, min(100, $usedPercentage));
+                    })
+                    ->color(function (Server $record): string {
+                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
+
+                        if (! isset($latestInfo['disk_usage'])) {
+                            return 'gray';
+                        }
+
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo['disk_usage']);
+                        $usedPercentage = 100 - $freePercentage;
+
+                        return match (true) {
+                            $usedPercentage >= 90 => 'danger',
+                            $usedPercentage >= 75 => 'warning',
+                            default => 'success',
+                        };
                     }),
-                UsageBarColumn::make('ram_usage')
+                ProgressColumn::make('ram_usage')
                     ->label('RAM Usage')
                     ->translateLabel()
                     ->sortable(query: function (Builder $query, string $direction): Builder {
@@ -135,27 +146,35 @@ class ServerResource extends Resource
                                 $direction
                             );
                     })
-                    ->state(function (Server $record): array {
+                    ->progress(function (Server $record): float {
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['ram_usage'])) {
-                            return [
-                                'label' => 'RAM',
-                                'value' => 0,
-                                'tooltip' => 'No data available',
-                            ];
+                            return 0;
                         }
 
                         $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo['ram_usage']);
                         $usedPercentage = 100 - $freePercentage;
 
-                        return [
-                            'label' => 'RAM',
-                            'value' => $usedPercentage,
-                            'tooltip' => sprintf("Used: %.1f%%\nFree: %.1f%%", $usedPercentage, $freePercentage),
-                        ];
+                        return max(0, min(100, $usedPercentage));
+                    })
+                    ->color(function (Server $record): string {
+                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
+
+                        if (! isset($latestInfo['ram_usage'])) {
+                            return 'gray';
+                        }
+
+                        $freePercentage = (float) str_replace(['%', ' '], '', $latestInfo['ram_usage']);
+                        $usedPercentage = 100 - $freePercentage;
+
+                        return match (true) {
+                            $usedPercentage >= 90 => 'danger',
+                            $usedPercentage >= 75 => 'warning',
+                            default => 'success',
+                        };
                     }),
-                UsageBarColumn::make('cpu_usage')
+                ProgressColumn::make('cpu_usage')
                     ->label('CPU Load')
                     ->translateLabel()
                     ->sortable(query: function (Builder $query, string $direction): Builder {
@@ -168,27 +187,33 @@ class ServerResource extends Resource
                                 $direction
                             );
                     })
-                    ->state(function (Server $record): array {
+                    ->progress(function (Server $record): float {
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['cpu_usage'])) {
-                            return [
-                                'value' => 0,
-                                'tooltip' => 'No data available',
-                            ];
+                            return 0;
                         }
 
                         // Get CPU usage directly from CPU_LOAD
                         $cpuUsage = (float) str_replace(',', '.', $latestInfo['cpu_usage']);
 
-                        return [
-                            'value' => min(100, $cpuUsage), // Cap at 100%
-                            'tooltip' => sprintf(
-                                "CPU Load: %.1f%%\nCores: %d",
-                                $cpuUsage,
-                                $record->cpu_cores ?? 0
-                            ),
-                        ];
+                        return max(0, min(100, $cpuUsage));
+                    })
+                    ->color(function (Server $record): string {
+                        $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
+
+                        if (! isset($latestInfo['cpu_usage'])) {
+                            return 'gray';
+                        }
+
+                        // Get CPU usage directly from CPU_LOAD
+                        $cpuUsage = (float) str_replace(',', '.', $latestInfo['cpu_usage']);
+
+                        return match (true) {
+                            $cpuUsage >= 90 => 'danger',
+                            $cpuUsage >= 75 => 'warning',
+                            default => 'success',
+                        };
                     }),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTime()
@@ -207,12 +232,38 @@ class ServerResource extends Resource
                 // Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
-                CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerInformationHistory::copyCommand($record->id))
-                    ->label(__('Copy script')),
-                CopyAction::make()
-                    ->copyable(fn (Server $record) => ServerLogFileHistory::copyCommand($record->id))
-                    ->label(__('Copy log script')),
+                \Filament\Actions\Action::make('copy_script')
+                    ->label(__('Copy script'))
+                    ->icon('heroicon-o-clipboard-document')
+                    ->requiresConfirmation(false)
+                    ->action(fn () => null)
+                    ->extraAttributes(function (Server $record) {
+                        $script = ServerInformationHistory::copyCommand($record->id);
+
+                        return [
+                            'x-data' => '',
+                            'x-on:click.prevent' => new HtmlString(
+                                'window.navigator.clipboard.writeText('.Js::from($script).'); '.
+                                    '$tooltip('.Js::from(__('Script copied to clipboard')).');'
+                            ),
+                        ];
+                    }),
+                \Filament\Actions\Action::make('copy_log_script')
+                    ->label(__('Copy log script'))
+                    ->icon('heroicon-o-clipboard-document')
+                    ->requiresConfirmation(false)
+                    ->action(fn () => null)
+                    ->extraAttributes(function (Server $record) {
+                        $script = ServerLogFileHistory::copyCommand($record->id);
+
+                        return [
+                            'x-data' => '',
+                            'x-on:click.prevent' => new HtmlString(
+                                'window.navigator.clipboard.writeText('.Js::from($script).'); '.
+                                    '$tooltip('.Js::from(__('Log script copied to clipboard')).');'
+                            ),
+                        ];
+                    }),
                 \Filament\Actions\ViewAction::make('view_statistics')
                     ->label('View statistics')
                     ->icon('heroicon-o-presentation-chart-line')
