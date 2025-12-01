@@ -49,16 +49,6 @@
                                 scales: {
                                     x: {
                                         display: false,
-                                        type: 'time',
-                                        time: {
-                                            unit: 'minute'
-                                        },
-                                        title: {
-                                            display: false,
-                                        },
-                                        ticks: {
-                                            autoSkip: true,
-                                        },
                                         grid: {
                                             display: false,
                                         }

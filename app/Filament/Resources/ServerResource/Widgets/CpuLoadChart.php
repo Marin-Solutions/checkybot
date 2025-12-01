@@ -32,7 +32,7 @@ class CpuLoadChart extends ChartWidget
         return [
             'datasets' => [[
                 'label' => ' CPU Usage',
-                'data' => $data->values(),
+                'data' => $data->values()->map(fn ($v) => (float) $v)->toArray(),
                 'borderColor' => 'rgba(75, 192, 192, 1)',
                 'backgroundColor' => 'rgba(75, 192, 192, 0.2)',
                 'borderWidth' => 2,
@@ -40,9 +40,7 @@ class CpuLoadChart extends ChartWidget
                 'tension' => 0.4,
                 'fill' => 'origin',
             ]],
-            'labels' => $data->keys()->map(function ($date) {
-                return Carbon::parse($date);
-            }),
+            'labels' => $data->keys()->map(fn ($date) => Carbon::parse($date)->toIso8601String())->toArray(),
         ];
     }
 
@@ -51,7 +49,25 @@ class CpuLoadChart extends ChartWidget
         return 'line';
     }
 
-    protected string $view = 'components/cpu-load-chart-widget';
+    protected function getOptions(): array
+    {
+        return [
+            'scales' => [
+                'x' => [
+                    'display' => false,
+                ],
+                'y' => [
+                    'beginAtZero' => true,
+                    'max' => 100,
+                ],
+            ],
+            'plugins' => [
+                'legend' => [
+                    'display' => false,
+                ],
+            ],
+        ];
+    }
 
     #[On('updateTimeframe')]
     public function updateTimeframe(TimeFrame $timeFrame): void

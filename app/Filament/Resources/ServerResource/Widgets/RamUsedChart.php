@@ -31,12 +31,12 @@ class RamUsedChart extends ChartWidget
 
         return [
             'datasets' => [[
-                'label' => ' CPU Usage',
+                'label' => ' RAM Usage',
                 'data' => $data->values()->map(function ($free) {
                     $free = floatval(str_replace('%', '', $free));
 
                     return 100 - $free;
-                }),
+                })->toArray(),
                 'borderColor' => 'rgba(0, 123, 255, 1)',
                 'backgroundColor' => 'rgba(0, 123, 255, 0.2)',
                 'borderWidth' => 2,
@@ -44,9 +44,7 @@ class RamUsedChart extends ChartWidget
                 'tension' => 0.4,
                 'fill' => 'origin',
             ]],
-            'labels' => $data->keys()->map(function ($date) {
-                return Carbon::parse($date);
-            }),
+            'labels' => $data->keys()->map(fn ($date) => Carbon::parse($date)->toIso8601String())->toArray(),
         ];
     }
 
@@ -55,7 +53,25 @@ class RamUsedChart extends ChartWidget
         return 'line';
     }
 
-    protected string $view = 'components/cpu-load-chart-widget';
+    protected function getOptions(): array
+    {
+        return [
+            'scales' => [
+                'x' => [
+                    'display' => false,
+                ],
+                'y' => [
+                    'beginAtZero' => true,
+                    'max' => 100,
+                ],
+            ],
+            'plugins' => [
+                'legend' => [
+                    'display' => false,
+                ],
+            ],
+        ];
+    }
 
     #[On('updateTimeframe')]
     public function updateTimeframe(TimeFrame $timeFrame): void
