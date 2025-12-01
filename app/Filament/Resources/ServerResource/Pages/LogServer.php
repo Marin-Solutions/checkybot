@@ -28,6 +28,13 @@ class LogServer extends ViewRecord
         ];
     }
 
+    public function getWidgetData(): array
+    {
+        return [
+            'record' => $this->record,
+        ];
+    }
+
     protected function getRelations(): array
     {
         return [
