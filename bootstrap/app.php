@@ -15,7 +15,6 @@ return Application::configure(basePath: dirname(__DIR__))
         //
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        // Use Spatie Laravel Flare for error reporting
-        \Spatie\LaravelFlare\Facades\Flare::handles($exceptions);
+        //
     })
     ->create();

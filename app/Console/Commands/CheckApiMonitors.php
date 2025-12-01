@@ -7,7 +7,7 @@ use App\Models\MonitorApis;
 use Illuminate\Console\Command;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
-use Spatie\LaravelFlare\Facades\Flare;
+use Sentry\Laravel\Facade as Sentry;
 
 class CheckApiMonitors extends Command
 {
@@ -33,11 +33,15 @@ class CheckApiMonitors extends Command
                 ]);
 
                 if (! isset($result['code'])) {
-                    Flare::context('monitor_id', $monitor->id);
-                    Flare::context('monitor_title', $monitor->title);
-                    Flare::context('url', $monitor->url);
-                    Flare::context('data_path', $monitor->data_path);
-                    Flare::context('result', $result);
+                    Sentry::configureScope(function (\Sentry\State\Scope $scope) use ($monitor, $result): void {
+                        $scope->setContext('monitor', [
+                            'monitor_id' => $monitor->id,
+                            'monitor_title' => $monitor->title,
+                            'url' => $monitor->url,
+                            'data_path' => $monitor->data_path,
+                            'result' => $result,
+                        ]);
+                    });
                     throw new \Exception('Invalid API test result format - missing code');
                 }
 
@@ -49,7 +53,7 @@ class CheckApiMonitors extends Command
 
                 if (isset($result['error']) && $result['error']) {
                     $shouldNotify = true;
-                    $message .= $result['error'].' ';
+                    $message .= $result['error'] . ' ';
                 } elseif ($result['code'] != 200) {
                     $shouldNotify = true;
                     $message .= "HTTP Code: {$result['code']}. ";
