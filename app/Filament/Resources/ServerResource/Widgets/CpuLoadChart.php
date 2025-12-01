@@ -3,17 +3,17 @@
 namespace App\Filament\Resources\ServerResource\Widgets;
 
 use App\Filament\Resources\ServerResource\Enums\TimeFrame;
-use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Database\Eloquent\Model;
 use Livewire\Attributes\On;
 
 class CpuLoadChart extends ChartWidget
 {
     protected ?string $heading = 'CPU Load';
 
-    public ?Server $record = null;
+    public ?Model $record = null;
 
     public ?TimeFrame $timeFrame = null;
 

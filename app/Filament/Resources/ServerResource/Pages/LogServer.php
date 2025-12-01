@@ -21,10 +21,10 @@ class LogServer extends ViewRecord
     protected function getHeaderWidgets(): array
     {
         return [
-            ServerResource\Widgets\ServerLogTimeframe::make(),
-            ServerResource\Widgets\CpuLoadChart::make(['record' => $this->record]),
-            ServerResource\Widgets\RamUsedChart::make(['record' => $this->record]),
-            ServerResource\Widgets\DiskUsedChart::make(['record' => $this->record]),
+            ServerResource\Widgets\ServerLogTimeframe::class,
+            ServerResource\Widgets\CpuLoadChart::class,
+            ServerResource\Widgets\RamUsedChart::class,
+            ServerResource\Widgets\DiskUsedChart::class,
         ];
     }
 
