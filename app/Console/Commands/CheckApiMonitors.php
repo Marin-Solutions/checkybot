@@ -53,7 +53,7 @@ class CheckApiMonitors extends Command
 
                 if (isset($result['error']) && $result['error']) {
                     $shouldNotify = true;
-                    $message .= $result['error'] . ' ';
+                    $message .= $result['error'].' ';
                 } elseif ($result['code'] != 200) {
                     $shouldNotify = true;
                     $message .= "HTTP Code: {$result['code']}. ";
