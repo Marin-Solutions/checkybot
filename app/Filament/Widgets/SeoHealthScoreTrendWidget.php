@@ -9,7 +9,7 @@ class SeoHealthScoreTrendWidget extends ChartWidget
 {
     protected ?string $heading = 'SEO Health Score Trend';
 
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 4;
 
     protected int|string|array $columnSpan = 'full';
 

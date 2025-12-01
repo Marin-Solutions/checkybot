@@ -64,31 +64,39 @@ class ServerResource extends Resource
     {
         return $table
             ->columns([
+                Tables\Columns\IconColumn::make('status')
+                    ->label('')
+                    ->icon('heroicon-o-signal')
+                    ->tooltip(function ($record) {
+                        $latestInfo = $record->latest_server_history_created_at ?? null;
+
+                        if (! $latestInfo) {
+                            return 'Offline - No data received';
+                        }
+
+                        $minutesAgo = Carbon::parse($latestInfo)->diffInMinutes(now());
+
+                        if ($minutesAgo <= 2) {
+                            return 'Online - Last update '.$minutesAgo.' min ago';
+                        }
+
+                        return 'Offline - Last update '.Carbon::parse($latestInfo)->diffForHumans();
+                    })
+                    ->color(function ($record) {
+                        $latestInfo = $record->latest_server_history_created_at ?? null;
+
+                        if ($latestInfo && Carbon::parse($latestInfo)->diffInMinutes(now()) <= 2) {
+                            return 'success';
+                        }
+
+                        return 'danger';
+                    }),
                 Tables\Columns\TextColumn::make('id')
                     ->label('ID')
                     ->sortable(),
                 Tables\Columns\TextColumn::make('name')
                     ->searchable()
-                    ->sortable()
-                    ->formatStateUsing(function ($record) {
-                        $latestInfo = $record->latest_server_history_created_at ?? null;
-
-                        $statusColor = 'bg-danger-500';
-                        $title = 'Offline (No recent data)';
-
-                        if ($latestInfo && Carbon::parse($latestInfo)->diffInMinutes(now()) <= 2) {
-                            $statusColor = 'bg-success-500';
-                            $title = 'Online';
-                        }
-
-                        return new \Illuminate\Support\HtmlString("
-                            <div class='flex items-center gap-2'>
-                                <span class='flex-shrink-0 w-2 h-2 rounded-full {$statusColor}' title='{$title}'></span>
-                                <span>{$record->name}</span>
-                            </div>
-                        ");
-                    })
-                    ->html(),
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('ip')
                     ->label('IP')
                     ->searchable(),

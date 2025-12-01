@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Server extends Model
 {
@@ -58,23 +59,24 @@ class Server extends Model
     }
 
     /**
-     * Scope to get servers with their latest information history
-     * Uses correlated subqueries for MySQL/MariaDB compatibility
+     * Scope to get servers with their latest information history.
+     * Uses JOIN with derived table for optimal performance on large datasets.
      */
     public function scopeWithLatestHistory($query)
     {
-        return $query->select('servers.*')
+        $latestIds = ServerInformationHistory::query()
+            ->selectRaw('server_id, MAX(id) as max_id')
+            ->groupBy('server_id');
+
+        return $query
+            ->select('servers.*')
+            ->leftJoinSub($latestIds, 'latest_ids', function ($join) {
+                $join->on('servers.id', '=', 'latest_ids.server_id');
+            })
+            ->leftJoin('server_information_history as sih', 'sih.id', '=', 'latest_ids.max_id')
             ->addSelect([
-                'latest_server_history_info' => ServerInformationHistory::selectRaw(
-                    "CONCAT('disk_usage:', disk_free_percentage, '|ram_usage:', ram_free_percentage, '|cpu_usage:', cpu_load)"
-                )
-                    ->whereColumn('server_id', 'servers.id')
-                    ->orderBy('id', 'desc')
-                    ->limit(1),
-                'latest_server_history_created_at' => ServerInformationHistory::select('created_at')
-                    ->whereColumn('server_id', 'servers.id')
-                    ->orderBy('id', 'desc')
-                    ->limit(1),
+                DB::raw("CONCAT('disk_usage:', COALESCE(sih.disk_free_percentage, ''), '|ram_usage:', COALESCE(sih.ram_free_percentage, ''), '|cpu_usage:', COALESCE(sih.cpu_load, '')) as latest_server_history_info"),
+                DB::raw('sih.created_at as latest_server_history_created_at'),
             ]);
     }
 
