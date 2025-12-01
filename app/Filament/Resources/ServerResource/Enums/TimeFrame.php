@@ -71,4 +71,25 @@ enum TimeFrame: string
             self::LAST_28_DAYS => Carbon::now()->subDays(28),
         };
     }
+
+    /**
+     * Get the granularity in minutes for aggregating data points.
+     * Keeps chart data points around 60-100 for optimal display.
+     */
+    public function getGranularityMinutes(): int
+    {
+        return match ($this) {
+            self::LAST_HOUR => 1,
+            self::LAST_2_HOURS => 2,
+            self::LAST_4_HOURS => 4,
+            self::LAST_6_HOURS => 6,
+            self::LAST_12_HOURS => 10,
+            self::LAST_24_HOURS => 20,
+            self::LAST_48_HOURS => 30,
+            self::LAST_3_DAYS => 60,
+            self::LAST_7_DAYS => 120,
+            self::LAST_14_DAYS => 240,
+            self::LAST_28_DAYS => 480,
+        };
+    }
 }

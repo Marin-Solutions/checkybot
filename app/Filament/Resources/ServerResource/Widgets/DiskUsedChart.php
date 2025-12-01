@@ -7,6 +7,7 @@ use App\Models\ServerInformationHistory;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
 
 class DiskUsedChart extends ChartWidget
@@ -24,19 +25,23 @@ class DiskUsedChart extends ChartWidget
         }
 
         $timeFrame = $this->timeFrame ?? TimeFrame::getDefaultTimeframe();
+        $granularitySeconds = $timeFrame->getGranularityMinutes() * 60;
+
         $data = ServerInformationHistory::query()
+            ->select([
+                DB::raw("FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(created_at) / {$granularitySeconds}) * {$granularitySeconds}) as time_bucket"),
+                DB::raw('AVG(disk_free_percentage) as avg_value'),
+            ])
             ->where('server_id', $this->record->id)
             ->where('created_at', '>=', $timeFrame->getStartDate())
-            ->pluck('disk_free_percentage', 'created_at');
+            ->groupBy('time_bucket')
+            ->orderBy('time_bucket')
+            ->get();
 
         return [
             'datasets' => [[
                 'label' => ' Disk Usage',
-                'data' => $data->values()->map(function ($free) {
-                    $free = floatval(str_replace('%', '', $free));
-
-                    return 100 - $free;
-                })->toArray(),
+                'data' => $data->pluck('avg_value')->map(fn ($free) => round(100 - (float) $free, 2))->toArray(),
                 'borderColor' => 'rgba(153, 102, 255, 1)',
                 'backgroundColor' => 'rgba(153, 102, 255, 0.2)',
                 'borderWidth' => 2,
@@ -44,7 +49,7 @@ class DiskUsedChart extends ChartWidget
                 'tension' => 0.4,
                 'fill' => 'origin',
             ]],
-            'labels' => $data->keys()->map(fn ($date) => Carbon::parse($date)->toIso8601String())->toArray(),
+            'labels' => $data->pluck('time_bucket')->map(fn ($date) => Carbon::parse($date)->toIso8601String())->toArray(),
         ];
     }
 
