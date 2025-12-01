@@ -18,8 +18,10 @@ class SeoIssuesTableWidget extends BaseWidget
 
     public static function canView(): bool
     {
-        // Always show the widget - let the parent page control visibility
-        return true;
+        // Only show on SEO check detail pages (when a record ID is present)
+        $route = request()->route();
+
+        return $route && $route->parameter('record') !== null;
     }
 
     public function mount(): void

@@ -63,33 +63,30 @@ class ServerResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query) => $query->withLatestHistory())
             ->columns([
-                Tables\Columns\IconColumn::make('status')
-                    ->label('')
-                    ->icon('heroicon-o-signal')
+                Tables\Columns\TextColumn::make('status')
+                    ->label('Status')
+                    ->badge()
+                    ->getStateUsing(function ($record) {
+                        $latestInfo = $record->latest_server_history_created_at ?? null;
+
+                        if ($latestInfo && Carbon::parse($latestInfo)->diffInMinutes(now()) <= 2) {
+                            return 'Online';
+                        }
+
+                        return 'Offline';
+                    })
+                    ->icon(fn (string $state): string => $state === 'Online' ? 'heroicon-o-signal' : 'heroicon-o-signal-slash')
+                    ->color(fn (string $state): string => $state === 'Online' ? 'success' : 'danger')
                     ->tooltip(function ($record) {
                         $latestInfo = $record->latest_server_history_created_at ?? null;
 
                         if (! $latestInfo) {
-                            return 'Offline - No data received';
+                            return 'No data received';
                         }
 
-                        $minutesAgo = Carbon::parse($latestInfo)->diffInMinutes(now());
-
-                        if ($minutesAgo <= 2) {
-                            return 'Online - Last update '.$minutesAgo.' min ago';
-                        }
-
-                        return 'Offline - Last update '.Carbon::parse($latestInfo)->diffForHumans();
-                    })
-                    ->color(function ($record) {
-                        $latestInfo = $record->latest_server_history_created_at ?? null;
-
-                        if ($latestInfo && Carbon::parse($latestInfo)->diffInMinutes(now()) <= 2) {
-                            return 'success';
-                        }
-
-                        return 'danger';
+                        return 'Last update '.Carbon::parse($latestInfo)->diffForHumans();
                     }),
                 Tables\Columns\TextColumn::make('id')
                     ->label('ID')
@@ -306,8 +303,7 @@ class ServerResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->withLatestHistory()
-            ->where('created_by', auth()->id())
+            ->where('servers.created_by', auth()->id())
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);
