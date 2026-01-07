@@ -31,12 +31,12 @@ Route::get('/backup-folder/{backup_id}/{server_id}/{user}/{init}', function ($ba
     return $response;
 });
 
-Route::match(['get', 'post'], '/webhook', [WebhookController::class, 'index'])
+Route::post('/webhook', [WebhookController::class, 'index'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 Route::get('welcome', \App\Livewire\Welcome::class);
 
-// SEO Report Downloads
+// SEO Report Downloads - requires authentication
 Route::get('/reports/{filename}', function (string $filename) {
     // Validate filename to prevent path traversal attacks
     if (
@@ -65,4 +65,5 @@ Route::get('/reports/{filename}', function (string $filename) {
     return response($content)
         ->header('Content-Type', $mimeType)
         ->header('Content-Disposition', "attachment; filename=\"{$filename}\"");
-})->name('seo.report.download');
+})->name('seo.report.download')
+    ->middleware(['auth']);
