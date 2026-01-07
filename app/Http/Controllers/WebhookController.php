@@ -9,9 +9,12 @@ class WebhookController extends Controller
 {
     public function index(Request $request): Response
     {
-        // Webhook endpoint - validate and process incoming data
-        // This is a placeholder for webhook handling logic
-        // TODO: Implement proper webhook validation and processing
+        // Validate webhook secret token
+        $secret = $request->header('X-Webhook-Secret');
+
+        if (! $secret || $secret !== config('app.webhook_secret')) {
+            return response()->json(['error' => 'Invalid webhook secret'], 401);
+        }
 
         return response()->json([
             'status' => 'received',
