@@ -36,14 +36,14 @@ class BackupHistoryController extends Controller
         $backup = Backup::query()->where('id', $id)->first();
 
         if (! $backup) {
-            return response()->json(['message' => __('The backup not found')], 406);
+            return response()->json(['message' => __('The backup not found')], 404);
         }
 
         $server = $backup->server;
         $token = $request->bearerToken();
 
         if (! $server) {
-            return response()->json(['message' => __('The server id is not in this DB')], 406);
+            return response()->json(['message' => __('The server id is not in this DB')], 404);
         } else {
             if ($server->token !== $token) {
                 return response()->json(['message' => __('Error: Unauthorized')], 401);
@@ -60,7 +60,7 @@ class BackupHistoryController extends Controller
 
                     return response()->json($backupHistory, 200);
                 } else {
-                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 406);
+                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 403);
                 }
             }
         }
