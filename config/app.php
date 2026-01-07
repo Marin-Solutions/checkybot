@@ -123,4 +123,16 @@ return [
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Webhook Secret
+    |--------------------------------------------------------------------------
+    |
+    | This secret key is used to validate incoming webhook requests.
+    | Clients must provide this secret via the X-Webhook-Secret header.
+    |
+    */
+
+    'webhook_secret' => env('APP_WEBHOOK_SECRET'),
+
 ];

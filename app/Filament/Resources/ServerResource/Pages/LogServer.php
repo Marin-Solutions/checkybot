@@ -55,7 +55,7 @@ class LogServer extends ViewRecord
                 ->modalIcon('heroicon-o-clipboard')
                 ->action(function () {
                     $script = ServerInformationHistory::copyCommand($this->record->id);
-                    $this->js("navigator.clipboard.writeText('{$script}')");
+                    $this->dispatch('copyToClipboard', script: $script);
                     Notification::make()->success()->title('Script copied to clipboard')->send();
                 }),
 
@@ -70,7 +70,7 @@ class LogServer extends ViewRecord
                 ->modalIcon('heroicon-o-clipboard')
                 ->action(function () {
                     $script = ServerLogFileHistory::copyCommand($this->record->id);
-                    $this->js("navigator.clipboard.writeText('{$script}')");
+                    $this->dispatch('copyToClipboard', script: $script);
                     Notification::make()->success()->title('Log script copied to clipboard')->send();
                 }),
 

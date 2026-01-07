@@ -33,10 +33,10 @@ class ServerInformationHistoryController extends Controller
     {
         $ip = $request->ip();
         $server = new Server;
-        $serverId = $request->s ?? false;
+        $serverId = $request->s ?? null;
         $token = $request->bearerToken();
 
-        if (! $serverId == false) {
+        if ($serverId !== null && $serverId !== false) {
             $dataServer = $server->find($serverId);
 
             if ($dataServer != null) {

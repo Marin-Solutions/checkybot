@@ -23,6 +23,7 @@
     "league/flysystem-aws-s3-v3": "^3.0",
     "league/flysystem-ftp": "^3.0",
     "league/flysystem-sftp-v3": "^3.0",
+    "marin-solutions/checkybot-laravel": "^0.1.0",
     "predis/predis": "^2.0",
     "pusher/pusher-php-server": "^7.2",
     "ryangjchandler/filament-progress-column": "^2.0",

@@ -45,8 +45,10 @@ class Server extends Model
         $result = [];
         if (! empty($summary)) {
             foreach (explode('|', $summary) as $part) {
-                [$key, $value] = explode(':', $part);
-                $result[$key] = $value;
+                $parts = explode(':', $part, 2);
+                if (count($parts) === 2) {
+                    $result[$parts[0]] = $parts[1];
+                }
             }
         }
 

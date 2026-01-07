@@ -10,9 +10,12 @@ class EmailReminderSsl extends Mailable
 {
     use Queueable, SerializesModels;
 
-    protected $emailData;
+    /**
+     * @param  array{user: \App\Models\User, daysLeft: int, url: string}  $emailData
+     */
+    protected array $emailData;
 
-    public function __construct($emailData)
+    public function __construct(array $emailData)
     {
         $this->emailData = $emailData;
     }
@@ -22,7 +25,7 @@ class EmailReminderSsl extends Mailable
         return $this->subject('Action Required: Renew Your SSL Certificate.')
             ->view('mails.reminder-ssl')
             ->with([
-                'user' => $this->emailData['user'][0]->name,
+                'user' => $this->emailData['user']->name,
                 'daysLeft' => $this->emailData['daysLeft'],
                 'url' => $this->emailData['url'],
             ]);

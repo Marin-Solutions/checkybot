@@ -27,9 +27,11 @@ class DiskUsedChart extends ChartWidget
         $timeFrame = $this->timeFrame ?? TimeFrame::getDefaultTimeframe();
         $granularitySeconds = $timeFrame->getGranularityMinutes() * 60;
 
+        $timeBucket = $this->getTimeBucketExpression($granularitySeconds);
+
         $data = ServerInformationHistory::query()
             ->select([
-                DB::raw("FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(created_at) / {$granularitySeconds}) * {$granularitySeconds}) as time_bucket"),
+                $timeBucket,
                 DB::raw('AVG(disk_free_percentage) as avg_value'),
             ])
             ->where('server_id', $this->record->id)
@@ -51,6 +53,21 @@ class DiskUsedChart extends ChartWidget
             ]],
             'labels' => $data->pluck('time_bucket')->map(fn ($date) => Carbon::parse($date)->toIso8601String())->toArray(),
         ];
+    }
+
+    protected function getTimeBucketExpression(int $granularitySeconds): \Illuminate\Database\Query\Expression
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'sqlite') {
+            // SQLite: use strftime with unixepoch
+            $offsetSeconds = $granularitySeconds / 2;
+
+            return DB::raw("datetime(round((strftime('%s', created_at) / {$granularitySeconds}) * {$granularitySeconds} + {$offsetSeconds}), 'unixepoch', 'localtime') as time_bucket");
+        }
+
+        // MySQL/others: use FROM_UNIXTIME
+        return DB::raw("FROM_UNIXTIME(FLOOR(UNIX_TIMESTAMP(created_at) / {$granularitySeconds}) * {$granularitySeconds}) as time_bucket");
     }
 
     protected function getType(): string

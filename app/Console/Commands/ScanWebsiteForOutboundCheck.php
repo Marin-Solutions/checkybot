@@ -26,7 +26,7 @@ class ScanWebsiteForOutboundCheck extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
         $websites = Website::query()->where('outbound_check', 1)->get();
 
@@ -34,6 +34,8 @@ class ScanWebsiteForOutboundCheck extends Command
             WebsiteCheckOutboundLinkJob::dispatch($website)->onQueue('log-website');
         });
 
-        Log::info('Scan completed and jobs dispatched for SSL checks', ['website_count' => $websites->count()]);
+        Log::info('Scan completed and jobs dispatched for outbound link checks', ['website_count' => $websites->count()]);
+
+        return Command::SUCCESS;
     }
 }

@@ -7,23 +7,24 @@ class IntervalParser
     /**
      * Parse interval string to minutes
      *
-     * Converts strings like '5m', '2h', '1d' to minutes
+     * Converts strings like '5m', '2h', '1d', '30s' to minutes
      *
-     * @param  string  $interval  Format: {number}{unit} where unit is m (minutes), h (hours), d (days)
+     * @param  string  $interval  Format: {number}{unit} where unit is s (seconds), m (minutes), h (hours), d (days)
      * @return int Minutes
      *
      * @throws \InvalidArgumentException
      */
     public static function toMinutes(string $interval): int
     {
-        if (! preg_match('/^(\d+)([mhd])$/', $interval, $matches)) {
-            throw new \InvalidArgumentException("Invalid interval format: {$interval}. Expected format: {number}{m|h|d}");
+        if (! preg_match('/^(\d+)([smhd])$/', $interval, $matches)) {
+            throw new \InvalidArgumentException("Invalid interval format: {$interval}. Expected format: {number}{s|m|h|d}");
         }
 
         $value = (int) $matches[1];
         $unit = $matches[2];
 
         return match ($unit) {
+            's' => (int) ceil($value / 60), // Convert seconds to minutes (ceiling)
             'm' => $value,
             'h' => $value * 60,
             'd' => $value * 1440,
@@ -36,7 +37,7 @@ class IntervalParser
      */
     public static function isValid(string $interval): bool
     {
-        return (bool) preg_match('/^(\d+)([mhd])$/', $interval);
+        return (bool) preg_match('/^(\d+)([smhd])$/', $interval);
     }
 
     /**

@@ -22,11 +22,11 @@ class StoreBackupHistoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'bi' => 'required',
-            'iz' => 'required|integer|digits:1',
-            'iu' => 'required|integer|digits:1',
+            'bi' => 'required|integer',
+            'iz' => 'required|integer|in:0,1',
+            'iu' => 'required|integer|in:0,1',
             'sf' => 'required|integer',
-            'nf' => 'required|string',
+            'nf' => 'required|string|max:255',
         ];
     }
 }

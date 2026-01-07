@@ -26,11 +26,16 @@ class ServerLogFileHistoryController extends Controller
         $ip = $request->ip();
         $id = $request->input('li');
         $serverLogCategory = ServerLogCategory::query()->where('id', $id)->first();
-        $server = $serverLogCategory->server ?? false;
+
+        if (! $serverLogCategory) {
+            return response()->json(['message' => __('The server log category not found')], 404);
+        }
+
+        $server = $serverLogCategory->server;
         $token = $request->bearerToken();
 
         if (! $server) {
-            return response()->json(['message' => __('The server id is not in this DB')], 406);
+            return response()->json(['message' => __('The server id is not in this DB')], 404);
         } else {
             if ($server->token === $token) {
                 if ($server->ip == $ip) {
@@ -43,7 +48,7 @@ class ServerLogFileHistoryController extends Controller
 
                     return response()->json($newServerLogFileHistory, 200);
                 } else {
-                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 406);
+                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 403);
                 }
             } else {
                 return response()->json(['message' => __('Error: Unauthorized')], 401);

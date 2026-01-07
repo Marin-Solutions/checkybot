@@ -65,7 +65,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl = null,
         ?string $linkText = null,
     ): void {
-        // TODO: Implement crawlFailed() method.
+        Log::warning('Crawl failed for URL: '.$url, [
+            'website_id' => $this->website->id,
+            'error' => $requestException->getMessage(),
+        ]);
     }
 
     /**
@@ -73,7 +76,9 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
      */
     public function finishedCrawling(): void
     {
-        OutboundLink::query()->insert($this->crawledPages);
+        if (! empty($this->crawledPages)) {
+            OutboundLink::query()->insert($this->crawledPages);
+        }
 
         $this->website->last_outbound_checked_at = Carbon::now();
         $this->website->save();
@@ -81,12 +86,16 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         $this->sendErrorNotification();
 
         /* Create system log */
-        Log::info('Outbound Links for website '.$this->website['url'].' has been crawled.');
+        Log::info('Outbound Links for website '.$this->website->url.' has been crawled.');
     }
 
     protected function sendErrorNotification(): void
     {
         $user = $this->website->user;
+
+        if (! $user) {
+            return;
+        }
 
         foreach ($this->crawledPages as $page) {
             if ($page['http_status_code'] === 404 || $page['http_status_code'] === 500) {

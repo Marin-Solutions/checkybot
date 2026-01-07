@@ -91,7 +91,7 @@ class NotificationSetting extends Model
             case NotificationChannelTypesEnum::WEBHOOK->name:
                 $descriptionText = 'Your SSL certificate for '.$data['url'].' is nearing expiration in '.$data['daysLeft'].' days. Please renew your SSL certificate as soon as possible to avoid security issues. Best regards, Your team '.config('app.name');
 
-                $response = $this->channel->sendWebhookNotification([
+                $response = $this->channel()->sendWebhookNotification([
                     'message' => 'Action Required: Renew Your SSL Certificate.',
                     'description' => $descriptionText,
                 ]);

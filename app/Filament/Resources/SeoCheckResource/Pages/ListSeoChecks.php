@@ -53,7 +53,7 @@ class ListSeoChecks extends ListRecords
 
     protected function getDefaultTableSortDirection(): ?string
     {
-        return 'asc';
+        return 'desc';
     }
 
     public function getTitle(): string

@@ -3,22 +3,19 @@
 namespace App\Jobs;
 
 use App\Crawlers\WebsiteOutboundLinkCrawler;
+use App\Models\Website;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Facades\Log;
 use Spatie\Crawler\Crawler;
 
 class WebsiteCheckOutboundLinkJob implements ShouldQueue
 {
     use Queueable;
 
-    protected $website;
-
-    /**
-     * Create a new job instance.
-     */
-    public function __construct($website)
+    public function __construct(public Website $website)
     {
-        $this->website = $website;
+        //
     }
 
     /**
@@ -26,8 +23,12 @@ class WebsiteCheckOutboundLinkJob implements ShouldQueue
      */
     public function handle(): void
     {
-        Crawler::create()
-            ->setCrawlObserver(new WebsiteOutboundLinkCrawler($this->website))
-            ->startCrawling($this->website->getBaseURL());
+        try {
+            Crawler::create()
+                ->setCrawlObserver(new WebsiteOutboundLinkCrawler($this->website))
+                ->startCrawling($this->website->getBaseURL());
+        } catch (\Exception $e) {
+            Log::error('Outbound link check failed for website '.$this->website->url.': '.$e->getMessage());
+        }
     }
 }

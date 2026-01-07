@@ -42,9 +42,7 @@ class WebsiteController extends Controller
 
     public function store(StoreWebsiteRequest $request)
     {
-        $website = new Website;
-
-        $exists = $website->checkWebsiteExists($request->url);
+        $exists = Website::checkWebsiteExists($request->url);
         if ($exists) {
             $website = Website::firstOrNew([
                 'url' => $request->input('url'),

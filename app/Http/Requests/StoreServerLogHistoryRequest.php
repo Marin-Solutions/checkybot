@@ -28,7 +28,7 @@ class StoreServerLogHistoryRequest extends FormRequest
                 'mimetypes:text/plain',
                 'max:2048',
             ],
-            'li' => ['required'],
+            'li' => ['required', 'integer'],
         ];
     }
 

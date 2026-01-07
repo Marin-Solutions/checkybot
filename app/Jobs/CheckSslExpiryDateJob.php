@@ -27,8 +27,15 @@ class CheckSslExpiryDateJob implements ShouldQueue
      */
     public function handle(): void
     {
-        $certificate = SslCertificate::createForHostName($this->website->url);
-        $newExpiryDate = $certificate->expirationDate();
+        try {
+            $certificate = SslCertificate::createForHostName($this->website->url);
+            $newExpiryDate = $certificate->expirationDate();
+        } catch (\Exception $e) {
+            Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage());
+
+            return;
+        }
+
         $currentExpiryDate = Carbon::parse($this->website->ssl_expiry_date);
 
         if ($newExpiryDate->gt($currentExpiryDate)) {
@@ -40,9 +47,11 @@ class CheckSslExpiryDateJob implements ShouldQueue
         $user = User::find($this->website->created_by);
 
         if ($user) {
+            $daysLeft = Carbon::now()->diffInDays($newExpiryDate, false);
+
             $data = [
                 'user' => $user,
-                'daysLeft' => $this->website->days_left,
+                'daysLeft' => $daysLeft,
                 'url' => $this->website->url,
             ];
 
@@ -68,9 +77,9 @@ class CheckSslExpiryDateJob implements ShouldQueue
                 Mail::to($user)->send(new EmailReminderSsl($data));
             }
 
-            Log::info("SSL expiry reminder sent for website: {$this->website['url']}");
+            Log::info('SSL expiry reminder sent for website: '.$this->website->url);
         } else {
-            Log::warning("User not found for website: {$this->website['url']}");
+            Log::warning('User not found for website: '.$this->website->url);
         }
     }
 }

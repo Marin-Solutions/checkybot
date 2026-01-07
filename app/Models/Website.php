@@ -46,12 +46,16 @@ class Website extends Model
      */
     public static function checkWebsiteExists(?string $url): ?bool
     {
-        $dns = new Dns;
-        $records = $dns->getRecords($url, 'A');
+        if (empty($url)) {
+            return false;
+        }
 
-        if (count($records) > 0) {
-            return true;
-        } else {
+        try {
+            $dns = new Dns;
+            $records = $dns->getRecords($url, 'A');
+
+            return count($records) > 0;
+        } catch (\Exception $e) {
             return false;
         }
     }
@@ -88,14 +92,21 @@ class Website extends Model
      * Check website ssl expiry code
      *
      * @param [string] $url to check
-     * @return array
      */
-    public static function sslExpiryDate(?string $url): string
+    public static function sslExpiryDate(?string $url): ?string
     {
-        $certificate = SslCertificate::createForHostName($url);
-        $expiration_date = $certificate->expirationDate();
+        if (empty($url)) {
+            return null;
+        }
 
-        return $expiration_date;
+        try {
+            $certificate = SslCertificate::createForHostName($url);
+            $expiration_date = $certificate->expirationDate();
+
+            return $expiration_date;
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     public function user()

@@ -14,7 +14,7 @@ class CheckServerRules extends Command
 
     protected $description = 'Check server monitoring rules and send notifications if conditions are met';
 
-    public function handle()
+    public function handle(): int
     {
         // Get all active rules first
         $rules = ServerRule::with(['server'])
@@ -52,6 +52,8 @@ class CheckServerRules extends Command
                 continue;
             }
         }
+
+        return Command::SUCCESS;
     }
 
     private function getCurrentValue($latestInfo, $metric)

@@ -64,7 +64,10 @@ class MonitorApis extends Model
         $httpConfig = self::getHttpConfiguration();
 
         try {
-            $headers = self::normalizeHeaders($data['headers'] ?? []);
+            // Get headers from data or fetch from database
+            $headers = self::normalizeHeaders(
+                $data['headers'] ?? ($data['id'] ? self::find($data['id'])?->headers : [])
+            );
             $httpClient = self::configureHttpClient($httpConfig, $headers);
             $request = $httpClient->get($url);
 
