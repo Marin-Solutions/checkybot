@@ -45,7 +45,7 @@ Route::get('/reports/{filename}', function (string $filename) {
         str_contains($filename, '\\') ||
         preg_match('/[\x00-\x1f\x7f]/', $filename)
     ) {
-        abort(400, 'Invalid filename');
+        abort(403, 'Access denied');
     }
 
     $path = "reports/{$filename}";
