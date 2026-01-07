@@ -16,16 +16,22 @@ class SeoDashboardStatsWidget extends BaseWidget
 
     protected function getStats(): array
     {
-        $totalWebsites = Website::count();
-        $totalChecks = SeoCheck::count();
-        $completedChecks = SeoCheck::where('status', 'completed')->count();
-        $runningChecks = SeoCheck::where('status', 'running')->count();
+        $userId = auth()->id();
 
-        $totalIssues = SeoIssue::count();
-        $criticalIssues = SeoIssue::where('severity', 'error')->count();
-        $warningIssues = SeoIssue::where('severity', 'warning')->count();
+        $totalWebsites = Website::where('created_by', $userId)->count();
+        $userWebsiteIds = Website::where('created_by', $userId)->pluck('id');
 
-        $avgHealthScore = SeoCheck::where('status', 'completed')
+        $totalChecks = SeoCheck::whereIn('website_id', $userWebsiteIds)->count();
+        $completedChecks = SeoCheck::whereIn('website_id', $userWebsiteIds)->where('status', 'completed')->count();
+        $runningChecks = SeoCheck::whereIn('website_id', $userWebsiteIds)->where('status', 'running')->count();
+
+        $userSeoCheckIds = SeoCheck::whereIn('website_id', $userWebsiteIds)->pluck('id');
+        $totalIssues = SeoIssue::whereIn('seo_check_id', $userSeoCheckIds)->count();
+        $criticalIssues = SeoIssue::whereIn('seo_check_id', $userSeoCheckIds)->where('severity', 'error')->count();
+        $warningIssues = SeoIssue::whereIn('seo_check_id', $userSeoCheckIds)->where('severity', 'warning')->count();
+
+        $avgHealthScore = SeoCheck::whereIn('website_id', $userWebsiteIds)
+            ->where('status', 'completed')
             ->whereNotNull('computed_health_score')
             ->avg('computed_health_score');
 

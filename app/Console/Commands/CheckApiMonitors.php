@@ -15,7 +15,7 @@ class CheckApiMonitors extends Command
 
     protected $description = 'Check all API monitors and record their results';
 
-    public function handle()
+    public function handle(): int
     {
         $this->info('Starting API monitor checks...');
         $monitors = MonitorApis::all();
@@ -124,9 +124,17 @@ class CheckApiMonitors extends Command
                     }
                 }
             } catch (\Exception $e) {
-                throw $e;
+                Log::error('Error checking API monitor: '.$e->getMessage(), [
+                    'monitor_id' => $monitor->id,
+                    'monitor_title' => $monitor->title,
+                ]);
+                Sentry::captureException($e);
+
+                continue;
             }
         }
         $this->info("Completed checking {$count} API monitors.");
+
+        return Command::SUCCESS;
     }
 }

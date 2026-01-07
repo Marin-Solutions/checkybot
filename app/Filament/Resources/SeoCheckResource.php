@@ -58,8 +58,7 @@ class SeoCheckResource extends Resource
                     ->color(fn ($record): string => $record->health_score_color)
                     ->formatStateUsing(fn ($record): string => $record->isCompleted() ? $record->health_score_formatted : 'N/A')
                     ->sortable(query: function ($query, string $direction) {
-                        // Custom sorting for health score calculation
-                        return $query->orderBy('total_urls_crawled', $direction);
+                        return $query->orderBy('computed_health_score', $direction);
                     }),
                 Tables\Columns\TextColumn::make('errors_count')
                     ->label('Errors')

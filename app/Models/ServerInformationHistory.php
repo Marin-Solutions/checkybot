@@ -40,14 +40,16 @@ class ServerInformationHistory extends Model
         $sih->user = $user;
         $server = Server::where('id', $server_id)->first();
 
-        $sih->token = $server->token;
-        $serverOwner = $server->created_by;
-        if ($sih->user == $serverOwner) {
-            $content = $sih->contentShellScript();
-            $status = 200;
-        } else {
+        if (! $server) {
+            $content = 'Error: Server not found';
+            $status = 404;
+        } elseif ($user !== $server->created_by) {
             $content = 'Error: Server Owner not match with user request, try with your server. thank you';
             $status = 401;
+        } else {
+            $sih->token = $server->token;
+            $content = $sih->contentShellScript();
+            $status = 200;
         }
 
         $response = response()->make($content, $status);
@@ -64,7 +66,7 @@ class ServerInformationHistory extends Model
         // Set the API endpoint URL
         $server_id = $this->server_id;
         $token = $this->token;
-        $url = $_ENV['APP_URL'];
+        $url = config('app.url');
 
         $content .= "API_URL='$url/api/v1/server-history' \n";
         $content .= "TOKEN_ID='$token'\n";

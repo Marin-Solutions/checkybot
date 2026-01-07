@@ -34,7 +34,12 @@ class BackupHistoryController extends Controller
         $ip = $request->ip();
         $id = $request->input('bi');
         $backup = Backup::query()->where('id', $id)->first();
-        $server = $backup->server ?? false;
+
+        if (! $backup) {
+            return response()->json(['message' => __('The backup not found')], 406);
+        }
+
+        $server = $backup->server;
         $token = $request->bearerToken();
 
         if (! $server) {

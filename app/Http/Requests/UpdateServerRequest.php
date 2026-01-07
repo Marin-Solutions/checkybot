@@ -11,7 +11,7 @@ class UpdateServerRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -22,7 +22,10 @@ class UpdateServerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'name' => 'sometimes|required|string|max:255',
+            'ip' => 'sometimes|required|ip',
+            'description' => 'sometimes|required|string|max:255',
+            'cpu_cores' => 'sometimes|nullable|integer|min:1',
         ];
     }
 }

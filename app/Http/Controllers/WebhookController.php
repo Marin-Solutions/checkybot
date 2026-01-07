@@ -7,10 +7,15 @@ use Illuminate\Http\Response;
 
 class WebhookController extends Controller
 {
-    public function index(Request $request, Response $response)
+    public function index(Request $request): Response
     {
-        $input = request()->all();
+        // Webhook endpoint - validate and process incoming data
+        // This is a placeholder for webhook handling logic
+        // TODO: Implement proper webhook validation and processing
 
-        return response()->json($input);
+        return response()->json([
+            'status' => 'received',
+            'message' => 'Webhook received',
+        ]);
     }
 }

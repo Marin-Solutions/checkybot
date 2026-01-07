@@ -38,6 +38,16 @@ Route::get('welcome', \App\Livewire\Welcome::class);
 
 // SEO Report Downloads
 Route::get('/reports/{filename}', function (string $filename) {
+    // Validate filename to prevent path traversal attacks
+    if (
+        str_contains($filename, '..') ||
+        str_contains($filename, '/') ||
+        str_contains($filename, '\\') ||
+        preg_match('/[\x00-\x1f\x7f]/', $filename)
+    ) {
+        abort(400, 'Invalid filename');
+    }
+
     $path = "reports/{$filename}";
 
     if (! Storage::exists($path)) {

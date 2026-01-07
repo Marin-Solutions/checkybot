@@ -27,7 +27,7 @@ class LogJobCheckUptimeSsl extends Command
     /**
      * Execute the console command.
      */
-    public function handle()
+    public function handle(): int
     {
         $currentMinute = now()->minute;
         $matchingIntervals = array_filter($this->intervals, function ($interval) use ($currentMinute) {

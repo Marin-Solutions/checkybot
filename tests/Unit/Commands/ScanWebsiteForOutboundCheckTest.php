@@ -80,7 +80,7 @@ test('command logs completion', function () {
         ->assertSuccessful();
 
     Log::shouldHaveReceived('info')
-        ->with('Scan completed and jobs dispatched for SSL checks', ['website_count' => 3])
+        ->with('Scan completed and jobs dispatched for outbound link checks', ['website_count' => 3])
         ->once();
 });
 
@@ -94,7 +94,7 @@ test('command handles no websites', function () {
     Queue::assertNotPushed(WebsiteCheckOutboundLinkJob::class);
 
     Log::shouldHaveReceived('info')
-        ->with('Scan completed and jobs dispatched for SSL checks', ['website_count' => 0])
+        ->with('Scan completed and jobs dispatched for outbound link checks', ['website_count' => 0])
         ->once();
 });
 

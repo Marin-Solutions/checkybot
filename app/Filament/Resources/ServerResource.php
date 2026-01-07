@@ -7,7 +7,6 @@ use App\Filament\Resources\ServerResource\RelationManagers;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
-use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -307,17 +306,6 @@ class ServerResource extends Resource
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);
-    }
-
-    protected function getHeaderActions(): array
-    {
-        return [
-            Action::make('edit')
-                ->url('localhsot'),
-            Action::make('delete')
-                ->requiresConfirmation()
-                ->action(fn () => $this->post->delete()),
-        ];
     }
 
     public static function getTableActions(): array

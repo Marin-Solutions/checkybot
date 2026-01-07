@@ -54,7 +54,7 @@ class ServerLogFileHistory extends Model
         // Set the API endpoint URL
         $server_id = $this->server_id;
         $token = $this->token;
-        $url = $_ENV['APP_URL'];
+        $url = config('app.url');
 
         $content .= "API_LOG_URL='$url/api/v1/server-log-history' \n";
 

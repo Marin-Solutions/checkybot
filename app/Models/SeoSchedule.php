@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -41,7 +42,7 @@ class SeoSchedule extends Model
     /**
      * Get schedules that are due to run
      */
-    public function scopeDue($query)
+    public function scopeDue(Builder $query): Builder
     {
         return $query->where('is_active', true)
             ->where('next_run_at', '<=', now());

@@ -50,9 +50,9 @@ class Backup extends Model
 
     public static function copyCommand(Backup $backup): string
     {
-        $user = Auth::user()->id;
+        $user = Auth::user()?->id;
         $backupId = $backup->id;
-        $backupInterval = $backup->interval->expression;
+        $backupInterval = $backup->interval?->expression ?? '* * * * *';
         $scriptFileName = 'backup_folder.sh';
         $scriptFileNameInit = 'init_'.$scriptFileName;
         $backupIntervalInit = $backup->generateCronExpression();
@@ -77,7 +77,7 @@ class Backup extends Model
     {
         $backup = Backup::query()->where('id', $backup_id)->first();
 
-        if ($backup && $backup->server_id == $server_id && $backup->server->created_by == $user) {
+        if ($backup && $backup->server_id == $server_id && $backup->server?->created_by == $user) {
             $content = $backup->backupScript($init);
             $status = 200;
         } else {
@@ -98,14 +98,14 @@ class Backup extends Model
         $format = $this->compression_type;
         $password = escapeshellarg($this->password);
         $exclude = $this->exclude_folder_files ?? '';
-        $ftpHost = escapeshellarg($this->remoteStorage->host);
-        $ftpUser = escapeshellarg($this->remoteStorage->username);
-        $ftpPass = '"'.$this->remoteStorage->password.'"';
-        $ftpFolder = rtrim($this->remote_storage_path, '/');
+        $ftpHost = escapeshellarg($this->remoteStorage?->host ?? '');
+        $ftpUser = escapeshellarg($this->remoteStorage?->username ?? '');
+        $ftpPass = '"'.($this->remoteStorage?->password ?? '').'"';
+        $ftpFolder = rtrim($this->remote_storage_path ?? '', '/');
         $fileName = $this->backup_filename ?? $folder;
-        $url = $_ENV['APP_URL'];
-        $serverId = $this->server->id;
-        $token = $this->server->token;
+        $url = config('app.url');
+        $serverId = $this->server?->id ?? $this->server_id;
+        $token = $this->server?->token ?? '';
         $apiLogBackup = "$url/api/v1/backup-history";
         $firstRunAt = strtotime($this->first_run_at ?? now());
 

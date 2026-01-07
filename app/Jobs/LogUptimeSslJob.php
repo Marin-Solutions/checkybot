@@ -15,28 +15,9 @@ class LogUptimeSslJob implements ShouldQueue
 {
     use Queueable;
 
-    protected $website;
-
-    /**
-     * The number of times the job may be attempted.
-     *
-     * @var int
-     */
-    public $tries = 3;
-
-    /**
-     * The number of seconds the job can run before timing out.
-     *
-     * @var int
-     */
-    public $timeout = 60;
-
-    /**
-     * Create a new job instance.
-     */
-    public function __construct($website)
+    public function __construct(public Website $website)
     {
-        $this->website = $website;
+        //
     }
 
     /**
@@ -44,15 +25,7 @@ class LogUptimeSslJob implements ShouldQueue
      */
     public function handle(): void
     {
-        $website = Website::find($this->website['id']);
-
-        if (! $website) {
-            Log::error('Website not found for ID: '.$this->website['id']);
-
-            return;
-        }
-
-        if (! $website->uptime_check) {
+        if (! $this->website->uptime_check) {
             return;
         }
 
@@ -63,10 +36,10 @@ class LogUptimeSslJob implements ShouldQueue
         try {
             // Get SSL expiry date (with error handling)
             try {
-                $certificate = SslCertificate::createForHostName($this->website['url']);
+                $certificate = SslCertificate::createForHostName($this->website->url);
                 $ssl_expiry_date = $certificate->expirationDate();
             } catch (\Exception $sslException) {
-                Log::warning('Could not retrieve SSL certificate for '.$this->website['url'].': '.$sslException->getMessage());
+                Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
                 // Continue without SSL info rather than failing completely
             }
 
@@ -78,14 +51,14 @@ class LogUptimeSslJob implements ShouldQueue
                     ->retry(2, 1000, throw: false) // Retry 2 times with 1 second delay, don't throw on failure
                     ->connectTimeout(5) // Connection timeout of 5 seconds
                     ->withoutVerifying() // Don't verify SSL certificates to avoid failures
-                    ->get($this->website['url']);
+                    ->get($this->website->url);
 
                 $responseTimeEnd = microtime(true);
                 $http_status_code = $response->status();
                 $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
             } catch (ConnectionException $e) {
                 // Handle connection timeout specifically
-                Log::warning('Connection timeout for website '.$this->website['url'].': '.$e->getMessage());
+                Log::warning('Connection timeout for website '.$this->website->url.': '.$e->getMessage());
                 $responseTimeEnd = microtime(true);
 
                 // Record as timeout (status code 0 typically indicates connection failure)
@@ -94,29 +67,19 @@ class LogUptimeSslJob implements ShouldQueue
             }
 
             // Create and save the log even if some checks failed
-            $websiteLogHistory = new WebsiteLogHistory;
-            $websiteLogHistory->website_id = $this->website['id'];
-            $websiteLogHistory->ssl_expiry_date = $ssl_expiry_date;
-            $websiteLogHistory->http_status_code = $http_status_code;
-            $websiteLogHistory->speed = $speed;
-            $websiteLogHistory->save();
+            WebsiteLogHistory::create([
+                'website_id' => $this->website->id,
+                'ssl_expiry_date' => $ssl_expiry_date,
+                'http_status_code' => $http_status_code,
+                'speed' => $speed,
+            ]);
 
             // Log successful completion
-            Log::info('Successfully logged uptime/SSL for website '.$this->website['url']);
+            Log::info('Successfully logged uptime/SSL for website '.$this->website->url);
 
         } catch (\Exception $e) {
-            Log::error('Error creating log for website '.$this->website['url'].': '.$e->getMessage());
+            Log::error('Error creating log for website '.$this->website->url.': '.$e->getMessage());
             throw $e;
         }
-    }
-
-    /**
-     * Calculate the number of seconds to wait before retrying the job.
-     *
-     * @return array<int, int>
-     */
-    public function backoff(): array
-    {
-        return [10, 30, 60]; // Wait 10s, then 30s, then 60s between retries
     }
 }

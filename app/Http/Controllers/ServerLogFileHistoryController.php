@@ -26,7 +26,12 @@ class ServerLogFileHistoryController extends Controller
         $ip = $request->ip();
         $id = $request->input('li');
         $serverLogCategory = ServerLogCategory::query()->where('id', $id)->first();
-        $server = $serverLogCategory->server ?? false;
+
+        if (! $serverLogCategory) {
+            return response()->json(['message' => __('The server log category not found')], 406);
+        }
+
+        $server = $serverLogCategory->server;
         $token = $request->bearerToken();
 
         if (! $server) {

@@ -11,7 +11,7 @@ class StoreServerRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -22,7 +22,10 @@ class StoreServerRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'name' => 'required|string|max:255',
+            'ip' => 'required|ip',
+            'description' => 'required|string|max:255',
+            'cpu_cores' => 'nullable|integer|min:1',
         ];
     }
 }
