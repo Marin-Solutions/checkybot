@@ -13,7 +13,12 @@ class WebhookController extends Controller
         $secret = $request->header('X-Webhook-Secret');
         $expectedSecret = config('app.webhook_secret');
 
-        if (! $secret || ! $expectedSecret || ! hash_equals($expectedSecret, $secret)) {
+        // Fail closed if webhook secret is not configured
+        if (! $expectedSecret) {
+            return response()->json(['error' => 'Webhook not configured'], 500);
+        }
+
+        if (! $secret || ! hash_equals($expectedSecret, $secret)) {
             return response()->json(['error' => 'Invalid webhook secret'], 401);
         }
 
