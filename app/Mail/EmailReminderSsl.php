@@ -13,7 +13,7 @@ class EmailReminderSsl extends Mailable
     /**
      * @param  array{user: \App\Models\User, daysLeft: int, url: string}  $emailData
      */
-    protected array $emailData;
+    public array $emailData;
 
     public function __construct(array $emailData)
     {
