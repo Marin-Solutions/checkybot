@@ -62,6 +62,7 @@ class RamUsedChart extends ChartWidget
         if ($driver === 'sqlite') {
             // SQLite: use strftime with unixepoch
             $offsetSeconds = $granularitySeconds / 2;
+
             return DB::raw("datetime(round((strftime('%s', created_at) / {$granularitySeconds}) * {$granularitySeconds} + {$offsetSeconds}), 'unixepoch', 'localtime') as time_bucket");
         }
 
