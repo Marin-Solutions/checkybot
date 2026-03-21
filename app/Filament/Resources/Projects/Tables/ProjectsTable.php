@@ -18,6 +18,15 @@ class ProjectsTable
             ->columns([
                 TextColumn::make('name')
                     ->searchable(),
+                TextColumn::make('application_status')
+                    ->label('Current Status')
+                    ->badge()
+                    ->color(fn (?string $state): string => match ($state) {
+                        'healthy' => 'success',
+                        'warning' => 'warning',
+                        'danger' => 'danger',
+                        default => 'gray',
+                    }),
                 TextColumn::make('environment')
                     ->badge()
                     ->default('Unknown'),

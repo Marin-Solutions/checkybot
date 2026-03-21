@@ -5,6 +5,7 @@ Started: 2026-03-21 19:41:16
 <!-- Patterns accumulate here -->
 - Package-managed monitoring records should be archived, not hard-deleted, when sync prunes them so history remains queryable in Filament and tests can assert archived visibility.
 - Health event routing should reuse `NotificationSetting` scopes plus `WebsiteServicesEnum` inspection values instead of introducing a parallel notification configuration path.
+- Application rollup status should be computed from non-archived components only, with `danger > warning > healthy` precedence so archived incidents do not affect current state.
 
 ## Iteration History
 <!-- Learnings append here -->
@@ -20,4 +21,24 @@ Started: 2026-03-21 19:41:16
   - Project/application UI coverage is simplest when `Project` owns a first-class `components()` relationship and the Filament application list eagerly counts components.
   - Archived visibility is easier to test via Filament trashed filters on soft-deleted package-managed checks and dedicated archived flags for component records.
   - Stale detection should record a new history row when it flips state so operators can see timeout incidents alongside normal heartbeats.
+---
+
+
+## Verification Failed
+
+```
+
+```
+## 2026-03-21 - STORY-2
+- Implemented package health components in the vendored Laravel package with a fluent metric/threshold DSL, heartbeat payload evaluation, due-interval helper logic, and component sync client support for the existing Checkybot ingest endpoint.
+- Added application-level status rollup in Checkybot so Filament application list/detail views show the current worst active component status while leaving archived component history visible elsewhere.
+- Added story coverage for package component definition and due evaluation in `tests/Feature/Console/CheckybotCommandTest.php`, while reusing `tests/Feature/Api/V1/ProjectComponentSyncTest.php` for heartbeat ingest and extending `tests/Feature/Filament/ProjectResourceTest.php` for UI-visible rollup status.
+- Files changed:
+  - Vendored package: `vendor/marin-solutions/checkybot-laravel/src/Components/HealthComponent.php`, `vendor/marin-solutions/checkybot-laravel/src/Support/Interval.php`, `vendor/marin-solutions/checkybot-laravel/src/CheckRegistry.php`, `vendor/marin-solutions/checkybot-laravel/src/ConfigValidator.php`, `vendor/marin-solutions/checkybot-laravel/src/Facades/Checkybot.php`, `vendor/marin-solutions/checkybot-laravel/src/Http/CheckybotClient.php`, and `vendor/marin-solutions/checkybot-laravel/src/Commands/CheckybotCommand.php`
+  - Checkybot app: `app/Models/Project.php`, `app/Filament/Resources/Projects/ProjectResource.php`, `app/Filament/Resources/Projects/Tables/ProjectsTable.php`, and `app/Filament/Resources/Projects/Schemas/ProjectInfolist.php`
+  - Tests and planning: `tests/Feature/Console/CheckybotCommandTest.php`, `tests/Feature/Filament/ProjectResourceTest.php`, and `docs/plans/2026-03-21-story-2-package-health-components.md`
+- **Learnings for future iterations:**
+  - Package-side component threshold evaluation is simplest when the DSL only models one primary metric per component and computes status locally before transport.
+  - Current application status should stay computed at read time unless another story explicitly requires persistence; eager-loading active components is enough to avoid N+1 on the Filament list.
+  - Due-interval logic is worth isolating in a tiny helper because subtle Carbon directionality bugs are easy to miss without focused tests.
 ---

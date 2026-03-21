@@ -30,7 +30,11 @@ class ProjectResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->withCount('components');
+        return parent::getEloquentQuery()
+            ->withCount('components')
+            ->with([
+                'activeComponents:id,project_id,current_status',
+            ]);
     }
 
     public static function form(Schema $schema): Schema

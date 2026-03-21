@@ -14,6 +14,15 @@ class ProjectInfolist
                 \Filament\Schemas\Components\Section::make('Application')
                     ->schema([
                         TextEntry::make('name'),
+                        TextEntry::make('application_status')
+                            ->label('Current Status')
+                            ->badge()
+                            ->color(fn (?string $state): string => match ($state) {
+                                'healthy' => 'success',
+                                'warning' => 'warning',
+                                'danger' => 'danger',
+                                default => 'gray',
+                            }),
                         TextEntry::make('environment')
                             ->default('Unknown'),
                         TextEntry::make('technology')

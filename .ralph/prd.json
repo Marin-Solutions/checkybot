@@ -23,7 +23,7 @@
             "title": "Add package health components, heartbeats, and current application status",
             "githubIssue": 59,
             "priority": 2,
-            "passes": false,
+            "passes": true,
             "acceptanceCriteria": [
                 "Developers can define named health components in the Laravel package with numeric or boolean metrics and warning\/danger thresholds.",
                 "The scheduled package command evaluates due components locally and sends raw metrics plus computed status to Checkybot.",

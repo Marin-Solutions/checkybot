@@ -3,6 +3,7 @@
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
 use App\Filament\Resources\Projects\Pages\ListProjects;
+use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
@@ -78,4 +79,63 @@ test('project component detail shows heartbeat history', function () {
         ->assertSuccessful()
         ->assertSee('Heartbeat expired')
         ->assertSee('stale');
+});
+
+test('application list and detail show the worst active component status', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthyProject = Project::factory()->create([
+        'name' => 'Healthy App',
+        'created_by' => $user->id,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $healthyProject->id,
+        'name' => 'database',
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $healthyProject->id,
+        'name' => 'legacy-proxy',
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    $dangerProject = Project::factory()->create([
+        'name' => 'Danger App',
+        'created_by' => $user->id,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $dangerProject->id,
+        'name' => 'queue',
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $dangerProject->id,
+        'name' => 'database',
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$healthyProject, $dangerProject])
+        ->assertSee('healthy')
+        ->assertSee('danger');
+
+    Livewire::test(ViewProject::class, ['record' => $healthyProject->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('healthy');
+
+    Livewire::test(ViewProject::class, ['record' => $dangerProject->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('danger');
 });
