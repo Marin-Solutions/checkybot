@@ -15,7 +15,7 @@ class CheckybotClient
     public function __construct(
         protected string $baseUrl,
         protected string $apiKey,
-        protected string $projectId,
+        protected ?string $projectId = null,
         protected int $timeout = 30,
         protected int $retryTimes = 3,
         protected int $retryDelay = 1000,
@@ -37,9 +37,33 @@ class CheckybotClient
      *
      * @throws CheckybotSyncException
      */
+    public function registerApplication(array $payload): array
+    {
+        $response = $this->post('/api/v1/package/register', $payload, 'Checkybot application registration successful');
+        $projectId = data_get($response, 'data.project_id');
+
+        if ($projectId === null) {
+            throw new CheckybotSyncException('Checkybot registration did not return a project id');
+        }
+
+        $this->projectId = (string) $projectId;
+
+        return $response;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     *
+     * @throws CheckybotSyncException
+     */
     public function syncChecks(array $payload): array
     {
-        return $this->post("/api/v1/projects/{$this->projectId}/checks/sync", $payload, 'Checkybot check sync successful');
+        return $this->post(
+            sprintf('/api/v1/projects/%s/checks/sync', $this->requireProjectId()),
+            $payload,
+            'Checkybot check sync successful'
+        );
     }
 
     /**
@@ -50,7 +74,11 @@ class CheckybotClient
      */
     public function syncComponents(array $payload): array
     {
-        return $this->post("/api/v1/projects/{$this->projectId}/components/sync", $payload, 'Checkybot component sync successful');
+        return $this->post(
+            sprintf('/api/v1/projects/%s/components/sync', $this->requireProjectId()),
+            $payload,
+            'Checkybot component sync successful'
+        );
     }
 
     /**
@@ -124,5 +152,17 @@ class CheckybotClient
         }
 
         return $body['message'] ?? 'Unknown error occurred';
+    }
+
+    /**
+     * @throws CheckybotSyncException
+     */
+    protected function requireProjectId(): string
+    {
+        if (blank($this->projectId)) {
+            throw new CheckybotSyncException('Checkybot project id has not been resolved');
+        }
+
+        return $this->projectId;
     }
 }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\ProjectChecksController;
 use App\Http\Controllers\Api\V1\ProjectComponentsController;
+use App\Http\Controllers\Api\V1\ProjectRegistrationsController;
 use App\Http\Controllers\Api\V1\ServerController;
 use App\Http\Controllers\BackupHistoryController;
 use App\Http\Controllers\ServerInformationHistoryController;
@@ -15,6 +16,7 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
     Route::post('/server-log-history', [ServerLogFileHistoryController::class, 'store']);
     Route::post('/backup-history', [BackupHistoryController::class, 'store']);
 
-    Route::post('/projects/{project}/checks/sync', [ProjectChecksController::class, 'sync'])->middleware('auth:sanctum');
-    Route::post('/projects/{project}/components/sync', ProjectComponentsController::class)->middleware('auth:sanctum');
+    Route::post('/package/register', ProjectRegistrationsController::class)->middleware('api.key');
+    Route::post('/projects/{project}/checks/sync', [ProjectChecksController::class, 'sync'])->middleware('api.key');
+    Route::post('/projects/{project}/components/sync', ProjectComponentsController::class)->middleware('api.key');
 });

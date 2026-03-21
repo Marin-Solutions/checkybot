@@ -18,6 +18,7 @@ class Project extends Model
         'group',
         'environment',
         'technology',
+        'identity_endpoint',
         'token',
         'created_by',
     ];

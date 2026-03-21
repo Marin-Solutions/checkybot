@@ -18,8 +18,16 @@ class ConfigValidator
             $errors[] = 'CHECKYBOT_API_KEY is not configured';
         }
 
-        if (empty($config['project_id'])) {
-            $errors[] = 'CHECKYBOT_PROJECT_ID is not configured';
+        if (empty($config['application_name'])) {
+            $errors[] = 'CHECKYBOT_APPLICATION_NAME is not configured';
+        }
+
+        if (empty($config['environment'])) {
+            $errors[] = 'CHECKYBOT_ENVIRONMENT is not configured';
+        }
+
+        if (empty($config['identity_endpoint'])) {
+            $errors[] = 'CHECKYBOT_IDENTITY_ENDPOINT is not configured';
         }
 
         if (! empty($errors)) {
@@ -49,8 +57,16 @@ class ConfigValidator
             $errors[] = 'CHECKYBOT_API_KEY is not configured';
         }
 
-        if (empty($config['project_id'])) {
-            $errors[] = 'CHECKYBOT_PROJECT_ID is not configured';
+        if (empty($config['application_name'])) {
+            $errors[] = 'CHECKYBOT_APPLICATION_NAME is not configured';
+        }
+
+        if (empty($config['environment'])) {
+            $errors[] = 'CHECKYBOT_ENVIRONMENT is not configured';
+        }
+
+        if (empty($config['identity_endpoint'])) {
+            $errors[] = 'CHECKYBOT_IDENTITY_ENDPOINT is not configured';
         }
 
         if (! empty($errors)) {

@@ -1,2 +1,3 @@
 {"iteration":1,"timestamp":"2026-03-21T20:00:51+00:00","story":"STORY-1","tokens_in":26564101,"tokens_out":46994,"duration_seconds":1173,"status":"failed"}
 {"iteration":2,"timestamp":"2026-03-21T20:17:23+00:00","story":"STORY-2","tokens_in":15233351,"tokens_out":44363,"duration_seconds":992,"status":"failed"}
+{"iteration":3,"timestamp":"2026-03-21T20:25:06+00:00","story":"STORY-3","tokens_in":7949164,"tokens_out":21924,"duration_seconds":462,"status":"failed"}

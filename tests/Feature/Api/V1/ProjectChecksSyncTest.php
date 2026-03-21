@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
@@ -11,6 +12,7 @@ use App\Services\CheckSyncService;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
+    $this->apiKey = ApiKey::factory()->create(['user_id' => $this->user->id]);
     $this->project = Project::factory()->create(['created_by' => $this->user->id]);
     $this->syncService = app(CheckSyncService::class);
 });
@@ -284,60 +286,65 @@ test('requires authentication', function () {
 test('requires project ownership', function () {
     $otherUser = User::factory()->create();
     $otherProject = Project::factory()->create(['created_by' => $otherUser->id]);
+    $apiKey = ApiKey::factory()->create(['user_id' => $this->user->id]);
 
-    $response = $this->actingAs($this->user)->postJson("/api/v1/projects/{$otherProject->id}/checks/sync", [
-        'uptime_checks' => [],
-        'ssl_checks' => [],
-        'api_checks' => [],
-    ]);
+    $response = $this->withToken($apiKey->key)
+        ->postJson("/api/v1/projects/{$otherProject->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ]);
 
     $response->assertStatus(403);
 });
 
 test('validates interval format', function () {
-    $response = $this->actingAs($this->user)->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
-        'uptime_checks' => [
-            [
-                'name' => 'test',
-                'url' => 'https://example.com',
-                'interval' => 'invalid',
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'test',
+                    'url' => 'https://example.com',
+                    'interval' => 'invalid',
+                ],
             ],
-        ],
-        'ssl_checks' => [],
-        'api_checks' => [],
-    ]);
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ]);
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['uptime_checks.0.interval']);
 });
 
 test('validates url format', function () {
-    $response = $this->actingAs($this->user)->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
-        'uptime_checks' => [
-            [
-                'name' => 'test',
-                'url' => 'not-a-url',
-                'interval' => '5m',
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'test',
+                    'url' => 'not-a-url',
+                    'interval' => '5m',
+                ],
             ],
-        ],
-        'ssl_checks' => [],
-        'api_checks' => [],
-    ]);
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ]);
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['uptime_checks.0.url']);
 });
 
 test('validates required fields', function () {
-    $response = $this->actingAs($this->user)->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
-        'uptime_checks' => [
-            [
-                'url' => 'https://example.com',
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'url' => 'https://example.com',
+                ],
             ],
-        ],
-        'ssl_checks' => [],
-        'api_checks' => [],
-    ]);
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ]);
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors([
@@ -347,23 +354,24 @@ test('validates required fields', function () {
 });
 
 test('validates assertion types', function () {
-    $response = $this->actingAs($this->user)->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
-        'uptime_checks' => [],
-        'ssl_checks' => [],
-        'api_checks' => [
-            [
-                'name' => 'test',
-                'url' => 'https://api.example.com',
-                'interval' => '5m',
-                'assertions' => [
-                    [
-                        'data_path' => 'status',
-                        'assertion_type' => 'invalid_type',
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'test',
+                    'url' => 'https://api.example.com',
+                    'interval' => '5m',
+                    'assertions' => [
+                        [
+                            'data_path' => 'status',
+                            'assertion_type' => 'invalid_type',
+                        ],
                     ],
                 ],
             ],
-        ],
-    ]);
+        ]);
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['api_checks.0.assertions.0.assertion_type']);

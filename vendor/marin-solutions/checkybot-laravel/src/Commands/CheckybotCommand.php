@@ -53,8 +53,9 @@ class CheckybotCommand extends Command
             + count($checkPayload['api_checks']);
 
         $observedAt = now();
+        $componentContextKey = $this->resolveComponentContextKey($config);
         $dueComponents = $useRegistry
-            ? $this->getDueComponents($registry, $observedAt)
+            ? $this->getDueComponents($registry, $observedAt, $componentContextKey)
             : [];
 
         $this->comment("Found {$totalChecks} checks to sync and ".count($dueComponents).' due components to report');
@@ -68,6 +69,7 @@ class CheckybotCommand extends Command
         try {
             /** @var CheckybotClient $client */
             $client = app(CheckybotClient::class);
+            $client->registerApplication($this->buildRegistrationPayload($config));
 
             $response = $client->syncChecks($checkPayload);
             $this->displaySyncResults($response['summary'] ?? []);
@@ -81,7 +83,7 @@ class CheckybotCommand extends Command
                 ];
 
                 $client->syncComponents($componentPayload);
-                $this->markComponentsAsReported($dueComponents, $observedAt);
+                $this->markComponentsAsReported($dueComponents, $observedAt, $componentContextKey);
             }
 
             $this->info('Sync completed successfully');
@@ -145,17 +147,17 @@ class CheckybotCommand extends Command
     /**
      * @return array<int, HealthComponent>
      */
-    protected function getDueComponents(CheckRegistry $registry, Carbon $observedAt): array
+    protected function getDueComponents(CheckRegistry $registry, Carbon $observedAt, string $componentContextKey): array
     {
         return array_values(array_filter(
             $registry->getComponents(),
-            fn (HealthComponent $component): bool => $this->isComponentDue($component, $observedAt)
+            fn (HealthComponent $component): bool => $this->isComponentDue($component, $observedAt, $componentContextKey)
         ));
     }
 
-    protected function isComponentDue(HealthComponent $component, Carbon $observedAt): bool
+    protected function isComponentDue(HealthComponent $component, Carbon $observedAt, string $componentContextKey): bool
     {
-        $lastReportedAt = Cache::get($this->componentCacheKey($component));
+        $lastReportedAt = Cache::get($this->componentCacheKey($componentContextKey, $component));
 
         return Interval::isDue(
             $component->getInterval(),
@@ -167,18 +169,57 @@ class CheckybotCommand extends Command
     /**
      * @param  array<int, HealthComponent>  $components
      */
-    protected function markComponentsAsReported(array $components, Carbon $observedAt): void
+    protected function markComponentsAsReported(array $components, Carbon $observedAt, string $componentContextKey): void
     {
         foreach ($components as $component) {
-            Cache::forever($this->componentCacheKey($component), $observedAt->toISOString());
+            Cache::forever($this->componentCacheKey($componentContextKey, $component), $observedAt->toISOString());
         }
     }
 
-    protected function componentCacheKey(HealthComponent $component): string
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    protected function buildRegistrationPayload(array $config): array
+    {
+        $payload = [
+            'name' => $config['application_name'],
+            'environment' => $config['environment'],
+            'identity_endpoint' => $config['identity_endpoint'],
+            'technology' => 'Laravel',
+        ];
+
+        if (filled($config['app_id'] ?? null)) {
+            $payload['app_id'] = (string) $config['app_id'];
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     */
+    protected function resolveComponentContextKey(array $config): string
+    {
+        if (filled($config['app_id'] ?? null)) {
+            return 'app:'.$config['app_id'];
+        }
+
+        if (filled($config['project_id'] ?? null)) {
+            return 'project:'.$config['project_id'];
+        }
+
+        return 'identity:'.sha1(sprintf(
+            '%s|%s',
+            $config['environment'] ?? '',
+            $config['identity_endpoint'] ?? '',
+        ));
+    }
+
+    protected function componentCacheKey(string $componentContextKey, HealthComponent $component): string
     {
         return sprintf(
             'checkybot-laravel.components.%s.%s.last_reported_at',
-            config('checkybot-laravel.project_id'),
+            $componentContextKey,
             $component->getName(),
         );
     }

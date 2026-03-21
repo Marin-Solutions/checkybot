@@ -8,8 +8,11 @@ use MarinSolutions\CheckybotLaravel\Support\Interval;
 
 beforeEach(function () {
     config()->set('checkybot-laravel.api_key', 'test-api-key');
-    config()->set('checkybot-laravel.project_id', '123');
     config()->set('checkybot-laravel.base_url', 'https://checkybot.test');
+    config()->set('checkybot-laravel.app_id', null);
+    config()->set('checkybot-laravel.application_name', 'Checkout App');
+    config()->set('checkybot-laravel.environment', 'production');
+    config()->set('checkybot-laravel.identity_endpoint', 'https://checkout.example.com');
 
     Checkybot::flush();
     Cache::flush();
@@ -113,11 +116,26 @@ test('sync command sends external checks from the registry alongside due compone
 
     $fakeClient = new class extends CheckybotClient
     {
+        public array $registrationPayloads = [];
+
         public array $checkPayloads = [];
 
         public array $componentPayloads = [];
 
         public function __construct() {}
+
+        public function registerApplication(array $payload): array
+        {
+            $this->registrationPayloads[] = $payload;
+            $this->projectId = '123';
+
+            return [
+                'data' => [
+                    'project_id' => 123,
+                    'created' => false,
+                ],
+            ];
+        }
 
         public function syncChecks(array $payload): array
         {
@@ -194,9 +212,24 @@ test('sync command sends external checks from the registry alongside due compone
 test('sync command posts an empty external check payload so package-managed removals can be pruned', function () {
     $fakeClient = new class extends CheckybotClient
     {
+        public array $registrationPayloads = [];
+
         public array $checkPayloads = [];
 
         public function __construct() {}
+
+        public function registerApplication(array $payload): array
+        {
+            $this->registrationPayloads[] = $payload;
+            $this->projectId = '123';
+
+            return [
+                'data' => [
+                    'project_id' => 123,
+                    'created' => false,
+                ],
+            ];
+        }
 
         public function syncChecks(array $payload): array
         {
@@ -224,4 +257,130 @@ test('sync command posts an empty external check payload so package-managed remo
             'api_checks' => [],
         ],
     ]);
+});
+
+test('sync command registers a guided setup application before syncing package data', function () {
+    config()->set('checkybot-laravel.project_id', null);
+    config()->set('checkybot-laravel.app_id', '987');
+
+    Checkybot::uptime('homepage')
+        ->url('https://example.com')
+        ->every('5m');
+
+    $fakeClient = new class extends CheckybotClient
+    {
+        public array $registrationPayloads = [];
+
+        public array $checkPayloads = [];
+
+        public ?string $projectIdAtSync = null;
+
+        public function __construct() {}
+
+        public function registerApplication(array $payload): array
+        {
+            $this->registrationPayloads[] = $payload;
+            $this->projectId = '321';
+
+            return [
+                'data' => [
+                    'project_id' => 321,
+                    'created' => false,
+                ],
+            ];
+        }
+
+        public function syncChecks(array $payload): array
+        {
+            $this->projectIdAtSync = $this->projectId;
+            $this->checkPayloads[] = $payload;
+
+            return [
+                'summary' => [
+                    'uptime_checks' => ['created' => 1, 'updated' => 0, 'deleted' => 0],
+                    'ssl_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                    'api_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                ],
+            ];
+        }
+    };
+
+    app()->instance(CheckybotClient::class, $fakeClient);
+
+    $this->artisan('checkybot:sync')
+        ->assertExitCode(0);
+
+    expect($fakeClient->registrationPayloads)->toHaveCount(1)
+        ->and($fakeClient->registrationPayloads[0])->toMatchArray([
+            'app_id' => '987',
+            'name' => 'Checkout App',
+            'environment' => 'production',
+            'identity_endpoint' => 'https://checkout.example.com',
+        ])
+        ->and($fakeClient->projectIdAtSync)->toBe('321')
+        ->and($fakeClient->checkPayloads)->toHaveCount(1);
+});
+
+test('sync command can bootstrap without a guided app id and still sync package data', function () {
+    config()->set('checkybot-laravel.project_id', null);
+    config()->set('checkybot-laravel.app_id', null);
+
+    Checkybot::component('queue')
+        ->everyMinute()
+        ->metric('pending_jobs', fn (): int => 4)
+        ->warningWhen('>=', 50)
+        ->dangerWhen('>=', 100);
+
+    $fakeClient = new class extends CheckybotClient
+    {
+        public array $registrationPayloads = [];
+
+        public array $componentPayloads = [];
+
+        public ?string $projectIdAtComponentSync = null;
+
+        public function __construct() {}
+
+        public function registerApplication(array $payload): array
+        {
+            $this->registrationPayloads[] = $payload;
+            $this->projectId = '654';
+
+            return [
+                'data' => [
+                    'project_id' => 654,
+                    'created' => true,
+                ],
+            ];
+        }
+
+        public function syncChecks(array $payload): array
+        {
+            return [
+                'summary' => [
+                    'uptime_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                    'ssl_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                    'api_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                ],
+            ];
+        }
+
+        public function syncComponents(array $payload): array
+        {
+            $this->projectIdAtComponentSync = $this->projectId;
+            $this->componentPayloads[] = $payload;
+
+            return [];
+        }
+    };
+
+    app()->instance(CheckybotClient::class, $fakeClient);
+
+    $this->artisan('checkybot:sync')
+        ->assertExitCode(0);
+
+    expect($fakeClient->registrationPayloads)->toHaveCount(1)
+        ->and($fakeClient->registrationPayloads[0])->not->toHaveKey('app_id')
+        ->and($fakeClient->projectIdAtComponentSync)->toBe('654')
+        ->and($fakeClient->componentPayloads)->toHaveCount(1);
 });

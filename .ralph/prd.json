@@ -53,7 +53,7 @@
             "title": "Package API-key auth and application registration handshake",
             "githubIssue": 57,
             "priority": 4,
-            "passes": false,
+            "passes": true,
             "acceptanceCriteria": [
                 "Package traffic authenticates with the documented Bearer API-key flow rather than relying on the current inconsistent runtime path.",
                 "A package install with guided setup data attaches to the intended existing Application shell on first registration.",

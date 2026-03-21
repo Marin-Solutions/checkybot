@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\WebsiteServicesEnum;
+use App\Models\ApiKey;
 use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\User;
@@ -8,6 +9,7 @@ use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
+    $this->apiKey = ApiKey::factory()->create(['user_id' => $this->user->id]);
     $this->project = Project::factory()->create(['created_by' => $this->user->id]);
 });
 
@@ -38,7 +40,7 @@ test('sync stores package component state and appends heartbeat history', functi
         ],
     ];
 
-    $response = $this->actingAs($this->user)->postJson(
+    $response = $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",
         $payload
     );
@@ -64,7 +66,7 @@ test('sync stores package component state and appends heartbeat history', functi
         'event' => 'heartbeat',
     ]);
 
-    $secondResponse = $this->actingAs($this->user)->postJson(
+    $secondResponse = $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",
         [
             'components' => [
@@ -111,7 +113,7 @@ test('warning and danger component events use existing notification settings', f
         'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
     ]);
 
-    $this->actingAs($this->user)->postJson(
+    $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",
         [
             'components' => [

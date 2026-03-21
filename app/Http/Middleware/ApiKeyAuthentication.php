@@ -5,20 +5,22 @@ namespace App\Http\Middleware;
 use App\Models\ApiKey;
 use Closure;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 class ApiKeyAuthentication
 {
-    public function handle(Request $request, Closure $next)
+    public function handle(Request $request, Closure $next): Response
     {
-        $apiKey = $request->header('X-API-Key');
+        $apiKey = $request->bearerToken();
 
         if (! $apiKey) {
-            return response()->json(['message' => 'API key is missing'], 401);
+            return response()->json(['message' => 'Bearer API key is missing'], 401);
         }
 
-        $key = ApiKey::where('key', $apiKey)
+        $key = ApiKey::query()
+            ->where('key', $apiKey)
             ->where('is_active', true)
-            ->where(function ($query) {
+            ->where(function ($query): void {
                 $query->whereNull('expires_at')
                     ->orWhere('expires_at', '>', now());
             })
@@ -29,7 +31,9 @@ class ApiKeyAuthentication
         }
 
         $key->update(['last_used_at' => now()]);
-        auth()->login($key->user);
+
+        auth()->setUser($key->user);
+        $request->setUserResolver(static fn () => $key->user);
 
         return $next($request);
     }

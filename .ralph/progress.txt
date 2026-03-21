@@ -3,6 +3,7 @@ Started: 2026-03-21 19:41:16
 
 ## Codebase Patterns
 <!-- Patterns accumulate here -->
+- Package-facing Checkybot routes should use the shared `api.key` Bearer-token middleware and set the request user resolver, which lets Form Request ownership checks keep working without a separate package auth code path.
 - Package-managed monitoring records should be archived, not hard-deleted, when sync prunes them so history remains queryable in Filament and tests can assert archived visibility.
 - Health event routing should reuse `NotificationSetting` scopes plus `WebsiteServicesEnum` inspection values instead of introducing a parallel notification configuration path.
 - Application rollup status should be computed from non-archived components only, with `danger > warning > healthy` precedence so archived incidents do not affect current state.
@@ -30,6 +31,19 @@ Started: 2026-03-21 19:41:16
 ```
 
 ```
+
+## 2026-03-21 - STORY-4
+- Implemented a package registration handshake that authenticates with Bearer API keys, attaches guided installs to an existing application shell by hidden `app_id`, and auto-creates a new application when no `identity_endpoint + environment` match exists.
+- Switched package sync endpoints to the shared API-key middleware, added `identity_endpoint` storage plus registration service/controller/request flow on the backend, and updated the vendored package command/client/config to register before syncing checks or components.
+- Files changed:
+  - Backend auth and registration in `bootstrap/app.php`, `routes/api.php`, `app/Http/Middleware/ApiKeyAuthentication.php`, `app/Http/Controllers/Api/V1/ProjectRegistrationsController.php`, `app/Http/Requests/RegisterProjectRequest.php`, `app/Services/ProjectRegistrationService.php`, `app/Models/Project.php`, and `database/migrations/2026_03_21_203047_add_identity_endpoint_to_projects_table.php`
+  - Package handshake flow in `vendor/marin-solutions/checkybot-laravel/config/checkybot-laravel.php`, `vendor/marin-solutions/checkybot-laravel/src/CheckybotLaravelServiceProvider.php`, `vendor/marin-solutions/checkybot-laravel/src/ConfigValidator.php`, `vendor/marin-solutions/checkybot-laravel/src/Http/CheckybotClient.php`, and `vendor/marin-solutions/checkybot-laravel/src/Commands/CheckybotCommand.php`
+  - Story coverage and plan in `tests/Feature/Api/V1/ProjectRegistrationTest.php`, `tests/Feature/Api/V1/ProjectChecksSyncTest.php`, `tests/Feature/Api/V1/ProjectComponentSyncTest.php`, `tests/Feature/Console/CheckybotCommandTest.php`, and `docs/plans/2026-03-21-story-4-package-auth-registration-handshake.md`
+- **Learnings for future iterations:**
+  - Registration works cleanly as a thin service around `Project` when guided setup prefers `app_id` only for first attach and then falls back to `identity_endpoint + environment` matching for idempotent re-runs.
+  - Package command tests are easiest to keep stable when the fake `CheckybotClient` owns the resolved project id after registration, because sync assertions can then verify orchestration without real HTTP calls.
+  - Due-component cache keys should be derived from stable application identity inputs rather than a hard-coded project id so package-first bootstrap still has deterministic scheduling before the first sync completes.
+---
 ## 2026-03-21 - STORY-3
 - Implemented package-command external check sync coverage so `checkybot:sync` posts registry-defined uptime, SSL, and API checks and still sends an empty payload when code-defined checks are removed, allowing backend prune/archive logic to run.
 - Added read-only Application relation managers for package-managed websites and API monitors, including archived visibility directly from the Application record in Filament.
@@ -54,6 +68,13 @@ Started: 2026-03-21 19:41:16
   - Current application status should stay computed at read time unless another story explicitly requires persistence; eager-loading active components is enough to avoid N+1 on the Filament list.
   - Due-interval logic is worth isolating in a tiny helper because subtle Carbon directionality bugs are easy to miss without focused tests.
 ---
+
+
+## Verification Failed
+
+```
+
+```
 
 
 ## Verification Failed
