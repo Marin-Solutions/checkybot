@@ -68,7 +68,7 @@
             "title": "Applications foundation and guided setup snippet",
             "githubIssue": 56,
             "priority": 5,
-            "passes": false,
+            "passes": true,
             "acceptanceCriteria": [
                 "An operator can create an Application in Checkybot with required fields `name` and `environment` only.",
                 "Checkybot shows a guided setup view for the Application with a full copy-paste Laravel install snippet, including hidden application ID pairing data.",

@@ -3,6 +3,7 @@ Started: 2026-03-21 19:41:16
 
 ## Codebase Patterns
 <!-- Patterns accumulate here -->
+- Filament application setup snippets are safest as raw string state on the model rendered through a `TextEntry` `<pre>` block; `CodeEntry` depends on an optional syntax-highlighter package that is not installed in this app.
 - Package-facing Checkybot routes should use the shared `api.key` Bearer-token middleware and set the request user resolver, which lets Form Request ownership checks keep working without a separate package auth code path.
 - Package-managed monitoring records should be archived, not hard-deleted, when sync prunes them so history remains queryable in Filament and tests can assert archived visibility.
 - Health event routing should reuse `NotificationSetting` scopes plus `WebsiteServicesEnum` inspection values instead of introducing a parallel notification configuration path.
@@ -31,6 +32,23 @@ Started: 2026-03-21 19:41:16
 ```
 
 ```
+
+## 2026-03-21 - STORY-5
+- Implemented the base Application Filament flow so operators can create a record with only `name` and `environment`, while `created_by` and the pairing token are derived automatically on create.
+- Added a guided Laravel setup section on the Application view that renders a copyable install snippet with the Checkybot URL, `CHECKYBOT_APP_ID`, application name, environment, and follow-up sync commands.
+- Files changed
+  - `app/Filament/Resources/Projects/Schemas/ProjectForm.php`
+  - `app/Filament/Resources/Projects/Pages/CreateProject.php`
+  - `app/Filament/Resources/Projects/Schemas/ProjectInfolist.php`
+  - `app/Models/Project.php`
+  - `tests/Feature/Filament/ProjectGuidedSetupTest.php`
+  - `docs/plans/2026-03-21-story-5-application-foundation-guided-setup.md`
+  - `.ralph/prd.json`
+  - `.ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Guided install content is easiest to keep consistent when the `Project` model owns snippet generation and the Filament view only handles presentation.
+  - A dedicated Filament feature test can cover both the create flow and the rendered infolist state without needing broader end-to-end browser coverage.
+---
 
 ## 2026-03-21 - STORY-4
 - Implemented a package registration handshake that authenticates with Bearer API keys, attaches guided installs to an existing application shell by hidden `app_id`, and auto-creates a new application when no `identity_endpoint + environment` match exists.
@@ -68,6 +86,13 @@ Started: 2026-03-21 19:41:16
   - Current application status should stay computed at read time unless another story explicitly requires persistence; eager-loading active components is enough to avoid N+1 on the Filament list.
   - Due-interval logic is worth isolating in a tiny helper because subtle Carbon directionality bugs are easy to miss without focused tests.
 ---
+
+
+## Verification Failed
+
+```
+
+```
 
 
 ## Verification Failed

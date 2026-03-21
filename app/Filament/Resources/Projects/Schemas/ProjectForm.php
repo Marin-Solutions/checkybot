@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Projects\Schemas;
 
+use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
 class ProjectForm
@@ -10,7 +12,17 @@ class ProjectForm
     {
         return $schema
             ->components([
-                //
+                Section::make('Application')
+                    ->schema([
+                        TextInput::make('name')
+                            ->required()
+                            ->autofocus()
+                            ->maxLength(255),
+                        TextInput::make('environment')
+                            ->required()
+                            ->maxLength(255),
+                    ])
+                    ->columns(2),
             ]);
     }
 }
