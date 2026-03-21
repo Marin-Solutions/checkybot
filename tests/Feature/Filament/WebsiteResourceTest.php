@@ -108,9 +108,26 @@ test('super admin can delete website', function () {
     Livewire::test(EditWebsite::class, ['record' => $website->id])
         ->callAction('delete');
 
-    $this->assertDatabaseMissing('websites', [
+    $this->assertSoftDeleted('websites', [
         'id' => $website->id,
     ]);
+});
+
+test('super admin can filter to archived websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $activeWebsite = Website::factory()->create(['created_by' => $user->id]);
+    $archivedWebsite = Website::factory()->create([
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_name' => 'archived-website',
+    ]);
+
+    $archivedWebsite->delete();
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('trashed', 'only')
+        ->assertCanSeeTableRecords([$archivedWebsite]);
 });
 
 test('regular user can access website resource but sees only own websites', function () {

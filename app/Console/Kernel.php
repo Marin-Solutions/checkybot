@@ -7,16 +7,12 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
 class Kernel extends ConsoleKernel
 {
-    /**
-     * Define the application's command schedule.
-     *
-     * These should be classes that implement the ShouldQueue interface.
-     */
-    protected function schedule(Schedule $schedule): void {}
+    protected function schedule(Schedule $schedule): void
+    {
+        $schedule->command('app:mark-stale-package-checks')->everyMinute();
+        $schedule->command('project-components:check-stale')->everyMinute();
+    }
 
-    /**
-     * Register the commands for your application.
-     */
     protected function commands(): void
     {
         $this->load(__DIR__.'/Commands');

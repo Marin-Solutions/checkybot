@@ -5,6 +5,7 @@ namespace App\Models;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Spatie\Dns\Dns;
@@ -13,6 +14,7 @@ use Spatie\SslCertificate\SslCertificate;
 class Website extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'ploi_website_id',
@@ -30,6 +32,10 @@ class Website extends Model
         'source',
         'package_name',
         'package_interval',
+        'current_status',
+        'last_heartbeat_at',
+        'stale_at',
+        'status_summary',
     ];
 
     protected $casts = [
@@ -37,6 +43,8 @@ class Website extends Model
         'ssl_check' => 'boolean',
         'outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
+        'last_heartbeat_at' => 'datetime',
+        'stale_at' => 'datetime',
     ];
 
     /**

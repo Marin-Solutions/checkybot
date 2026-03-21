@@ -21,6 +21,8 @@ class MonitorApiResultFactory extends Factory
             'http_code' => $isSuccess ? 200 : fake()->randomElement([400, 404, 500, 503]),
             'failed_assertions' => $isSuccess ? null : json_encode(['data.status' => 'Expected: success, Got: error']),
             'response_body' => json_encode(['data' => ['status' => $isSuccess ? 'success' : 'error']]),
+            'status' => $isSuccess ? 'healthy' : 'danger',
+            'summary' => $isSuccess ? 'Heartbeat received successfully.' : 'API heartbeat failed.',
         ];
     }
 
@@ -30,6 +32,7 @@ class MonitorApiResultFactory extends Factory
             'is_success' => true,
             'http_code' => 200,
             'failed_assertions' => null,
+            'status' => 'healthy',
         ]);
     }
 
@@ -39,6 +42,7 @@ class MonitorApiResultFactory extends Factory
             'is_success' => false,
             'http_code' => fake()->randomElement([400, 404, 500, 503]),
             'failed_assertions' => json_encode(['error' => 'Test failed']),
+            'status' => 'danger',
         ]);
     }
 }

@@ -11,6 +11,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class MonitorApisResource extends Resource
 {
@@ -30,7 +31,11 @@ class MonitorApisResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->withAvg('results as avg_response_time', 'response_time_ms');
+        return parent::getEloquentQuery()
+            ->withAvg('results as avg_response_time', 'response_time_ms')
+            ->withoutGlobalScopes([
+                SoftDeletingScope::class,
+            ]);
     }
 
     public static function form(Schema $schema): Schema
@@ -70,6 +75,16 @@ class MonitorApisResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('url')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('current_status')
+                    ->label('Health')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                    ->color(fn (?string $state): string => match ($state) {
+                        'healthy' => 'success',
+                        'warning' => 'warning',
+                        'danger' => 'danger',
+                        default => 'gray',
+                    }),
                 Tables\Columns\TextColumn::make('data_path')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('avg_response_time')
@@ -85,9 +100,13 @@ class MonitorApisResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('deleted_at')
+                    ->dateTime()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
                 \Filament\Actions\ViewAction::make(),

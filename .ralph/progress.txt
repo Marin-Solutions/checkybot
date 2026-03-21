@@ -1,0 +1,23 @@
+# Ralph Progress Log
+Started: 2026-03-21 19:41:16
+
+## Codebase Patterns
+<!-- Patterns accumulate here -->
+- Package-managed monitoring records should be archived, not hard-deleted, when sync prunes them so history remains queryable in Filament and tests can assert archived visibility.
+- Health event routing should reuse `NotificationSetting` scopes plus `WebsiteServicesEnum` inspection values instead of introducing a parallel notification configuration path.
+
+## Iteration History
+<!-- Learnings append here -->
+## 2026-03-21 - STORY-1
+- Implemented package-managed heartbeat/status tracking for websites and API monitors, including archived visibility, stale escalation, and generic health alert mail/webhook delivery.
+- Added project component sync, stale detection, notification flow, heartbeat persistence, and Filament application/component views for active and archived component history.
+- Files changed:
+  - API sync and stale handling in `app/Http/Controllers/Api/V1/ProjectComponentsController.php`, `app/Http/Requests/SyncProjectComponentsRequest.php`, `app/Services/ProjectComponentSyncService.php`, `app/Services/ProjectComponentStaleService.php`, `app/Console/Commands/CheckProjectComponentStaleStatus.php`, `routes/api.php`, and `app/Console/Kernel.php`
+  - Package-managed check archive/status flow in `app/Services/CheckSyncService.php`, `app/Jobs/LogUptimeSslJob.php`, `app/Console/Commands/CheckApiMonitors.php`, `app/Console/Commands/MarkStalePackageChecks.php`, `app/Services/PackageHealthStatusService.php`, and `app/Services/HealthEventNotificationService.php`
+  - Persistence/UI updates in `app/Models/*`, `database/migrations/2026_03_21_194800_create_project_components_table.php`, `database/migrations/2026_03_21_194801_create_project_component_heartbeats_table.php`, `database/migrations/2026_03_21_194828_add_package_health_tracking_to_monitoring_tables.php`, and Filament resources under `app/Filament/Resources/Projects`, `app/Filament/Resources/ProjectComponents`, `app/Filament/Resources/WebsiteResource`, and `app/Filament/Resources/MonitorApisResource`
+  - Story coverage in `tests/Feature/Api/V1/ProjectChecksSyncTest.php`, `tests/Feature/Api/V1/ProjectComponentSyncTest.php`, `tests/Unit/Jobs/LogUptimeSslJobTest.php`, `tests/Unit/Commands/CheckApiMonitorsTest.php`, `tests/Unit/Commands/MarkStalePackageChecksTest.php`, `tests/Unit/Commands/CheckProjectComponentStaleStatusTest.php`, `tests/Feature/Filament/WebsiteResourceTest.php`, `tests/Feature/Filament/MonitorApisResourceTest.php`, and `tests/Feature/Filament/ProjectResourceTest.php`
+- **Learnings for future iterations:**
+  - Project/application UI coverage is simplest when `Project` owns a first-class `components()` relationship and the Filament application list eagerly counts components.
+  - Archived visibility is easier to test via Filament trashed filters on soft-deleted package-managed checks and dedicated archived flags for component records.
+  - Stale detection should record a new history row when it flips state so operators can see timeout incidents alongside normal heartbeats.
+---

@@ -16,5 +16,7 @@ class WebsiteLogHistory extends Model
         'ssl_expiry_date',
         'http_status_code',
         'speed',
+        'status',
+        'summary',
     ];
 }

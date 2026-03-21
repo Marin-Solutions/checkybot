@@ -44,4 +44,14 @@ class Project extends Model
     {
         return $this->hasMany(MonitorApis::class)->where('source', 'package');
     }
+
+    public function components(): HasMany
+    {
+        return $this->hasMany(ProjectComponent::class);
+    }
+
+    public function activeComponents(): HasMany
+    {
+        return $this->hasMany(ProjectComponent::class)->where('is_archived', false);
+    }
 }

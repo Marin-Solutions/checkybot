@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\ProjectChecksController;
+use App\Http\Controllers\Api\V1\ProjectComponentsController;
 use App\Http\Controllers\Api\V1\ServerController;
 use App\Http\Controllers\BackupHistoryController;
 use App\Http\Controllers\ServerInformationHistoryController;
@@ -15,4 +16,5 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
     Route::post('/backup-history', [BackupHistoryController::class, 'store']);
 
     Route::post('/projects/{project}/checks/sync', [ProjectChecksController::class, 'sync'])->middleware('auth:sanctum');
+    Route::post('/projects/{project}/components/sync', ProjectComponentsController::class)->middleware('auth:sanctum');
 });

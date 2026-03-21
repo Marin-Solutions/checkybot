@@ -17,6 +17,8 @@ class MonitorApiResult extends Model
         'http_code',
         'failed_assertions',
         'response_body',
+        'status',
+        'summary',
     ];
 
     protected $casts = [
@@ -32,7 +34,7 @@ class MonitorApiResult extends Model
         return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
     }
 
-    public static function recordResult(MonitorApis $api, array $testResult, float $startTime): self
+    public static function recordResult(MonitorApis $api, array $testResult, float $startTime, ?string $status = null, ?string $summary = null): self
     {
         // Determine if all assertions passed and HTTP code is successful
         $isSuccess = true;
@@ -91,6 +93,8 @@ class MonitorApiResult extends Model
             'http_code' => $testResult['code'],
             'failed_assertions' => $failedAssertions,
             'response_body' => $savedResponseBody,
+            'status' => $status,
+            'summary' => $summary,
         ]);
     }
 }

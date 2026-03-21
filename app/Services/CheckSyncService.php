@@ -32,7 +32,8 @@ class CheckSyncService
         foreach ($checks as $check) {
             $checkNames[] = $check['name'];
 
-            $website = Website::where('project_id', $project->id)
+            $website = Website::withTrashed()
+                ->where('project_id', $project->id)
                 ->where('source', 'package')
                 ->where('package_name', $check['name'])
                 ->first();
@@ -52,6 +53,10 @@ class CheckSyncService
             ];
 
             if ($website) {
+                if ($website->trashed()) {
+                    $website->restore();
+                }
+
                 $website->update($data);
                 $updated++;
             } else {
@@ -74,7 +79,8 @@ class CheckSyncService
         foreach ($checks as $check) {
             $checkNames[] = $check['name'];
 
-            $website = Website::where('project_id', $project->id)
+            $website = Website::withTrashed()
+                ->where('project_id', $project->id)
                 ->where('source', 'package')
                 ->where('package_name', $check['name'])
                 ->first();
@@ -94,6 +100,10 @@ class CheckSyncService
             ];
 
             if ($website) {
+                if ($website->trashed()) {
+                    $website->restore();
+                }
+
                 $website->update($data);
                 $updated++;
             } else {
@@ -116,7 +126,8 @@ class CheckSyncService
         foreach ($checks as $check) {
             $checkNames[] = $check['name'];
 
-            $monitorApi = MonitorApis::where('project_id', $project->id)
+            $monitorApi = MonitorApis::withTrashed()
+                ->where('project_id', $project->id)
                 ->where('source', 'package')
                 ->where('package_name', $check['name'])
                 ->first();
@@ -134,6 +145,10 @@ class CheckSyncService
             ];
 
             if ($monitorApi) {
+                if ($monitorApi->trashed()) {
+                    $monitorApi->restore();
+                }
+
                 $monitorApi->update($data);
                 $updated++;
             } else {

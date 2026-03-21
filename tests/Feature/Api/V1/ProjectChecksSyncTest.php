@@ -1,10 +1,12 @@
 <?php
 
 use App\Models\MonitorApiAssertion;
+use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use App\Services\CheckSyncService;
 
 beforeEach(function () {
@@ -189,8 +191,63 @@ test('prunes orphaned checks', function () {
         'deleted' => 1,
     ]);
 
-    $this->assertDatabaseMissing('websites', ['package_name' => 'old-check']);
+    $this->assertSoftDeleted('websites', ['package_name' => 'old-check']);
     $this->assertDatabaseHas('websites', ['package_name' => 'new-check']);
+});
+
+test('archives orphaned package-managed checks and preserves their history', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'old-check',
+        'url' => 'https://old.com',
+        'uptime_check' => true,
+        'source' => 'package',
+        'package_name' => 'old-check',
+        'package_interval' => '5m',
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'old-api',
+        'url' => 'https://old-api.com',
+        'source' => 'package',
+        'package_name' => 'old-api',
+        'package_interval' => '5m',
+        'created_by' => $this->user->id,
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $api->id,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    expect($summary['uptime_checks']['deleted'])->toBe(1);
+    expect($summary['api_checks']['deleted'])->toBe(1);
+
+    $this->assertSoftDeleted('websites', [
+        'id' => $website->id,
+    ]);
+
+    $this->assertSoftDeleted('monitor_apis', [
+        'id' => $api->id,
+    ]);
+
+    $this->assertDatabaseHas('website_log_history', [
+        'website_id' => $website->id,
+    ]);
+
+    $this->assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $api->id,
+    ]);
 });
 
 test('preserves manual checks during sync', function () {

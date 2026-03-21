@@ -200,6 +200,16 @@ class WebsiteResource extends Resource
                     ->translateLabel()
                     ->limit(50)
                     ->searchable(),
+                Tables\Columns\TextColumn::make('current_status')
+                    ->label('Health')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                    ->color(fn (?string $state): string => match ($state) {
+                        'healthy' => 'success',
+                        'warning' => 'warning',
+                        'danger' => 'danger',
+                        default => 'gray',
+                    }),
                 SparklineColumn::make('response_times')
                     ->label('Response Time (24h)')
                     ->translateLabel()
@@ -360,9 +370,10 @@ class WebsiteResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // Tables\Filters\TrashedFilter::make(),
+                Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
+                \Filament\Actions\ViewAction::make(),
                 \Filament\Actions\EditAction::make(),
                 \Filament\Actions\Action::make('view_seo_progress')
                     ->label('View Progress')
@@ -426,7 +437,7 @@ class WebsiteResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            \App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager::class,
         ];
     }
 
@@ -435,6 +446,7 @@ class WebsiteResource extends Resource
         return [
             'index' => Pages\ListWebsites::route('/'),
             'create' => Pages\CreateWebsite::route('/create'),
+            'view' => Pages\ViewWebsite::route('/{record}'),
             'edit' => Pages\EditWebsite::route('/{record}/edit'),
         ];
     }

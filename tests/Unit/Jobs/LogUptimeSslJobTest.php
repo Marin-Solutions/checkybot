@@ -1,9 +1,11 @@
 <?php
 
 use App\Jobs\LogUptimeSslJob;
+use App\Models\NotificationSetting;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 
 test('job creates log history for successful check', function () {
     Http::fake([
@@ -61,6 +63,42 @@ test('job handles failed requests', function () {
         'website_id' => $website->id,
         'http_status_code' => 500,
     ]);
+});
+
+test('job records danger status history and sends notifications for failed package-managed heartbeats', function () {
+    Http::fake([
+        '*' => Http::response('', 500),
+    ]);
+
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '5m',
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle();
+
+    $website->refresh();
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+
+    expect($website->current_status)->toBe('danger');
+    expect($website->last_heartbeat_at)->not->toBeNull();
+    expect($history?->status)->toBe('danger');
+
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class);
 });
 
 test('job skips websites with uptime check disabled', function () {

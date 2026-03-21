@@ -1,0 +1,80 @@
+{
+    "branchName": "ralph\/f39e4640-08dd-40e1-b7de-256bf4a0baab",
+    "verificationCommand": "php artisan test",
+    "parentIssue": 55,
+    "userStories": [
+        {
+            "id": "STORY-1",
+            "title": "Add heartbeat history, stale detection, notifications, and archived component visibility",
+            "githubIssue": 60,
+            "priority": 1,
+            "passes": true,
+            "acceptanceCriteria": [
+                "Checkybot stores time-series history for component heartbeats and statuses and exposes that history in the Application UI.",
+                "Components that stop reporting are automatically marked stale and escalated to danger based on their declared interval, with automated coverage of the timeout behavior.",
+                "Warning, danger, and stale events flow through existing Checkybot notification rules, and pruned components retain archived history that remains viewable in the UI."
+            ],
+            "blockedBy": [
+                "59"
+            ]
+        },
+        {
+            "id": "STORY-2",
+            "title": "Add package health components, heartbeats, and current application status",
+            "githubIssue": 59,
+            "priority": 2,
+            "passes": false,
+            "acceptanceCriteria": [
+                "Developers can define named health components in the Laravel package with numeric or boolean metrics and warning\/danger thresholds.",
+                "The scheduled package command evaluates due components locally and sends raw metrics plus computed status to Checkybot.",
+                "Checkybot shows current component status and overall worst-component-wins Application status, with end-to-end tests covering package definition, heartbeat ingest, and UI-visible status."
+            ],
+            "blockedBy": [
+                "57"
+            ]
+        },
+        {
+            "id": "STORY-3",
+            "title": "Sync external package checks to Applications from the scheduled command",
+            "githubIssue": 58,
+            "priority": 3,
+            "passes": false,
+            "acceptanceCriteria": [
+                "One scheduled package command can register the Application if needed and then sync external checks from `routes\/checkybot.php` onto that Application.",
+                "Synced uptime, SSL, and API checks are visible as package-managed checks on the Application record in Checkybot.",
+                "Removing a package-managed external check from code removes it from the active Application config while preserving archived history, with end-to-end tests for sync and pruning."
+            ],
+            "blockedBy": [
+                "57"
+            ]
+        },
+        {
+            "id": "STORY-4",
+            "title": "Package API-key auth and application registration handshake",
+            "githubIssue": 57,
+            "priority": 4,
+            "passes": false,
+            "acceptanceCriteria": [
+                "Package traffic authenticates with the documented Bearer API-key flow rather than relying on the current inconsistent runtime path.",
+                "A package install with guided setup data attaches to the intended existing Application shell on first registration.",
+                "A package install without a pre-created shell auto-creates a new Application when no matching `identity_endpoint + environment` exists, with tests covering both flows."
+            ],
+            "blockedBy": [
+                "56"
+            ]
+        },
+        {
+            "id": "STORY-5",
+            "title": "Applications foundation and guided setup snippet",
+            "githubIssue": 56,
+            "priority": 5,
+            "passes": false,
+            "acceptanceCriteria": [
+                "An operator can create an Application in Checkybot with required fields `name` and `environment` only.",
+                "Checkybot shows a guided setup view for the Application with a full copy-paste Laravel install snippet, including hidden application ID pairing data.",
+                "Automated tests cover Application creation and install snippet generation from the user-facing flow."
+            ],
+            "blockedBy": []
+        }
+    ]
+}

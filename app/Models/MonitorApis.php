@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Http;
@@ -15,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 class MonitorApis extends Model
 {
     use HasFactory;
+    use SoftDeletes;
 
     protected $fillable = [
         'title',
@@ -27,11 +29,17 @@ class MonitorApis extends Model
         'source',
         'package_name',
         'package_interval',
+        'current_status',
+        'last_heartbeat_at',
+        'stale_at',
+        'status_summary',
     ];
 
     protected $casts = [
         'headers' => 'array',
         'save_failed_response' => 'boolean',
+        'last_heartbeat_at' => 'datetime',
+        'stale_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

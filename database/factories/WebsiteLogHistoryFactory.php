@@ -16,6 +16,8 @@ class WebsiteLogHistoryFactory extends Factory
             'website_id' => Website::factory(),
             'http_status_code' => 200,
             'speed' => fake()->numberBetween(100, 1000),
+            'status' => 'healthy',
+            'summary' => 'Heartbeat received successfully.',
         ];
     }
 

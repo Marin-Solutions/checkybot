@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Services\HealthEventNotificationService;
+use App\Services\PackageHealthStatusService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
@@ -28,6 +30,9 @@ class LogUptimeSslJob implements ShouldQueue
         if (! $this->website->uptime_check) {
             return;
         }
+
+        $statusService = app(PackageHealthStatusService::class);
+        $notificationService = app(HealthEventNotificationService::class);
 
         $ssl_expiry_date = null;
         $http_status_code = null;
@@ -67,12 +72,33 @@ class LogUptimeSslJob implements ShouldQueue
             }
 
             // Create and save the log even if some checks failed
+            $status = $statusService->websiteStatusFromHttpCode($http_status_code);
+            $summary = $statusService->summaryForWebsite($http_status_code);
+            $previousStatus = $this->website->current_status;
+
             WebsiteLogHistory::create([
                 'website_id' => $this->website->id,
                 'ssl_expiry_date' => $ssl_expiry_date,
                 'http_status_code' => $http_status_code,
                 'speed' => $speed,
+                'status' => $status,
+                'summary' => $summary,
             ]);
+
+            $this->website->forceFill([
+                'current_status' => $status,
+                'last_heartbeat_at' => now(),
+                'stale_at' => null,
+                'status_summary' => $summary,
+            ])->save();
+
+            if (
+                $this->website->source === 'package'
+                && in_array($status, ['warning', 'danger'], true)
+                && $previousStatus !== $status
+            ) {
+                $notificationService->notifyWebsite($this->website, 'heartbeat', $status, $summary);
+            }
 
             // Log successful completion
             Log::info('Successfully logged uptime/SSL for website '.$this->website->url);
