@@ -38,7 +38,7 @@
             "title": "Sync external package checks to Applications from the scheduled command",
             "githubIssue": 58,
             "priority": 3,
-            "passes": false,
+            "passes": true,
             "acceptanceCriteria": [
                 "One scheduled package command can register the Application if needed and then sync external checks from `routes\/checkybot.php` onto that Application.",
                 "Synced uptime, SSL, and API checks are visible as package-managed checks on the Application record in Checkybot.",

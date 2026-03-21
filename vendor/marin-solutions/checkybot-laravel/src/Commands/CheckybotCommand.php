@@ -69,10 +69,8 @@ class CheckybotCommand extends Command
             /** @var CheckybotClient $client */
             $client = app(CheckybotClient::class);
 
-            if ($totalChecks > 0) {
-                $response = $client->syncChecks($checkPayload);
-                $this->displaySyncResults($response['summary'] ?? []);
-            }
+            $response = $client->syncChecks($checkPayload);
+            $this->displaySyncResults($response['summary'] ?? []);
 
             if ($dueComponents !== []) {
                 $componentPayload = [
