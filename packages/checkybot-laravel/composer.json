@@ -1,0 +1,75 @@
+{
+    "name": "marin-solutions/checkybot-laravel",
+    "version": "0.1.0",
+    "description": "Laravel package for CheckyBot monitoring integration",
+    "keywords": [
+        "marin-solutions",
+        "laravel",
+        "checkybot",
+        "monitoring",
+        "uptime",
+        "api-monitoring",
+        "ssl-monitoring"
+    ],
+    "homepage": "https://github.com/Marin-Solutions/checkybot-laravel",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Marin Delija",
+            "email": "marindelija@gmail.com",
+            "role": "Developer"
+        }
+    ],
+    "require": {
+        "php": "^8.2|^8.3",
+        "spatie/laravel-package-tools": "^1.16",
+        "illuminate/contracts": "^12.30",
+        "guzzlehttp/guzzle": "^7.8"
+    },
+    "require-dev": {
+        "laravel/pint": "^1.14",
+        "nunomaduro/collision": "^8.8",
+        "larastan/larastan": "^3.0",
+        "orchestra/testbench": "^10.7",
+        "pestphp/pest": "^4.1",
+        "pestphp/pest-plugin-arch": "^4.0",
+        "pestphp/pest-plugin-laravel": "^4.0",
+        "phpstan/extension-installer": "^1.4",
+        "phpstan/phpstan-deprecation-rules": "^2.0",
+        "phpstan/phpstan-phpunit": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MarinSolutions\\CheckybotLaravel\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "MarinSolutions\\CheckybotLaravel\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": "@composer run prepare",
+        "prepare": "@php vendor/bin/testbench package:discover --ansi",
+        "analyse": "vendor/bin/phpstan analyse",
+        "test": "vendor/bin/pest",
+        "test-coverage": "vendor/bin/pest --coverage",
+        "format": "vendor/bin/pint"
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true,
+            "phpstan/extension-installer": true
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "MarinSolutions\\CheckybotLaravel\\CheckybotLaravelServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
+}

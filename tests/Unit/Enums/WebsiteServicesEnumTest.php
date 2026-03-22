@@ -5,7 +5,7 @@ use App\Enums\WebsiteServicesEnum;
 test('it has all expected cases', function () {
     $cases = WebsiteServicesEnum::cases();
 
-    expect($cases)->toHaveCount(3);
+    expect($cases)->toHaveCount(4);
 });
 
 test('it contains all expected case instances', function () {
@@ -13,18 +13,21 @@ test('it contains all expected case instances', function () {
 
     expect($cases)->toContain(WebsiteServicesEnum::WEBSITE_CHECK);
     expect($cases)->toContain(WebsiteServicesEnum::API_MONITOR);
+    expect($cases)->toContain(WebsiteServicesEnum::APPLICATION_HEALTH);
     expect($cases)->toContain(WebsiteServicesEnum::ALL_CHECK);
 });
 
 test('it has correct values for all cases', function () {
     expect(WebsiteServicesEnum::WEBSITE_CHECK->value)->toBe('WEBSITE_CHECK');
     expect(WebsiteServicesEnum::API_MONITOR->value)->toBe('API_MONITOR');
+    expect(WebsiteServicesEnum::APPLICATION_HEALTH->value)->toBe('APPLICATION_HEALTH');
     expect(WebsiteServicesEnum::ALL_CHECK->value)->toBe('ALL_CHECK');
 });
 
 test('it returns correct labels', function () {
     expect(WebsiteServicesEnum::WEBSITE_CHECK->label())->toBe('Website Check');
     expect(WebsiteServicesEnum::API_MONITOR->label())->toBe('API Monitor');
+    expect(WebsiteServicesEnum::APPLICATION_HEALTH->label())->toBe('Application Health');
     expect(WebsiteServicesEnum::ALL_CHECK->label())->toBe('All Check');
 });
 
@@ -32,9 +35,10 @@ test('keys method returns array of case names', function () {
     $keys = WebsiteServicesEnum::keys();
 
     expect($keys)->toBeArray();
-    expect($keys)->toHaveCount(3);
+    expect($keys)->toHaveCount(4);
     expect($keys)->toContain('WEBSITE_CHECK');
     expect($keys)->toContain('API_MONITOR');
+    expect($keys)->toContain('APPLICATION_HEALTH');
     expect($keys)->toContain('ALL_CHECK');
 });
 
@@ -42,10 +46,11 @@ test('to array returns associative array of values and labels', function () {
     $array = WebsiteServicesEnum::toArray();
 
     expect($array)->toBeArray();
-    expect($array)->toHaveCount(3);
+    expect($array)->toHaveCount(4);
     expect($array)->toBe([
         'WEBSITE_CHECK' => 'Website Check',
         'API_MONITOR' => 'API Monitor',
+        'APPLICATION_HEALTH' => 'Application Health',
         'ALL_CHECK' => 'All Check',
     ]);
 });
@@ -70,12 +75,14 @@ test('to array values match labels', function () {
 test('it can be serialized to string', function () {
     expect((string) WebsiteServicesEnum::WEBSITE_CHECK->value)->toBe('WEBSITE_CHECK');
     expect((string) WebsiteServicesEnum::API_MONITOR->value)->toBe('API_MONITOR');
+    expect((string) WebsiteServicesEnum::APPLICATION_HEALTH->value)->toBe('APPLICATION_HEALTH');
     expect((string) WebsiteServicesEnum::ALL_CHECK->value)->toBe('ALL_CHECK');
 });
 
 test('it can be instantiated from value', function () {
     expect(WebsiteServicesEnum::from('WEBSITE_CHECK'))->toBe(WebsiteServicesEnum::WEBSITE_CHECK);
     expect(WebsiteServicesEnum::from('API_MONITOR'))->toBe(WebsiteServicesEnum::API_MONITOR);
+    expect(WebsiteServicesEnum::from('APPLICATION_HEALTH'))->toBe(WebsiteServicesEnum::APPLICATION_HEALTH);
     expect(WebsiteServicesEnum::from('ALL_CHECK'))->toBe(WebsiteServicesEnum::ALL_CHECK);
 });
 
@@ -88,7 +95,9 @@ test('it can be compared with equality', function () {
     $websiteCheck1 = WebsiteServicesEnum::WEBSITE_CHECK;
     $websiteCheck2 = WebsiteServicesEnum::WEBSITE_CHECK;
     $apiMonitor = WebsiteServicesEnum::API_MONITOR;
+    $applicationHealth = WebsiteServicesEnum::APPLICATION_HEALTH;
 
     expect($websiteCheck1 === $websiteCheck2)->toBeTrue();
     expect($websiteCheck1 === $apiMonitor)->toBeFalse();
+    expect($applicationHealth === $apiMonitor)->toBeFalse();
 });

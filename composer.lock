@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4e73f82ad0348ca9609ad717f686b1d3",
+    "content-hash": "af3cb98765839383ac42c747076b116c",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -5103,17 +5103,11 @@
         },
         {
             "name": "marin-solutions/checkybot-laravel",
-            "version": "v0.1.0",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/Marin-Solutions/checkybot-laravel.git",
-                "reference": "6d4624e6f15eefa46483131342501f415d096a2c"
-            },
+            "version": "0.1.0",
             "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/Marin-Solutions/checkybot-laravel/zipball/6d4624e6f15eefa46483131342501f415d096a2c",
-                "reference": "6d4624e6f15eefa46483131342501f415d096a2c",
-                "shasum": ""
+                "type": "path",
+                "url": "packages/checkybot-laravel",
+                "reference": "5b38bd487be44f713502f0362b81ba2315466afd"
             },
             "require": {
                 "guzzlehttp/guzzle": "^7.8",
@@ -5146,7 +5140,31 @@
                     "MarinSolutions\\CheckybotLaravel\\": "src/"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
+            "autoload-dev": {
+                "psr-4": {
+                    "MarinSolutions\\CheckybotLaravel\\Tests\\": "tests/"
+                }
+            },
+            "scripts": {
+                "post-autoload-dump": [
+                    "@composer run prepare"
+                ],
+                "prepare": [
+                    "@php vendor/bin/testbench package:discover --ansi"
+                ],
+                "analyse": [
+                    "vendor/bin/phpstan analyse"
+                ],
+                "test": [
+                    "vendor/bin/pest"
+                ],
+                "test-coverage": [
+                    "vendor/bin/pest --coverage"
+                ],
+                "format": [
+                    "vendor/bin/pint"
+                ]
+            },
             "license": [
                 "MIT"
             ],
@@ -5168,17 +5186,10 @@
                 "ssl-monitoring",
                 "uptime"
             ],
-            "support": {
-                "issues": "https://github.com/Marin-Solutions/checkybot-laravel/issues",
-                "source": "https://github.com/Marin-Solutions/checkybot-laravel/tree/v0.1.0"
-            },
-            "funding": [
-                {
-                    "url": "https://github.com/Marin Delija",
-                    "type": "github"
-                }
-            ],
-            "time": "2026-01-02T22:09:20+00:00"
+            "transport-options": {
+                "symlink": false,
+                "relative": true
+            }
         },
         {
             "name": "masterminds/html5",

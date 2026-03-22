@@ -60,6 +60,15 @@
       "Tests\\": "tests/"
     }
   },
+  "repositories": [
+    {
+      "type": "path",
+      "url": "packages/checkybot-laravel",
+      "options": {
+        "symlink": false
+      }
+    }
+  ],
   "scripts": {
     "post-autoload-dump": [
       "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

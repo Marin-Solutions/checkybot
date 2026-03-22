@@ -1,0 +1,42 @@
+<?php
+
+use MarinSolutions\CheckybotLaravel\Facades\Checkybot;
+
+/*
+|--------------------------------------------------------------------------
+| Checkybot Monitoring Checks
+|--------------------------------------------------------------------------
+|
+| Define your monitoring checks using the fluent Checkybot API.
+| These checks will be synced to your Checkybot instance when running:
+|
+|     php artisan checkybot:sync
+|
+| Preview changes without syncing:
+|
+|     php artisan checkybot:sync --dry-run
+|
+*/
+
+// Uptime Checks
+// Monitor website availability and response times
+
+Checkybot::uptime('homepage')
+    ->url(config('app.url'))
+    ->everyFiveMinutes();
+
+// SSL Certificate Checks
+// Monitor certificate expiration dates
+
+Checkybot::ssl('main-certificate')
+    ->url(config('app.url'))
+    ->daily();
+
+// API Endpoint Checks
+// Monitor API endpoints with optional response validation
+
+// Checkybot::api('health-check')
+//     ->url(config('app.url') . '/api/health')
+//     ->everyFiveMinutes()
+//     ->expect('status')->toEqual('healthy')
+//     ->expect('database.connected')->toBeTrue();
