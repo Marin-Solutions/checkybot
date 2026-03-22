@@ -13,32 +13,71 @@ class ProjectComponentSyncService
     ) {}
 
     /**
-     * @param  array<int, array<string, mixed>>  $components
+     * @param  array{declared_components?: array<int, array<string, mixed>>, components?: array<int, array<string, mixed>>}  $payload
      * @return array<string, array<string, int>>
      */
-    public function sync(Project $project, array $components): array
+    public function sync(Project $project, array $payload): array
     {
-        return DB::transaction(function () use ($project, $components): array {
-            $created = 0;
-            $updated = 0;
+        $declaredComponents = $payload['declared_components'] ?? [];
+        $heartbeats = $payload['components'] ?? [];
+
+        return DB::transaction(function () use ($project, $declaredComponents, $heartbeats): array {
+            $createdNames = [];
+            $updatedNames = [];
             $recordedHeartbeats = 0;
             $activeNames = [];
 
-            foreach ($components as $payload) {
-                $activeNames[] = $payload['name'];
+            foreach ($declaredComponents as $declaration) {
+                $activeNames[] = $declaration['name'];
 
                 $component = ProjectComponent::query()
                     ->where('project_id', $project->id)
-                    ->where('name', $payload['name'])
+                    ->where('name', $declaration['name'])
                     ->first();
 
                 $attributes = [
                     'project_id' => $project->id,
-                    'name' => $payload['name'],
-                    'summary' => $payload['summary'] ?? null,
+                    'name' => $declaration['name'],
                     'source' => 'package',
-                    'declared_interval' => $payload['interval'],
-                    'interval_minutes' => IntervalParser::toMinutes($payload['interval']),
+                    'is_archived' => false,
+                    'archived_at' => null,
+                    'declared_interval' => $declaration['interval'],
+                    'interval_minutes' => IntervalParser::toMinutes($declaration['interval']),
+                    'created_by' => $project->created_by,
+                ];
+
+                if ($component) {
+                    $component->fill($attributes);
+
+                    if (! $component->isDirty()) {
+                        continue;
+                    }
+
+                    $component->save();
+
+                    if (! in_array($component->name, $createdNames, true) && ! in_array($component->name, $updatedNames, true)) {
+                        $updatedNames[] = $component->name;
+                    }
+                } else {
+                    ProjectComponent::create($attributes + [
+                        'current_status' => 'healthy',
+                        'last_reported_status' => 'healthy',
+                        'metrics' => [],
+                    ]);
+                    $createdNames[] = $declaration['name'];
+                }
+            }
+
+            foreach ($heartbeats as $payload) {
+                $component = ProjectComponent::query()
+                    ->where('project_id', $project->id)
+                    ->where('name', $payload['name'])
+                    ->firstOrFail();
+
+                $previousStatus = $component->current_status;
+
+                $component->fill([
+                    'summary' => $payload['summary'] ?? null,
                     'current_status' => $payload['status'],
                     'last_reported_status' => $payload['status'],
                     'metrics' => $payload['metrics'] ?? [],
@@ -47,17 +86,19 @@ class ProjectComponentSyncService
                     'is_stale' => false,
                     'is_archived' => false,
                     'archived_at' => null,
-                    'created_by' => $project->created_by,
-                ];
+                    'declared_interval' => $payload['interval'],
+                    'interval_minutes' => IntervalParser::toMinutes($payload['interval']),
+                ]);
 
-                if ($component) {
-                    $previousStatus = $component->current_status;
-                    $component->update($attributes);
-                    $updated++;
-                } else {
-                    $component = ProjectComponent::create($attributes);
-                    $previousStatus = null;
-                    $created++;
+                if ($component->isDirty()) {
+                    $component->save();
+                }
+
+                if (
+                    ! in_array($component->name, $createdNames, true)
+                    && ! in_array($component->name, $updatedNames, true)
+                ) {
+                    $updatedNames[] = $component->name;
                 }
 
                 $component->heartbeats()->create([
@@ -87,8 +128,8 @@ class ProjectComponentSyncService
 
             return [
                 'components' => [
-                    'created' => $created,
-                    'updated' => $updated,
+                    'created' => count($createdNames),
+                    'updated' => count($updatedNames),
                     'archived' => $archived,
                 ],
                 'heartbeats' => [
@@ -105,6 +146,7 @@ class ProjectComponentSyncService
     {
         $query = ProjectComponent::query()
             ->where('project_id', $project->id)
+            ->where('source', 'package')
             ->where('is_archived', false);
 
         if ($activeNames !== []) {

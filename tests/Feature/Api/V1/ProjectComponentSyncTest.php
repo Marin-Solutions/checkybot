@@ -15,6 +15,16 @@ beforeEach(function () {
 
 test('sync stores package component state and appends heartbeat history', function () {
     $payload = [
+        'declared_components' => [
+            [
+                'name' => 'database',
+                'interval' => '5m',
+            ],
+            [
+                'name' => 'queue',
+                'interval' => '1m',
+            ],
+        ],
         'components' => [
             [
                 'name' => 'database',
@@ -69,6 +79,16 @@ test('sync stores package component state and appends heartbeat history', functi
     $secondResponse = $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",
         [
+            'declared_components' => [
+                [
+                    'name' => 'database',
+                    'interval' => '5m',
+                ],
+                [
+                    'name' => 'queue',
+                    'interval' => '1m',
+                ],
+            ],
             'components' => [
                 [
                     'name' => 'database',
@@ -87,7 +107,7 @@ test('sync stores package component state and appends heartbeat history', functi
     $secondResponse->assertOk()
         ->assertJsonPath('summary.components.created', 0)
         ->assertJsonPath('summary.components.updated', 1)
-        ->assertJsonPath('summary.components.archived', 1)
+        ->assertJsonPath('summary.components.archived', 0)
         ->assertJsonPath('summary.heartbeats.recorded', 1);
 
     expect(
@@ -95,6 +115,42 @@ test('sync stores package component state and appends heartbeat history', functi
             ->where('component_name', 'database')
             ->count()
     )->toBe(2);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'queue',
+        'is_archived' => false,
+    ]);
+
+    $thirdResponse = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'database',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'database',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Primary database recovered',
+                    'metrics' => [
+                        'connections' => 12,
+                    ],
+                    'observed_at' => '2026-03-21T12:10:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $thirdResponse->assertOk()
+        ->assertJsonPath('summary.components.created', 0)
+        ->assertJsonPath('summary.components.updated', 1)
+        ->assertJsonPath('summary.components.archived', 1)
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
 
     $this->assertDatabaseHas('project_components', [
         'project_id' => $this->project->id,
@@ -116,6 +172,12 @@ test('warning and danger component events use existing notification settings', f
     $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",
         [
+            'declared_components' => [
+                [
+                    'name' => 'cache',
+                    'interval' => '5m',
+                ],
+            ],
             'components' => [
                 [
                     'name' => 'cache',

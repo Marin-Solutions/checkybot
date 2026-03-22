@@ -11,6 +11,7 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
+use App\Models\User;
 use App\Models\Website;
 use Livewire\Livewire;
 
@@ -215,4 +216,46 @@ test('application record shows package-managed external checks including archive
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)
         ->toContain(PackageManagedApisRelationManager::class);
+});
+
+test('regular users only see their own applications and components', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+
+    $this->actingAs($user);
+
+    $ownProject = Project::factory()->create([
+        'name' => 'Own App',
+        'created_by' => $user->id,
+    ]);
+
+    $otherProject = Project::factory()->create([
+        'name' => 'Other App',
+        'created_by' => $otherUser->id,
+    ]);
+
+    $ownComponent = ProjectComponent::factory()->create([
+        'project_id' => $ownProject->id,
+        'name' => 'database',
+        'created_by' => $user->id,
+    ]);
+
+    $otherComponent = ProjectComponent::factory()->create([
+        'project_id' => $otherProject->id,
+        'name' => 'queue',
+        'created_by' => $otherUser->id,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$ownProject])
+        ->assertCanNotSeeTableRecords([$otherProject]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$ownComponent])
+        ->assertCanNotSeeTableRecords([$otherComponent]);
 });

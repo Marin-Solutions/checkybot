@@ -54,6 +54,7 @@ class CheckybotCommand extends Command
 
         $observedAt = now();
         $componentContextKey = $this->resolveComponentContextKey($config);
+        $declaredComponents = $useRegistry ? $registry->getComponents() : [];
         $dueComponents = $useRegistry
             ? $this->getDueComponents($registry, $observedAt, $componentContextKey)
             : [];
@@ -74,15 +75,20 @@ class CheckybotCommand extends Command
             $response = $client->syncChecks($checkPayload);
             $this->displaySyncResults($response['summary'] ?? []);
 
-            if ($dueComponents !== []) {
-                $componentPayload = [
-                    'components' => array_map(
-                        fn (HealthComponent $component): array => $component->toHeartbeatPayload($observedAt),
-                        $dueComponents
-                    ),
-                ];
+            $componentPayload = [
+                'declared_components' => array_map(
+                    fn (HealthComponent $component): array => $component->toArray(),
+                    $declaredComponents
+                ),
+                'components' => array_map(
+                    fn (HealthComponent $component): array => $component->toHeartbeatPayload($observedAt),
+                    $dueComponents
+                ),
+            ];
 
-                $client->syncComponents($componentPayload);
+            $client->syncComponents($componentPayload);
+
+            if ($dueComponents !== []) {
                 $this->markComponentsAsReported($dueComponents, $observedAt, $componentContextKey);
             }
 

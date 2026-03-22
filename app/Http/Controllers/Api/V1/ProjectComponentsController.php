@@ -16,9 +16,11 @@ class ProjectComponentsController extends Controller
 
     public function __invoke(SyncProjectComponentsRequest $request, Project $project): JsonResponse
     {
+        $payload = $request->validated();
+
         $summary = $this->projectComponentSyncService->sync(
             $project,
-            $request->validated('components', [])
+            $payload,
         );
 
         return response()->json([

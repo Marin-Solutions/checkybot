@@ -3,6 +3,7 @@
 use App\Models\ApiKey;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -82,4 +83,18 @@ test('package registration auto creates an application when no matching identity
         'identity_endpoint' => 'https://checkout.example.com',
         'technology' => 'Laravel',
     ]);
+});
+
+test('application identity is unique per owner and environment', function () {
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'environment' => 'production',
+        'identity_endpoint' => 'https://checkout.example.com',
+    ]);
+
+    expect(fn () => Project::factory()->create([
+        'created_by' => $this->user->id,
+        'environment' => 'production',
+        'identity_endpoint' => 'https://checkout.example.com',
+    ]))->toThrow(QueryException::class);
 });

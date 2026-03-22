@@ -121,6 +121,9 @@ class Project extends Model
             'CHECKYBOT_IDENTITY_ENDPOINT="${APP_URL}"',
             'EOF',
             '',
+            '# routes/console.php',
+            "Schedule::command('checkybot:sync')->everyMinute();",
+            '',
             'php artisan checkybot:sync --dry-run',
             'php artisan checkybot:sync',
         ]);

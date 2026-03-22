@@ -23,6 +23,10 @@ class SyncProjectComponentsRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'declared_components' => ['required', 'array', 'max:100'],
+            'declared_components.*.name' => ['required', 'string', 'max:255'],
+            'declared_components.*.interval' => ['required', 'string', 'regex:/^\d+[mhd]$/'],
+
             'components' => ['required', 'array', 'max:100'],
             'components.*.name' => ['required', 'string', 'max:255'],
             'components.*.interval' => ['required', 'string', 'regex:/^\d+[mhd]$/'],
@@ -39,6 +43,7 @@ class SyncProjectComponentsRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'declared_components.*.interval.regex' => 'The interval format is invalid. Use format: {number}{m|h|d} (e.g., 5m, 2h, 1d)',
             'components.*.interval.regex' => 'The interval format is invalid. Use format: {number}{m|h|d} (e.g., 5m, 2h, 1d)',
         ];
     }

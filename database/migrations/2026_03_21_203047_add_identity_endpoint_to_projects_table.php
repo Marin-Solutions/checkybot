@@ -10,14 +10,14 @@ return new class extends Migration
     {
         Schema::table('projects', function (Blueprint $table) {
             $table->string('identity_endpoint')->nullable()->after('technology');
-            $table->index(['created_by', 'environment', 'identity_endpoint'], 'projects_owner_environment_identity_index');
+            $table->unique(['created_by', 'environment', 'identity_endpoint'], 'projects_owner_environment_identity_unique');
         });
     }
 
     public function down(): void
     {
         Schema::table('projects', function (Blueprint $table) {
-            $table->dropIndex('projects_owner_environment_identity_index');
+            $table->dropUnique('projects_owner_environment_identity_unique');
             $table->dropColumn('identity_endpoint');
         });
     }

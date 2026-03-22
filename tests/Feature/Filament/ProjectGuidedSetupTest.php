@@ -47,4 +47,7 @@ test('application view shows the guided Laravel setup snippet with pairing data'
         ->assertSuccessful()
         ->assertSee('Guided Laravel Setup')
         ->assertSchemaComponentStateSet('guided_setup_snippet', $project->guidedSetupSnippet(), 'infolist');
+
+    expect($project->guidedSetupSnippet())
+        ->toContain('Schedule::command(\'checkybot:sync\')->everyMinute();');
 });

@@ -26,16 +26,24 @@ class ProjectRegistrationService
             ];
         }
 
-        return [
-            'project' => Project::query()->create([
-                'name' => $attributes['name'],
-                'environment' => $attributes['environment'],
-                'technology' => $attributes['technology'] ?? null,
-                'identity_endpoint' => $attributes['identity_endpoint'],
-                'token' => hash('sha256', (string) Str::uuid()),
+        $project = Project::query()->firstOrCreate(
+            [
                 'created_by' => $user->id,
-            ]),
-            'created' => true,
+                'environment' => $attributes['environment'],
+                'identity_endpoint' => $attributes['identity_endpoint'],
+            ],
+            [
+                'name' => $attributes['name'],
+                'technology' => $attributes['technology'] ?? null,
+                'token' => hash('sha256', (string) Str::uuid()),
+            ],
+        );
+
+        $this->updateExistingProject($project, $attributes);
+
+        return [
+            'project' => $project->fresh(),
+            'created' => $project->wasRecentlyCreated,
         ];
     }
 

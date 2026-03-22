@@ -30,7 +30,9 @@ class ProjectComponentResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with(['project']);
+        return parent::getEloquentQuery()
+            ->where('created_by', auth()->id())
+            ->with(['project']);
     }
 
     public static function form(Schema $schema): Schema

@@ -89,6 +89,96 @@ test('sync command sends only due component heartbeats', function () {
         ]);
 });
 
+test('sync command sends the full declared component schema alongside due heartbeats', function () {
+    $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
+
+    Checkybot::component('queue')
+        ->everyFiveMinutes()
+        ->metric('pending_jobs', fn (): int => 144)
+        ->warningWhen('>=', 100)
+        ->dangerWhen('>=', 200);
+
+    Checkybot::component('database')
+        ->everyMinute()
+        ->metric('reachable', fn (): bool => false)
+        ->dangerWhen('===', false);
+
+    Cache::forever(
+        'checkybot-laravel.components.identity:'.sha1('production|https://checkout.example.com').'.queue.last_reported_at',
+        now()->copy()->subMinute()->toISOString()
+    );
+
+    $fakeClient = new class extends CheckybotClient
+    {
+        public array $componentPayloads = [];
+
+        public function __construct() {}
+
+        public function registerApplication(array $payload): array
+        {
+            $this->projectId = '123';
+
+            return [
+                'data' => [
+                    'project_id' => 123,
+                    'created' => false,
+                ],
+            ];
+        }
+
+        public function syncChecks(array $payload): array
+        {
+            return [
+                'summary' => [
+                    'uptime_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                    'ssl_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                    'api_checks' => ['created' => 0, 'updated' => 0, 'deleted' => 0],
+                ],
+            ];
+        }
+
+        public function syncComponents(array $payload): array
+        {
+            $this->componentPayloads[] = $payload;
+
+            return [];
+        }
+    };
+
+    app()->instance(CheckybotClient::class, $fakeClient);
+
+    $this->artisan('checkybot:sync')
+        ->assertExitCode(0);
+
+    expect($fakeClient->componentPayloads)->toHaveCount(1)
+        ->and($fakeClient->componentPayloads[0]['declared_components'])->toMatchArray([
+            [
+                'name' => 'queue',
+                'interval' => '5m',
+                'metric' => 'pending_jobs',
+                'warning_threshold' => [
+                    'operator' => '>=',
+                    'value' => 100,
+                ],
+                'danger_threshold' => [
+                    'operator' => '>=',
+                    'value' => 200,
+                ],
+            ],
+            [
+                'name' => 'database',
+                'interval' => '1m',
+                'metric' => 'reachable',
+                'danger_threshold' => [
+                    'operator' => '===',
+                    'value' => false,
+                ],
+            ],
+        ])
+        ->and($fakeClient->componentPayloads[0]['components'])->toHaveCount(1)
+        ->and($fakeClient->componentPayloads[0]['components'][0]['name'])->toBe('database');
+});
+
 test('sync command sends external checks from the registry alongside due components', function () {
     $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
 
@@ -216,6 +306,8 @@ test('sync command posts an empty external check payload so package-managed remo
 
         public array $checkPayloads = [];
 
+        public array $componentPayloads = [];
+
         public function __construct() {}
 
         public function registerApplication(array $payload): array
@@ -243,6 +335,13 @@ test('sync command posts an empty external check payload so package-managed remo
                 ],
             ];
         }
+
+        public function syncComponents(array $payload): array
+        {
+            $this->componentPayloads[] = $payload;
+
+            return [];
+        }
     };
 
     app()->instance(CheckybotClient::class, $fakeClient);
@@ -255,6 +354,11 @@ test('sync command posts an empty external check payload so package-managed remo
             'uptime_checks' => [],
             'ssl_checks' => [],
             'api_checks' => [],
+        ],
+    ])->and($fakeClient->componentPayloads)->toBe([
+        [
+            'declared_components' => [],
+            'components' => [],
         ],
     ]);
 });
@@ -272,6 +376,8 @@ test('sync command registers a guided setup application before syncing package d
         public array $registrationPayloads = [];
 
         public array $checkPayloads = [];
+
+        public array $componentPayloads = [];
 
         public ?string $projectIdAtSync = null;
 
@@ -303,6 +409,13 @@ test('sync command registers a guided setup application before syncing package d
                 ],
             ];
         }
+
+        public function syncComponents(array $payload): array
+        {
+            $this->componentPayloads[] = $payload;
+
+            return [];
+        }
     };
 
     app()->instance(CheckybotClient::class, $fakeClient);
@@ -318,7 +431,13 @@ test('sync command registers a guided setup application before syncing package d
             'identity_endpoint' => 'https://checkout.example.com',
         ])
         ->and($fakeClient->projectIdAtSync)->toBe('321')
-        ->and($fakeClient->checkPayloads)->toHaveCount(1);
+        ->and($fakeClient->checkPayloads)->toHaveCount(1)
+        ->and($fakeClient->componentPayloads)->toBe([
+            [
+                'declared_components' => [],
+                'components' => [],
+            ],
+        ]);
 });
 
 test('sync command can bootstrap without a guided app id and still sync package data', function () {

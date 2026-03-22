@@ -33,6 +33,7 @@ class ProjectResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
+            ->where('created_by', auth()->id())
             ->withCount('components')
             ->with([
                 'activeComponents:id,project_id,current_status',
