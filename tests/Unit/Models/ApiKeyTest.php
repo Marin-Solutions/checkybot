@@ -1,7 +1,12 @@
 <?php
 
+use App\Http\Middleware\ApiKeyAuthentication;
 use App\Models\ApiKey;
 use App\Models\User;
+use Filament\Panel;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 
 test('api key belongs to user', function () {
     $user = User::factory()->create();
@@ -13,18 +18,37 @@ test('api key belongs to user', function () {
 
 test('api key requires name', function () {
     ApiKey::factory()->create(['name' => null]);
-})->throws(\Illuminate\Database\QueryException::class);
+})->throws(QueryException::class);
 
 test('api key requires key', function () {
     ApiKey::factory()->create(['key' => null]);
-})->throws(\Illuminate\Database\QueryException::class);
+})->throws(QueryException::class);
 
-test('api key has unique key', function () {
-    $key = 'ck_'.\Str::random(40);
+test('api key has unique hash for the raw key value', function () {
+    $key = ApiKey::generateKey();
     ApiKey::factory()->create(['key' => $key]);
 
     ApiKey::factory()->create(['key' => $key]);
-})->throws(\Illuminate\Database\QueryException::class);
+})->throws(QueryException::class);
+
+test('api key stores only hashed credentials in the database', function () {
+    $user = User::factory()->create();
+    $plainTextKey = ApiKey::generateKey();
+
+    $apiKey = ApiKey::create([
+        'user_id' => $user->id,
+        'name' => 'Production agent',
+        'key' => $plainTextKey,
+        'is_active' => true,
+    ]);
+
+    $storedApiKey = DB::table('api_keys')->where('id', $apiKey->id)->first();
+
+    expect($apiKey->key)->toBe($plainTextKey)
+        ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($plainTextKey))
+        ->and($storedApiKey->key)->not->toBe($plainTextKey)
+        ->and($apiKey->fresh()->key)->toBeNull();
+});
 
 test('api key can be active', function () {
     $apiKey = ApiKey::factory()->create(['is_active' => true]);
@@ -59,8 +83,68 @@ test('api key tracks last used at', function () {
 });
 
 test('api key generates with ck prefix', function () {
-    $apiKey = ApiKey::factory()->create();
+    $apiKey = ApiKey::generateKey();
 
-    expect($apiKey->key)->toStartWith('ck_');
-    expect(strlen($apiKey->key))->toBe(43); // ck_ + 40 chars
+    expect($apiKey)->toStartWith('ck_');
+    expect(strlen($apiKey))->toBe(43); // ck_ + 40 chars
+});
+
+test('middleware authenticates requests against the hashed api key', function () {
+    Route::middleware(ApiKeyAuthentication::class)->get('/_test/api-key-auth', function () {
+        return response()->json([
+            'user_id' => auth()->id(),
+        ]);
+    });
+
+    $user = User::factory()->create();
+    $apiKey = ApiKey::create([
+        'user_id' => $user->id,
+        'name' => 'Agent key',
+        'key' => ApiKey::generateKey(),
+        'is_active' => true,
+    ]);
+
+    $response = $this->withToken($apiKey->key)->getJson('/_test/api-key-auth');
+
+    $response->assertOk()->assertJson([
+        'user_id' => $user->id,
+    ]);
+
+    expect($apiKey->fresh()->last_used_at)->not->toBeNull();
+});
+
+test('middleware still accepts legacy plaintext api keys without a hash', function () {
+    Route::middleware(ApiKeyAuthentication::class)->get('/_test/api-key-auth-legacy', function () {
+        return response()->json([
+            'user_id' => auth()->id(),
+        ]);
+    });
+
+    $user = User::factory()->create();
+    $plainTextKey = ApiKey::generateKey();
+
+    DB::table('api_keys')->insert([
+        'user_id' => $user->id,
+        'name' => 'Legacy key',
+        'key' => $plainTextKey,
+        'key_hash' => null,
+        'last_used_at' => null,
+        'expires_at' => now()->addDay(),
+        'is_active' => true,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    $response = $this->withToken($plainTextKey)->getJson('/_test/api-key-auth-legacy');
+
+    $response->assertOk()->assertJson([
+        'user_id' => $user->id,
+    ]);
+});
+
+test('users need elevated panel access to enter filament', function () {
+    $panel = app(Panel::class);
+
+    expect(User::factory()->create()->canAccessPanel($panel))->toBeFalse()
+        ->and($this->actingAsSuperAdmin()->canAccessPanel($panel))->toBeTrue();
 });

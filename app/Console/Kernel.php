@@ -9,8 +9,7 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule): void
     {
-        $schedule->command('app:mark-stale-package-checks')->everyMinute();
-        $schedule->command('project-components:check-stale')->everyMinute();
+        //
     }
 
     protected function commands(): void

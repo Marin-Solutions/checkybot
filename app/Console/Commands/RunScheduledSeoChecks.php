@@ -48,6 +48,20 @@ class RunScheduledSeoChecks extends Command
         foreach ($schedules as $schedule) {
             try {
                 $website = $schedule->website;
+
+                if (SeoCheck::query()
+                    ->where('website_id', $schedule->website_id)
+                    ->whereIn('status', ['pending', 'running'])
+                    ->exists()
+                ) {
+                    $this->warn("Skipping {$website->url}: a check is already pending or running.");
+                    Log::info("Skipping scheduled SEO check for {$website->url}: existing pending/running check found.");
+
+                    $bar->advance();
+
+                    continue;
+                }
+
                 $robotsSitemapService = app(RobotsSitemapService::class);
 
                 // Get crawlable URLs from sitemap or base URL

@@ -18,22 +18,33 @@ class SeoDashboardStatsWidget extends BaseWidget
     {
         $userId = auth()->id();
 
-        $totalWebsites = Website::where('created_by', $userId)->count();
-        $userWebsiteIds = Website::where('created_by', $userId)->pluck('id');
+        $websiteScope = Website::query()->where('created_by', $userId);
+        $totalWebsites = (clone $websiteScope)->count();
+        $userWebsiteIds = (clone $websiteScope)->select('id');
 
-        $totalChecks = SeoCheck::whereIn('website_id', $userWebsiteIds)->count();
-        $completedChecks = SeoCheck::whereIn('website_id', $userWebsiteIds)->where('status', 'completed')->count();
-        $runningChecks = SeoCheck::whereIn('website_id', $userWebsiteIds)->where('status', 'running')->count();
+        $checkStats = SeoCheck::query()
+            ->whereIn('website_id', $userWebsiteIds)
+            ->selectRaw('COUNT(*) as total_checks')
+            ->selectRaw("SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_checks")
+            ->selectRaw("SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) as running_checks")
+            ->selectRaw("AVG(CASE WHEN status = 'completed' AND computed_health_score IS NOT NULL THEN computed_health_score END) as avg_health_score")
+            ->first();
 
-        $userSeoCheckIds = SeoCheck::whereIn('website_id', $userWebsiteIds)->pluck('id');
-        $totalIssues = SeoIssue::whereIn('seo_check_id', $userSeoCheckIds)->count();
-        $criticalIssues = SeoIssue::whereIn('seo_check_id', $userSeoCheckIds)->where('severity', 'error')->count();
-        $warningIssues = SeoIssue::whereIn('seo_check_id', $userSeoCheckIds)->where('severity', 'warning')->count();
+        $issueStats = SeoIssue::query()
+            ->join('seo_checks', 'seo_checks.id', '=', 'seo_issues.seo_check_id')
+            ->whereIn('seo_checks.website_id', $userWebsiteIds)
+            ->selectRaw('COUNT(*) as total_issues')
+            ->selectRaw("SUM(CASE WHEN seo_issues.severity = 'error' THEN 1 ELSE 0 END) as critical_issues")
+            ->selectRaw("SUM(CASE WHEN seo_issues.severity = 'warning' THEN 1 ELSE 0 END) as warning_issues")
+            ->first();
 
-        $avgHealthScore = SeoCheck::whereIn('website_id', $userWebsiteIds)
-            ->where('status', 'completed')
-            ->whereNotNull('computed_health_score')
-            ->avg('computed_health_score');
+        $totalChecks = (int) ($checkStats?->total_checks ?? 0);
+        $completedChecks = (int) ($checkStats?->completed_checks ?? 0);
+        $runningChecks = (int) ($checkStats?->running_checks ?? 0);
+        $avgHealthScore = $checkStats?->avg_health_score ? (float) $checkStats->avg_health_score : null;
+        $totalIssues = (int) ($issueStats?->total_issues ?? 0);
+        $criticalIssues = (int) ($issueStats?->critical_issues ?? 0);
+        $warningIssues = (int) ($issueStats?->warning_issues ?? 0);
 
         return [
             Stat::make('Total Websites', $totalWebsites)

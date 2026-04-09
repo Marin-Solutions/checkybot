@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 
 class Backup extends Model
 {
@@ -50,7 +51,11 @@ class Backup extends Model
 
     public static function copyCommand(Backup $backup): string
     {
-        $user = Auth::user()?->id;
+        $user = Auth::id();
+        if (! $user) {
+            return '';
+        }
+
         $backupId = $backup->id;
         $backupInterval = $backup->interval?->expression ?? '* * * * *';
         $scriptFileName = 'backup_folder.sh';
@@ -58,13 +63,27 @@ class Backup extends Model
         $backupIntervalInit = $backup->generateCronExpression();
         $serverId = $backup->server_id;
 
-        $command = "wget https://checkybot.com/backup/$backupId/$serverId/$user/0 -O $scriptFileName ";
+        $backupScriptUrl = URL::temporarySignedRoute('backup.script.download', now()->addHours(24), [
+            'backup_id' => $backupId,
+            'server_id' => $serverId,
+            'user' => $user,
+            'init' => 0,
+        ]);
+
+        $backupScriptInitUrl = URL::temporarySignedRoute('backup.script.download', now()->addHours(24), [
+            'backup_id' => $backupId,
+            'server_id' => $serverId,
+            'user' => $user,
+            'init' => 1,
+        ]);
+
+        $command = 'wget '.escapeshellarg($backupScriptUrl)." -O $scriptFileName ";
         $command .= "&& chmod +x $(pwd)/$scriptFileName ";
         $command .= "&& CRON_CMD=\"$(pwd)/$scriptFileName\" ";
         $command .= "&& (crontab -l | grep -Fq \"$backupInterval \$CRON_CMD\" || ";
         $command .= "(crontab -l 2>/dev/null; echo \"$backupInterval \$CRON_CMD\") | crontab -) ";
         // first run cron
-        $command .= "&& wget https://checkybot.com/init-backup/$backupId/$serverId/$user/1 -O $scriptFileNameInit ";
+        $command .= '&& wget '.escapeshellarg($backupScriptInitUrl)." -O $scriptFileNameInit ";
         $command .= "&& chmod +x $(pwd)/$scriptFileNameInit ";
         $command .= "&& CRON_CMD=\"$(pwd)/$scriptFileNameInit\" ";
         $command .= "&& (crontab -l | grep -Fq \"$backupIntervalInit \$CRON_CMD\" || ";

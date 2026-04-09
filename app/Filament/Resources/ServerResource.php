@@ -39,7 +39,7 @@ class ServerResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return auth()->check();
+        return auth()->user()?->hasAnyRole(['Super Admin', 'Admin']) ?? false;
     }
 
     public static function form(Schema $schema): Schema

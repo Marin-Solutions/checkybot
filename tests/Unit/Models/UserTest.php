@@ -5,6 +5,7 @@ use App\Models\NotificationSetting;
 use App\Models\Server;
 use App\Models\User;
 use App\Models\Website;
+use Filament\Panel;
 
 test('user has many websites', function () {
     $user = User::factory()->create();
@@ -43,10 +44,18 @@ test('user has global notification channels', function () {
     expect($user->globalNotificationChannels)->toHaveCount(2);
 });
 
-test('user can access filament panel', function () {
+test('unprivileged user cannot access filament panel', function () {
     $user = User::factory()->create();
 
-    $panel = app(\Filament\Panel::class);
+    $panel = app(Panel::class);
+
+    expect($user->canAccessPanel($panel))->toBeFalse();
+});
+
+test('super admin can access filament panel', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $panel = app(Panel::class);
 
     expect($user->canAccessPanel($panel))->toBeTrue();
 });

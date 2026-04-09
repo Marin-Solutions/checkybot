@@ -130,16 +130,10 @@ test('super admin can filter to archived websites', function () {
         ->assertCanSeeTableRecords([$archivedWebsite]);
 });
 
-test('regular user can access website resource but sees only own websites', function () {
+test('regular user cannot access website resource', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
-    // Create websites for this user and another user
-    $ownWebsite = Website::factory()->create(['created_by' => $user->id]);
-    $otherWebsite = Website::factory()->create(); // Created by factory's default user
-
     Livewire::test(ListWebsites::class)
-        ->assertSuccessful()
-        ->assertCanSeeTableRecords([$ownWebsite])
-        ->assertCanNotSeeTableRecords([$otherWebsite]);
+        ->assertForbidden();
 });

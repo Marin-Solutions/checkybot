@@ -123,7 +123,7 @@ class SeoCheckResource extends Resource
     public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
     {
         $query = parent::getEloquentQuery()
-            ->with(['seoIssues', 'website', 'crawlResults'])
+            ->with('website')
             ->withCount([
                 'seoIssues as errors_count' => function ($query) {
                     $query->where('severity', 'error');
@@ -133,10 +133,6 @@ class SeoCheckResource extends Resource
                 },
                 'seoIssues as notices_count' => function ($query) {
                     $query->where('severity', 'notice');
-                },
-                'crawlResults as http_errors_count' => function ($query) {
-                    $query->where('status_code', '>=', 400)
-                        ->where('status_code', '<', 600);
                 },
             ]);
 

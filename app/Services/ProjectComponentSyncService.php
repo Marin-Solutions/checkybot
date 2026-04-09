@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Project;
 use App\Models\ProjectComponent;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 class ProjectComponentSyncService
@@ -20,20 +21,29 @@ class ProjectComponentSyncService
     {
         $declaredComponents = $payload['declared_components'] ?? [];
         $heartbeats = $payload['components'] ?? [];
+        $declaredNames = array_values(array_unique(array_column($declaredComponents, 'name')));
+        $heartbeatNames = array_values(array_unique(array_column($heartbeats, 'name')));
+        $componentNames = array_values(array_unique(array_merge($declaredNames, $heartbeatNames)));
 
-        return DB::transaction(function () use ($project, $declaredComponents, $heartbeats): array {
+        return DB::transaction(function () use ($project, $declaredComponents, $heartbeats, $componentNames): array {
             $createdNames = [];
             $updatedNames = [];
             $recordedHeartbeats = 0;
             $activeNames = [];
+            $componentsByName = collect();
+
+            if ($componentNames !== []) {
+                $componentsByName = ProjectComponent::query()
+                    ->where('project_id', $project->id)
+                    ->whereIn('name', $componentNames)
+                    ->get()
+                    ->keyBy('name');
+            }
 
             foreach ($declaredComponents as $declaration) {
                 $activeNames[] = $declaration['name'];
 
-                $component = ProjectComponent::query()
-                    ->where('project_id', $project->id)
-                    ->where('name', $declaration['name'])
-                    ->first();
+                $component = $componentsByName->get($declaration['name']);
 
                 $attributes = [
                     'project_id' => $project->id,
@@ -59,20 +69,24 @@ class ProjectComponentSyncService
                         $updatedNames[] = $component->name;
                     }
                 } else {
-                    ProjectComponent::create($attributes + [
+                    $component = ProjectComponent::create($attributes + [
                         'current_status' => 'healthy',
                         'last_reported_status' => 'healthy',
                         'metrics' => [],
                     ]);
+                    $componentsByName->put($component->name, $component);
                     $createdNames[] = $declaration['name'];
                 }
             }
 
             foreach ($heartbeats as $payload) {
-                $component = ProjectComponent::query()
-                    ->where('project_id', $project->id)
-                    ->where('name', $payload['name'])
-                    ->firstOrFail();
+                $component = $componentsByName->get($payload['name']);
+
+                if (! $component) {
+                    $exception = new ModelNotFoundException;
+                    $exception->setModel(ProjectComponent::class, [$payload['name']]);
+                    throw $exception;
+                }
 
                 $previousStatus = $component->current_status;
 

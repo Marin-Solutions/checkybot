@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Jobs\SeoHealthCheckJob;
 use App\Models\SeoCheck;
 use App\Models\Website;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class SeoHealthCheckService
@@ -20,8 +21,8 @@ class SeoHealthCheckService
     {
         Log::info("Starting manual SEO health check for website: {$website->url}");
 
-        // Check if there's already a running check for this website
-        $existingCheck = SeoCheck::where('website_id', $website->id)
+        $existingCheck = SeoCheck::query()
+            ->where('website_id', $website->id)
             ->whereIn('status', ['pending', 'running'])
             ->exists();
 
@@ -38,19 +39,34 @@ class SeoHealthCheckService
 
         Log::info('Found '.count($crawlableUrls)." crawlable URLs for {$website->url}");
 
-        // Create new SEO check record
-        $seoCheck = SeoCheck::create([
-            'website_id' => $website->id,
-            'status' => 'pending',
-            'total_urls_crawled' => 0,
-            'total_crawlable_urls' => count($crawlableUrls),
-            'sitemap_used' => count($crawlableUrls) > 1,
-            'robots_txt_checked' => true,
-            'crawl_summary' => [
-                'sitemap_urls_found' => count($crawlableUrls) > 1,
+        $seoCheck = DB::transaction(function () use ($website, $crawlableUrls) {
+            Website::query()
+                ->whereKey($website->id)
+                ->lockForUpdate()
+                ->first();
+
+            $existingCheck = SeoCheck::query()
+                ->where('website_id', $website->id)
+                ->whereIn('status', ['pending', 'running'])
+                ->exists();
+
+            if ($existingCheck) {
+                throw new \Exception('A check is already running for this website.');
+            }
+
+            return SeoCheck::create([
+                'website_id' => $website->id,
+                'status' => 'pending',
+                'total_urls_crawled' => 0,
+                'total_crawlable_urls' => count($crawlableUrls),
+                'sitemap_used' => count($crawlableUrls) > 1,
                 'robots_txt_checked' => true,
-            ],
-        ]);
+                'crawl_summary' => [
+                    'sitemap_urls_found' => count($crawlableUrls) > 1,
+                    'robots_txt_checked' => true,
+                ],
+            ]);
+        });
 
         // Dispatch job to start crawling with specific URLs
         SeoHealthCheckJob::dispatch($seoCheck, $crawlableUrls);

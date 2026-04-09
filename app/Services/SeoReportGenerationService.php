@@ -49,8 +49,7 @@ class SeoReportGenerationService
             'crawlResults' => $crawlResults,
         ])->render();
 
-        // Save to storage
-        Storage::put("reports/{$filename}", $html);
+        Storage::put($this->reportPathForSeoCheck($seoCheck, $filename), $html);
 
         return $filename;
     }
@@ -61,8 +60,7 @@ class SeoReportGenerationService
 
         $csvContent = $this->buildCsvContent($issues);
 
-        // Save to storage
-        Storage::put("reports/{$filename}", $csvContent);
+        Storage::put($this->reportPathForSeoCheck($seoCheck, $filename), $csvContent);
 
         return $filename;
     }
@@ -125,8 +123,7 @@ class SeoReportGenerationService
 
         $jsonContent = json_encode($reportData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
-        // Save to storage
-        Storage::put("reports/{$filename}", $jsonContent);
+        Storage::put($this->reportPathForSeoCheck($seoCheck, $filename), $jsonContent);
 
         return $filename;
     }
@@ -234,8 +231,7 @@ class SeoReportGenerationService
 
         $content = json_encode($reportData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 
-        // Save to storage
-        Storage::put("reports/{$filename}", $content);
+        Storage::put($this->reportPathForWebsite($website, $filename), $content);
 
         return $filename;
     }
@@ -250,7 +246,7 @@ class SeoReportGenerationService
         $cutoffDate = now()->subDays($daysOld);
         $deletedCount = 0;
 
-        $files = Storage::files('reports');
+        $files = Storage::allFiles('reports');
         foreach ($files as $file) {
             $lastModified = Storage::lastModified($file);
             if ($lastModified < $cutoffDate->timestamp) {
@@ -260,5 +256,17 @@ class SeoReportGenerationService
         }
 
         return $deletedCount;
+    }
+
+    protected function reportPathForSeoCheck(SeoCheck $seoCheck, string $filename): string
+    {
+        return $this->reportPathForWebsite($seoCheck->website, $filename);
+    }
+
+    protected function reportPathForWebsite(Website $website, string $filename): string
+    {
+        $ownerId = (int) ($website->created_by ?? 0);
+
+        return "reports/{$ownerId}/{$filename}";
     }
 }

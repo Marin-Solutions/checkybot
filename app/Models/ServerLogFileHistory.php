@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 
 class ServerLogFileHistory extends Model
 {
@@ -87,8 +88,17 @@ class ServerLogFileHistory extends Model
      */
     public static function copyCommand($server): string
     {
-        $user = Auth::user()->id;
-        $command = "wget https://checkybot.test/log-reporter/$server/$user -O log-reporter_server_info.sh ";
+        $user = Auth::id();
+        if (! $user) {
+            return '';
+        }
+
+        $signedUrl = URL::temporarySignedRoute('server-log.script.download', now()->addHours(24), [
+            'server_id' => $server,
+            'user' => $user,
+        ]);
+
+        $command = 'wget '.escapeshellarg($signedUrl).' -O log-reporter_server_info.sh ';
         $command .= '&& chmod +x $(pwd)/log-reporter_server_info.sh ';
         $command .= '&& (crontab -l ; echo "0 * * * * $(pwd)/log_reporter_server_info.sh") | crontab -';
 

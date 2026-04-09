@@ -12,6 +12,7 @@ use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\Uri;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 
 beforeEach(function () {
@@ -48,6 +49,22 @@ test('will crawl updates progress', function () {
 
     $this->seoCheck->refresh();
     expect($this->seoCheck->total_urls_crawled)->toBe(1);
+});
+
+test('will crawl batches seo check progress writes', function () {
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    for ($i = 1; $i <= 10; $i++) {
+        $url = new Uri("https://example.com/page{$i}");
+        $this->crawler->willCrawl($url, 'Link');
+    }
+
+    $updateQueries = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn ($query) => preg_match('/update\\s+[\"`]?seo_checks[\"`]?/i', $query) === 1);
+
+    expect($updateQueries->count())->toBeLessThanOrEqual(3);
 });
 
 test('will crawl broadcasts progress every 5 urls', function () {
@@ -106,6 +123,23 @@ test('finished crawling updates seo check status', function () {
     $this->seoCheck->refresh();
     expect($this->seoCheck->status)->toBe('completed');
     expect($this->seoCheck->finished_at)->not->toBeNull();
+});
+
+test('finished crawling bulk inserts crawl results in one query', function () {
+    DB::flushQueryLog();
+    DB::enableQueryLog();
+
+    $response = new Response(200, ['Content-Type' => 'text/html'], '<html><body>Content</body></html>');
+
+    $this->crawler->crawled(new Uri('https://example.com/page-1'), $response, null, null);
+    $this->crawler->crawled(new Uri('https://example.com/page-2'), $response, null, null);
+    $this->crawler->finishedCrawling();
+
+    $insertQueries = collect(DB::getQueryLog())
+        ->pluck('query')
+        ->filter(fn ($query) => preg_match('/insert\\s+into\\s+[\"`]?seo_crawl_results[\"`]?/i', $query) === 1);
+
+    expect($insertQueries)->toHaveCount(1);
 });
 
 test('finished crawling broadcasts completion event', function () {
