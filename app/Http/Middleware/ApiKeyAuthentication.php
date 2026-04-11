@@ -17,12 +17,20 @@ class ApiKeyAuthentication
             return response()->json(['message' => 'Bearer API key is missing'], 401);
         }
 
+        $apiKeyHash = ApiKey::hashKey($apiKey);
+
         $key = ApiKey::query()
-            ->where('key', $apiKey)
             ->where('is_active', true)
             ->where(function ($query): void {
                 $query->whereNull('expires_at')
                     ->orWhere('expires_at', '>', now());
+            })
+            ->where(function ($query) use ($apiKey, $apiKeyHash): void {
+                $query->where('key_hash', $apiKeyHash)
+                    ->orWhere(function ($legacy) use ($apiKey): void {
+                        $legacy->whereNull('key_hash')
+                            ->where('key', $apiKey);
+                    });
             })
             ->first();
 

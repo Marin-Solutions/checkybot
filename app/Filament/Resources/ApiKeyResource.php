@@ -19,6 +19,11 @@ class ApiKeyResource extends Resource
 
     protected static \UnitEnum|string|null $navigationGroup = 'Settings';
 
+    public static function canViewAny(): bool
+    {
+        return auth()->user()?->hasAnyRole(['Super Admin', 'Admin']) ?? false;
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()->where('user_id', auth()->id());
@@ -47,11 +52,9 @@ class ApiKeyResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
-                Tables\Columns\TextColumn::make('key')
-                    ->searchable()
-                    ->copyable()
-                    ->copyMessage('API key copied')
-                    ->copyMessageDuration(1500),
+                Tables\Columns\TextColumn::make('key_preview')
+                    ->label('API Key')
+                    ->state('Shown once when created'),
                 Tables\Columns\TextColumn::make('last_used_at')
                     ->dateTime()
                     ->sortable(),

@@ -1,10 +1,15 @@
 <?php
 
+use App\Filament\Resources\ApiKeyResource;
 use App\Filament\Resources\ApiKeyResource\Pages\CreateApiKey;
 use App\Filament\Resources\ApiKeyResource\Pages\EditApiKey;
 use App\Filament\Resources\ApiKeyResource\Pages\ListApiKeys;
+use App\Filament\Resources\ServerResource;
+use App\Filament\Resources\WebsiteResource;
 use App\Models\ApiKey;
 use App\Models\User;
+use Filament\Panel;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 test('super admin can render list page', function () {
@@ -53,7 +58,7 @@ test('super admin can render create page', function () {
 test('super admin can create api key', function () {
     $user = $this->actingAsSuperAdmin();
 
-    Livewire::test(CreateApiKey::class)
+    $component = Livewire::test(CreateApiKey::class)
         ->fillForm([
             'name' => 'Test API Key',
             'is_active' => true,
@@ -61,11 +66,19 @@ test('super admin can create api key', function () {
         ->call('create')
         ->assertHasNoFormErrors();
 
+    $generatedKey = $component->get('generatedKey');
+    $apiKey = ApiKey::query()->where('name', 'Test API Key')->firstOrFail();
+    $storedApiKey = DB::table('api_keys')->where('id', $apiKey->id)->first();
+
     $this->assertDatabaseHas('api_keys', [
         'name' => 'Test API Key',
         'user_id' => $user->id,
         'is_active' => true,
     ]);
+
+    expect($generatedKey)->toStartWith('ck_')
+        ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($generatedKey))
+        ->and($storedApiKey->key)->not->toBe($generatedKey);
 });
 
 test('create api key requires name', function () {
@@ -117,15 +130,24 @@ test('super admin can delete api key', function () {
     ]);
 });
 
-test('regular user can access api key resource but sees only own keys', function () {
+test('api key list does not expose plaintext keys', function () {
+    $user = $this->actingAsSuperAdmin();
+    $apiKey = ApiKey::factory()->create(['user_id' => $user->id]);
+
+    Livewire::test(ListApiKeys::class)
+        ->assertCanSeeTableRecords([$apiKey])
+        ->assertDontSee($apiKey->key)
+        ->assertSee('Shown once when created');
+});
+
+test('regular user cannot access the panel or protected resources', function () {
     $user = User::factory()->create();
     $this->actingAs($user);
 
-    $ownApiKey = ApiKey::factory()->create(['user_id' => $user->id]);
-    $otherApiKey = ApiKey::factory()->create(); // Created by factory's default user
+    $panel = app(Panel::class);
 
-    Livewire::test(ListApiKeys::class)
-        ->assertSuccessful()
-        ->assertCanSeeTableRecords([$ownApiKey])
-        ->assertCanNotSeeTableRecords([$otherApiKey]);
+    expect($user->canAccessPanel($panel))->toBeFalse()
+        ->and(ApiKeyResource::canViewAny())->toBeFalse()
+        ->and(WebsiteResource::canViewAny())->toBeFalse()
+        ->and(ServerResource::canViewAny())->toBeFalse();
 });

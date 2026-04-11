@@ -7,6 +7,8 @@ use Illuminate\Support\Facades\Log;
 
 class RobotsSitemapService
 {
+    protected array $robotsTxtCache = [];
+
     /**
      * Check if a URL is allowed to be crawled according to robots.txt
      */
@@ -34,16 +36,25 @@ class RobotsSitemapService
      */
     private function fetchRobotsTxt(string $baseUrl): string
     {
+        if (array_key_exists($baseUrl, $this->robotsTxtCache)) {
+            return $this->robotsTxtCache[$baseUrl];
+        }
+
         try {
             $robotsUrl = rtrim($baseUrl, '/').'/robots.txt';
             $response = Http::timeout(10)->get($robotsUrl);
 
             if ($response->successful()) {
-                return $response->body();
+                $robotsContent = $response->body();
+                $this->robotsTxtCache[$baseUrl] = $robotsContent;
+
+                return $robotsContent;
             }
         } catch (\Exception $e) {
             Log::warning("Failed to fetch robots.txt from {$baseUrl}: ".$e->getMessage());
         }
+
+        $this->robotsTxtCache[$baseUrl] = '';
 
         return '';
     }
@@ -227,15 +238,13 @@ class RobotsSitemapService
     private function getSitemapFromRobots(string $baseUrl): array
     {
         try {
-            $robotsUrl = rtrim($baseUrl, '/').'/robots.txt';
-            $response = Http::timeout(10)->get($robotsUrl);
-
-            if (! $response->successful()) {
+            $robotsContent = $this->fetchRobotsTxt($baseUrl);
+            if ($robotsContent === '') {
                 return [];
             }
 
             $sitemapUrls = [];
-            $lines = explode("\n", $response->body());
+            $lines = explode("\n", $robotsContent);
 
             foreach ($lines as $line) {
                 $line = trim($line);

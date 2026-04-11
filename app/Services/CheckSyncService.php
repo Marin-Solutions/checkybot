@@ -27,16 +27,16 @@ class CheckSyncService
     {
         $created = 0;
         $updated = 0;
-        $checkNames = [];
+        $checkNames = array_values(array_unique(array_column($checks, 'name')));
+        $existingWebsites = Website::withTrashed()
+            ->where('project_id', $project->id)
+            ->where('source', 'package')
+            ->whereIn('package_name', $checkNames)
+            ->get()
+            ->keyBy('package_name');
 
         foreach ($checks as $check) {
-            $checkNames[] = $check['name'];
-
-            $website = Website::withTrashed()
-                ->where('project_id', $project->id)
-                ->where('source', 'package')
-                ->where('package_name', $check['name'])
-                ->first();
+            $website = $existingWebsites->get($check['name']);
 
             $data = [
                 'project_id' => $project->id,
@@ -74,16 +74,16 @@ class CheckSyncService
     {
         $created = 0;
         $updated = 0;
-        $checkNames = [];
+        $checkNames = array_values(array_unique(array_column($checks, 'name')));
+        $existingWebsites = Website::withTrashed()
+            ->where('project_id', $project->id)
+            ->where('source', 'package')
+            ->whereIn('package_name', $checkNames)
+            ->get()
+            ->keyBy('package_name');
 
         foreach ($checks as $check) {
-            $checkNames[] = $check['name'];
-
-            $website = Website::withTrashed()
-                ->where('project_id', $project->id)
-                ->where('source', 'package')
-                ->where('package_name', $check['name'])
-                ->first();
+            $website = $existingWebsites->get($check['name']);
 
             $data = [
                 'project_id' => $project->id,
@@ -121,16 +121,16 @@ class CheckSyncService
     {
         $created = 0;
         $updated = 0;
-        $checkNames = [];
+        $checkNames = array_values(array_unique(array_column($checks, 'name')));
+        $existingApis = MonitorApis::withTrashed()
+            ->where('project_id', $project->id)
+            ->where('source', 'package')
+            ->whereIn('package_name', $checkNames)
+            ->get()
+            ->keyBy('package_name');
 
         foreach ($checks as $check) {
-            $checkNames[] = $check['name'];
-
-            $monitorApi = MonitorApis::withTrashed()
-                ->where('project_id', $project->id)
-                ->where('source', 'package')
-                ->where('package_name', $check['name'])
-                ->first();
+            $monitorApi = $existingApis->get($check['name']);
 
             $data = [
                 'project_id' => $project->id,
@@ -154,6 +154,7 @@ class CheckSyncService
             } else {
                 $monitorApi = MonitorApis::create($data);
                 $created++;
+                $existingApis->put($check['name'], $monitorApi);
             }
 
             $this->syncAssertions($monitorApi, $check['assertions'] ?? []);

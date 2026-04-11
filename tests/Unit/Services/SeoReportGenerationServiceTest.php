@@ -3,6 +3,7 @@
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
 use App\Models\SeoIssue;
+use App\Models\User;
 use App\Models\Website;
 use App\Services\SeoReportGenerationService;
 use Illuminate\Support\Facades\Storage;
@@ -13,7 +14,11 @@ beforeEach(function () {
 });
 
 test('generates html report', function () {
-    $website = Website::factory()->create(['name' => 'Test Site']);
+    $owner = User::factory()->create();
+    $website = Website::factory()->create([
+        'name' => 'Test Site',
+        'created_by' => $owner->id,
+    ]);
     $seoCheck = SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
         'finished_at' => now(),
@@ -23,11 +28,15 @@ test('generates html report', function () {
 
     expect($filename)->toContain('SEO_Report_test-site');
     expect($filename)->toEndWith('.html');
-    Storage::assertExists("reports/{$filename}");
+    Storage::assertExists("reports/{$owner->id}/{$filename}");
 });
 
 test('generates csv report', function () {
-    $website = Website::factory()->create(['name' => 'Test Site']);
+    $owner = User::factory()->create();
+    $website = Website::factory()->create([
+        'name' => 'Test Site',
+        'created_by' => $owner->id,
+    ]);
     $seoCheck = SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
         'finished_at' => now(),
@@ -37,14 +46,18 @@ test('generates csv report', function () {
 
     expect($filename)->toContain('SEO_Report_test-site');
     expect($filename)->toEndWith('.csv');
-    Storage::assertExists("reports/{$filename}");
+    Storage::assertExists("reports/{$owner->id}/{$filename}");
 
-    $content = Storage::get("reports/{$filename}");
+    $content = Storage::get("reports/{$owner->id}/{$filename}");
     expect($content)->toContain('URL,"Issue Type",Severity');
 });
 
 test('generates json report', function () {
-    $website = Website::factory()->create(['name' => 'Test Site']);
+    $owner = User::factory()->create();
+    $website = Website::factory()->create([
+        'name' => 'Test Site',
+        'created_by' => $owner->id,
+    ]);
     $seoCheck = SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
         'finished_at' => now(),
@@ -54,16 +67,21 @@ test('generates json report', function () {
 
     expect($filename)->toContain('SEO_Report_test-site');
     expect($filename)->toEndWith('.json');
-    Storage::assertExists("reports/{$filename}");
+    Storage::assertExists("reports/{$owner->id}/{$filename}");
 
-    $content = Storage::get("reports/{$filename}");
+    $content = Storage::get("reports/{$owner->id}/{$filename}");
     $data = json_decode($content, true);
 
     expect($data)->toHaveKeys(['report_metadata', 'seo_check_summary', 'issue_summary']);
 });
 
 test('json report contains correct metadata', function () {
-    $website = Website::factory()->create(['name' => 'Example Site', 'url' => 'https://example.com']);
+    $owner = User::factory()->create();
+    $website = Website::factory()->create([
+        'name' => 'Example Site',
+        'url' => 'https://example.com',
+        'created_by' => $owner->id,
+    ]);
     $seoCheck = SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
         'finished_at' => now(),
@@ -72,7 +90,7 @@ test('json report contains correct metadata', function () {
     ]);
 
     $filename = $this->service->generateComprehensiveReport($seoCheck, 'json');
-    $content = Storage::get("reports/{$filename}");
+    $content = Storage::get("reports/{$owner->id}/{$filename}");
     $data = json_decode($content, true);
 
     expect($data['report_metadata']['website']['name'])->toBe('Example Site');
@@ -82,7 +100,11 @@ test('json report contains correct metadata', function () {
 });
 
 test('generates historical report', function () {
-    $website = Website::factory()->create(['name' => 'Test Site']);
+    $owner = User::factory()->create();
+    $website = Website::factory()->create([
+        'name' => 'Test Site',
+        'created_by' => $owner->id,
+    ]);
 
     SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
@@ -101,9 +123,9 @@ test('generates historical report', function () {
     $filename = $this->service->generateHistoricalReport($website, 30);
 
     expect($filename)->toContain('SEO_Historical_Report_test-site');
-    Storage::assertExists("reports/{$filename}");
+    Storage::assertExists("reports/{$owner->id}/{$filename}");
 
-    $content = Storage::get("reports/{$filename}");
+    $content = Storage::get("reports/{$owner->id}/{$filename}");
     $data = json_decode($content, true);
 
     expect($data)->toHaveKeys(['trend_analysis', 'summary_statistics', 'check_history']);
@@ -111,7 +133,8 @@ test('generates historical report', function () {
 });
 
 test('historical report calculates trend correctly', function () {
-    $website = Website::factory()->create();
+    $owner = User::factory()->create();
+    $website = Website::factory()->create(['created_by' => $owner->id]);
 
     SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
@@ -135,7 +158,7 @@ test('historical report calculates trend correctly', function () {
     ]);
 
     $filename = $this->service->generateHistoricalReport($website, 30);
-    $content = Storage::get("reports/{$filename}");
+    $content = Storage::get("reports/{$owner->id}/{$filename}");
     $data = json_decode($content, true);
 
     expect($data['summary_statistics']['average_health_score'])->toBe(80);
@@ -144,40 +167,40 @@ test('historical report calculates trend correctly', function () {
 });
 
 test('cleans up old reports', function () {
-    Storage::put('reports/old_report_1.json', 'old data');
-    Storage::put('reports/old_report_2.json', 'old data');
-    Storage::put('reports/recent_report.json', 'recent data');
+    Storage::put('reports/1/old_report_1.json', 'old data');
+    Storage::put('reports/2/old_report_2.json', 'old data');
+    Storage::put('reports/3/recent_report.json', 'recent data');
 
     // Mock the lastModified to return old dates for first two files
     $oldTimestamp = now()->subDays(40)->timestamp;
     $recentTimestamp = now()->timestamp;
 
-    Storage::shouldReceive('files')
+    Storage::shouldReceive('allFiles')
         ->with('reports')
         ->andReturn([
-            'reports/old_report_1.json',
-            'reports/old_report_2.json',
-            'reports/recent_report.json',
+            'reports/1/old_report_1.json',
+            'reports/2/old_report_2.json',
+            'reports/3/recent_report.json',
         ]);
 
     Storage::shouldReceive('lastModified')
-        ->with('reports/old_report_1.json')
+        ->with('reports/1/old_report_1.json')
         ->andReturn($oldTimestamp);
 
     Storage::shouldReceive('lastModified')
-        ->with('reports/old_report_2.json')
+        ->with('reports/2/old_report_2.json')
         ->andReturn($oldTimestamp);
 
     Storage::shouldReceive('lastModified')
-        ->with('reports/recent_report.json')
+        ->with('reports/3/recent_report.json')
         ->andReturn($recentTimestamp);
 
     Storage::shouldReceive('delete')
-        ->with('reports/old_report_1.json')
+        ->with('reports/1/old_report_1.json')
         ->once();
 
     Storage::shouldReceive('delete')
-        ->with('reports/old_report_2.json')
+        ->with('reports/2/old_report_2.json')
         ->once();
 
     $deletedCount = $this->service->cleanupOldReports(30);
@@ -186,7 +209,11 @@ test('cleans up old reports', function () {
 });
 
 test('filename generation uses safe names', function () {
-    $website = Website::factory()->create(['name' => 'Test & Site with Spaces!']);
+    $owner = User::factory()->create();
+    $website = Website::factory()->create([
+        'name' => 'Test & Site with Spaces!',
+        'created_by' => $owner->id,
+    ]);
     $seoCheck = SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
         'finished_at' => now(),
@@ -200,7 +227,8 @@ test('filename generation uses safe names', function () {
 });
 
 test('csv report includes all columns', function () {
-    $website = Website::factory()->create();
+    $owner = User::factory()->create();
+    $website = Website::factory()->create(['created_by' => $owner->id]);
     $seoCheck = SeoCheck::factory()->completed()->create([
         'website_id' => $website->id,
         'finished_at' => now(),
@@ -223,7 +251,7 @@ test('csv report includes all columns', function () {
     ]);
 
     $filename = $this->service->generateComprehensiveReport($seoCheck, 'csv');
-    $content = Storage::get("reports/{$filename}");
+    $content = Storage::get("reports/{$owner->id}/{$filename}");
 
     expect($content)->toContain('URL');
     expect($content)->toContain('Issue Type');

@@ -6,7 +6,6 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Support\Facades\DB;
 
 class ApiHealthStatsWidget extends BaseWidget
 {
@@ -18,7 +17,8 @@ class ApiHealthStatsWidget extends BaseWidget
     {
         $userId = auth()->id();
 
-        $totalApis = MonitorApis::where('created_by', $userId)->count();
+        $apiScope = MonitorApis::query()->where('created_by', $userId);
+        $totalApis = (clone $apiScope)->count();
 
         if ($totalApis === 0) {
             return [
@@ -29,31 +29,42 @@ class ApiHealthStatsWidget extends BaseWidget
             ];
         }
 
-        $apiIds = MonitorApis::where('created_by', $userId)->pluck('id');
+        $apiIds = (clone $apiScope)->select('id');
 
-        $latestResults = MonitorApiResult::query()
-            ->whereIn('monitor_api_id', $apiIds)
+        $latestResultAggregates = MonitorApiResult::query()
             ->whereIn('id', function ($query) use ($apiIds) {
-                $query->select(DB::raw('MAX(id)'))
-                    ->from('monitor_api_results')
+                $query->from('monitor_api_results')
+                    ->selectRaw('MAX(id)')
                     ->whereIn('monitor_api_id', $apiIds)
                     ->groupBy('monitor_api_id');
             })
-            ->get();
+            ->selectRaw('COUNT(*) as latest_count')
+            ->selectRaw('SUM(CASE WHEN is_success = 1 THEN 1 ELSE 0 END) as healthy_apis')
+            ->selectRaw('SUM(CASE WHEN is_success = 0 THEN 1 ELSE 0 END) as failing_apis')
+            ->selectRaw('AVG(CASE WHEN is_success = 1 THEN response_time_ms END) as avg_response_time')
+            ->first();
 
-        $healthyApis = $latestResults->where('is_success', true)->count();
-        $failingApis = $latestResults->where('is_success', false)->count();
-        $noDataApis = $totalApis - $latestResults->count();
+        $healthyApis = (int) ($latestResultAggregates?->healthy_apis ?? 0);
+        $failingApis = (int) ($latestResultAggregates?->failing_apis ?? 0);
+        $latestResultsCount = (int) ($latestResultAggregates?->latest_count ?? 0);
+        $noDataApis = max(0, $totalApis - $latestResultsCount);
 
-        $avgResponseTime = $latestResults->where('is_success', true)->avg('response_time_ms');
+        $avgResponseTime = $latestResultAggregates?->avg_response_time
+            ? (float) $latestResultAggregates->avg_response_time
+            : null;
 
-        $last24hResults = MonitorApiResult::query()
-            ->whereIn('monitor_api_id', $apiIds)
+        $uptimeAggregates = MonitorApiResult::query()
+            ->whereIn('monitor_api_id', (clone $apiScope)->select('id'))
             ->where('created_at', '>=', now()->subDay())
-            ->get();
+            ->selectRaw('COUNT(*) as total_results')
+            ->selectRaw('SUM(CASE WHEN is_success = 1 THEN 1 ELSE 0 END) as success_results')
+            ->first();
 
-        $uptimePercentage = $last24hResults->count() > 0
-            ? round(($last24hResults->where('is_success', true)->count() / $last24hResults->count()) * 100, 1)
+        $totalResults24h = (int) ($uptimeAggregates?->total_results ?? 0);
+        $successResults24h = (int) ($uptimeAggregates?->success_results ?? 0);
+
+        $uptimePercentage = $totalResults24h > 0
+            ? round(($successResults24h / $totalResults24h) * 100, 1)
             : null;
 
         return [

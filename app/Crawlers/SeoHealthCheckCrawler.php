@@ -36,6 +36,12 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected int $broadcastFailures = 0; // Track broadcast failures
 
+    protected int $progressPersistEvery = 5;
+
+    protected int $estimatedTotalCrawlableUrls = 1;
+
+    protected array $robotsAllowanceCache = [];
+
     protected RobotsSitemapService $robotsSitemapService;
 
     protected SeoIssueDetectionService $issueDetectionService;
@@ -44,6 +50,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
     {
         $this->seoCheck = $seoCheck;
         $this->baseDomain = parse_url($seoCheck->website->url, PHP_URL_HOST);
+        $this->estimatedTotalCrawlableUrls = max(1, (int) ($seoCheck->total_crawlable_urls ?? 1));
         $this->robotsSitemapService = app(RobotsSitemapService::class);
         $this->issueDetectionService = app(SeoIssueDetectionService::class);
     }
@@ -51,7 +58,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
     public function willCrawl(UriInterface $url, ?string $linkText): void
     {
         // Check if URL is allowed by robots.txt
-        if (! $this->robotsSitemapService->isUrlAllowed((string) $url)) {
+        if (! $this->isUrlAllowed((string) $url)) {
             Log::info("SEO Crawler: Skipping {$url} - disallowed by robots.txt");
 
             return;
@@ -68,7 +75,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $this->crawledCount++;
 
         // Only update total_crawlable_urls if it's still at the initial value (1) or if we need to increase it significantly
-        $currentTotal = $this->seoCheck->total_crawlable_urls;
+        $currentTotal = $this->estimatedTotalCrawlableUrls;
         $newTotal = $currentTotal;
 
         // If we're still at the initial estimate (1), set a reasonable estimate
@@ -79,13 +86,17 @@ class SeoHealthCheckCrawler extends CrawlObserver
             $newTotal = max($currentTotal, $this->crawledCount + 20); // Add buffer of 20 URLs
         }
 
-        $this->seoCheck->update([
-            'total_urls_crawled' => $this->crawledCount,
-            'total_crawlable_urls' => $newTotal,
-        ]);
+        $this->estimatedTotalCrawlableUrls = $newTotal;
+
+        if ($this->shouldPersistProgress()) {
+            $this->seoCheck->update([
+                'total_urls_crawled' => $this->crawledCount,
+                'total_crawlable_urls' => $this->estimatedTotalCrawlableUrls,
+            ]);
+        }
 
         // Broadcast progress update (every 5 URLs)
-        if ($this->crawledCount % 5 === 0 || $this->crawledCount === 1) {
+        if ($this->crawledCount % $this->progressPersistEvery === 0 || $this->crawledCount === 1) {
             $this->broadcastProgress((string) $url);
         }
 
@@ -119,7 +130,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
                 'seo_check_id' => $this->seoCheck->id,
                 'url' => $urlString,
                 'status_code' => $response->getStatusCode(),
-                'robots_txt_allowed' => $this->robotsSitemapService->isUrlAllowed($urlString),
+                'robots_txt_allowed' => $this->isUrlAllowed($urlString),
                 'crawl_source' => 'discovery',
                 'created_at' => now(),
                 'updated_at' => now(),
@@ -142,7 +153,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
             'seo_check_id' => $this->seoCheck->id,
             'url' => $urlString,
             'status_code' => $requestException->getCode() ?: 0,
-            'robots_txt_allowed' => $this->robotsSitemapService->isUrlAllowed($urlString),
+            'robots_txt_allowed' => $this->isUrlAllowed($urlString),
             'crawl_source' => 'discovery',
             'created_at' => now(),
             'updated_at' => now(),
@@ -155,9 +166,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
         // Bulk insert crawl results
         if (! empty($this->crawlResults)) {
-            foreach ($this->crawlResults as $result) {
-                SeoCrawlResult::create($result);
-            }
+            SeoCrawlResult::query()->insert($this->prepareBulkInsertRows($this->crawlResults));
         }
 
         // Detect and classify issues
@@ -174,6 +183,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $this->seoCheck->update([
             'status' => 'completed',
             'finished_at' => now(),
+            'total_urls_crawled' => $this->crawledCount,
             'total_crawlable_urls' => $this->crawledCount, // Set final total to actual crawled count
         ]);
 
@@ -289,11 +299,41 @@ class SeoHealthCheckCrawler extends CrawlObserver
             'internal_link_count' => count($internalLinks),
             'external_link_count' => count($externalLinks),
             'image_count' => $imageCount,
-            'robots_txt_allowed' => $this->robotsSitemapService->isUrlAllowed($url),
+            'robots_txt_allowed' => $this->isUrlAllowed($url),
             'crawl_source' => 'discovery',
             'created_at' => now(),
             'updated_at' => now(),
         ];
+    }
+
+    protected function shouldPersistProgress(): bool
+    {
+        return $this->crawledCount === 1 || $this->crawledCount % $this->progressPersistEvery === 0;
+    }
+
+    protected function isUrlAllowed(string $url): bool
+    {
+        if (array_key_exists($url, $this->robotsAllowanceCache)) {
+            return $this->robotsAllowanceCache[$url];
+        }
+
+        $allowed = $this->robotsSitemapService->isUrlAllowed($url);
+        $this->robotsAllowanceCache[$url] = $allowed;
+
+        return $allowed;
+    }
+
+    protected function prepareBulkInsertRows(array $rows): array
+    {
+        return array_map(function (array $row): array {
+            foreach (['internal_links', 'external_links', 'resource_sizes', 'headers'] as $jsonColumn) {
+                if (array_key_exists($jsonColumn, $row) && is_array($row[$jsonColumn])) {
+                    $row[$jsonColumn] = json_encode($row[$jsonColumn], JSON_UNESCAPED_SLASHES);
+                }
+            }
+
+            return $row;
+        }, $rows);
     }
 
     protected function extractHeaders(ResponseInterface $response): array
@@ -521,8 +561,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
         try {
             $progress = $this->seoCheck->getProgressPercentage();
-            $issuesFound = $this->seoCheck->seoIssues()->count();
-            $totalUrls = $this->seoCheck->total_crawlable_urls;
+            $issuesFound = 0;
+            $totalUrls = max($this->estimatedTotalCrawlableUrls, $this->crawledCount);
 
             // Only broadcast if we have new data to share
             if ($this->crawledCount > $this->lastBroadcastCount) {

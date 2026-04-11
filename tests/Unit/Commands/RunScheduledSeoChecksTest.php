@@ -6,6 +6,7 @@ use App\Models\SeoSchedule;
 use App\Models\User;
 use App\Models\Website;
 use App\Services\RobotsSitemapService;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 
@@ -13,6 +14,29 @@ test('command can be executed', function () {
     $this->artisan('seo:run-scheduled')
         ->assertSuccessful()
         ->assertExitCode(0);
+});
+
+test('heavy scheduled commands use overlap protection', function () {
+    $events = collect(app(Schedule::class)->events());
+
+    $findEvent = fn (string $command) => $events->first(
+        fn ($event) => str_contains((string) $event->command, $command)
+    );
+
+    $monitorCheckApisEvent = $findEvent('monitor:check-apis');
+    $runScheduledEvent = $findEvent('seo:run-scheduled');
+    $markStalePackagesEvent = $findEvent('app:mark-stale-package-checks');
+    $projectComponentsEvent = $findEvent('project-components:check-stale');
+
+    expect($monitorCheckApisEvent)->not->toBeNull();
+    expect($runScheduledEvent)->not->toBeNull();
+    expect($markStalePackagesEvent)->not->toBeNull();
+    expect($projectComponentsEvent)->not->toBeNull();
+
+    expect($monitorCheckApisEvent->withoutOverlapping)->toBeTrue();
+    expect($runScheduledEvent->withoutOverlapping)->toBeTrue();
+    expect($markStalePackagesEvent->withoutOverlapping)->toBeTrue();
+    expect($projectComponentsEvent->withoutOverlapping)->toBeTrue();
 });
 
 test('command finds no scheduled checks', function () {
@@ -366,4 +390,41 @@ test('command logs scheduled check start', function () {
                 && str_contains($message, (string) $schedule->id);
         })
         ->once();
+});
+
+test('command skips due schedules when a website already has a pending or running check', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    SeoCheck::factory()->running()->create([
+        'website_id' => $website->id,
+    ]);
+
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
+    $originalNextRun = $schedule->next_run_at->copy();
+
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldNotReceive('getCrawlableUrls');
+
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
+
+    expect(SeoCheck::where('website_id', $website->id)->count())->toBe(1);
+
+    Queue::assertNotPushed(SeoHealthCheckJob::class);
+
+    $schedule->refresh();
+    expect($schedule->last_run_at)->toBeNull();
+    expect($schedule->next_run_at->equalTo($originalNextRun))->toBeTrue();
 });

@@ -217,3 +217,43 @@ test('handles invalid xml in sitemap', function () {
 
     expect($urls)->toBeEmpty();
 });
+
+test('memoizes robots txt lookups per host', function () {
+    Http::fake([
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Disallow: /admin
+        ', 200),
+    ]);
+
+    expect($this->service->isUrlAllowed('https://example.com/public'))->toBeTrue();
+    expect($this->service->isUrlAllowed('https://example.com/about'))->toBeTrue();
+    expect($this->service->isUrlAllowed('https://example.com/admin'))->toBeFalse();
+
+    Http::assertSentCount(1);
+});
+
+test('reuses robots txt rules while filtering sitemap urls', function () {
+    Http::fake([
+        'https://example.com/sitemap.xml' => Http::response('<?xml version="1.0" encoding="UTF-8"?>
+            <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+                <url>
+                    <loc>https://example.com/public</loc>
+                </url>
+                <url>
+                    <loc>https://example.com/admin</loc>
+                </url>
+            </urlset>', 200),
+        'https://example.com/robots.txt' => Http::response('
+            User-agent: *
+            Disallow: /admin
+        ', 200),
+    ]);
+
+    $urls = $this->service->getCrawlableUrls('https://example.com');
+
+    expect($urls)->toContain('https://example.com/public');
+    expect($urls)->not->toContain('https://example.com/admin');
+
+    Http::assertSentCount(2);
+});

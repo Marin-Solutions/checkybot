@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 
 class ServerInformationHistory extends Model
 {
@@ -110,8 +111,17 @@ class ServerInformationHistory extends Model
      */
     public static function copyCommand($server): string
     {
-        $user = Auth::user()->id;
-        $command = "wget https://checkybot.com/reporter/$server/$user -O reporter_server_info.sh ";
+        $user = Auth::id();
+        if (! $user) {
+            return '';
+        }
+
+        $signedUrl = URL::temporarySignedRoute('server-info.script.download', now()->addHours(24), [
+            'server_id' => $server,
+            'user' => $user,
+        ]);
+
+        $command = 'wget '.escapeshellarg($signedUrl).' -O reporter_server_info.sh ';
         $command .= '&& chmod +x $(pwd)/reporter_server_info.sh ';
         $command .= '&& CRON_CMD="$(pwd)/reporter_server_info.sh" ';
         $command .= '&& (crontab -l | grep -Fq "*/1 * * * * $CRON_CMD" || ';

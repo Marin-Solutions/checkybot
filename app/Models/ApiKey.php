@@ -11,9 +11,12 @@ class ApiKey extends Model
 {
     use HasFactory;
 
+    protected ?string $plainTextKey = null;
+
     protected $fillable = [
         'name',
         'key',
+        'key_hash',
         'user_id',
         'last_used_at',
         'expires_at',
@@ -26,6 +29,27 @@ class ApiKey extends Model
         'is_active' => 'boolean',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (self $apiKey): void {
+            if (! $apiKey->isDirty('key')) {
+                return;
+            }
+
+            $rawKey = $apiKey->getRawOriginal('key') !== $apiKey->getAttribute('key')
+                ? (string) $apiKey->getAttribute('key')
+                : null;
+
+            if ($rawKey === null || $rawKey === '') {
+                return;
+            }
+
+            $apiKey->plainTextKey = $rawKey;
+            $apiKey->attributes['key_hash'] = self::hashKey($rawKey);
+            $apiKey->attributes['key'] = self::maskKey($rawKey);
+        });
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -33,6 +57,25 @@ class ApiKey extends Model
 
     public static function generateKey(): string
     {
-        return 'ck_'.Str::random(32);
+        return 'ck_'.Str::random(40);
+    }
+
+    public static function hashKey(string $key): string
+    {
+        return hash('sha256', $key);
+    }
+
+    public static function maskKey(string $key): string
+    {
+        return substr($key, 0, 6).'...'.substr($key, -4);
+    }
+
+    public function getKeyAttribute(?string $value): ?string
+    {
+        if ($this->plainTextKey !== null) {
+            return $this->plainTextKey;
+        }
+
+        return $this->attributes['key_hash'] ?? null ? null : $value;
     }
 }

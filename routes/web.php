@@ -1,7 +1,9 @@
 <?php
 
 use App\Http\Controllers\WebhookController;
+use App\Models\Backup;
 use App\Models\ServerInformationHistory;
+use App\Models\ServerLogFileHistory;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Route;
@@ -12,24 +14,27 @@ Route::get('/', function () {
 });
 
 // get the script for connect to api server information
-Route::get('/reporter/{server_id}/{user}', function ($server_id, $user): Response {
+Route::get('/reporter/{server_id}/{user}', function (int $server_id, int $user): Response {
     $response = ServerInformationHistory::doShellScript($server_id, $user);
 
     return $response;
-});
+})->name('server-info.script.download')
+    ->middleware('signed');
 
 // get the script for connect to api server information
-Route::get('/log-reporter/{server_id}/{user}', function ($server_id, $user): Response {
-    $response = \App\Models\ServerLogFileHistory::doShellScript($server_id, $user);
+Route::get('/log-reporter/{server_id}/{user}', function (int $server_id, int $user): Response {
+    $response = ServerLogFileHistory::doShellScript($server_id, $user);
 
     return $response;
-});
+})->name('server-log.script.download')
+    ->middleware('signed');
 
-Route::get('/backup-folder/{backup_id}/{server_id}/{user}/{init}', function ($backup_id, $server_id, $user, $init): Response {
-    $response = \App\Models\Backup::doShellScript($backup_id, $server_id, $user, $init);
+Route::get('/backup-folder/{backup_id}/{server_id}/{user}/{init}', function (int $backup_id, int $server_id, int $user, int $init): Response {
+    $response = Backup::doShellScript($backup_id, $server_id, $user, $init);
 
     return $response;
-});
+})->name('backup.script.download')
+    ->middleware('signed');
 
 Route::post('/webhook', [WebhookController::class, 'index'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
@@ -48,7 +53,7 @@ Route::get('/reports/{filename}', function (string $filename) {
         abort(403, 'Access denied');
     }
 
-    $path = "reports/{$filename}";
+    $path = 'reports/'.auth()->id()."/{$filename}";
 
     if (! Storage::exists($path)) {
         abort(404, 'Report not found');

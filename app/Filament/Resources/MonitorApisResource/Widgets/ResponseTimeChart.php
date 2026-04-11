@@ -4,7 +4,9 @@ namespace App\Filament\Resources\MonitorApisResource\Widgets;
 
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\DB;
 
 class ResponseTimeChart extends ChartWidget
 {
@@ -73,39 +75,37 @@ class ResponseTimeChart extends ChartWidget
 
         $timeRange = $this->timeRange ?? '24h';
         $interval = $this->getSmartInterval($timeRange);
+        $intervalSeconds = $this->getIntervalSeconds($interval);
+        $bucketExpression = $this->getBucketExpression($intervalSeconds);
 
-        // Get results for the time range
-        $results = MonitorApiResult::where('monitor_api_id', $this->record->id)
+        $results = MonitorApiResult::query()
+            ->where('monitor_api_id', $this->record->id)
             ->where('created_at', '>=', $this->getTimeRangeStart($timeRange))
-            ->select('response_time_ms', 'created_at')
-            ->orderBy('created_at')
+            ->selectRaw("{$bucketExpression} as time_bucket")
+            ->selectRaw('AVG(response_time_ms) as avg_response_time')
+            ->selectRaw('MIN(created_at) as first_seen_at')
+            ->groupByRaw($bucketExpression)
+            ->orderByRaw($bucketExpression)
             ->get();
 
-        // Apply smart grouping based on time range
-        $groupedResults = $results->groupBy(function ($result) use ($interval) {
-            return $this->groupByInterval($result->created_at, $interval);
-        })
-            ->map(function ($group) use ($interval) {
-                return [
-                    'value' => round($group->avg('response_time_ms')),
-                    'time' => $this->formatTimeLabel($group->first()->created_at, $interval),
-                    'count' => $group->count(),
-                ];
-            })
-            ->sortBy(function ($item, $key) {
-                return $key;
-            });
+        $values = $results
+            ->map(fn ($result) => (int) round((float) $result->avg_response_time))
+            ->toArray();
+
+        $labels = $results
+            ->map(fn ($result) => $this->formatTimeLabel(Carbon::parse($result->first_seen_at), $interval))
+            ->toArray();
 
         return [
             'datasets' => [
                 [
                     'label' => 'Response Time (ms)',
-                    'data' => $groupedResults->pluck('value')->toArray(),
+                    'data' => $values,
                     'borderColor' => '#10B981',
                     'fill' => false,
                 ],
             ],
-            'labels' => $groupedResults->pluck('time')->toArray(),
+            'labels' => $labels,
         ];
     }
 
@@ -165,15 +165,26 @@ class ResponseTimeChart extends ChartWidget
         };
     }
 
-    private function groupByInterval(\Carbon\Carbon $date, string $interval): string
+    private function getIntervalSeconds(string $interval): int
     {
         return match ($interval) {
-            '5m' => $date->format('Y-m-d H:').(floor($date->minute / 5) * 5),
-            '15m' => $date->format('Y-m-d H:').(floor($date->minute / 15) * 15),
-            '1h' => $date->format('Y-m-d H:00'),
-            '8h' => $date->format('Y-m-d').' '.sprintf('%02d', floor($date->hour / 8) * 8).':00',
-            default => $date->format('Y-m-d H:00')
+            '5m' => 300,
+            '15m' => 900,
+            '1h' => 3600,
+            '8h' => 28800,
+            default => 3600
         };
+    }
+
+    private function getBucketExpression(int $intervalSeconds): string
+    {
+        $driver = DB::connection()->getDriverName();
+
+        if ($driver === 'sqlite') {
+            return "CAST(strftime('%s', created_at) / {$intervalSeconds} AS INTEGER)";
+        }
+
+        return "FLOOR(UNIX_TIMESTAMP(created_at) / {$intervalSeconds})";
     }
 
     private function formatTimeLabel(\Carbon\Carbon $date, string $interval): string
