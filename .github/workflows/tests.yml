@@ -6,16 +6,14 @@ on:
   pull_request:
     branches: [ master, main, develop ]
 
+env:
+  PHP_VERSION: '8.3'
+
 jobs:
   test:
     runs-on: ubuntu-latest
 
-    strategy:
-      fail-fast: true
-      matrix:
-        php: ['8.3']
-
-    name: PHP ${{ matrix.php }}
+    name: PHP 8.3
 
     steps:
       - name: Checkout code
@@ -24,7 +22,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: ${{ matrix.php }}
+          php-version: ${{ env.PHP_VERSION }}
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv
           coverage: none
 
@@ -36,9 +34,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-php-${{ matrix.php }}-composer-${{ hashFiles('**/composer.lock') }}
+          key: ${{ runner.os }}-php-${{ env.PHP_VERSION }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: |
-            ${{ runner.os }}-php-${{ matrix.php }}-composer-
+            ${{ runner.os }}-php-${{ env.PHP_VERSION }}-composer-
             ${{ runner.os }}-composer-
 
       - name: Install dependencies
@@ -47,17 +45,8 @@ jobs:
       - name: Copy .env.testing
         run: cp .env.testing .env
 
-      - name: Generate application key
-        run: php artisan key:generate --env=testing
-
-      - name: Create SQLite database
-        run: touch database/database.sqlite
-
-      - name: Run migrations
-        run: php artisan migrate --env=testing --force
-
       - name: Execute tests
-        run: vendor/bin/pest --compact --parallel --processes=8
+        run: vendor/bin/pest --compact --parallel
 
   pint:
     runs-on: ubuntu-latest
@@ -71,7 +60,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.3
+          php-version: ${{ env.PHP_VERSION }}
           extensions: dom, curl, libxml, mbstring, zip
 
       - name: Get Composer cache directory
@@ -82,9 +71,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: ${{ runner.os }}-php-8.3-composer-${{ hashFiles('**/composer.lock') }}
+          key: ${{ runner.os }}-php-${{ env.PHP_VERSION }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: |
-            ${{ runner.os }}-php-8.3-composer-
+            ${{ runner.os }}-php-${{ env.PHP_VERSION }}-composer-
             ${{ runner.os }}-composer-
 
       - name: Install dependencies
