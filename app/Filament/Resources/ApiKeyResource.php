@@ -55,8 +55,10 @@ class ApiKeyResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('key_preview')
                     ->label('Key preview')
-                    ->state(fn (ApiKey $record): string => $record->getRawOriginal('key') ?: 'Hidden')
-                    ->description('Secret shown once after creation.'),
+                    ->state(fn (ApiKey $record): string => $record->key_hash
+                        ? ($record->getRawOriginal('key') ?: 'Hidden')
+                        : 'Legacy key hidden')
+                    ->description('Masked preview. Full key shown once on creation.'),
                 Tables\Columns\TextColumn::make('last_used_at')
                     ->dateTime()
                     ->sortable(),

@@ -162,13 +162,27 @@ test('super admin can delete api key', function () {
 
 test('api key list does not expose plaintext keys', function () {
     $user = $this->actingAsSuperAdmin();
+    $plainTextKey = ApiKey::generateKey();
     $apiKey = ApiKey::factory()->create(['user_id' => $user->id]);
+    $legacyApiKeyId = DB::table('api_keys')->insertGetId([
+        'user_id' => $user->id,
+        'name' => 'Legacy key',
+        'key' => $plainTextKey,
+        'key_hash' => null,
+        'last_used_at' => null,
+        'expires_at' => now()->addDay(),
+        'is_active' => true,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $legacyApiKey = ApiKey::query()->findOrFail($legacyApiKeyId);
 
     Livewire::test(ListApiKeys::class)
-        ->assertCanSeeTableRecords([$apiKey])
-        ->assertDontSee($apiKey->key)
+        ->assertCanSeeTableRecords([$apiKey, $legacyApiKey])
+        ->assertDontSee($plainTextKey)
         ->assertSee($apiKey->getRawOriginal('key'))
-        ->assertSee('Secret shown once after creation.');
+        ->assertSee('Legacy key hidden')
+        ->assertSee('Masked preview. Full key shown once on creation.');
 });
 
 test('regular user cannot access the panel or protected resources', function () {
