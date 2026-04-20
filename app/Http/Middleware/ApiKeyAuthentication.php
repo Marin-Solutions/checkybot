@@ -40,6 +40,7 @@ class ApiKeyAuthentication
 
         $key->update(['last_used_at' => now()]);
 
+        $request->attributes->set('checkybot_api_key', $key);
         auth()->setUser($key->user);
         $request->setUserResolver(static fn () => $key->user);
 
