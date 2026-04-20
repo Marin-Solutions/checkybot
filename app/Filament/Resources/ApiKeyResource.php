@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ApiKeyResource\Pages;
 use App\Models\ApiKey;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -53,8 +54,11 @@ class ApiKeyResource extends Resource
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('key_preview')
-                    ->label('API Key')
-                    ->state('Shown once when created'),
+                    ->label('Key preview')
+                    ->state(fn (ApiKey $record): string => $record->key_hash
+                        ? ($record->getRawOriginal('key') ?: 'Hidden')
+                        : 'Legacy key hidden')
+                    ->description('Masked preview. Full key shown once on creation.'),
                 Tables\Columns\TextColumn::make('last_used_at')
                     ->dateTime()
                     ->sortable(),
@@ -86,5 +90,14 @@ class ApiKeyResource extends Resource
             'create' => Pages\CreateApiKey::route('/create'),
             'edit' => Pages\EditApiKey::route('/{record}/edit'),
         ];
+    }
+
+    public static function apiKeyCreatedNotification(string $plainTextKey): Notification
+    {
+        return Notification::make()
+            ->success()
+            ->title('API key created')
+            ->body("Copy this API key now. It will not be shown again: {$plainTextKey}")
+            ->persistent();
     }
 }
