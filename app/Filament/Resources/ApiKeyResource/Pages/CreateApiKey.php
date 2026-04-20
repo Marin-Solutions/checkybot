@@ -24,7 +24,9 @@ class CreateApiKey extends CreateRecord
 
     protected function getCreatedNotification(): ?Notification
     {
-        $notification = ApiKeyResource::apiKeyCreatedNotification($this->generatedKey);
+        $notification = ApiKeyResource::apiKeyCreatedNotification(
+            $this->generatedKey ?? throw new \LogicException('API key notification requested before a key was generated.'),
+        );
 
         $this->generatedKey = null;
 

@@ -15,6 +15,8 @@ use Livewire\Livewire;
 
 function latestApiKeyNotificationKey(): string
 {
+    // The page clears generatedKey before Livewire serializes state, so the
+    // notification body is the only place the one-time plaintext key exists.
     $notification = collect(session('filament.notifications'))
         ->last(fn (array $notification): bool => str_contains($notification['body'] ?? '', 'ck_'));
 

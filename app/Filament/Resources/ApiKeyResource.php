@@ -92,14 +92,12 @@ class ApiKeyResource extends Resource
         ];
     }
 
-    public static function apiKeyCreatedNotification(?string $plainTextKey): Notification
+    public static function apiKeyCreatedNotification(string $plainTextKey): Notification
     {
         return Notification::make()
             ->success()
             ->title('API key created')
-            ->body($plainTextKey
-                ? "Copy this API key now. It will not be shown again: {$plainTextKey}"
-                : 'Copy this API key now. It will not be shown again.')
+            ->body("Copy this API key now. It will not be shown again: {$plainTextKey}")
             ->persistent();
     }
 }
