@@ -32,6 +32,6 @@ class PackageSyncController extends Controller
                 'summary' => $result['summary'],
                 'synced_at' => $result['synced_at']->toISOString(),
             ],
-        ]);
+        ], $result['project_created'] ? 201 : 200);
     }
 }

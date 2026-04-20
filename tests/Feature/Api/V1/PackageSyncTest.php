@@ -1,7 +1,9 @@
 <?php
 
 use App\Models\ApiKey;
+use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
+use App\Models\Project;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 
@@ -64,7 +66,7 @@ test('package sync creates a project and api check definitions', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload());
 
-    $response->assertOk()
+    $response->assertCreated()
         ->assertJsonPath('data.project.key', 'scrappa')
         ->assertJsonPath('data.summary.created', 1)
         ->assertJsonPath('data.summary.updated', 0)
@@ -110,7 +112,7 @@ test('package sync creates a project and api check definitions', function () {
 test('package sync is idempotent and updates by stable keys', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload())
-        ->assertOk();
+        ->assertCreated();
 
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
@@ -146,7 +148,7 @@ test('package sync encrypts header values and does not return them', function ()
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload());
 
-    $response->assertOk();
+    $response->assertCreated();
 
     $rawHeaders = DB::table('monitor_apis')
         ->where('package_name', 'google-maps-search')
@@ -166,7 +168,7 @@ test('package sync encrypts header values and does not return them', function ()
 test('package sync disables missing package api checks without deleting them', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload())
-        ->assertOk();
+        ->assertCreated();
 
     $payload = packageSyncPayload();
     $payload['checks'] = [];
@@ -207,4 +209,106 @@ test('package sync returns validation errors for malformed payloads', function (
             'checks.0.key',
             'checks.0.expected_status',
         ]);
+});
+
+test('package sync counts reserved non api check types as unsupported', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'certificate',
+                    'type' => 'ssl',
+                    'name' => 'Certificate',
+                    'method' => null,
+                    'url' => 'https://api.scrappa.co',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.unsupported', 1);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'certificate',
+    ]);
+});
+
+test('package sync can claim an existing project by identity endpoint fallback', function () {
+    $project = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'environment' => 'production',
+        'identity_endpoint' => 'https://api.scrappa.co',
+        'package_key' => null,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload());
+
+    $response->assertOk()
+        ->assertJsonPath('data.project.id', $project->id);
+
+    $this->assertDatabaseHas('projects', [
+        'id' => $project->id,
+        'package_key' => 'scrappa',
+        'base_url' => 'https://api.scrappa.co',
+    ]);
+});
+
+test('package sync restores soft deleted api checks when re-added', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+    $monitor->delete();
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload());
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.updated', 1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $monitor->id,
+        'deleted_at' => null,
+    ]);
+});
+
+test('package sync replaces assertions when a check changes', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.data'],
+                        ['type' => 'json_path_exists', 'path' => '$.meta'],
+                    ],
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+
+    expect(MonitorApiAssertion::query()->where('monitor_api_id', $monitor->id)->count())->toBe(2);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.items'],
+                    ],
+                ],
+            ],
+        ]))
+        ->assertOk();
+
+    $assertions = MonitorApiAssertion::query()
+        ->where('monitor_api_id', $monitor->id)
+        ->get();
+
+    expect($assertions)->toHaveCount(1)
+        ->and($assertions->first()->data_path)->toBe('items');
 });

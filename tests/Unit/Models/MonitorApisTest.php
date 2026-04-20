@@ -4,6 +4,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 test('monitor api belongs to user', function () {
     $user = User::factory()->create();
@@ -84,6 +85,22 @@ test('monitor api encrypts headers at rest', function () {
     expect($rawHeaders)->toContain('encrypted')
         ->and($rawHeaders)->not->toContain('token123')
         ->and($monitor->headers['Authorization'])->toBe('Bearer token123');
+});
+
+test('monitor api returns empty headers when encrypted payload cannot be decrypted', function () {
+    $monitor = MonitorApis::factory()->create([
+        'headers' => [
+            'Authorization' => 'Bearer token123',
+        ],
+    ]);
+
+    DB::table('monitor_apis')
+        ->where('id', $monitor->id)
+        ->update([
+            'headers' => json_encode(['encrypted' => 'corrupted-payload']),
+        ]);
+
+    expect($monitor->fresh()->headers)->toBe([]);
 });
 
 test('monitor api has data path for response extraction', function () {

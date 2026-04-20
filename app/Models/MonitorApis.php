@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -211,10 +212,14 @@ class MonitorApis extends Model
         }
 
         if (isset($decoded['encrypted']) && is_string($decoded['encrypted'])) {
-            $decrypted = Crypt::decryptString($decoded['encrypted']);
-            $headers = json_decode($decrypted, true);
+            try {
+                $decrypted = Crypt::decryptString($decoded['encrypted']);
+                $headers = json_decode($decrypted, true);
 
-            return is_array($headers) ? $headers : [];
+                return is_array($headers) ? $headers : [];
+            } catch (DecryptException) {
+                return [];
+            }
         }
 
         return $decoded;

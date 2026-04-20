@@ -7,6 +7,7 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -14,7 +15,7 @@ class PackageSyncService
 {
     /**
      * @param  array<string, mixed>  $payload
-     * @return array{project: Project, summary: array<string, int>, synced_at: \Illuminate\Support\Carbon}
+     * @return array{project: Project, project_created: bool, summary: array<string, int>, synced_at: Carbon}
      */
     public function sync(User $user, array $payload): array
     {
@@ -24,7 +25,8 @@ class PackageSyncService
             $summary = $this->syncApiChecks($project, $payload, $syncedAt);
 
             return [
-                'project' => $project->fresh(),
+                'project' => $project,
+                'project_created' => $project->wasRecentlyCreated,
                 'summary' => $summary,
                 'synced_at' => $syncedAt,
             ];
@@ -34,7 +36,7 @@ class PackageSyncService
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function upsertProject(User $user, array $payload, mixed $syncedAt): Project
+    private function upsertProject(User $user, array $payload, Carbon $syncedAt): Project
     {
         $projectData = $payload['project'];
 
@@ -42,6 +44,7 @@ class PackageSyncService
             ->where('created_by', $user->id)
             ->where('environment', $projectData['environment'])
             ->where('package_key', $projectData['key'])
+            ->lockForUpdate()
             ->first();
 
         if (! $project instanceof Project) {
@@ -49,6 +52,7 @@ class PackageSyncService
                 ->where('created_by', $user->id)
                 ->where('environment', $projectData['environment'])
                 ->where('identity_endpoint', $projectData['base_url'])
+                ->lockForUpdate()
                 ->first();
         }
 
@@ -79,7 +83,7 @@ class PackageSyncService
      * @param  array<string, mixed>  $payload
      * @return array{created: int, updated: int, disabled_missing: int, unsupported: int}
      */
-    private function syncApiChecks(Project $project, array $payload, mixed $syncedAt): array
+    private function syncApiChecks(Project $project, array $payload, Carbon $syncedAt): array
     {
         $created = 0;
         $updated = 0;
@@ -122,6 +126,7 @@ class PackageSyncService
                 'expected_status' => $check['expected_status'] ?? 200,
                 'timeout_seconds' => $check['timeout_seconds'] ?? ($defaults['timeout_seconds'] ?? null),
                 'package_schedule' => $check['schedule'] ?? null,
+                // Existing stale-check logic still reads package_interval; package_schedule preserves the v1 contract name.
                 'package_interval' => $check['schedule'] ?? null,
                 'is_enabled' => $check['enabled'] ?? true,
                 'source' => 'package',
@@ -158,29 +163,40 @@ class PackageSyncService
             ->where('monitor_api_id', $monitorApi->id)
             ->delete();
 
-        foreach (array_values($assertions) as $index => $assertion) {
-            MonitorApiAssertion::query()->create([
-                'monitor_api_id' => $monitorApi->id,
-                'data_path' => $this->normalizeJsonPath($assertion['path']),
-                'assertion_type' => $this->mapAssertionType($assertion['type']),
-                'expected_type' => $assertion['expected_type'] ?? null,
-                'comparison_operator' => $assertion['comparison_operator'] ?? (
-                    $assertion['type'] === 'json_path_equals' ? '=' : null
-                ),
-                'expected_value' => array_key_exists('expected_value', $assertion)
-                    ? (string) $assertion['expected_value']
-                    : null,
-                'regex_pattern' => $assertion['regex_pattern'] ?? null,
-                'sort_order' => $index + 1,
-                'is_active' => true,
-            ]);
+        if ($assertions === []) {
+            return;
         }
+
+        $timestamp = now();
+
+        MonitorApiAssertion::query()->insert(
+            collect($assertions)
+                ->values()
+                ->map(fn (array $assertion, int $index): array => [
+                    'monitor_api_id' => $monitorApi->id,
+                    'data_path' => $this->normalizeJsonPath($assertion['path']),
+                    'assertion_type' => $this->mapAssertionType($assertion['type']),
+                    'expected_type' => $assertion['expected_type'] ?? null,
+                    'comparison_operator' => $assertion['comparison_operator'] ?? (
+                        $assertion['type'] === 'json_path_equals' ? '=' : null
+                    ),
+                    'expected_value' => array_key_exists('expected_value', $assertion)
+                        ? (string) $assertion['expected_value']
+                        : null,
+                    'regex_pattern' => $assertion['regex_pattern'] ?? null,
+                    'sort_order' => $index + 1,
+                    'is_active' => true,
+                    'created_at' => $timestamp,
+                    'updated_at' => $timestamp,
+                ])
+                ->all()
+        );
     }
 
     /**
      * @param  array<int, string>  $activeApiKeys
      */
-    private function disableMissingApiChecks(Project $project, array $activeApiKeys, mixed $syncedAt): int
+    private function disableMissingApiChecks(Project $project, array $activeApiKeys, Carbon $syncedAt): int
     {
         $query = MonitorApis::query()
             ->where('project_id', $project->id)
