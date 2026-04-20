@@ -31,6 +31,19 @@ test('api key has unique hash for the raw key value', function () {
     ApiKey::factory()->create(['key' => $key]);
 })->throws(QueryException::class);
 
+test('api key preview is not unique because uniqueness belongs to the hash', function () {
+    $firstKey = 'ck_123'.str_repeat('a', 33).'wxyz';
+    $secondKey = 'ck_123'.str_repeat('b', 33).'wxyz';
+
+    $firstApiKey = ApiKey::factory()->create(['key' => $firstKey]);
+    $secondApiKey = ApiKey::factory()->create(['key' => $secondKey]);
+
+    expect($firstApiKey->getRawOriginal('key'))
+        ->toBe($secondApiKey->getRawOriginal('key'))
+        ->and($firstApiKey->getRawOriginal('key_hash'))
+        ->not->toBe($secondApiKey->getRawOriginal('key_hash'));
+});
+
 test('api key stores only hashed credentials in the database', function () {
     $user = User::factory()->create();
     $plainTextKey = ApiKey::generateKey();
