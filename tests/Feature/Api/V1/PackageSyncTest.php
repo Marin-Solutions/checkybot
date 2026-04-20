@@ -1,0 +1,210 @@
+<?php
+
+use App\Models\ApiKey;
+use App\Models\MonitorApis;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+
+beforeEach(function () {
+    $this->user = User::factory()->create();
+    $this->apiKey = ApiKey::factory()->create(['user_id' => $this->user->id]);
+});
+
+function packageSyncPayload(array $overrides = []): array
+{
+    $payload = [
+        'project' => [
+            'key' => 'scrappa',
+            'name' => 'Scrappa',
+            'environment' => 'production',
+            'base_url' => 'https://api.scrappa.co',
+            'repository' => 'userlip/scrappa',
+        ],
+        'defaults' => [
+            'headers' => [
+                'Accept' => 'application/json',
+                'Authorization' => 'Bearer default-secret',
+            ],
+            'timeout_seconds' => 10,
+        ],
+        'checks' => [
+            [
+                'key' => 'google-maps-search',
+                'type' => 'api',
+                'name' => 'Google Maps search API',
+                'method' => 'GET',
+                'url' => '/api/google-maps/search',
+                'headers' => [
+                    'X-Api-Key' => 'secret-package-token',
+                ],
+                'expected_status' => 200,
+                'timeout_seconds' => 15,
+                'assertions' => [
+                    ['type' => 'json_path_exists', 'path' => '$.data'],
+                ],
+                'schedule' => 'every_5_minutes',
+                'enabled' => true,
+            ],
+        ],
+    ];
+
+    return array_replace_recursive($payload, $overrides);
+}
+
+test('package sync requires a valid api key', function () {
+    $this->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertUnauthorized();
+
+    $this->withToken('ck_invalid')
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertUnauthorized();
+});
+
+test('package sync creates a project and api check definitions', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload());
+
+    $response->assertOk()
+        ->assertJsonPath('data.project.key', 'scrappa')
+        ->assertJsonPath('data.summary.created', 1)
+        ->assertJsonPath('data.summary.updated', 0)
+        ->assertJsonPath('data.summary.disabled_missing', 0);
+
+    $projectId = $response->json('data.project.id');
+
+    $this->assertDatabaseHas('projects', [
+        'id' => $projectId,
+        'created_by' => $this->user->id,
+        'package_key' => 'scrappa',
+        'name' => 'Scrappa',
+        'environment' => 'production',
+        'base_url' => 'https://api.scrappa.co',
+        'repository' => 'userlip/scrappa',
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $projectId,
+        'title' => 'Google Maps search API',
+        'url' => 'https://api.scrappa.co/api/google-maps/search',
+        'http_method' => 'GET',
+        'request_path' => '/api/google-maps/search',
+        'expected_status' => 200,
+        'timeout_seconds' => 15,
+        'package_schedule' => 'every_5_minutes',
+        'package_name' => 'google-maps-search',
+        'source' => 'package',
+        'is_enabled' => true,
+    ]);
+
+    $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+
+    expect($monitor->headers)->toBe([
+        'Accept' => 'application/json',
+        'Authorization' => 'Bearer default-secret',
+        'X-Api-Key' => 'secret-package-token',
+    ])->and($monitor->assertions)->toHaveCount(1)
+        ->and($monitor->assertions->first()->assertion_type)->toBe('exists')
+        ->and($monitor->assertions->first()->data_path)->toBe('data');
+});
+
+test('package sync is idempotent and updates by stable keys', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertOk();
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'project' => [
+                'name' => 'Scrappa API',
+            ],
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'name' => 'Google Maps Search',
+                    'url' => '/api/google-maps/v2/search',
+                    'timeout_seconds' => 20,
+                ],
+            ],
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.updated', 1);
+
+    expect(DB::table('projects')->where('package_key', 'scrappa')->count())->toBe(1)
+        ->and(DB::table('monitor_apis')->where('package_name', 'google-maps-search')->count())->toBe(1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'package_name' => 'google-maps-search',
+        'title' => 'Google Maps Search',
+        'url' => 'https://api.scrappa.co/api/google-maps/v2/search',
+        'timeout_seconds' => 20,
+    ]);
+});
+
+test('package sync encrypts header values and does not return them', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload());
+
+    $response->assertOk();
+
+    $rawHeaders = DB::table('monitor_apis')
+        ->where('package_name', 'google-maps-search')
+        ->value('headers');
+    $rawProjectDefaults = DB::table('projects')
+        ->where('package_key', 'scrappa')
+        ->value('sync_defaults');
+
+    expect(json_encode($response->json()))->not->toContain('secret-package-token')
+        ->and(json_encode($response->json()))->not->toContain('default-secret')
+        ->and($rawHeaders)->toContain('encrypted')
+        ->and($rawHeaders)->not->toContain('secret-package-token')
+        ->and($rawHeaders)->not->toContain('default-secret')
+        ->and($rawProjectDefaults)->not->toContain('default-secret');
+});
+
+test('package sync disables missing package api checks without deleting them', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertOk();
+
+    $payload = packageSyncPayload();
+    $payload['checks'] = [];
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload);
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.disabled_missing', 1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'package_name' => 'google-maps-search',
+        'is_enabled' => false,
+        'deleted_at' => null,
+    ]);
+});
+
+test('package sync returns validation errors for malformed payloads', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'project' => [
+                'key' => '',
+                'base_url' => 'not-a-url',
+            ],
+            'checks' => [
+                [
+                    'key' => 'bad check key',
+                    'type' => 'api',
+                    'expected_status' => 99,
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'project.key',
+            'project.base_url',
+            'checks.0.key',
+            'checks.0.expected_status',
+        ]);
+});
