@@ -122,7 +122,7 @@ class PackageSyncService
                 'http_method' => strtoupper($check['method'] ?? 'GET'),
                 'request_path' => $check['url'],
                 'data_path' => $this->primaryDataPath($check['assertions'] ?? []),
-                'headers' => array_replace($defaults['headers'] ?? [], $check['headers'] ?? []),
+                'headers' => $this->mergeHeaders($defaults['headers'] ?? [], $check['headers'] ?? []),
                 'expected_status' => $check['expected_status'] ?? 200,
                 'timeout_seconds' => $check['timeout_seconds'] ?? ($defaults['timeout_seconds'] ?? null),
                 'package_schedule' => $check['schedule'] ?? null,
@@ -251,6 +251,28 @@ class PackageSyncService
             'json_path_equals' => 'value_compare',
             default => $type,
         };
+    }
+
+    /**
+     * @param  array<string, string|null>  $defaultHeaders
+     * @param  array<string, string|null>  $checkHeaders
+     * @return array<string, string>
+     */
+    private function mergeHeaders(array $defaultHeaders, array $checkHeaders): array
+    {
+        $headers = $defaultHeaders;
+
+        foreach ($checkHeaders as $name => $value) {
+            if ($value === null) {
+                unset($headers[$name]);
+
+                continue;
+            }
+
+            $headers[$name] = $value;
+        }
+
+        return array_filter($headers, fn ($value): bool => $value !== null);
     }
 
     /**

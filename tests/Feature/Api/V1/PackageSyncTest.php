@@ -312,3 +312,25 @@ test('package sync replaces assertions when a check changes', function () {
     expect($assertions)->toHaveCount(1)
         ->and($assertions->first()->data_path)->toBe('items');
 });
+
+test('package sync lets checks suppress default headers with null values', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'headers' => [
+                        'Authorization' => null,
+                        'X-Api-Key' => 'secret-package-token',
+                    ],
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+
+    expect($monitor->headers)->toBe([
+        'Accept' => 'application/json',
+        'X-Api-Key' => 'secret-package-token',
+    ]);
+});
