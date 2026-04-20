@@ -53,7 +53,9 @@ class CheckybotMcpController extends Controller
             return $this->jsonRpcError($payload['id'] ?? null, -32004, 'Requested Checkybot project or check was not found.');
         } catch (HttpExceptionInterface $exception) {
             return $this->jsonRpcError($payload['id'] ?? null, -32000, $exception->getMessage() ?: 'Tool call failed.');
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            report($exception);
+
             return $this->jsonRpcError($payload['id'] ?? null, -32000, 'Tool call failed.');
         }
     }
@@ -118,7 +120,7 @@ class CheckybotMcpController extends Controller
             'content' => [
                 [
                     'type' => 'text',
-                    'text' => json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
+                    'text' => json_encode($result, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
                 ],
             ],
             'structuredContent' => $result,

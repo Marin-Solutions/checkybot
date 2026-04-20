@@ -3,11 +3,13 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Checkybot\ListControlFailuresRequest;
+use App\Http\Requests\Checkybot\ListControlRunsRequest;
+use App\Http\Requests\Checkybot\UpsertControlCheckRequest;
 use App\Models\ApiKey;
 use App\Services\CheckybotControlService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rule;
 
 class CheckybotControlController extends Controller
 {
@@ -46,9 +48,9 @@ class CheckybotControlController extends Controller
         ]);
     }
 
-    public function upsertCheck(Request $request, string $project, string $check): JsonResponse
+    public function upsertCheck(UpsertControlCheckRequest $request, string $project, string $check): JsonResponse
     {
-        $data = $request->validate($this->checkRules());
+        $data = $request->validated();
         $data['key'] = $check;
 
         $result = $this->control->upsertCheck($request->user(), $project, $data);
@@ -72,7 +74,7 @@ class CheckybotControlController extends Controller
         return response()->json([
             'message' => 'Project run completed.',
             'data' => $this->control->triggerProjectRun($request->user(), $project),
-        ], 202);
+        ]);
     }
 
     public function triggerCheckRun(Request $request, string $project, string $check): JsonResponse
@@ -80,15 +82,12 @@ class CheckybotControlController extends Controller
         return response()->json([
             'message' => 'Check run completed.',
             'data' => $this->control->triggerCheckRun($request->user(), $project, $check),
-        ], 202);
+        ]);
     }
 
-    public function runs(Request $request): JsonResponse
+    public function runs(ListControlRunsRequest $request): JsonResponse
     {
-        $data = $request->validate([
-            'project' => ['nullable', 'string', 'max:255'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
-        ]);
+        $data = $request->validated();
 
         return response()->json([
             'data' => $this->control->recentRuns(
@@ -99,23 +98,18 @@ class CheckybotControlController extends Controller
         ]);
     }
 
-    public function projectRuns(Request $request, string $project): JsonResponse
+    public function projectRuns(ListControlRunsRequest $request, string $project): JsonResponse
     {
-        $data = $request->validate([
-            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
-        ]);
+        $data = $request->validated();
 
         return response()->json([
             'data' => $this->control->recentRuns($request->user(), $project, $data['limit'] ?? 25),
         ]);
     }
 
-    public function failures(Request $request): JsonResponse
+    public function failures(ListControlFailuresRequest $request): JsonResponse
     {
-        $data = $request->validate([
-            'project' => ['nullable', 'string', 'max:255'],
-            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
-        ]);
+        $data = $request->validated();
 
         $project = isset($data['project'])
             ? $this->control->findProject($request->user(), $data['project'])
@@ -126,11 +120,9 @@ class CheckybotControlController extends Controller
         ]);
     }
 
-    public function projectFailures(Request $request, string $project): JsonResponse
+    public function projectFailures(ListControlFailuresRequest $request, string $project): JsonResponse
     {
-        $data = $request->validate([
-            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
-        ]);
+        $data = $request->validated();
 
         return response()->json([
             'data' => $this->control->latestFailures(
@@ -139,43 +131,5 @@ class CheckybotControlController extends Controller
                 $data['limit'] ?? 25,
             ),
         ]);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function checkRules(): array
-    {
-        return [
-            'type' => ['nullable', Rule::in(['api'])],
-            'name' => ['required', 'string', 'max:255'],
-            'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'url' => ['required', 'string', 'max:1000'],
-            'headers' => ['nullable', 'array'],
-            'headers.*' => ['nullable', 'string', 'max:2000'],
-            'expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
-            'timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
-            'assertions' => ['nullable', 'array', 'max:50'],
-            'assertions.*.type' => ['required', 'string', Rule::in([
-                'json_path_exists',
-                'json_path_not_exists',
-                'json_path_equals',
-                'exists',
-                'not_exists',
-                'value_compare',
-                'type_check',
-                'array_length',
-                'regex_match',
-            ])],
-            'assertions.*.path' => ['required', 'string', 'max:500'],
-            'assertions.*.expected_value' => ['nullable'],
-            'assertions.*.expected_type' => ['nullable', 'string', 'max:50'],
-            'assertions.*.comparison_operator' => ['nullable', Rule::in(['=', '!=', '>', '>=', '<', '<=', 'contains'])],
-            'assertions.*.regex_pattern' => ['nullable', 'string', 'max:1000'],
-            'assertions.*.sort_order' => ['nullable', 'integer', 'min:1'],
-            'assertions.*.active' => ['nullable', 'boolean'],
-            'schedule' => ['nullable', 'string', 'max:100'],
-            'enabled' => ['nullable', 'boolean'],
-        ];
     }
 }

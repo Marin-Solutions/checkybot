@@ -52,7 +52,10 @@ test('control api lists projects and package managed checks with compact status'
         'url' => 'https://api.scrappa.test/health',
         'http_method' => 'GET',
         'request_path' => '/health',
-        'headers' => ['Authorization' => 'Bearer secret-token'],
+        'headers' => [
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer secret-token',
+        ],
         'current_status' => 'danger',
         'status_summary' => 'API heartbeat failed with HTTP status 500.',
     ]);
@@ -74,6 +77,7 @@ test('control api lists projects and package managed checks with compact status'
         ->assertOk()
         ->assertJsonPath('data.0.key', 'search-health')
         ->assertJsonPath('data.0.status', 'danger')
+        ->assertJsonPath('data.0.headers.Accept', 'application/json')
         ->assertJsonPath('data.0.headers.Authorization', '[redacted]');
 
     expect(json_encode($response->json()))->not->toContain('secret-token');
@@ -86,6 +90,7 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         'method' => 'GET',
         'url' => '/api/google-maps/search',
         'headers' => [
+            'Accept' => 'application/json',
             'Authorization' => 'Bearer package-secret',
             'X-Api-Key' => 'scrappa-secret',
         ],
@@ -102,6 +107,7 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         ->assertCreated()
         ->assertJsonPath('data.created', true)
         ->assertJsonPath('data.check.key', 'google-maps-search')
+        ->assertJsonPath('data.check.headers.Accept', 'application/json')
         ->assertJsonPath('data.check.headers.Authorization', '[redacted]');
 
     expect(json_encode($created->json()))->not->toContain('package-secret')
@@ -177,7 +183,7 @@ test('control api triggers a check run and lists recent failures', function () {
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/control/projects/scrappa/checks/search-health/runs')
-        ->assertAccepted()
+        ->assertOk()
         ->assertJsonPath('data.check.key', 'search-health')
         ->assertJsonPath('data.result.success', false)
         ->assertJsonPath('data.result.status', 'danger');
@@ -192,6 +198,121 @@ test('control api triggers a check run and lists recent failures', function () {
         ->assertOk()
         ->assertJsonPath('data.0.check.key', 'search-health')
         ->assertJsonPath('data.0.status', 'danger');
+});
+
+test('control api returns project detail and recent runs', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+        'current_status' => 'warning',
+        'is_enabled' => true,
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'warning',
+        'summary' => 'API heartbeat is degraded with HTTP status 404.',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.key', 'scrappa')
+        ->assertJsonPath('data.checks_count', 1)
+        ->assertJsonPath('data.enabled_checks_count', 1)
+        ->assertJsonPath('data.status_counts.warning', 1)
+        ->assertJsonPath('data.latest_failure.check.key', 'search-health');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/runs?project=scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.0.check.key', 'search-health')
+        ->assertJsonPath('data.0.status', 'warning');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/runs')
+        ->assertOk()
+        ->assertJsonPath('data.0.check.key', 'search-health');
+});
+
+test('control api scopes projects to the api key owner', function () {
+    $otherUser = User::factory()->create();
+    $otherApiKey = ApiKey::factory()->create(['user_id' => $otherUser->id]);
+
+    $this->withToken($otherApiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa')
+        ->assertNotFound();
+
+    $this->withToken($otherApiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/checks')
+        ->assertNotFound();
+});
+
+test('control api triggers all enabled project checks synchronously', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+        'url' => 'https://api.scrappa.test/health',
+        'data_path' => 'data.status',
+        'is_enabled' => true,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'disabled-health',
+        'title' => 'Disabled health',
+        'url' => 'https://api.scrappa.test/disabled',
+        'is_enabled' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/runs')
+        ->assertOk()
+        ->assertJsonPath('data.status', 'completed')
+        ->assertJsonPath('data.checks_run', 1)
+        ->assertJsonPath('data.results.0.check.key', 'search-health')
+        ->assertJsonPath('data.results.0.result.status', 'healthy');
+});
+
+test('control api rejects disabled check runs and relative urls without a project base url', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'disabled-health',
+        'is_enabled' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/disabled-health/runs')
+        ->assertStatus(409)
+        ->assertJsonPath('message', 'Check is disabled. Enable or upsert the check before triggering a run.');
+
+    $projectWithoutBaseUrl = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'missing-base-url',
+        'base_url' => null,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->putJson("/api/v1/control/projects/{$projectWithoutBaseUrl->package_key}/checks/relative-health", [
+            'name' => 'Relative health',
+            'url' => '/health',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('url');
 });
 
 test('mcp endpoint lists tools and calls the shared control surface', function () {

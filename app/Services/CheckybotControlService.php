@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class CheckybotControlService
 {
@@ -127,6 +128,7 @@ class CheckybotControlService
                 'expected_status' => $data['expected_status'] ?? 200,
                 'timeout_seconds' => $data['timeout_seconds'] ?? null,
                 'package_schedule' => $data['schedule'] ?? null,
+                // Existing stale-check logic reads package_interval; package_schedule preserves the control API contract name.
                 'package_interval' => $data['schedule'] ?? null,
                 'is_enabled' => $data['enabled'] ?? true,
                 'source' => 'package',
@@ -425,20 +427,40 @@ class CheckybotControlService
     }
 
     /**
-     * @param  array<string, string>  $headers
-     * @return array<string, string>
+     * @param  array<string, mixed>  $headers
+     * @return array<string, mixed>
      */
     private function redactHeaders(array $headers): array
     {
         return collect($headers)
-            ->map(fn (): string => '[redacted]')
+            ->mapWithKeys(fn (mixed $value, string $name): array => [
+                $name => $this->isSensitiveHeader($name) ? '[redacted]' : $value,
+            ])
             ->all();
+    }
+
+    private function isSensitiveHeader(string $name): bool
+    {
+        $normalized = strtolower($name);
+
+        return $normalized === 'authorization'
+            || str_contains($normalized, 'token')
+            || str_contains($normalized, 'secret')
+            || str_contains($normalized, 'api-key')
+            || str_contains($normalized, 'apikey')
+            || str_contains($normalized, 'auth-key');
     }
 
     private function resolveUrl(?string $baseUrl, string $url): string
     {
         if (Str::startsWith($url, ['http://', 'https://'])) {
             return $url;
+        }
+
+        if (blank($baseUrl)) {
+            throw ValidationException::withMessages([
+                'url' => ['Relative check URLs require the project to have a base_url. Provide an absolute URL or set the project base_url.'],
+            ]);
         }
 
         return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
