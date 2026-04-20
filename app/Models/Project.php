@@ -15,13 +15,26 @@ class Project extends Model
 
     protected $fillable = [
         'name',
+        'package_key',
         'group',
         'environment',
         'technology',
         'identity_endpoint',
+        'base_url',
+        'repository',
+        'sync_defaults',
+        'last_synced_at',
         'token',
         'created_by',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'sync_defaults' => 'array',
+            'last_synced_at' => 'datetime',
+        ];
+    }
 
     public function user(): BelongsTo
     {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\PackageSyncController;
 use App\Http\Controllers\Api\V1\ProjectChecksController;
 use App\Http\Controllers\Api\V1\ProjectComponentsController;
 use App\Http\Controllers\Api\V1\ProjectRegistrationsController;
@@ -17,6 +18,7 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
     Route::post('/backup-history', [BackupHistoryController::class, 'store']);
 
     Route::post('/package/register', ProjectRegistrationsController::class)->middleware('api.key');
+    Route::post('/package/sync', PackageSyncController::class)->middleware('api.key');
     Route::post('/projects/{project}/checks/sync', [ProjectChecksController::class, 'sync'])->middleware('api.key');
     Route::post('/projects/{project}/components/sync', ProjectComponentsController::class)->middleware('api.key');
 });

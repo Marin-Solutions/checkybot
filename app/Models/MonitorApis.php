@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -21,8 +24,15 @@ class MonitorApis extends Model
     protected $fillable = [
         'title',
         'url',
+        'http_method',
+        'request_path',
         'data_path',
         'headers',
+        'expected_status',
+        'timeout_seconds',
+        'package_schedule',
+        'is_enabled',
+        'last_synced_at',
         'save_failed_response',
         'created_by',
         'project_id',
@@ -36,11 +46,22 @@ class MonitorApis extends Model
     ];
 
     protected $casts = [
-        'headers' => 'array',
         'save_failed_response' => 'boolean',
+        'expected_status' => 'integer',
+        'timeout_seconds' => 'integer',
+        'is_enabled' => 'boolean',
+        'last_synced_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
         'stale_at' => 'datetime',
     ];
+
+    protected function headers(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value): array => $this->decryptHeaders($value),
+            set: fn (mixed $value): ?string => $this->encryptHeaders($value),
+        );
+    }
 
     public function user(): BelongsTo
     {
@@ -176,6 +197,49 @@ class MonitorApis extends Model
         }
 
         return is_array($headers) ? $headers : [];
+    }
+
+    private function decryptHeaders(mixed $value): array
+    {
+        if ($value === null || $value === '') {
+            return [];
+        }
+
+        $decoded = is_string($value) ? json_decode($value, true) : $value;
+
+        if (! is_array($decoded)) {
+            return [];
+        }
+
+        if (isset($decoded['encrypted']) && is_string($decoded['encrypted'])) {
+            try {
+                $decrypted = Crypt::decryptString($decoded['encrypted']);
+                $headers = json_decode($decrypted, true);
+
+                return is_array($headers) ? $headers : [];
+            } catch (DecryptException) {
+                return [];
+            }
+        }
+
+        return $decoded;
+    }
+
+    private function encryptHeaders(mixed $value): ?string
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+
+        $headers = is_string($value) ? json_decode($value, true) : $value;
+
+        if (! is_array($headers)) {
+            return null;
+        }
+
+        return json_encode([
+            'encrypted' => Crypt::encryptString(json_encode($headers)),
+        ]);
     }
 
     private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest
