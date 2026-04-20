@@ -8,24 +8,9 @@ use App\Filament\Resources\ServerResource;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\ApiKey;
 use App\Models\User;
-use Filament\Notifications\Notification;
 use Filament\Panel;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
-
-function latestApiKeyNotificationKey(): string
-{
-    // The page clears generatedKey before Livewire serializes state, so the
-    // notification body is the only place the one-time plaintext key exists.
-    $notification = collect(session('filament.notifications'))
-        ->last(fn (array $notification): bool => str_contains($notification['body'] ?? '', 'ck_'));
-
-    preg_match('/ck_[A-Za-z0-9]+/', $notification['body'] ?? '', $matches);
-
-    expect($matches[0] ?? null)->toStartWith('ck_');
-
-    return $matches[0];
-}
 
 test('super admin can render list page', function () {
     $this->actingAsSuperAdmin();
@@ -79,9 +64,10 @@ test('super admin can create api key', function () {
             'is_active' => true,
         ])
         ->call('create')
-        ->assertHasNoFormErrors();
+        ->assertHasNoFormErrors()
+        ->assertRedirect(ApiKeyResource::getUrl('index'));
 
-    $generatedKey = latestApiKeyNotificationKey();
+    $generatedKey = session('api_key_plain_text');
     $apiKey = ApiKey::query()->where('name', 'Test API Key')->firstOrFail();
     $storedApiKey = DB::table('api_keys')->where('id', $apiKey->id)->first();
 
@@ -94,9 +80,24 @@ test('super admin can create api key', function () {
     expect($generatedKey)->toStartWith('ck_')
         ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($generatedKey))
         ->and($storedApiKey->key)->not->toBe($generatedKey)
-        ->and($component->get('generatedKey'))->toBeNull();
+        ->and($component->get('generatedKey'))->toBeNull()
+        ->and(session('api_key_name'))->toBe('Test API Key');
+});
 
-    Notification::assertNotified(ApiKeyResource::apiKeyCreatedNotification($generatedKey));
+test('list page shows api key created from create page', function () {
+    $this->actingAsSuperAdmin();
+    $plainTextKey = ApiKey::generateKey();
+
+    session()->flash('api_key_plain_text', $plainTextKey);
+    session()->flash('api_key_name', 'Create Page Key');
+
+    Livewire::test(ListApiKeys::class)
+        ->assertSet('oneTimePlainTextKey', $plainTextKey)
+        ->assertSet('oneTimeKeyName', 'Create Page Key')
+        ->assertSee('API key created')
+        ->assertSee('Create Page Key')
+        ->assertSee($plainTextKey)
+        ->assertSee('Copy key');
 });
 
 test('super admin can create api key from list and see it once', function () {
@@ -109,7 +110,7 @@ test('super admin can create api key from list and see it once', function () {
         ])
         ->assertHasNoActionErrors();
 
-    $generatedKey = latestApiKeyNotificationKey();
+    $generatedKey = $component->get('oneTimePlainTextKey');
     $apiKey = ApiKey::query()->where('name', 'List API Key')->firstOrFail();
     $storedApiKey = DB::table('api_keys')->where('id', $apiKey->id)->first();
 
@@ -122,9 +123,18 @@ test('super admin can create api key from list and see it once', function () {
     expect($generatedKey)->toStartWith('ck_')
         ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($generatedKey))
         ->and($storedApiKey->key)->not->toBe($generatedKey)
-        ->and($component->get('generatedKey'))->toBeNull();
+        ->and($component->get('oneTimeKeyName'))->toBe('List API Key');
 
-    Notification::assertNotified(ApiKeyResource::apiKeyCreatedNotification($generatedKey));
+    $component
+        ->assertSee('API key created')
+        ->assertSee('List API Key')
+        ->assertSee($generatedKey)
+        ->assertSee('Copy key')
+        ->call('dismissOneTimeKey')
+        ->assertDontSee($generatedKey);
+
+    expect($component->get('oneTimePlainTextKey'))->toBeNull()
+        ->and($component->get('oneTimeKeyName'))->toBeNull();
 });
 
 test('create api key requires name', function () {
