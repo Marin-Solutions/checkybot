@@ -8,6 +8,7 @@ use App\Filament\Resources\ServerResource;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\ApiKey;
 use App\Models\User;
+use Filament\Notifications\Notification;
 use Filament\Panel;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
@@ -79,6 +80,35 @@ test('super admin can create api key', function () {
     expect($generatedKey)->toStartWith('ck_')
         ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($generatedKey))
         ->and($storedApiKey->key)->not->toBe($generatedKey);
+
+    Notification::assertNotified(ApiKeyResource::apiKeyCreatedNotification($generatedKey));
+});
+
+test('super admin can create api key from list and see it once', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $component = Livewire::test(ListApiKeys::class)
+        ->callAction('create', data: [
+            'name' => 'List API Key',
+            'is_active' => true,
+        ])
+        ->assertHasNoActionErrors();
+
+    $generatedKey = $component->get('generatedKey');
+    $apiKey = ApiKey::query()->where('name', 'List API Key')->firstOrFail();
+    $storedApiKey = DB::table('api_keys')->where('id', $apiKey->id)->first();
+
+    $this->assertDatabaseHas('api_keys', [
+        'name' => 'List API Key',
+        'user_id' => $user->id,
+        'is_active' => true,
+    ]);
+
+    expect($generatedKey)->toStartWith('ck_')
+        ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($generatedKey))
+        ->and($storedApiKey->key)->not->toBe($generatedKey);
+
+    Notification::assertNotified(ApiKeyResource::apiKeyCreatedNotification($generatedKey));
 });
 
 test('create api key requires name', function () {
@@ -137,7 +167,8 @@ test('api key list does not expose plaintext keys', function () {
     Livewire::test(ListApiKeys::class)
         ->assertCanSeeTableRecords([$apiKey])
         ->assertDontSee($apiKey->key)
-        ->assertSee('Shown once when created');
+        ->assertSee($apiKey->getRawOriginal('key'))
+        ->assertSee('Secret shown once after creation.');
 });
 
 test('regular user cannot access the panel or protected resources', function () {

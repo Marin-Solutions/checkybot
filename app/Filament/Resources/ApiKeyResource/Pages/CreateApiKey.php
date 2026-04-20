@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ApiKeyResource\Pages;
 
 use App\Filament\Resources\ApiKeyResource;
 use App\Models\ApiKey;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateApiKey extends CreateRecord
@@ -19,5 +20,10 @@ class CreateApiKey extends CreateRecord
         $this->generatedKey = $data['key'];
 
         return $data;
+    }
+
+    protected function getCreatedNotification(): ?Notification
+    {
+        return ApiKeyResource::apiKeyCreatedNotification($this->generatedKey);
     }
 }
