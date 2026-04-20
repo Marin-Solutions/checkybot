@@ -13,6 +13,18 @@ use Filament\Panel;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
+function latestApiKeyNotificationKey(): string
+{
+    $notification = collect(session('filament.notifications'))
+        ->last(fn (array $notification): bool => str_contains($notification['body'] ?? '', 'ck_'));
+
+    preg_match('/ck_[A-Za-z0-9]+/', $notification['body'] ?? '', $matches);
+
+    expect($matches[0] ?? null)->toStartWith('ck_');
+
+    return $matches[0];
+}
+
 test('super admin can render list page', function () {
     $this->actingAsSuperAdmin();
 
@@ -67,7 +79,7 @@ test('super admin can create api key', function () {
         ->call('create')
         ->assertHasNoFormErrors();
 
-    $generatedKey = $component->get('generatedKey');
+    $generatedKey = latestApiKeyNotificationKey();
     $apiKey = ApiKey::query()->where('name', 'Test API Key')->firstOrFail();
     $storedApiKey = DB::table('api_keys')->where('id', $apiKey->id)->first();
 
@@ -79,7 +91,8 @@ test('super admin can create api key', function () {
 
     expect($generatedKey)->toStartWith('ck_')
         ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($generatedKey))
-        ->and($storedApiKey->key)->not->toBe($generatedKey);
+        ->and($storedApiKey->key)->not->toBe($generatedKey)
+        ->and($component->get('generatedKey'))->toBeNull();
 
     Notification::assertNotified(ApiKeyResource::apiKeyCreatedNotification($generatedKey));
 });
@@ -94,7 +107,7 @@ test('super admin can create api key from list and see it once', function () {
         ])
         ->assertHasNoActionErrors();
 
-    $generatedKey = $component->get('generatedKey');
+    $generatedKey = latestApiKeyNotificationKey();
     $apiKey = ApiKey::query()->where('name', 'List API Key')->firstOrFail();
     $storedApiKey = DB::table('api_keys')->where('id', $apiKey->id)->first();
 
@@ -106,7 +119,8 @@ test('super admin can create api key from list and see it once', function () {
 
     expect($generatedKey)->toStartWith('ck_')
         ->and($storedApiKey->key_hash)->toBe(ApiKey::hashKey($generatedKey))
-        ->and($storedApiKey->key)->not->toBe($generatedKey);
+        ->and($storedApiKey->key)->not->toBe($generatedKey)
+        ->and($component->get('generatedKey'))->toBeNull();
 
     Notification::assertNotified(ApiKeyResource::apiKeyCreatedNotification($generatedKey));
 });

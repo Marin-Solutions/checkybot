@@ -25,7 +25,13 @@ class ListApiKeys extends ListRecords
 
                     return ApiKey::create($data);
                 })
-                ->successNotification(fn () => ApiKeyResource::apiKeyCreatedNotification($this->generatedKey)),
+                ->successNotification(function () {
+                    $notification = ApiKeyResource::apiKeyCreatedNotification($this->generatedKey);
+
+                    $this->generatedKey = null;
+
+                    return $notification;
+                }),
         ];
     }
 }
