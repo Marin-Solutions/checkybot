@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Arr;
@@ -82,6 +83,11 @@ class MonitorApis extends Model
     public function results(): HasMany
     {
         return $this->hasMany(MonitorApiResult::class, 'monitor_api_id');
+    }
+
+    public function latestResult(): HasOne
+    {
+        return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->latestOfMany();
     }
 
     public static function testApi(array $data): array

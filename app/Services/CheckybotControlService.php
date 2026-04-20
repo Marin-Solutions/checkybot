@@ -83,7 +83,7 @@ class CheckybotControlService
         $project = $this->findProject($user, $projectKey);
 
         return $project->packageManagedApis()
-            ->with(['assertions', 'results' => fn ($query) => $query->latest()->limit(1)])
+            ->with(['assertions', 'latestResult'])
             ->orderBy('package_name')
             ->get()
             ->map(fn (MonitorApis $check): array => $this->checkPayload($check))
@@ -138,7 +138,7 @@ class CheckybotControlService
             $check->save();
 
             $this->syncAssertions($check, $data['assertions'] ?? []);
-            $check->load(['assertions', 'results' => fn ($query) => $query->latest()->limit(1)]);
+            $check->load(['assertions', 'latestResult']);
 
             return [
                 'created' => $created,
@@ -256,7 +256,7 @@ class CheckybotControlService
         $project = $this->findProject($user, $projectKey);
 
         return $project->packageManagedApis()
-            ->with(['assertions', 'results' => fn ($query) => $query->latest()->limit(1)])
+            ->with(['assertions', 'latestResult'])
             ->where('package_name', $checkKey)
             ->firstOrFail();
     }
@@ -319,7 +319,7 @@ class CheckybotControlService
      */
     private function checkPayload(MonitorApis $check): array
     {
-        $latestResult = $check->relationLoaded('results') ? $check->results->first() : $check->results()->latest()->first();
+        $latestResult = $check->relationLoaded('latestResult') ? $check->latestResult : $check->results()->latest()->first();
 
         return [
             'id' => $check->id,

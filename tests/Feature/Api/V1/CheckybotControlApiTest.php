@@ -238,6 +238,46 @@ test('control api returns project detail and recent runs', function () {
         ->assertJsonPath('data.0.check.key', 'search-health');
 });
 
+test('control api returns latest result for each listed check', function () {
+    $alpha = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'alpha-health',
+        'title' => 'Alpha health',
+    ]);
+    $beta = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'beta-health',
+        'title' => 'Beta health',
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $alpha->id,
+        'created_at' => now()->subMinutes(2),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $alpha->id,
+        'status' => 'danger',
+        'created_at' => now(),
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $beta->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/checks')
+        ->assertOk()
+        ->assertJsonPath('data.0.key', 'alpha-health')
+        ->assertJsonPath('data.0.latest_result.status', 'danger')
+        ->assertJsonPath('data.1.key', 'beta-health')
+        ->assertJsonPath('data.1.latest_result.status', 'healthy');
+});
+
 test('control api scopes projects to the api key owner', function () {
     $otherUser = User::factory()->create();
     $otherApiKey = ApiKey::factory()->create(['user_id' => $otherUser->id]);
