@@ -334,3 +334,25 @@ test('package sync lets checks suppress default headers with null values', funct
         'X-Api-Key' => 'secret-package-token',
     ]);
 });
+
+test('package sync lets checks override default headers case insensitively', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'headers' => [
+                        'authorization' => 'Bearer check-secret',
+                        'X-Api-Key' => null,
+                    ],
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+
+    expect($monitor->headers)->toBe([
+        'Accept' => 'application/json',
+        'authorization' => 'Bearer check-secret',
+    ]);
+});
