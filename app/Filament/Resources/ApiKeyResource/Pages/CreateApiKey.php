@@ -22,14 +22,24 @@ class CreateApiKey extends CreateRecord
         return $data;
     }
 
-    protected function getCreatedNotification(): ?Notification
+    protected function afterCreate(): void
     {
-        $notification = ApiKeyResource::apiKeyCreatedNotification(
-            $this->generatedKey ?? throw new \LogicException('API key notification requested before a key was generated.'),
+        session()->flash(
+            'api_key_plain_text',
+            $this->generatedKey ?? throw new \LogicException('API key reveal requested before a key was generated.'),
         );
+        session()->flash('api_key_name', $this->record?->name);
 
         $this->generatedKey = null;
+    }
 
-        return $notification;
+    protected function getCreatedNotification(): ?Notification
+    {
+        return null;
+    }
+
+    protected function getRedirectUrl(): string
+    {
+        return static::getResource()::getUrl('index');
     }
 }
