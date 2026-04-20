@@ -261,15 +261,28 @@ class PackageSyncService
     private function mergeHeaders(array $defaultHeaders, array $checkHeaders): array
     {
         $headers = $defaultHeaders;
+        $headerNames = [];
+
+        foreach (array_keys($headers) as $existingName) {
+            $headerNames[strtolower((string) $existingName)] = $existingName;
+        }
 
         foreach ($checkHeaders as $name => $value) {
+            $normalizedName = strtolower((string) $name);
+            $existingName = $headerNames[$normalizedName] ?? null;
+
+            if ($existingName !== null) {
+                unset($headers[$existingName]);
+            }
+
             if ($value === null) {
-                unset($headers[$name]);
+                unset($headerNames[$normalizedName]);
 
                 continue;
             }
 
             $headers[$name] = $value;
+            $headerNames[$normalizedName] = $name;
         }
 
         return array_filter($headers, fn ($value): bool => $value !== null);

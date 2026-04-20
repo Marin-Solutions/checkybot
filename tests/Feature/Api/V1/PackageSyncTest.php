@@ -319,7 +319,7 @@ test('package sync lets checks suppress default headers with null values', funct
             'checks' => [
                 [
                     'headers' => [
-                        'Authorization' => null,
+                        'authorization' => null,
                         'X-Api-Key' => 'secret-package-token',
                     ],
                 ],
