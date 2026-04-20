@@ -161,7 +161,7 @@ class CheckybotControlService
             'last_synced_at' => now(),
         ])->save();
 
-        return $this->checkPayload($check->fresh(['assertions']));
+        return $this->checkPayload($check->fresh(['assertions', 'latestResult']));
     }
 
     /**
