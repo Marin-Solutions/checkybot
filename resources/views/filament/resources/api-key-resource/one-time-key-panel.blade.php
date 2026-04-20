@@ -1,5 +1,5 @@
 @php
-    $fieldId = 'api-key-' . md5((string) $plainTextKey);
+    $fieldId = 'api-key-field-' . \Illuminate\Support\Str::random(8);
 @endphp
 
 <div
@@ -38,10 +38,15 @@
                     type="button"
                     class="inline-flex items-center justify-center rounded-md bg-success-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-success-500 focus:outline-none focus:ring-2 focus:ring-success-500 focus:ring-offset-2 dark:focus:ring-offset-gray-950"
                     x-on:click="
-                        navigator.clipboard.writeText(key);
-                        $refs.apiKeyInput.select();
-                        copied = true;
-                        setTimeout(() => copied = false, 1600);
+                        navigator.clipboard.writeText(key)
+                            .then(() => {
+                                $refs.apiKeyInput.select();
+                                copied = true;
+                                setTimeout(() => copied = false, 1600);
+                            })
+                            .catch(() => {
+                                $refs.apiKeyInput.select();
+                            });
                     "
                 >
                     <span x-show="! copied">Copy key</span>

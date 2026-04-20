@@ -4,7 +4,6 @@ namespace App\Filament\Resources\ApiKeyResource\Pages;
 
 use App\Filament\Resources\ApiKeyResource;
 use App\Models\ApiKey;
-use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateApiKey extends CreateRecord
@@ -33,7 +32,7 @@ class CreateApiKey extends CreateRecord
         $this->generatedKey = null;
     }
 
-    protected function getCreatedNotification(): ?Notification
+    protected function getCreatedNotification(): ?\Filament\Notifications\Notification
     {
         return null;
     }
