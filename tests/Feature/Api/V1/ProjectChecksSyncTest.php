@@ -395,6 +395,32 @@ test('syncs multiple check types atomically', function () {
     $this->assertDatabaseHas('monitor_apis', ['package_name' => 'api-1']);
 });
 
+test('syncs uptime and ssl package checks with the same url', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            ['name' => 'homepage-uptime', 'url' => 'https://shared-example.com', 'interval' => '5m'],
+        ],
+        'ssl_checks' => [
+            ['name' => 'homepage-ssl', 'url' => 'https://shared-example.com', 'interval' => '1d'],
+        ],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'homepage-uptime',
+        'url' => 'https://shared-example.com',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'homepage-ssl',
+        'url' => 'https://shared-example.com',
+        'uptime_check' => false,
+        'ssl_check' => true,
+    ]);
+});
+
 test('replaces assertions on api check update', function () {
     $api = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
