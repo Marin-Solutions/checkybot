@@ -1,67 +1,290 @@
 <x-filament-panels::page>
-    <div class="space-y-6">
-        <section class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-            <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div class="max-w-3xl space-y-2">
-                    <p class="text-sm font-semibold uppercase tracking-wide text-primary-600 dark:text-primary-400">
-                        MCP and API setup
-                    </p>
-                    <h2 class="text-2xl font-semibold tracking-tight text-gray-950 dark:text-white">
-                        Connect Checkybot to agents and automation.
-                    </h2>
-                    <p class="text-sm leading-6 text-gray-600 dark:text-gray-300">
-                        Use one API key for the REST control API and the MCP server. Keys are shown only once when created, then stored as a hash.
-                    </p>
-                </div>
+    <style>
+        .cb-docs {
+            --cb-docs-panel: rgb(255 255 255);
+            --cb-docs-panel-soft: rgb(249 250 251);
+            --cb-docs-border: rgb(229 231 235);
+            --cb-docs-text: rgb(17 24 39);
+            --cb-docs-heading: rgb(3 7 18);
+            --cb-docs-muted: rgb(75 85 99);
+            --cb-docs-code: rgb(29 78 216);
+            --cb-docs-subtle: rgb(239 246 255);
+            --cb-docs-kicker: rgb(29 78 216);
+            display: grid;
+            gap: 1rem;
+            color: var(--cb-docs-text);
+        }
 
-                <div class="flex flex-wrap gap-2">
-                    <a
-                        href="{{ $apiKeysUrl }}"
-                        class="inline-flex items-center justify-center rounded-md bg-primary-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
-                    >
-                        Create API key
-                    </a>
-                    <a
-                        href="{{ $swaggerUrl }}"
-                        target="_blank"
-                        rel="noreferrer"
-                        class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800 dark:focus:ring-offset-gray-900"
-                    >
-                        Open Swagger
-                    </a>
-                </div>
+        .dark .cb-docs {
+            --cb-docs-panel: rgba(15, 23, 42, .68);
+            --cb-docs-panel-soft: rgba(2, 6, 23, .52);
+            --cb-docs-border: rgba(148, 163, 184, .22);
+            --cb-docs-text: rgb(229 231 235);
+            --cb-docs-heading: rgb(249 250 251);
+            --cb-docs-muted: rgb(209 213 219);
+            --cb-docs-code: rgb(191 219 254);
+            --cb-docs-subtle: rgba(37, 99, 235, .16);
+            --cb-docs-kicker: rgb(96 165 250);
+        }
+
+        .cb-docs * {
+            box-sizing: border-box;
+        }
+
+        .cb-docs a {
+            text-decoration: none;
+        }
+
+        .cb-docs-hero,
+        .cb-docs-panel,
+        .cb-docs-step {
+            border: 1px solid var(--cb-docs-border);
+            border-radius: .75rem;
+            background: var(--cb-docs-panel);
+            box-shadow: 0 1px 2px rgba(15, 23, 42, .06);
+        }
+
+        .cb-docs-hero {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1.25rem;
+            padding: 1.25rem;
+        }
+
+        .cb-docs-kicker {
+            margin: 0 0 .35rem;
+            color: var(--cb-docs-kicker);
+            font-size: .8125rem;
+            font-weight: 700;
+        }
+
+        .cb-docs h2,
+        .cb-docs h3 {
+            margin: 0;
+            color: var(--cb-docs-heading);
+            line-height: 1.25;
+        }
+
+        .cb-docs h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        .cb-docs h3 {
+            font-size: 1rem;
+            font-weight: 700;
+        }
+
+        .cb-docs p {
+            margin: .5rem 0 0;
+            color: var(--cb-docs-muted);
+            font-size: .875rem;
+            line-height: 1.55;
+        }
+
+        .cb-docs-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .5rem;
+        }
+
+        .cb-docs-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 2.25rem;
+            border-radius: .5rem;
+            padding: .5rem .75rem;
+            font-size: .875rem;
+            font-weight: 700;
+            transition: background-color .15s ease, border-color .15s ease;
+        }
+
+        .cb-docs-button-primary {
+            border: 1px solid rgb(37 99 235);
+            background: rgb(37 99 235);
+            color: white;
+        }
+
+        .cb-docs-button-primary:hover {
+            background: rgb(59 130 246);
+        }
+
+        .cb-docs-button-secondary {
+            border: 1px solid var(--cb-docs-border);
+            background: var(--cb-docs-panel-soft);
+            color: var(--cb-docs-heading);
+        }
+
+        .cb-docs-button-secondary:hover {
+            background: var(--cb-docs-subtle);
+        }
+
+        .cb-docs-steps {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 1rem;
+        }
+
+        .cb-docs-step {
+            min-height: 9.5rem;
+            padding: 1rem;
+        }
+
+        .cb-docs-step-number {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 2rem;
+            height: 2rem;
+            border-radius: .5rem;
+            background: var(--cb-docs-subtle);
+            color: rgb(37 99 235);
+            font-size: .875rem;
+            font-weight: 800;
+        }
+
+        .cb-docs-step h3 {
+            margin-top: .875rem;
+        }
+
+        .cb-docs-code {
+            display: inline;
+            overflow-wrap: anywhere;
+            color: var(--cb-docs-code);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: .8125rem;
+        }
+
+        .cb-docs-panel {
+            overflow: hidden;
+        }
+
+        .cb-docs-tabs {
+            display: flex;
+            flex-wrap: wrap;
+            gap: .5rem;
+            border-bottom: 1px solid var(--cb-docs-border);
+            padding: 1rem;
+        }
+
+        .cb-docs-tab {
+            border: 1px solid var(--cb-docs-border);
+            border-radius: .5rem;
+            background: var(--cb-docs-panel-soft);
+            color: var(--cb-docs-muted);
+            cursor: pointer;
+            font-size: .875rem;
+            font-weight: 700;
+            padding: .5rem .75rem;
+        }
+
+        .cb-docs-tab-active {
+            border-color: rgb(37 99 235);
+            background: rgb(37 99 235);
+            color: white;
+        }
+
+        .cb-docs-panel-body {
+            padding: 1rem;
+        }
+
+        .cb-docs-section-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .cb-docs-pre {
+            max-width: 100%;
+            overflow-x: auto;
+            border-radius: .625rem;
+            background: rgb(2 6 23);
+            color: rgb(226 232 240);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: .8125rem;
+            line-height: 1.55;
+            margin: 0;
+            padding: 1rem;
+        }
+
+        .cb-docs-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .625rem;
+        }
+
+        .cb-docs-tool-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: .625rem;
+        }
+
+        .cb-docs-chip {
+            overflow-wrap: anywhere;
+            border: 1px solid var(--cb-docs-border);
+            border-radius: .5rem;
+            background: var(--cb-docs-panel-soft);
+            color: var(--cb-docs-heading);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+            font-size: .8125rem;
+            padding: .625rem .75rem;
+        }
+
+        [x-cloak] {
+            display: none !important;
+        }
+
+        @media (max-width: 900px) {
+            .cb-docs-hero,
+            .cb-docs-section-header {
+                flex-direction: column;
+            }
+
+            .cb-docs-steps,
+            .cb-docs-grid,
+            .cb-docs-tool-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+
+    <div class="cb-docs">
+        <section class="cb-docs-hero">
+            <div>
+                <p class="cb-docs-kicker">MCP and API setup</p>
+                <h2>Connect Checkybot to agents and automation.</h2>
+                <p>
+                    Use one API key for the REST control API and the MCP server. Keys are shown only once when created, then stored as a hash.
+                </p>
+            </div>
+
+            <div class="cb-docs-actions">
+                <a href="{{ $apiKeysUrl }}" class="cb-docs-button cb-docs-button-primary">Create API key</a>
+                <a href="{{ $swaggerUrl }}" target="_blank" rel="noreferrer" class="cb-docs-button cb-docs-button-secondary">Open Swagger</a>
             </div>
         </section>
 
-        <section class="grid gap-4 lg:grid-cols-3">
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300">
-                    <x-heroicon-o-key class="h-5 w-5" />
-                </div>
-                <h3 class="mt-4 text-base font-semibold text-gray-950 dark:text-white">1. Create a key</h3>
-                <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                    Go to Developer, API Keys, create a key, and copy the plaintext value immediately.
-                </p>
+        <section class="cb-docs-steps">
+            <div class="cb-docs-step">
+                <span class="cb-docs-step-number">1</span>
+                <h3>Create a key</h3>
+                <p>Go to Developer, API Keys, create a key, and copy the plaintext value immediately.</p>
             </div>
 
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300">
-                    <x-heroicon-o-server-stack class="h-5 w-5" />
-                </div>
-                <h3 class="mt-4 text-base font-semibold text-gray-950 dark:text-white">2. Add MCP server</h3>
-                <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                    Point your MCP client at <span class="font-mono text-xs">{{ $mcpEndpoint }}</span> with the bearer token header.
-                </p>
+            <div class="cb-docs-step">
+                <span class="cb-docs-step-number">2</span>
+                <h3>Add MCP server</h3>
+                <p>Point your MCP client at <span class="cb-docs-code">{{ $mcpEndpoint }}</span> with the bearer token header.</p>
             </div>
 
-            <div class="rounded-lg border border-gray-200 bg-white p-5 shadow-sm dark:border-gray-800 dark:bg-gray-900">
-                <div class="flex h-9 w-9 items-center justify-center rounded-md bg-primary-50 text-primary-700 dark:bg-primary-950 dark:text-primary-300">
-                    <x-heroicon-o-command-line class="h-5 w-5" />
-                </div>
-                <h3 class="mt-4 text-base font-semibold text-gray-950 dark:text-white">3. Call tools or REST</h3>
-                <p class="mt-2 text-sm leading-6 text-gray-600 dark:text-gray-300">
-                    Use MCP tools for agent workflows, or call the REST endpoints directly under <span class="font-mono text-xs">{{ $restBaseUrl }}</span>.
-                </p>
+            <div class="cb-docs-step">
+                <span class="cb-docs-step-number">3</span>
+                <h3>Call tools or REST</h3>
+                <p>Use MCP tools for agent workflows, or call REST endpoints under <span class="cb-docs-code">{{ $restBaseUrl }}</span>.</p>
             </div>
         </section>
 
@@ -76,75 +299,62 @@
                     });
                 }
             }"
-            class="rounded-lg border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900"
+            class="cb-docs-panel"
         >
-            <div class="border-b border-gray-200 p-4 dark:border-gray-800">
-                <div class="flex flex-wrap gap-2">
-                    <button
-                        type="button"
-                        x-on:click="tab = 'mcp'"
-                        x-bind:class="tab === 'mcp' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'"
-                        class="rounded-md px-3 py-2 text-sm font-semibold transition"
-                    >
-                        MCP install
-                    </button>
-                    <button
-                        type="button"
-                        x-on:click="tab = 'rest'"
-                        x-bind:class="tab === 'rest' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'"
-                        class="rounded-md px-3 py-2 text-sm font-semibold transition"
-                    >
-                        REST API
-                    </button>
-                    <button
-                        type="button"
-                        x-on:click="tab = 'tools'"
-                        x-bind:class="tab === 'tools' ? 'bg-primary-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700'"
-                        class="rounded-md px-3 py-2 text-sm font-semibold transition"
-                    >
-                        MCP tools
-                    </button>
-                </div>
+            <div class="cb-docs-tabs">
+                <button
+                    type="button"
+                    x-on:click="tab = 'mcp'"
+                    x-bind:class="tab === 'mcp' ? 'cb-docs-tab cb-docs-tab-active' : 'cb-docs-tab'"
+                >
+                    MCP install
+                </button>
+                <button
+                    type="button"
+                    x-on:click="tab = 'rest'"
+                    x-bind:class="tab === 'rest' ? 'cb-docs-tab cb-docs-tab-active' : 'cb-docs-tab'"
+                >
+                    REST API
+                </button>
+                <button
+                    type="button"
+                    x-on:click="tab = 'tools'"
+                    x-bind:class="tab === 'tools' ? 'cb-docs-tab cb-docs-tab-active' : 'cb-docs-tab'"
+                >
+                    MCP tools
+                </button>
             </div>
 
-            <div class="p-5">
-                <div x-show="tab === 'mcp'" class="space-y-4">
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div class="cb-docs-panel-body">
+                <div x-show="tab === 'mcp'">
+                    <div class="cb-docs-section-header">
                         <div>
-                            <h3 class="text-base font-semibold text-gray-950 dark:text-white">MCP configuration</h3>
-                            <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Set <span class="font-mono text-xs">CHECKYBOT_API_KEY</span> in your client environment.</p>
+                            <h3>MCP configuration</h3>
+                            <p>Set <span class="cb-docs-code">CHECKYBOT_API_KEY</span> in your client environment.</p>
                         </div>
-                        <button
-                            type="button"
-                            x-on:click="copy(@js($mcpConfig), 'mcp')"
-                            class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
-                        >
+                        <button type="button" x-on:click="copy(@js($mcpConfig), 'mcp')" class="cb-docs-button cb-docs-button-secondary">
                             <span x-show="copied !== 'mcp'">Copy config</span>
                             <span x-cloak x-show="copied === 'mcp'">Copied</span>
                         </button>
                     </div>
-                    <pre class="overflow-x-auto rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100"><code>{{ $mcpConfig }}</code></pre>
+                    <pre class="cb-docs-pre"><code>{{ $mcpConfig }}</code></pre>
                 </div>
 
-                <div x-cloak x-show="tab === 'rest'" class="space-y-4">
-                    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div x-cloak x-show="tab === 'rest'">
+                    <div class="cb-docs-section-header">
                         <div>
-                            <h3 class="text-base font-semibold text-gray-950 dark:text-white">REST control API</h3>
-                            <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Every endpoint uses <span class="font-mono text-xs">Authorization: Bearer &lt;CHECKYBOT_API_KEY&gt;</span>.</p>
+                            <h3>REST control API</h3>
+                            <p>Every endpoint uses <span class="cb-docs-code">Authorization: Bearer &lt;CHECKYBOT_API_KEY&gt;</span>.</p>
                         </div>
-                        <button
-                            type="button"
-                            x-on:click="copy(@js($curlExample), 'curl')"
-                            class="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm transition hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100 dark:hover:bg-gray-800"
-                        >
+                        <button type="button" x-on:click="copy(@js($curlExample), 'curl')" class="cb-docs-button cb-docs-button-secondary">
                             <span x-show="copied !== 'curl'">Copy curl</span>
                             <span x-cloak x-show="copied === 'curl'">Copied</span>
                         </button>
                     </div>
 
-                    <pre class="overflow-x-auto rounded-lg bg-gray-950 p-4 text-sm leading-6 text-gray-100"><code>{{ $curlExample }}</code></pre>
+                    <pre class="cb-docs-pre"><code>{{ $curlExample }}</code></pre>
 
-                    <div class="grid gap-3 md:grid-cols-2">
+                    <div class="cb-docs-grid" style="margin-top: 1rem;">
                         @foreach ([
                             'GET /control/me',
                             'GET /control/projects',
@@ -157,20 +367,20 @@
                             'GET /control/runs?project={project}&limit=25',
                             'GET /control/failures?project={project}&limit=25',
                         ] as $endpoint)
-                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200">
-                                {{ $endpoint }}
-                            </div>
+                            <div class="cb-docs-chip">{{ $endpoint }}</div>
                         @endforeach
                     </div>
                 </div>
 
-                <div x-cloak x-show="tab === 'tools'" class="space-y-4">
-                    <div>
-                        <h3 class="text-base font-semibold text-gray-950 dark:text-white">Available MCP tools</h3>
-                        <p class="mt-1 text-sm text-gray-600 dark:text-gray-300">Use these names in <span class="font-mono text-xs">tools/call</span> requests.</p>
+                <div x-cloak x-show="tab === 'tools'">
+                    <div class="cb-docs-section-header">
+                        <div>
+                            <h3>Available MCP tools</h3>
+                            <p>Use these names in <span class="cb-docs-code">tools/call</span> requests.</p>
+                        </div>
                     </div>
 
-                    <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                    <div class="cb-docs-tool-grid">
                         @foreach ([
                             'me',
                             'list_projects',
@@ -181,9 +391,7 @@
                             'trigger_run',
                             'latest_failures',
                         ] as $tool)
-                            <div class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 font-mono text-xs text-gray-800 dark:border-gray-800 dark:bg-gray-950 dark:text-gray-200">
-                                {{ $tool }}
-                            </div>
+                            <div class="cb-docs-chip">{{ $tool }}</div>
                         @endforeach
                     </div>
                 </div>
