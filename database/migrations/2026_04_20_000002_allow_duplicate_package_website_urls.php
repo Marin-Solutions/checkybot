@@ -22,8 +22,8 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('websites', function (Blueprint $table) {
-            if ($this->indexExists('websites', 'websites_url_index')) {
-                $table->dropIndex('websites_url_index');
+            if (! $this->indexExists('websites', 'websites_url_index')) {
+                $table->index('url');
             }
 
             if (! $this->indexExists('websites', 'websites_url_unique')) {
