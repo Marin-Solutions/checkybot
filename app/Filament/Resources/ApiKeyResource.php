@@ -17,7 +17,11 @@ class ApiKeyResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-key';
 
-    protected static \UnitEnum|string|null $navigationGroup = 'Settings';
+    protected static \UnitEnum|string|null $navigationGroup = 'Developer';
+
+    protected static ?string $navigationLabel = 'API Keys';
+
+    protected static ?int $navigationSort = 2;
 
     public static function canViewAny(): bool
     {
