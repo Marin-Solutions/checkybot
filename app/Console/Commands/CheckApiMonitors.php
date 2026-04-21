@@ -4,8 +4,8 @@ namespace App\Console\Commands;
 
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Services\ApiMonitorExecutionService;
 use App\Services\HealthEventNotificationService;
-use App\Services\PackageHealthStatusService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Sentry\Laravel\Facade as Sentry;
@@ -20,46 +20,31 @@ class CheckApiMonitors extends Command
     {
         $this->info('Starting API monitor checks...');
         $count = 0;
-        $statusService = app(PackageHealthStatusService::class);
+        $executionService = app(ApiMonitorExecutionService::class);
         $notificationService = app(HealthEventNotificationService::class);
 
-        MonitorApis::query()->chunkById(100, function ($monitors) use (&$count, $statusService, $notificationService): void {
+        MonitorApis::query()->chunkById(100, function ($monitors) use (&$count, $executionService, $notificationService): void {
             foreach ($monitors as $monitor) {
                 try {
-                    $startTime = microtime(true);
-                    $result = MonitorApis::testApi([
-                        'id' => $monitor->id,
-                        'url' => $monitor->url,
-                        'data_path' => $monitor->data_path,
-                        'headers' => $monitor->headers,
-                        'title' => $monitor->title,
-                    ]);
+                    $execution = $executionService->execute($monitor);
+                    /** @var MonitorApiResult $result */
+                    $result = $execution['result'];
+                    $status = $execution['status'];
+                    $summary = $execution['summary'];
+                    $previousStatus = $execution['previous_status'];
 
-                    if (! isset($result['code'])) {
-                        Sentry::configureScope(function (\Sentry\State\Scope $scope) use ($monitor, $result): void {
+                    if (! isset($result->http_code)) {
+                        Sentry::configureScope(function (\Sentry\State\Scope $scope) use ($monitor, $execution): void {
                             $scope->setContext('monitor', [
                                 'monitor_id' => $monitor->id,
                                 'monitor_title' => $monitor->title,
                                 'url' => $monitor->url,
                                 'data_path' => $monitor->data_path,
-                                'result' => $result,
+                                'result' => $execution,
                             ]);
                         });
                         throw new \Exception('Invalid API test result format - missing code');
                     }
-
-                    $status = $statusService->apiStatusFromResult($result);
-                    $summary = $statusService->summaryForApi($result);
-                    $previousStatus = $monitor->current_status;
-
-                    MonitorApiResult::recordResult($monitor, $result, $startTime, $status, $summary);
-
-                    $monitor->forceFill([
-                        'current_status' => $status,
-                        'last_heartbeat_at' => now(),
-                        'stale_at' => null,
-                        'status_summary' => $summary,
-                    ])->save();
 
                     $count++;
 

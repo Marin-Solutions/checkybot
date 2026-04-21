@@ -31,6 +31,8 @@ class CheckybotMcpController extends Controller
         try {
             $result = match ($payload['method']) {
                 'initialize' => $this->initializeResult(),
+                'notifications/initialized' => ['ok' => true],
+                'ping' => ['ok' => true],
                 'tools/list' => ['tools' => $this->tools()],
                 'tools/call' => $this->callTool($request, $payload['params'] ?? []),
                 default => $this->jsonRpcError($payload['id'] ?? null, -32601, 'Method not found.'),
@@ -95,23 +97,31 @@ class CheckybotMcpController extends Controller
         $apiKey = $request->attributes->get('checkybot_api_key');
 
         $result = match ($call['name']) {
+            'me',
             'checkybot_me' => $this->control->me($user, $apiKey?->name),
+            'list_projects',
             'checkybot_list_projects' => $this->control->listProjects($user),
+            'get_project',
             'checkybot_get_project' => $this->control->getProject($user, $this->requiredString($arguments, 'project')),
+            'list_checks',
             'checkybot_list_checks' => $this->control->listChecks($user, $this->requiredString($arguments, 'project')),
+            'upsert_check',
             'checkybot_upsert_check' => $this->control->upsertCheck(
                 $user,
                 $this->requiredString($arguments, 'project'),
                 $this->validateCheckArguments($arguments),
             ),
+            'disable_check',
             'checkybot_disable_check' => $this->control->disableCheck(
                 $user,
                 $this->requiredString($arguments, 'project'),
                 $this->requiredString($arguments, 'check'),
             ),
+            'trigger_run',
             'checkybot_trigger_run' => isset($arguments['check'])
                 ? $this->control->triggerCheckRun($user, $this->requiredString($arguments, 'project'), $this->requiredString($arguments, 'check'))
                 : $this->control->triggerProjectRun($user, $this->requiredString($arguments, 'project')),
+            'latest_failures',
             'checkybot_latest_failures' => $this->latestFailures($request, $arguments),
             default => throw ValidationException::withMessages(['name' => ['Unknown Checkybot MCP tool.']]),
         };
@@ -196,15 +206,15 @@ class CheckybotMcpController extends Controller
     private function tools(): array
     {
         return [
-            $this->tool('checkybot_me', 'Verify Checkybot API authentication and app version.', []),
-            $this->tool('checkybot_list_projects', 'List Checkybot projects visible to the API key.', []),
-            $this->tool('checkybot_get_project', 'Get project detail, check counts, and latest failure.', [
+            $this->tool('me', 'Verify Checkybot API authentication and app version.', []),
+            $this->tool('list_projects', 'List Checkybot projects visible to the API key.', []),
+            $this->tool('get_project', 'Get project detail, check counts, and latest failure.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('checkybot_list_checks', 'List package-managed API checks for a project.', [
+            $this->tool('list_checks', 'List package-managed API checks for a project.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('checkybot_upsert_check', 'Create or update a package-managed API check by stable key.', [
+            $this->tool('upsert_check', 'Create or update a package-managed API check by stable key.', [
                 'project' => ['type' => 'string'],
                 'key' => ['type' => 'string'],
                 'name' => ['type' => 'string'],
@@ -217,15 +227,15 @@ class CheckybotMcpController extends Controller
                 'enabled' => ['type' => 'boolean'],
                 'assertions' => ['type' => 'array', 'items' => ['type' => 'object']],
             ], ['project', 'key', 'name', 'url']),
-            $this->tool('checkybot_disable_check', 'Disable a check without deleting its definition or history.', [
+            $this->tool('disable_check', 'Disable a check without deleting its definition or history.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string'],
             ]),
-            $this->tool('checkybot_trigger_run', 'Run enabled checks for a project or a single check.', [
+            $this->tool('trigger_run', 'Run enabled checks for a project or a single check.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string', 'description' => 'Optional check key.'],
             ], ['project']),
-            $this->tool('checkybot_latest_failures', 'List latest warning or danger check results.', [
+            $this->tool('latest_failures', 'List latest warning or danger check results.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
             ]),

@@ -5,6 +5,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 
@@ -39,7 +40,8 @@ test('control api requires a valid api key and exposes me details', function () 
         ->assertOk()
         ->assertJsonPath('data.authenticated', true)
         ->assertJsonPath('data.api_key.name', 'Mimir')
-        ->assertJsonPath('data.user.id', $this->user->id);
+        ->assertJsonPath('data.user.id', $this->user->id)
+        ->assertJsonStructure(['data' => ['server_time']]);
 });
 
 test('control api lists projects and package managed checks with compact status', function () {
@@ -326,6 +328,39 @@ test('control api triggers all enabled project checks synchronously', function (
         ->assertJsonPath('data.results.0.result.status', 'healthy');
 });
 
+test('control api trigger runs respect stored method and expected status', function () {
+    Http::fake(function (HttpRequest $request) {
+        expect($request->method())->toBe('POST');
+
+        return Http::response([
+            'data' => ['status' => 'created'],
+        ], 201);
+    });
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'create-job',
+        'title' => 'Create job',
+        'url' => 'https://api.scrappa.test/jobs',
+        'http_method' => 'POST',
+        'expected_status' => 201,
+        'data_path' => 'data.status',
+        'is_enabled' => true,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/create-job/runs')
+        ->assertOk()
+        ->assertJsonPath('data.check.key', 'create-job')
+        ->assertJsonPath('data.result.success', true)
+        ->assertJsonPath('data.result.http_code', 201)
+        ->assertJsonPath('data.result.status', 'healthy');
+
+    Http::assertSentCount(1);
+});
+
 test('control api rejects disabled check runs and relative urls without a project base url', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -363,7 +398,16 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
             'method' => 'tools/list',
         ])
         ->assertOk()
-        ->assertJsonPath('result.tools.0.name', 'checkybot_me');
+        ->assertJsonPath('result.tools.0.name', 'me');
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 99,
+            'method' => 'ping',
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.ok', true);
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -371,7 +415,7 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
             'id' => 2,
             'method' => 'tools/call',
             'params' => [
-                'name' => 'checkybot_upsert_check',
+                'name' => 'upsert_check',
                 'arguments' => [
                     'project' => 'scrappa',
                     'key' => 'search-health',

@@ -16,7 +16,7 @@ use Illuminate\Validation\ValidationException;
 class CheckybotControlService
 {
     public function __construct(
-        private readonly PackageHealthStatusService $statusService,
+        private readonly ApiMonitorExecutionService $executionService,
     ) {}
 
     /**
@@ -26,6 +26,7 @@ class CheckybotControlService
     {
         return [
             'authenticated' => true,
+            'server_time' => now()->toISOString(),
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
@@ -285,6 +286,7 @@ class CheckybotControlService
             'repository' => $project->repository,
             'checks_count' => (int) ($project->checks_count ?? $project->packageManagedApis()->count()),
             'enabled_checks_count' => (int) ($project->enabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', true)->count()),
+            'created_at' => $project->created_at?->toISOString(),
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
         ]);
@@ -335,6 +337,7 @@ class CheckybotControlService
             'enabled' => $check->is_enabled,
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
+            'last_synced_at' => $check->last_synced_at?->toISOString(),
             'last_heartbeat_at' => $check->last_heartbeat_at?->toISOString(),
             'stale_at' => $check->stale_at?->toISOString(),
             'headers' => $this->redactHeaders($check->headers),
@@ -387,6 +390,7 @@ class CheckybotControlService
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
             'failed_assertions' => $result->failed_assertions,
+            'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
     }
@@ -396,25 +400,9 @@ class CheckybotControlService
      */
     private function runCheck(MonitorApis $check): array
     {
-        $startTime = microtime(true);
-        $rawResult = MonitorApis::testApi([
-            'id' => $check->id,
-            'url' => $check->url,
-            'data_path' => $check->data_path,
-            'headers' => $check->headers,
-            'title' => $check->title,
-        ]);
-
-        $status = $this->statusService->apiStatusFromResult($rawResult);
-        $summary = $this->statusService->summaryForApi($rawResult);
-        $result = MonitorApiResult::recordResult($check, $rawResult, $startTime, $status, $summary);
-
-        $check->forceFill([
-            'current_status' => $status,
-            'last_heartbeat_at' => now(),
-            'stale_at' => null,
-            'status_summary' => $summary,
-        ])->save();
+        $execution = $this->executionService->execute($check);
+        /** @var MonitorApiResult $result */
+        $result = $execution['result'];
 
         return [
             'check' => [

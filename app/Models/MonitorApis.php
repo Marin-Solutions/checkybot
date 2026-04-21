@@ -94,9 +94,12 @@ class MonitorApis extends Model
     {
         $url = $data['url'];
         $startTime = microtime(true);
+        $method = strtoupper((string) ($data['method'] ?? 'GET'));
+        $expectedStatus = isset($data['expected_status']) ? (int) $data['expected_status'] : null;
 
         $responseData = self::initializeResponseData();
-        $httpConfig = self::getHttpConfiguration();
+        $httpConfig = self::getHttpConfiguration($data);
+        $sanitizedUrl = self::sanitizeUrlForLogs($url);
 
         try {
             // Get headers from data or fetch from database
@@ -104,16 +107,21 @@ class MonitorApis extends Model
                 $data['headers'] ?? ($data['id'] ? self::find($data['id'])?->headers : [])
             );
             $httpClient = self::configureHttpClient($httpConfig, $headers);
-            $request = $httpClient->get($url);
+            $request = $httpClient->send($method, $url);
 
-            $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data);
+            $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data, $sanitizedUrl, $method);
+            $responseData = self::applyExpectedStatusAssertion($responseData, $expectedStatus);
 
-            if ($responseData['code'] !== 200) {
+            if (($responseData['code'] ?? 0) >= 400) {
+                return $responseData;
+            }
+
+            if (! self::requiresJsonAssertions($data)) {
                 return $responseData;
             }
 
             $responseData = self::parseJsonResponse($responseData);
-            if ($responseData['body'] === null && $responseData['code'] === 200) {
+            if ($responseData['body'] === null && ($responseData['code'] ?? 0) < 400) {
                 return $responseData;
             }
 
@@ -124,8 +132,9 @@ class MonitorApis extends Model
             Log::error('Connection timeout while testing API', [
                 'monitor_id' => $data['id'] ?? null,
                 'monitor_title' => $data['title'] ?? null,
-                'url' => $url,
-                'error' => $exception->getMessage(),
+                'method' => $method,
+                'url' => $sanitizedUrl,
+                'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
                 'timeout' => $httpConfig['timeout'],
                 'retries' => $httpConfig['retries'],
             ]);
@@ -139,8 +148,9 @@ class MonitorApis extends Model
             Log::error('Request error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
                 'monitor_title' => $data['title'] ?? null,
-                'url' => $url,
-                'error' => $exception->getMessage(),
+                'method' => $method,
+                'url' => $sanitizedUrl,
+                'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
             ]);
 
             if ($exception->hasResponse()) {
@@ -158,9 +168,9 @@ class MonitorApis extends Model
             Log::error('Unexpected error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
                 'monitor_title' => $data['title'] ?? null,
-                'url' => $url,
-                'error' => $exception->getMessage(),
-                'trace' => $exception->getTraceAsString(),
+                'method' => $method,
+                'url' => $sanitizedUrl,
+                'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
             ]);
 
             $responseData['code'] = 0;
@@ -181,10 +191,12 @@ class MonitorApis extends Model
         ];
     }
 
-    private static function getHttpConfiguration(): array
+    private static function getHttpConfiguration(array $data): array
     {
+        $timeout = (int) ($data['timeout_seconds'] ?? config('monitor.api_timeout', 10));
+
         return [
-            'timeout' => config('monitor.api_timeout', 10),
+            'timeout' => $timeout > 0 ? $timeout : config('monitor.api_timeout', 10),
             'retries' => config('monitor.api_retries', 3),
             'retryDelay' => config('monitor.api_retry_delay', 1000),
         ];
@@ -260,14 +272,15 @@ class MonitorApis extends Model
         return $client;
     }
 
-    private static function processSuccessfulResponse($request, array $responseData, float $startTime, array $data): array
+    private static function processSuccessfulResponse($request, array $responseData, float $startTime, array $data, string $sanitizedUrl, string $method): array
     {
         $responseData['code'] = $request->status();
         $responseData['body'] = $request->body();
 
         Log::debug('API Monitor response received', [
             'monitor_id' => $data['id'] ?? null,
-            'url' => $data['url'],
+            'method' => $method,
+            'url' => $sanitizedUrl,
             'status' => $request->status(),
             'response_time' => round((microtime(true) - $startTime) * 1000, 2).'ms',
         ]);
@@ -309,6 +322,87 @@ class MonitorApis extends Model
         }
 
         return $responseData;
+    }
+
+    private static function requiresJsonAssertions(array $data): bool
+    {
+        if (! empty($data['data_path'])) {
+            return true;
+        }
+
+        if (isset($data['id'])) {
+            return self::with('assertions')
+                ->find($data['id'])
+                ?->assertions
+                ->isNotEmpty() ?? false;
+        }
+
+        return false;
+    }
+
+    private static function applyExpectedStatusAssertion(array $responseData, ?int $expectedStatus): array
+    {
+        if ($expectedStatus === null) {
+            return $responseData;
+        }
+
+        if (($responseData['code'] ?? null) === $expectedStatus) {
+            return $responseData;
+        }
+
+        $responseData['assertions'][] = [
+            'path' => '_http_status',
+            'type' => 'status_code',
+            'passed' => false,
+            'message' => "Expected HTTP status {$expectedStatus}, got {$responseData['code']}.",
+        ];
+
+        return $responseData;
+    }
+
+    private static function sanitizeUrlForLogs(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if ($parts === false || ! isset($parts['query'])) {
+            return $url;
+        }
+
+        parse_str($parts['query'], $query);
+
+        $sanitized = collect($query)
+            ->mapWithKeys(fn (mixed $value, string $key): array => [
+                $key => self::isSensitiveField($key) ? '[redacted]' : $value,
+            ])
+            ->all();
+
+        $rebuiltQuery = http_build_query($sanitized);
+
+        return str_replace('?'.$parts['query'], $rebuiltQuery === '' ? '' : '?'.$rebuiltQuery, $url);
+    }
+
+    private static function sanitizeLogMessage(string $message, string $rawUrl): string
+    {
+        $sanitizedUrl = self::sanitizeUrlForLogs($rawUrl);
+
+        if ($sanitizedUrl === $rawUrl) {
+            return $message;
+        }
+
+        return str_replace($rawUrl, $sanitizedUrl, $message);
+    }
+
+    private static function isSensitiveField(string $name): bool
+    {
+        $normalized = strtolower($name);
+
+        return $normalized === 'authorization'
+            || str_contains($normalized, 'token')
+            || str_contains($normalized, 'secret')
+            || str_contains($normalized, 'api-key')
+            || str_contains($normalized, 'apikey')
+            || str_contains($normalized, 'auth')
+            || str_contains($normalized, 'signature');
     }
 
     private static function runDataPathAssertion(array $data, array $responseData): array
