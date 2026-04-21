@@ -90,7 +90,7 @@ class CheckSyncService
                 'name' => $check['name'],
                 'url' => $check['url'],
                 'description' => '',
-                'uptime_check' => true,
+                'uptime_check' => false,
                 'ssl_check' => true,
                 'uptime_interval' => IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
