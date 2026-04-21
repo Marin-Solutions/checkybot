@@ -3,7 +3,7 @@
 namespace App\Filament\Infolists\Actions;
 
 use Closure;
-use Filament\Infolists\Components\Actions\Action;
+use Filament\Actions\Action;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Js;
 
