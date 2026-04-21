@@ -110,3 +110,14 @@ test('monitor api has data path for response extraction', function () {
 
     expect($monitor->data_path)->toBe('data.results.items');
 });
+
+test('monitor api redacts sensitive query parameters in log-safe urls', function () {
+    $method = new ReflectionMethod(MonitorApis::class, 'sanitizeUrlForLogs');
+    $method->setAccessible(true);
+
+    $sanitized = $method->invoke(null, 'https://api.example.test/health?token=secret-token&plain=value');
+
+    expect($sanitized)
+        ->toBe('https://api.example.test/health?token=%5Bredacted%5D&plain=value')
+        ->not->toContain('secret-token');
+});

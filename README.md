@@ -254,6 +254,15 @@ curl -X POST https://your-domain.com/api/v1/projects/{project}/checks/sync \
 
 Full API documentation is available at `/api/documentation` when running the application.
 
+### Mimir Integration
+
+The machine-facing Checkybot control surface for Mimir lives in [`docs/integrations/mimir-checkybot-control-surface.md`](docs/integrations/mimir-checkybot-control-surface.md). It documents:
+
+- the authenticated control endpoints under `/api/v1/control`
+- the MCP endpoint at `/api/v1/mcp`
+- example REST and MCP requests and responses
+- a ready-to-copy Mimir MCP server entry using a bearer API key
+
 ---
 
 ## Scheduling
