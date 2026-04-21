@@ -9,6 +9,7 @@
             --cb-docs-muted: rgb(75 85 99);
             --cb-docs-code: rgb(29 78 216);
             --cb-docs-subtle: rgb(239 246 255);
+            --cb-docs-kicker: rgb(29 78 216);
             display: grid;
             gap: 1rem;
             color: var(--cb-docs-text);
@@ -23,6 +24,7 @@
             --cb-docs-muted: rgb(209 213 219);
             --cb-docs-code: rgb(191 219 254);
             --cb-docs-subtle: rgba(37, 99, 235, .16);
+            --cb-docs-kicker: rgb(96 165 250);
         }
 
         .cb-docs * {
@@ -52,7 +54,7 @@
 
         .cb-docs-kicker {
             margin: 0 0 .35rem;
-            color: rgb(96 165 250);
+            color: var(--cb-docs-kicker);
             font-size: .8125rem;
             font-weight: 700;
         }
