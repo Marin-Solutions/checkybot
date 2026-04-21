@@ -6,6 +6,7 @@
                 --cb-docs-widget-muted: rgb(75 85 99);
                 --cb-docs-widget-border: rgb(229 231 235);
                 --cb-docs-widget-soft: rgb(249 250 251);
+                --cb-docs-widget-soft-hover: rgb(239 246 255);
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
@@ -17,6 +18,7 @@
                 --cb-docs-widget-muted: rgb(209 213 219);
                 --cb-docs-widget-border: rgba(148, 163, 184, .35);
                 --cb-docs-widget-soft: rgba(15, 23, 42, .76);
+                --cb-docs-widget-soft-hover: rgba(30, 41, 59, .88);
             }
 
             .cb-docs-widget h2 {
@@ -69,7 +71,7 @@
             }
 
             .cb-docs-widget-button-secondary:hover {
-                background: rgba(30, 41, 59, .88);
+                background: var(--cb-docs-widget-soft-hover);
             }
 
             @media (max-width: 900px) {
