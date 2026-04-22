@@ -563,7 +563,6 @@ class CheckybotApiDocumentation
      *                 oneOf={
      *
      *                     @OA\Schema(type="string"),
-     *                     @OA\Schema(type="integer"),
      *                     @OA\Schema(type="number")
      *                 },
      *                 example="request-1"

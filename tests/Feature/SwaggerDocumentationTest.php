@@ -30,7 +30,6 @@ test('swagger documentation can be generated', function () {
         ->and($documentation['paths']['/v1/control/failures']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
         ->and($documentation['paths']['/v1/mcp']['post']['requestBody']['content']['application/json']['schema']['properties']['id']['oneOf'])->sequence(
             fn ($schema) => $schema->type->toBe('string'),
-            fn ($schema) => $schema->type->toBe('integer'),
             fn ($schema) => $schema->type->toBe('number'),
         )
         ->and($requestSchema('/v1/package/register')['required'])->toBe(['name', 'environment', 'identity_endpoint'])
