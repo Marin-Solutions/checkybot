@@ -353,6 +353,40 @@ test('validates required fields', function () {
         ]);
 });
 
+test('validates check names do not contain slashes', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'homepage/uptime',
+                    'url' => 'https://example.com',
+                    'interval' => '5m',
+                ],
+            ],
+            'ssl_checks' => [
+                [
+                    'name' => 'homepage/ssl',
+                    'url' => 'https://example.com',
+                    'interval' => '1d',
+                ],
+            ],
+            'api_checks' => [
+                [
+                    'name' => 'api/health',
+                    'url' => 'https://api.example.com/health',
+                    'interval' => '5m',
+                ],
+            ],
+        ]);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'uptime_checks.0.name',
+            'ssl_checks.0.name',
+            'api_checks.0.name',
+        ]);
+});
+
 test('validates assertion types', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
