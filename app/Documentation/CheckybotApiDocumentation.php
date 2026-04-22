@@ -77,12 +77,12 @@ class CheckybotApiDocumentation
      *
      *                 @OA\Items(
      *                     type="object",
-     *                     required={"key", "type", "name", "url"},
+     *                     required={"key", "type", "name", "method", "url"},
      *
      *                     @OA\Property(property="key", type="string", example="health"),
      *                     @OA\Property(property="type", type="string", enum={"api", "ssl", "uptime", "links", "opengraph"}, example="api"),
      *                     @OA\Property(property="name", type="string", example="Health endpoint"),
-     *                     @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
+     *                     @OA\Property(property="method", type="string", enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
      *                     @OA\Property(property="url", type="string", example="/health"),
      *                     @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
      *                     @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
@@ -192,8 +192,8 @@ class CheckybotApiDocumentation
      *                             @OA\Property(property="comparison_operator", type="string", nullable=true, enum={"=", "!=", ">", ">=", "<", "<=", "contains"}),
      *                             @OA\Property(property="expected_value", type="string", nullable=true),
      *                             @OA\Property(property="regex_pattern", type="string", nullable=true),
-     *                             @OA\Property(property="sort_order", type="integer", nullable=true, minimum=1),
-     *                             @OA\Property(property="is_active", type="boolean", nullable=true)
+     *                             @OA\Property(property="sort_order", type="integer", minimum=1),
+     *                             @OA\Property(property="is_active", type="boolean")
      *                         )
      *                     )
      *                 )
