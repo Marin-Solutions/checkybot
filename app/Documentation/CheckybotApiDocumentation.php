@@ -16,7 +16,8 @@ class CheckybotApiDocumentation
      *
      *     @OA\RequestBody(required=true, @OA\JsonContent(type="object")),
      *
-     *     @OA\Response(response=200, description="Project registration completed"),
+     *     @OA\Response(response=200, description="Existing project registration updated"),
+     *     @OA\Response(response=201, description="New project registered"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=422, description="Validation error")
      * )
@@ -34,6 +35,7 @@ class CheckybotApiDocumentation
      *     @OA\RequestBody(required=true, @OA\JsonContent(type="object")),
      *
      *     @OA\Response(response=200, description="Package checks synced"),
+     *     @OA\Response(response=201, description="Package checks synced and project created"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=422, description="Validation error")
      * )

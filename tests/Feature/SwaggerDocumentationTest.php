@@ -20,5 +20,7 @@ test('swagger documentation can be generated', function () {
             '/v1/package/sync',
         )
         ->and($documentation['components']['securitySchemes'])->toHaveKey('checkybotApiKey')
+        ->and($documentation['paths']['/v1/package/register']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
+        ->and($documentation['paths']['/v1/package/sync']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
         ->and($documentation['paths'])->toHaveCount(19);
 });
