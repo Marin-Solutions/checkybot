@@ -325,14 +325,7 @@ class CheckybotImportService
 
     private function isSensitiveHeader(string $name): bool
     {
-        $normalized = strtolower($name);
-
-        return $normalized === 'authorization'
-            || str_contains($normalized, 'token')
-            || str_contains($normalized, 'secret')
-            || str_contains($normalized, 'api-key')
-            || str_contains($normalized, 'apikey')
-            || str_contains($normalized, 'auth-key');
+        return $this->isSensitiveCredentialField($name);
     }
 
     private function sanitizeUrl(?string $url): ?string
@@ -362,15 +355,23 @@ class CheckybotImportService
 
     private function isSensitiveUrlField(string $name): bool
     {
-        $normalized = strtolower($name);
+        return $this->isSensitiveCredentialField($name);
+    }
 
-        return $normalized === 'authorization'
-            || str_contains($normalized, 'token')
-            || str_contains($normalized, 'secret')
-            || str_contains($normalized, 'api-key')
-            || str_contains($normalized, 'apikey')
-            || str_contains($normalized, 'auth')
-            || str_contains($normalized, 'signature');
+    private function isSensitiveCredentialField(string $name): bool
+    {
+        $normalized = strtolower($name);
+        $compact = str_replace(['-', '_', ' '], '', $normalized);
+
+        return str_contains($compact, 'authorization')
+            || str_contains($compact, 'authkey')
+            || str_contains($compact, 'apikey')
+            || str_contains($compact, 'token')
+            || str_contains($compact, 'secret')
+            || str_contains($compact, 'signature')
+            || str_contains($compact, 'password')
+            || str_contains($compact, 'credential')
+            || str_contains($compact, 'cookie');
     }
 
     /**
@@ -379,7 +380,6 @@ class CheckybotImportService
     private function matchesCheckKey(array $check, string $checkKey): bool
     {
         return $check['id'] === $checkKey
-            || (string) $check['database_id'] === $checkKey
             || $check['key'] === $checkKey;
     }
 }

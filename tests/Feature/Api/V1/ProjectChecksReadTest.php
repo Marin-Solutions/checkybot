@@ -130,11 +130,13 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         'source' => 'package',
         'package_name' => 'api-health',
         'title' => 'API health',
-        'url' => 'https://checkybot.test/api/health?token=url-secret&plain=value',
+        'url' => 'https://checkybot.test/api/health?token=url-secret&api_key=query-secret&plain=value',
         'http_method' => 'GET',
         'headers' => [
             'Accept' => 'application/json',
             'Authorization' => 'Bearer secret-token',
+            'Cookie' => 'session=cookie-secret',
+            'Proxy-Authorization' => 'Basic proxy-secret',
             'X-Api-Key' => 'secret-api-key',
         ],
         'package_interval' => '5m',
@@ -161,11 +163,13 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->assertJsonPath('data.0.type', 'api')
         ->assertJsonPath('data.0.id', "api:{$api->id}")
         ->assertJsonPath('data.0.key', 'api-health')
-        ->assertJsonPath('data.0.target', 'https://checkybot.test/api/health?token=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.0.target', 'https://checkybot.test/api/health?token=%5Bredacted%5D&api_key=%5Bredacted%5D&plain=value')
         ->assertJsonPath('data.0.interval', '5m')
         ->assertJsonPath('data.0.enabled', true)
         ->assertJsonPath('data.0.status', 'danger')
         ->assertJsonPath('data.0.headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.0.headers.Cookie', '[redacted]')
+        ->assertJsonPath('data.0.headers.Proxy-Authorization', '[redacted]')
         ->assertJsonPath('data.0.headers.X-Api-Key', '[redacted]')
         ->assertJsonPath('data.0.assertions.0.data_path', 'status')
         ->assertJsonPath('data.0.latest_result.status', 'danger')
@@ -177,8 +181,11 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->assertJsonPath('data.2.latest_result.http_code', 200);
 
     expect(json_encode($response->json()))->not->toContain('secret-token')
+        ->and(json_encode($response->json()))->not->toContain('cookie-secret')
+        ->and(json_encode($response->json()))->not->toContain('proxy-secret')
         ->and(json_encode($response->json()))->not->toContain('secret-api-key')
-        ->and(json_encode($response->json()))->not->toContain('url-secret');
+        ->and(json_encode($response->json()))->not->toContain('url-secret')
+        ->and(json_encode($response->json()))->not->toContain('query-secret');
 });
 
 test('single check and recent result endpoints return investigation context', function () {
@@ -216,4 +223,57 @@ test('single check and recent result endpoints return investigation context', fu
         ->assertJsonPath('data.0.check_id', "api:{$api->id}")
         ->assertJsonPath('data.0.status', 'danger')
         ->assertJsonPath('data.0.summary', 'API returned HTTP 500.');
+});
+
+test('single check lookup does not match ambiguous bare database ids', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'homepage-uptime',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/{$website->id}")
+        ->assertNotFound();
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.key', 'api-health');
+});
+
+test('single check endpoints support url encoded package keys with dots and spaces', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api.health check',
+        'title' => 'API health check',
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+    ]);
+
+    $encodedKey = rawurlencode('api.health check');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/{$encodedKey}")
+        ->assertOk()
+        ->assertJsonPath('data.key', 'api.health check');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/{$encodedKey}/results")
+        ->assertOk()
+        ->assertJsonPath('data.0.check_id', "api:{$api->id}");
 });
