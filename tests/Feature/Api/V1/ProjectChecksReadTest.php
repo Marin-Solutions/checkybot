@@ -113,6 +113,24 @@ test('project read endpoint returns project metadata without secrets', function 
         'ssl_check' => false,
     ]);
 
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'status-page',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'disabled-site',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
     $response = $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}")
         ->assertOk()
@@ -120,9 +138,9 @@ test('project read endpoint returns project metadata without secrets', function 
         ->assertJsonPath('data.key', 'checkybot-app')
         ->assertJsonPath('data.name', 'Checkybot App')
         ->assertJsonPath('data.environment', 'production')
-        ->assertJsonPath('data.checks_count', 2)
+        ->assertJsonPath('data.checks_count', 4)
         ->assertJsonPath('data.api_checks_count', 1)
-        ->assertJsonPath('data.website_checks_count', 1);
+        ->assertJsonPath('data.website_checks_count', 3);
 
     expect(json_encode($response->json()))->not->toContain($this->project->token);
 });

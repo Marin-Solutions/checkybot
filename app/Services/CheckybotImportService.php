@@ -23,8 +23,8 @@ class CheckybotImportService
         $project = $this->findProject($user, $projectKey)
             ->loadCount([
                 'packageManagedApis as api_checks_count',
-                'packageManagedWebsites as website_checks_count',
             ]);
+        $websiteChecksCount = $this->countWebsiteChecks($project);
 
         return [
             'id' => $project->id,
@@ -36,9 +36,9 @@ class CheckybotImportService
             'identity_endpoint' => $project->identity_endpoint,
             'base_url' => $project->base_url,
             'repository' => $project->repository,
-            'checks_count' => (int) $project->api_checks_count + (int) $project->website_checks_count,
+            'checks_count' => (int) $project->api_checks_count + $websiteChecksCount,
             'api_checks_count' => (int) $project->api_checks_count,
-            'website_checks_count' => (int) $project->website_checks_count,
+            'website_checks_count' => $websiteChecksCount,
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'created_at' => $project->created_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
@@ -169,6 +169,18 @@ class CheckybotImportService
             ->map(fn (MonitorApis $check): array => $this->apiCheckPayload($check));
 
         return $websiteChecks->concat($apiChecks)->values();
+    }
+
+    private function countWebsiteChecks(Project $project): int
+    {
+        $uptimeChecksCount = (int) $project->packageManagedWebsites()
+            ->where('uptime_check', true)
+            ->count();
+        $sslChecksCount = (int) $project->packageManagedWebsites()
+            ->where('ssl_check', true)
+            ->count();
+
+        return $uptimeChecksCount + $sslChecksCount;
     }
 
     /**
