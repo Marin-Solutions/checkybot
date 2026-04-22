@@ -67,7 +67,7 @@ class CheckybotApiDocumentation
      *                 property="defaults",
      *                 type="object",
      *                 nullable=true,
-     *                 @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *                 @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
      *                 @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=15)
      *             ),
      *             @OA\Property(
@@ -87,7 +87,7 @@ class CheckybotApiDocumentation
      *                             @OA\Property(property="name", type="string", example="Health endpoint"),
      *                             @OA\Property(property="method", type="string", enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
      *                             @OA\Property(property="url", type="string", example="/health"),
-     *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
      *                             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *                             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
      *                             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
@@ -121,7 +121,7 @@ class CheckybotApiDocumentation
      *                             @OA\Property(property="name", type="string", example="Homepage"),
      *                             @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}),
      *                             @OA\Property(property="url", type="string", example="https://app.example.com"),
-     *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
      *                             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *                             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
      *                             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
@@ -168,7 +168,7 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Homepage"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
-     *                     @OA\Property(property="interval", type="string", example="5m"),
+     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
      *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5)
      *                 )
      *             ),
@@ -183,7 +183,7 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Certificate"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
-     *                     @OA\Property(property="interval", type="string", example="1d")
+     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="1d")
      *                 )
      *             ),
      *             @OA\Property(
@@ -197,7 +197,7 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Health endpoint"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com/health"),
-     *                     @OA\Property(property="interval", type="string", example="5m"),
+     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
      *                     @OA\Property(property="headers", type="object"),
      *                     @OA\Property(
      *                         property="assertions",
@@ -258,7 +258,7 @@ class CheckybotApiDocumentation
      *                     required={"name", "interval"},
      *
      *                     @OA\Property(property="name", type="string", example="Database"),
-     *                     @OA\Property(property="interval", type="string", example="5m")
+     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m")
      *                 )
      *             ),
      *             @OA\Property(
@@ -271,7 +271,7 @@ class CheckybotApiDocumentation
      *                     required={"name", "interval", "status", "observed_at"},
      *
      *                     @OA\Property(property="name", type="string", example="Database"),
-     *                     @OA\Property(property="interval", type="string", example="5m"),
+     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
      *                     @OA\Property(property="status", type="string", enum={"healthy", "warning", "danger"}, example="healthy"),
      *                     @OA\Property(property="summary", type="string", nullable=true, example="Replication lag is normal"),
      *                     @OA\Property(property="metrics", type="object", nullable=true),
@@ -374,7 +374,7 @@ class CheckybotApiDocumentation
      *             @OA\Property(property="name", type="string", example="Health endpoint"),
      *             @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
      *             @OA\Property(property="url", type="string", example="/health"),
-     *             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
      *             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
      *             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
