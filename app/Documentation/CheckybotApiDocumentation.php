@@ -569,7 +569,15 @@ class CheckybotApiDocumentation
      *             ),
      *
      *             @OA\Property(property="method", type="string", example="tools/list"),
-     *             @OA\Property(property="params", type="object", nullable=true)
+     *             @OA\Property(
+     *                 property="params",
+     *                 nullable=true,
+     *                 oneOf={
+     *
+     *                     @OA\Schema(type="object"),
+     *                     @OA\Schema(type="array", @OA\Items())
+     *                 }
+     *             )
      *         )
      *     ),
      *

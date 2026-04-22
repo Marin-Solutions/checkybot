@@ -60,5 +60,9 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['headers']['additionalProperties']['nullable'])->toBeTrue()
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['assertions']['items']['required'])->toBe(['type', 'path'])
         ->and($requestSchema('/v1/mcp')['properties']['jsonrpc']['enum'])->toBe(['2.0'])
+        ->and($requestSchema('/v1/mcp')['properties']['params']['oneOf'])->sequence(
+            fn ($schema) => $schema->type->toBe('object'),
+            fn ($schema) => $schema->type->toBe('array'),
+        )
         ->and($documentation['paths'])->toHaveCount(19);
 });
