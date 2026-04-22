@@ -109,6 +109,20 @@ class CheckybotImportService
 
     public function findProject(User $user, string|int $projectKey): Project
     {
+        $matches = Project::query()
+            ->where('created_by', $user->id)
+            ->where('package_key', $projectKey)
+            ->limit(2)
+            ->get();
+
+        if ($matches->count() === 1) {
+            return $matches->first();
+        }
+
+        if ($matches->count() > 1) {
+            throw (new ModelNotFoundException)->setModel(Project::class, [$projectKey]);
+        }
+
         if (is_numeric($projectKey)) {
             return Project::query()
                 ->where('created_by', $user->id)
@@ -116,17 +130,7 @@ class CheckybotImportService
                 ->firstOrFail();
         }
 
-        $matches = Project::query()
-            ->where('created_by', $user->id)
-            ->where('package_key', $projectKey)
-            ->limit(2)
-            ->get();
-
-        if ($matches->count() !== 1) {
-            throw (new ModelNotFoundException)->setModel(Project::class, [$projectKey]);
-        }
-
-        return $matches->first();
+        throw (new ModelNotFoundException)->setModel(Project::class, [$projectKey]);
     }
 
     /**
