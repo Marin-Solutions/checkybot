@@ -182,6 +182,7 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         'title' => 'API health',
         'url' => 'https://checkybot.test/api/health?token=url-secret&api_key=query-secret&plain=value',
         'http_method' => 'GET',
+        'request_path' => '/api/health?api_key=path-secret&plain=value',
         'headers' => [
             'Accept' => 'application/json',
             'Authorization' => 'Bearer secret-token',
@@ -214,6 +215,7 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->assertJsonPath('data.0.id', "api:{$api->id}")
         ->assertJsonPath('data.0.key', 'api-health')
         ->assertJsonPath('data.0.target', 'https://checkybot.test/api/health?token=%5Bredacted%5D&api_key=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.0.request_path', '/api/health?api_key=%5Bredacted%5D&plain=value')
         ->assertJsonPath('data.0.interval', '5m')
         ->assertJsonPath('data.0.enabled', true)
         ->assertJsonPath('data.0.status', 'danger')
@@ -235,7 +237,8 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->and(json_encode($response->json()))->not->toContain('proxy-secret')
         ->and(json_encode($response->json()))->not->toContain('secret-api-key')
         ->and(json_encode($response->json()))->not->toContain('url-secret')
-        ->and(json_encode($response->json()))->not->toContain('query-secret');
+        ->and(json_encode($response->json()))->not->toContain('query-secret')
+        ->and(json_encode($response->json()))->not->toContain('path-secret');
 });
 
 test('single check and recent result endpoints return investigation context', function () {
@@ -332,6 +335,57 @@ test('single check lookup rejects ambiguous package keys across check types', fu
         ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
         ->assertOk()
         ->assertJsonPath('data.id', "api:{$api->id}");
+});
+
+test('single check lookup prefers stable typed ids over colliding package keys', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => "api:{$api->id}",
+        'title' => 'Colliding package key',
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', "api:{$api->id}")
+        ->assertJsonPath('data.key', 'api-health');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}/results")
+        ->assertOk()
+        ->assertJsonPath('data.0.check_id', "api:{$api->id}");
+});
+
+test('single check endpoint redacts sensitive request path query values', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'request_path' => '/api/health?api_key=path-secret&plain=value',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.request_path', '/api/health?api_key=%5Bredacted%5D&plain=value');
+
+    expect(json_encode($response->json()))->not->toContain('path-secret');
 });
 
 test('single check endpoints support url encoded package keys with dots and spaces', function () {

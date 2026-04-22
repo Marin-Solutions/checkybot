@@ -76,15 +76,29 @@ class CheckybotImportService
      */
     private function findCheck(Project $project, string $checkKey): array
     {
-        $matches = $this->checksForProject($project)
-            ->filter(fn (array $check): bool => $this->matchesCheckKey($check, $checkKey))
+        $checks = $this->checksForProject($project);
+
+        $idMatches = $checks
+            ->filter(fn (array $check): bool => $check['id'] === $checkKey)
             ->values();
 
-        if ($matches->count() !== 1) {
+        if ($idMatches->count() === 1) {
+            return $idMatches->first();
+        }
+
+        if ($idMatches->count() > 1) {
             throw (new ModelNotFoundException)->setModel(MonitorApis::class, [$checkKey]);
         }
 
-        return $matches->first();
+        $keyMatches = $checks
+            ->filter(fn (array $check): bool => $check['key'] === $checkKey)
+            ->values();
+
+        if ($keyMatches->count() !== 1) {
+            throw (new ModelNotFoundException)->setModel(MonitorApis::class, [$checkKey]);
+        }
+
+        return $keyMatches->first();
     }
 
     /**
@@ -245,7 +259,7 @@ class CheckybotImportService
             'target' => $this->sanitizeUrl($check->url),
             'url' => $this->sanitizeUrl($check->url),
             'method' => $check->http_method,
-            'request_path' => $check->request_path,
+            'request_path' => $this->sanitizeUrl($check->request_path),
             'expected_status' => $check->expected_status,
             'timeout_seconds' => $check->timeout_seconds,
             'interval' => $check->package_interval,
@@ -396,14 +410,5 @@ class CheckybotImportService
             || str_contains($compact, 'password')
             || str_contains($compact, 'credential')
             || str_contains($compact, 'cookie');
-    }
-
-    /**
-     * @param  array<string, mixed>  $check
-     */
-    private function matchesCheckKey(array $check, string $checkKey): bool
-    {
-        return $check['id'] === $checkKey
-            || $check['key'] === $checkKey;
     }
 }
