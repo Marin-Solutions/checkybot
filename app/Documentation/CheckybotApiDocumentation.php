@@ -14,7 +14,21 @@ class CheckybotApiDocumentation
      *     summary="Register a package-managed project",
      *     security={{"checkybotApiKey": {}}},
      *
-     *     @OA\RequestBody(required=true, @OA\JsonContent(type="object")),
+     *     @OA\RequestBody(
+     *         required=true,
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *             required={"name", "environment", "identity_endpoint"},
+     *
+     *             @OA\Property(property="app_id", type="integer", nullable=true, example=123),
+     *             @OA\Property(property="name", type="string", example="Acme Production"),
+     *             @OA\Property(property="environment", type="string", example="production"),
+     *             @OA\Property(property="identity_endpoint", type="string", format="uri", example="https://app.example.com/checkybot/identity"),
+     *             @OA\Property(property="technology", type="string", nullable=true, example="laravel"),
+     *             @OA\Property(property="package_version", type="string", nullable=true, example="1.2.3")
+     *         )
+     *     ),
      *
      *     @OA\Response(response=200, description="Existing project registration updated"),
      *     @OA\Response(response=201, description="New project registered"),
@@ -32,7 +46,71 @@ class CheckybotApiDocumentation
      *     summary="Sync package-managed API checks",
      *     security={{"checkybotApiKey": {}}},
      *
-     *     @OA\RequestBody(required=true, @OA\JsonContent(type="object")),
+     *     @OA\RequestBody(
+     *         required=true,
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *             required={"project", "checks"},
+     *
+     *             @OA\Property(
+     *                 property="project",
+     *                 type="object",
+     *                 required={"key", "name", "environment", "base_url"},
+     *                 @OA\Property(property="key", type="string", example="acme-production"),
+     *                 @OA\Property(property="name", type="string", example="Acme Production"),
+     *                 @OA\Property(property="environment", type="string", example="production"),
+     *                 @OA\Property(property="base_url", type="string", format="uri", example="https://app.example.com"),
+     *                 @OA\Property(property="repository", type="string", nullable=true, example="marin/acme")
+     *             ),
+     *             @OA\Property(
+     *                 property="defaults",
+     *                 type="object",
+     *                 nullable=true,
+     *                 @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *                 @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=15)
+     *             ),
+     *             @OA\Property(
+     *                 property="checks",
+     *                 type="array",
+     *                 maxItems=200,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"key", "type", "name", "url"},
+     *
+     *                     @OA\Property(property="key", type="string", example="health"),
+     *                     @OA\Property(property="type", type="string", enum={"api", "ssl", "uptime", "links", "opengraph"}, example="api"),
+     *                     @OA\Property(property="name", type="string", example="Health endpoint"),
+     *                     @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
+     *                     @OA\Property(property="url", type="string", example="/health"),
+     *                     @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *                     @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
+     *                     @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
+     *                     @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
+     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
+     *                     @OA\Property(
+     *                         property="assertions",
+     *                         type="array",
+     *                         nullable=true,
+     *                         maxItems=50,
+     *
+     *                         @OA\Items(
+     *                             type="object",
+     *                             required={"type", "path"},
+     *
+     *                             @OA\Property(property="type", type="string", enum={"json_path_exists", "json_path_not_exists", "json_path_equals", "exists", "not_exists", "value_compare", "type_check", "array_length", "regex_match"}),
+     *                             @OA\Property(property="path", type="string", example="$.status"),
+     *                             @OA\Property(property="expected_value", nullable=true),
+     *                             @OA\Property(property="expected_type", type="string", nullable=true),
+     *                             @OA\Property(property="comparison_operator", type="string", nullable=true, enum={"=", "!=", ">", ">=", "<", "<=", "contains"}),
+     *                             @OA\Property(property="regex_pattern", type="string", nullable=true)
+     *                         )
+     *                     )
+     *                 )
+     *             )
+     *         )
+     *     ),
      *
      *     @OA\Response(response=200, description="Package checks synced"),
      *     @OA\Response(response=201, description="Package checks synced and project created"),
@@ -52,7 +130,77 @@ class CheckybotApiDocumentation
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *
-     *     @OA\RequestBody(required=true, @OA\JsonContent(type="object")),
+     *     @OA\RequestBody(
+     *         required=true,
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *
+     *             @OA\Property(
+     *                 property="uptime_checks",
+     *                 type="array",
+     *                 maxItems=100,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"name", "url", "interval"},
+     *
+     *                     @OA\Property(property="name", type="string", example="Homepage"),
+     *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
+     *                     @OA\Property(property="interval", type="string", example="5m"),
+     *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5)
+     *                 )
+     *             ),
+     *             @OA\Property(
+     *                 property="ssl_checks",
+     *                 type="array",
+     *                 maxItems=100,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"name", "url", "interval"},
+     *
+     *                     @OA\Property(property="name", type="string", example="Certificate"),
+     *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
+     *                     @OA\Property(property="interval", type="string", example="1d")
+     *                 )
+     *             ),
+     *             @OA\Property(
+     *                 property="api_checks",
+     *                 type="array",
+     *                 maxItems=100,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"name", "url", "interval"},
+     *
+     *                     @OA\Property(property="name", type="string", example="Health endpoint"),
+     *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com/health"),
+     *                     @OA\Property(property="interval", type="string", example="5m"),
+     *                     @OA\Property(property="headers", type="object", nullable=true),
+     *                     @OA\Property(
+     *                         property="assertions",
+     *                         type="array",
+     *                         nullable=true,
+     *
+     *                         @OA\Items(
+     *                             type="object",
+     *                             required={"data_path", "assertion_type"},
+     *
+     *                             @OA\Property(property="data_path", type="string", example="status"),
+     *                             @OA\Property(property="assertion_type", type="string", enum={"exists", "not_exists", "type_check", "value_compare", "array_length", "regex_match"}),
+     *                             @OA\Property(property="expected_type", type="string", nullable=true),
+     *                             @OA\Property(property="comparison_operator", type="string", nullable=true, enum={"=", "!=", ">", ">=", "<", "<=", "contains"}),
+     *                             @OA\Property(property="expected_value", type="string", nullable=true),
+     *                             @OA\Property(property="regex_pattern", type="string", nullable=true),
+     *                             @OA\Property(property="sort_order", type="integer", nullable=true, minimum=1),
+     *                             @OA\Property(property="is_active", type="boolean", nullable=true)
+     *                         )
+     *                     )
+     *                 )
+     *             )
+     *         )
+     *     ),
      *
      *     @OA\Response(response=200, description="Project checks synced"),
      *     @OA\Response(response=401, description="Invalid API key"),
@@ -73,7 +221,45 @@ class CheckybotApiDocumentation
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *
-     *     @OA\RequestBody(required=true, @OA\JsonContent(type="object")),
+     *     @OA\RequestBody(
+     *         required=true,
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *             required={"declared_components", "components"},
+     *
+     *             @OA\Property(
+     *                 property="declared_components",
+     *                 type="array",
+     *                 maxItems=100,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"name", "interval"},
+     *
+     *                     @OA\Property(property="name", type="string", example="Database"),
+     *                     @OA\Property(property="interval", type="string", example="5m")
+     *                 )
+     *             ),
+     *             @OA\Property(
+     *                 property="components",
+     *                 type="array",
+     *                 maxItems=100,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"name", "interval", "status", "observed_at"},
+     *
+     *                     @OA\Property(property="name", type="string", example="Database"),
+     *                     @OA\Property(property="interval", type="string", example="5m"),
+     *                     @OA\Property(property="status", type="string", enum={"healthy", "warning", "danger"}, example="healthy"),
+     *                     @OA\Property(property="summary", type="string", nullable=true, example="Replication lag is normal"),
+     *                     @OA\Property(property="metrics", type="object", nullable=true),
+     *                     @OA\Property(property="observed_at", type="string", format="date-time", example="2026-04-22T07:00:00Z")
+     *                 )
+     *             )
+     *         )
+     *     ),
      *
      *     @OA\Response(response=200, description="Project components synced"),
      *     @OA\Response(response=401, description="Invalid API key"),
@@ -157,7 +343,44 @@ class CheckybotApiDocumentation
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *     @OA\Parameter(name="check", in="path", required=true, @OA\Schema(type="string")),
      *
-     *     @OA\RequestBody(required=true, @OA\JsonContent(type="object")),
+     *     @OA\RequestBody(
+     *         required=true,
+     *
+     *         @OA\JsonContent(
+     *             type="object",
+     *             required={"name", "url"},
+     *
+     *             @OA\Property(property="type", type="string", nullable=true, enum={"api"}, example="api"),
+     *             @OA\Property(property="name", type="string", example="Health endpoint"),
+     *             @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
+     *             @OA\Property(property="url", type="string", example="/health"),
+     *             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
+     *             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
+     *             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
+     *             @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
+     *             @OA\Property(
+     *                 property="assertions",
+     *                 type="array",
+     *                 nullable=true,
+     *                 maxItems=50,
+     *
+     *                 @OA\Items(
+     *                     type="object",
+     *                     required={"type", "path"},
+     *
+     *                     @OA\Property(property="type", type="string", enum={"json_path_exists", "json_path_not_exists", "json_path_equals", "exists", "not_exists", "value_compare", "type_check", "array_length", "regex_match"}),
+     *                     @OA\Property(property="path", type="string", example="$.status"),
+     *                     @OA\Property(property="expected_value", nullable=true),
+     *                     @OA\Property(property="expected_type", type="string", nullable=true),
+     *                     @OA\Property(property="comparison_operator", type="string", nullable=true, enum={"=", "!=", ">", ">=", "<", "<=", "contains"}),
+     *                     @OA\Property(property="regex_pattern", type="string", nullable=true),
+     *                     @OA\Property(property="sort_order", type="integer", nullable=true, minimum=1),
+     *                     @OA\Property(property="active", type="boolean", nullable=true)
+     *                 )
+     *             )
+     *         )
+     *     ),
      *
      *     @OA\Response(response=200, description="Check updated"),
      *     @OA\Response(response=201, description="Check created"),

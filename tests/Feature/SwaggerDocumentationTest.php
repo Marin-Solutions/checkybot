@@ -5,6 +5,7 @@ test('swagger documentation can be generated', function () {
         ->assertSuccessful();
 
     $documentation = json_decode(file_get_contents(storage_path('api-docs/api-docs.json')), true, flags: JSON_THROW_ON_ERROR);
+    $requestSchema = fn (string $path, string $method = 'post'): array => $documentation['paths'][$path][$method]['requestBody']['content']['application/json']['schema'];
 
     expect(storage_path('api-docs/api-docs.json'))->toBeFile()
         ->and(array_keys($documentation['paths']))->toContain(
@@ -32,5 +33,15 @@ test('swagger documentation can be generated', function () {
             fn ($schema) => $schema->type->toBe('integer'),
             fn ($schema) => $schema->type->toBe('number'),
         )
+        ->and($requestSchema('/v1/package/register')['required'])->toBe(['name', 'environment', 'identity_endpoint'])
+        ->and($requestSchema('/v1/package/sync')['required'])->toBe(['project', 'checks'])
+        ->and($requestSchema('/v1/package/sync')['properties']['project']['required'])->toBe(['key', 'name', 'environment', 'base_url'])
+        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['required'])->toBe(['key', 'type', 'name', 'url'])
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['required'])->toBe(['name', 'url', 'interval'])
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['required'])->toBe(['data_path', 'assertion_type'])
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['required'])->toBe(['declared_components', 'components'])
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['required'])->toBe(['name', 'interval', 'status', 'observed_at'])
+        ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['required'])->toBe(['name', 'url'])
+        ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['assertions']['items']['required'])->toBe(['type', 'path'])
         ->and($documentation['paths'])->toHaveCount(19);
 });
