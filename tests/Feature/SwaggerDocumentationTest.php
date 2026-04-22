@@ -22,8 +22,15 @@ test('swagger documentation can be generated', function () {
         ->and($documentation['components']['securitySchemes'])->toHaveKey('checkybotApiKey')
         ->and($documentation['paths']['/v1/package/register']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
         ->and($documentation['paths']['/v1/package/sync']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
+        ->and($documentation['paths']['/v1/projects/{project}/checks/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
+        ->and($documentation['paths']['/v1/projects/{project}/components/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
         ->and($documentation['paths']['/v1/control/projects/{project}/checks/{check}/runs']['post']['responses'])->toHaveKeys(['200', '401', '404', '409'])
         ->and($documentation['paths']['/v1/control/runs']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
         ->and($documentation['paths']['/v1/control/failures']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
+        ->and($documentation['paths']['/v1/mcp']['post']['requestBody']['content']['application/json']['schema']['properties']['id']['oneOf'])->sequence(
+            fn ($schema) => $schema->type->toBe('string'),
+            fn ($schema) => $schema->type->toBe('integer'),
+            fn ($schema) => $schema->type->toBe('number'),
+        )
         ->and($documentation['paths'])->toHaveCount(19);
 });

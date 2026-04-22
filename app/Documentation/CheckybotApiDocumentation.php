@@ -56,6 +56,7 @@ class CheckybotApiDocumentation
      *
      *     @OA\Response(response=200, description="Project checks synced"),
      *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=403, description="Project is not owned by the API key user"),
      *     @OA\Response(response=404, description="Project not found"),
      *     @OA\Response(response=422, description="Validation error")
      * )
@@ -76,6 +77,7 @@ class CheckybotApiDocumentation
      *
      *     @OA\Response(response=200, description="Project components synced"),
      *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=403, description="Project is not owned by the API key user"),
      *     @OA\Response(response=404, description="Project not found"),
      *     @OA\Response(response=422, description="Validation error")
      * )
@@ -312,7 +314,18 @@ class CheckybotApiDocumentation
      *             required={"jsonrpc", "method"},
      *
      *             @OA\Property(property="jsonrpc", type="string", example="2.0"),
-     *             @OA\Property(property="id", type="integer", nullable=true, example=1),
+     *             @OA\Property(
+     *                 property="id",
+     *                 nullable=true,
+     *                 oneOf={
+     *
+     *                     @OA\Schema(type="string"),
+     *                     @OA\Schema(type="integer"),
+     *                     @OA\Schema(type="number")
+     *                 },
+     *                 example="request-1"
+     *             ),
+     *
      *             @OA\Property(property="method", type="string", example="tools/list"),
      *             @OA\Property(property="params", type="object", nullable=true)
      *         )
