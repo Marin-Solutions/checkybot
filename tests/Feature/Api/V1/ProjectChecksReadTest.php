@@ -63,7 +63,21 @@ test('project read endpoints reject ambiguous package keys across environments',
         ->assertJsonPath('data.environment', 'production');
 });
 
-test('project read endpoints prefer unique numeric package keys over ids', function () {
+test('project read endpoints support unambiguous numeric package keys', function () {
+    $packageKeyMatch = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => '987654321',
+        'name' => 'Numeric package key match',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$packageKeyMatch->package_key}")
+        ->assertOk()
+        ->assertJsonPath('data.id', $packageKeyMatch->id)
+        ->assertJsonPath('data.key', $packageKeyMatch->package_key);
+});
+
+test('project read endpoints reject numeric keys that match both id and package key', function () {
     $idMatch = Project::factory()->create([
         'id' => 123,
         'created_by' => $this->user->id,
@@ -79,9 +93,7 @@ test('project read endpoints prefer unique numeric package keys over ids', funct
 
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$idMatch->id}")
-        ->assertOk()
-        ->assertJsonPath('data.id', $packageKeyMatch->id)
-        ->assertJsonPath('data.key', (string) $idMatch->id);
+        ->assertNotFound();
 });
 
 test('project read endpoint returns project metadata without secrets', function () {

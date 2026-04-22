@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 
@@ -67,6 +68,14 @@ class CheckybotImportService
     {
         $project = $this->findProject($user, $projectKey);
 
+        return $this->findCheck($project, $checkKey);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function findCheck(Project $project, string $checkKey): array
+    {
         $matches = $this->checksForProject($project)
             ->filter(fn (array $check): bool => $this->matchesCheckKey($check, $checkKey))
             ->values();
@@ -84,7 +93,7 @@ class CheckybotImportService
     public function recentResults(User $user, string|int $projectKey, string $checkKey, int $limit = 25): array
     {
         $project = $this->findProject($user, $projectKey);
-        $check = $this->getCheck($user, $project->id, $checkKey);
+        $check = $this->findCheck($project, $checkKey);
         $limit = min(max($limit, 1), 100);
 
         if ($check['storage'] === 'monitor_api') {
@@ -111,23 +120,18 @@ class CheckybotImportService
     {
         $matches = Project::query()
             ->where('created_by', $user->id)
-            ->where('package_key', $projectKey)
+            ->where(function (Builder $query) use ($projectKey): void {
+                $query->where('package_key', (string) $projectKey);
+
+                if (ctype_digit((string) $projectKey)) {
+                    $query->orWhere('id', (int) $projectKey);
+                }
+            })
             ->limit(2)
             ->get();
 
         if ($matches->count() === 1) {
             return $matches->first();
-        }
-
-        if ($matches->count() > 1) {
-            throw (new ModelNotFoundException)->setModel(Project::class, [$projectKey]);
-        }
-
-        if (is_numeric($projectKey)) {
-            return Project::query()
-                ->where('created_by', $user->id)
-                ->where('id', $projectKey)
-                ->firstOrFail();
         }
 
         throw (new ModelNotFoundException)->setModel(Project::class, [$projectKey]);
