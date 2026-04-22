@@ -214,7 +214,8 @@ class CheckybotApiDocumentation
      *
      *     @OA\Response(response=200, description="Check run completed"),
      *     @OA\Response(response=401, description="Invalid API key"),
-     *     @OA\Response(response=404, description="Project or check not found")
+     *     @OA\Response(response=404, description="Project or check not found"),
+     *     @OA\Response(response=409, description="Check is disabled")
      * )
      */
     public function triggerControlProjectCheckRun(): void {}
@@ -232,6 +233,7 @@ class CheckybotApiDocumentation
      *
      *     @OA\Response(response=200, description="Recent runs"),
      *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=404, description="Project not found"),
      *     @OA\Response(response=422, description="Validation error")
      * )
      */
@@ -269,6 +271,7 @@ class CheckybotApiDocumentation
      *
      *     @OA\Response(response=200, description="Recent failures"),
      *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=404, description="Project not found"),
      *     @OA\Response(response=422, description="Validation error")
      * )
      */
