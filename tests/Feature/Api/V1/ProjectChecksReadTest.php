@@ -388,6 +388,32 @@ test('single check endpoint redacts sensitive request path query values', functi
     expect(json_encode($response->json()))->not->toContain('path-secret');
 });
 
+test('single check endpoint redacts url userinfo and nested query credentials', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'url' => 'https://url-user:url-pass@checkybot.test/api/health?auth[token]=nested-secret&plain=value',
+        'request_path' => 'https://path-user:path-pass@checkybot.test/api/health?auth[token]=path-secret&plain=value',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.target', 'https://[redacted]@checkybot.test/api/health?auth%5Btoken%5D=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.url', 'https://[redacted]@checkybot.test/api/health?auth%5Btoken%5D=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.request_path', 'https://[redacted]@checkybot.test/api/health?auth%5Btoken%5D=%5Bredacted%5D&plain=value');
+
+    expect(json_encode($response->json()))->not->toContain('url-user')
+        ->and(json_encode($response->json()))->not->toContain('url-pass')
+        ->and(json_encode($response->json()))->not->toContain('path-user')
+        ->and(json_encode($response->json()))->not->toContain('path-pass')
+        ->and(json_encode($response->json()))->not->toContain('nested-secret')
+        ->and(json_encode($response->json()))->not->toContain('path-secret');
+});
+
 test('single check endpoints support url encoded package keys with dots and spaces', function () {
     $api = MonitorApis::factory()->create([
         'project_id' => $this->project->id,

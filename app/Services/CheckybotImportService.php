@@ -374,21 +374,44 @@ class CheckybotImportService
 
         $parts = parse_url($url);
 
-        if ($parts === false || ! isset($parts['query'])) {
+        if ($parts === false) {
             return $url;
+        }
+
+        $sanitizedUrl = preg_replace('/^([a-z][a-z0-9+.-]*:\/\/)([^\/?#@]+@)/i', '$1[redacted]@', $url) ?? $url;
+
+        if (! isset($parts['query'])) {
+            return $sanitizedUrl;
         }
 
         parse_str($parts['query'], $query);
 
-        $sanitized = collect($query)
-            ->mapWithKeys(fn (mixed $value, string $key): array => [
-                $key => $this->isSensitiveUrlField($key) ? '[redacted]' : $value,
-            ])
-            ->all();
+        $sanitized = $this->redactQueryParameters($query);
 
         $rebuiltQuery = http_build_query($sanitized);
 
-        return str_replace('?'.$parts['query'], $rebuiltQuery === '' ? '' : '?'.$rebuiltQuery, $url);
+        return str_replace('?'.$parts['query'], $rebuiltQuery === '' ? '' : '?'.$rebuiltQuery, $sanitizedUrl);
+    }
+
+    /**
+     * @param  array<array-key, mixed>  $query
+     * @return array<array-key, mixed>
+     */
+    private function redactQueryParameters(array $query): array
+    {
+        return collect($query)
+            ->mapWithKeys(function (mixed $value, string|int $key): array {
+                if ($this->isSensitiveUrlField((string) $key)) {
+                    return [$key => '[redacted]'];
+                }
+
+                if (is_array($value)) {
+                    return [$key => $this->redactQueryParameters($value)];
+                }
+
+                return [$key => $value];
+            })
+            ->all();
     }
 
     private function isSensitiveUrlField(string $name): bool
