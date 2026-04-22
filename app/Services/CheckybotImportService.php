@@ -9,7 +9,6 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
 
@@ -68,9 +67,15 @@ class CheckybotImportService
     {
         $project = $this->findProject($user, $projectKey);
 
-        return $this->checksForProject($project)
-            ->first(fn (array $check): bool => $this->matchesCheckKey($check, $checkKey))
-            ?? throw (new ModelNotFoundException)->setModel(MonitorApis::class, [$checkKey]);
+        $matches = $this->checksForProject($project)
+            ->filter(fn (array $check): bool => $this->matchesCheckKey($check, $checkKey))
+            ->values();
+
+        if ($matches->count() !== 1) {
+            throw (new ModelNotFoundException)->setModel(MonitorApis::class, [$checkKey]);
+        }
+
+        return $matches->first();
     }
 
     /**
@@ -104,13 +109,24 @@ class CheckybotImportService
 
     public function findProject(User $user, string|int $projectKey): Project
     {
-        return Project::query()
+        if (is_numeric($projectKey)) {
+            return Project::query()
+                ->where('created_by', $user->id)
+                ->where('id', $projectKey)
+                ->firstOrFail();
+        }
+
+        $matches = Project::query()
             ->where('created_by', $user->id)
-            ->where(function (Builder $query) use ($projectKey): void {
-                $query->where('id', $projectKey)
-                    ->orWhere('package_key', $projectKey);
-            })
-            ->firstOrFail();
+            ->where('package_key', $projectKey)
+            ->limit(2)
+            ->get();
+
+        if ($matches->count() !== 1) {
+            throw (new ModelNotFoundException)->setModel(Project::class, [$projectKey]);
+        }
+
+        return $matches->first();
     }
 
     /**

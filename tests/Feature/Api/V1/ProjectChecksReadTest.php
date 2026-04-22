@@ -46,6 +46,23 @@ test('project read endpoints are scoped to the api key owner', function () {
         ->assertNotFound();
 });
 
+test('project read endpoints reject ambiguous package keys across environments', function () {
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => $this->project->package_key,
+        'environment' => 'staging',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->package_key}")
+        ->assertNotFound();
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}")
+        ->assertOk()
+        ->assertJsonPath('data.environment', 'production');
+});
+
 test('project read endpoint returns project metadata without secrets', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -250,6 +267,38 @@ test('single check lookup does not match ambiguous bare database ids', function 
         ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
         ->assertOk()
         ->assertJsonPath('data.key', 'api-health');
+});
+
+test('single check lookup rejects ambiguous package keys across check types', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health")
+        ->assertNotFound();
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/uptime:{$website->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', "uptime:{$website->id}");
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.id', "api:{$api->id}");
 });
 
 test('single check endpoints support url encoded package keys with dots and spaces', function () {
