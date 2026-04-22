@@ -177,11 +177,10 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="name", type="string", example="Health endpoint"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com/health"),
      *                     @OA\Property(property="interval", type="string", example="5m"),
-     *                     @OA\Property(property="headers", type="object", nullable=true),
+     *                     @OA\Property(property="headers", type="object"),
      *                     @OA\Property(
      *                         property="assertions",
      *                         type="array",
-     *                         nullable=true,
      *
      *                         @OA\Items(
      *                             type="object",

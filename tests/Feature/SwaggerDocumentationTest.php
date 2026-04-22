@@ -39,6 +39,8 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['required'])->toBe(['key', 'type', 'name', 'url'])
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['required'])->toBe(['name', 'url', 'interval'])
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['required'])->toBe(['data_path', 'assertion_type'])
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['headers'])->not->toHaveKey('nullable')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions'])->not->toHaveKey('nullable')
         ->and($requestSchema('/v1/projects/{project}/components/sync')['required'])->toBe(['declared_components', 'components'])
         ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['required'])->toBe(['name', 'interval', 'status', 'observed_at'])
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['required'])->toBe(['name', 'url'])
