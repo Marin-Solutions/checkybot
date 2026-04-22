@@ -436,7 +436,9 @@ class CheckybotImportService
         $normalized = strtolower($name);
         $compact = str_replace(['-', '_', ' '], '', $normalized);
 
-        return str_contains($compact, 'authorization')
+        return $compact === 'auth'
+            || $compact === 'authentication'
+            || str_contains($compact, 'authorization')
             || str_contains($compact, 'authkey')
             || str_contains($compact, 'apikey')
             || str_contains($compact, 'token')

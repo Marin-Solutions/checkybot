@@ -198,11 +198,12 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         'source' => 'package',
         'package_name' => 'api-health',
         'title' => 'API health',
-        'url' => 'https://checkybot.test/api/health?token=url-secret&api_key=query-secret&plain=value',
+        'url' => 'https://checkybot.test/api/health?token=url-secret&api_key=query-secret&auth=auth-query-secret&plain=value',
         'http_method' => 'GET',
-        'request_path' => '/api/health?api_key=path-secret&plain=value',
+        'request_path' => '/api/health?api_key=path-secret&auth=path-auth-secret&plain=value',
         'headers' => [
             'Accept' => 'application/json',
+            'Auth' => 'auth-header-secret',
             'Authorization' => 'Bearer secret-token',
             'Cookie' => 'session=cookie-secret',
             'Proxy-Authorization' => 'Basic proxy-secret',
@@ -232,11 +233,12 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->assertJsonPath('data.0.type', 'api')
         ->assertJsonPath('data.0.id', "api:{$api->id}")
         ->assertJsonPath('data.0.key', 'api-health')
-        ->assertJsonPath('data.0.target', 'https://checkybot.test/api/health?token=%5Bredacted%5D&api_key=%5Bredacted%5D&plain=value')
-        ->assertJsonPath('data.0.request_path', '/api/health?api_key=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.0.target', 'https://checkybot.test/api/health?token=%5Bredacted%5D&api_key=%5Bredacted%5D&auth=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.0.request_path', '/api/health?api_key=%5Bredacted%5D&auth=%5Bredacted%5D&plain=value')
         ->assertJsonPath('data.0.interval', '5m')
         ->assertJsonPath('data.0.enabled', true)
         ->assertJsonPath('data.0.status', 'danger')
+        ->assertJsonPath('data.0.headers.Auth', '[redacted]')
         ->assertJsonPath('data.0.headers.Authorization', '[redacted]')
         ->assertJsonPath('data.0.headers.Cookie', '[redacted]')
         ->assertJsonPath('data.0.headers.Proxy-Authorization', '[redacted]')
@@ -256,7 +258,10 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->and(json_encode($response->json()))->not->toContain('secret-api-key')
         ->and(json_encode($response->json()))->not->toContain('url-secret')
         ->and(json_encode($response->json()))->not->toContain('query-secret')
-        ->and(json_encode($response->json()))->not->toContain('path-secret');
+        ->and(json_encode($response->json()))->not->toContain('auth-query-secret')
+        ->and(json_encode($response->json()))->not->toContain('path-secret')
+        ->and(json_encode($response->json()))->not->toContain('path-auth-secret')
+        ->and(json_encode($response->json()))->not->toContain('auth-header-secret');
 });
 
 test('single check and recent result endpoints return investigation context', function () {
@@ -420,9 +425,9 @@ test('single check endpoint redacts url userinfo and nested query credentials', 
     $response = $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
         ->assertOk()
-        ->assertJsonPath('data.target', 'https://[redacted]@checkybot.test/api/health?auth%5Btoken%5D=%5Bredacted%5D&plain=value')
-        ->assertJsonPath('data.url', 'https://[redacted]@checkybot.test/api/health?auth%5Btoken%5D=%5Bredacted%5D&plain=value')
-        ->assertJsonPath('data.request_path', 'https://[redacted]@checkybot.test/api/health?auth%5Btoken%5D=%5Bredacted%5D&plain=value');
+        ->assertJsonPath('data.target', 'https://[redacted]@checkybot.test/api/health?auth=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.url', 'https://[redacted]@checkybot.test/api/health?auth=%5Bredacted%5D&plain=value')
+        ->assertJsonPath('data.request_path', 'https://[redacted]@checkybot.test/api/health?auth=%5Bredacted%5D&plain=value');
 
     expect(json_encode($response->json()))->not->toContain('url-user')
         ->and(json_encode($response->json()))->not->toContain('url-pass')
