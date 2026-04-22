@@ -76,37 +76,58 @@ class CheckybotApiDocumentation
      *                 maxItems=200,
      *
      *                 @OA\Items(
-     *                     type="object",
-     *                     required={"key", "type", "name", "method", "url"},
+     *                     oneOf={
      *
-     *                     @OA\Property(property="key", type="string", example="health"),
-     *                     @OA\Property(property="type", type="string", enum={"api", "ssl", "uptime", "links", "opengraph"}, example="api"),
-     *                     @OA\Property(property="name", type="string", example="Health endpoint"),
-     *                     @OA\Property(property="method", type="string", enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
-     *                     @OA\Property(property="url", type="string", example="/health"),
-     *                     @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
-     *                     @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
-     *                     @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
-     *                     @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
-     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
-     *                     @OA\Property(
-     *                         property="assertions",
-     *                         type="array",
-     *                         nullable=true,
-     *                         maxItems=50,
-     *
-     *                         @OA\Items(
+     *                         @OA\Schema(
      *                             type="object",
-     *                             required={"type", "path"},
+     *                             required={"key", "type", "name", "method", "url"},
      *
-     *                             @OA\Property(property="type", type="string", enum={"json_path_exists", "json_path_not_exists", "json_path_equals", "exists", "not_exists", "value_compare", "type_check", "array_length", "regex_match"}),
-     *                             @OA\Property(property="path", type="string", example="$.status"),
-     *                             @OA\Property(property="expected_value", nullable=true),
-     *                             @OA\Property(property="expected_type", type="string", nullable=true),
-     *                             @OA\Property(property="comparison_operator", type="string", nullable=true, enum={"=", "!=", ">", ">=", "<", "<=", "contains"}),
-     *                             @OA\Property(property="regex_pattern", type="string", nullable=true)
+     *                             @OA\Property(property="key", type="string", example="health"),
+     *                             @OA\Property(property="type", type="string", enum={"api"}, example="api"),
+     *                             @OA\Property(property="name", type="string", example="Health endpoint"),
+     *                             @OA\Property(property="method", type="string", enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
+     *                             @OA\Property(property="url", type="string", example="/health"),
+     *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *                             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
+     *                             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
+     *                             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
+     *                             @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
+     *                             @OA\Property(
+     *                                 property="assertions",
+     *                                 type="array",
+     *                                 nullable=true,
+     *                                 maxItems=50,
+     *
+     *                                 @OA\Items(
+     *                                     type="object",
+     *                                     required={"type", "path"},
+     *
+     *                                     @OA\Property(property="type", type="string", enum={"json_path_exists", "json_path_not_exists", "json_path_equals", "exists", "not_exists", "value_compare", "type_check", "array_length", "regex_match"}),
+     *                                     @OA\Property(property="path", type="string", example="$.status"),
+     *                                     @OA\Property(property="expected_value", nullable=true),
+     *                                     @OA\Property(property="expected_type", type="string", nullable=true),
+     *                                     @OA\Property(property="comparison_operator", type="string", nullable=true, enum={"=", "!=", ">", ">=", "<", "<=", "contains"}),
+     *                                     @OA\Property(property="regex_pattern", type="string", nullable=true)
+     *                                 )
+     *                             )
+     *                         ),
+     *
+     *                         @OA\Schema(
+     *                             type="object",
+     *                             required={"key", "type", "name", "url"},
+     *
+     *                             @OA\Property(property="key", type="string", example="homepage"),
+     *                             @OA\Property(property="type", type="string", enum={"ssl", "uptime", "links", "opengraph"}, example="uptime"),
+     *                             @OA\Property(property="name", type="string", example="Homepage"),
+     *                             @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}),
+     *                             @OA\Property(property="url", type="string", example="https://app.example.com"),
+     *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string")),
+     *                             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
+     *                             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
+     *                             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
+     *                             @OA\Property(property="enabled", type="boolean", nullable=true, example=true)
      *                         )
-     *                     )
+     *                     }
      *                 )
      *             )
      *         )
@@ -535,7 +556,7 @@ class CheckybotApiDocumentation
      *         @OA\JsonContent(
      *             required={"jsonrpc", "method"},
      *
-     *             @OA\Property(property="jsonrpc", type="string", example="2.0"),
+     *             @OA\Property(property="jsonrpc", type="string", enum={"2.0"}, example="2.0"),
      *             @OA\Property(
      *                 property="id",
      *                 nullable=true,

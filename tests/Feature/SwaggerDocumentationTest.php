@@ -36,8 +36,11 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/package/register')['required'])->toBe(['name', 'environment', 'identity_endpoint'])
         ->and($requestSchema('/v1/package/sync')['required'])->toBe(['project', 'checks'])
         ->and($requestSchema('/v1/package/sync')['properties']['project']['required'])->toBe(['key', 'name', 'environment', 'base_url'])
-        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['required'])->toBe(['key', 'type', 'name', 'method', 'url'])
-        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['properties']['method'])->not->toHaveKey('nullable')
+        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][0]['required'])->toBe(['key', 'type', 'name', 'method', 'url'])
+        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][0]['properties']['type']['enum'])->toBe(['api'])
+        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][0]['properties']['method'])->not->toHaveKey('nullable')
+        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][1]['required'])->toBe(['key', 'type', 'name', 'url'])
+        ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][1]['properties']['type']['enum'])->toBe(['ssl', 'uptime', 'links', 'opengraph'])
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['required'])->toBe(['name', 'url', 'interval'])
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['required'])->toBe(['data_path', 'assertion_type'])
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['headers'])->not->toHaveKey('nullable')
@@ -48,5 +51,6 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['required'])->toBe(['name', 'interval', 'status', 'observed_at'])
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['required'])->toBe(['name', 'url'])
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['assertions']['items']['required'])->toBe(['type', 'path'])
+        ->and($requestSchema('/v1/mcp')['properties']['jsonrpc']['enum'])->toBe(['2.0'])
         ->and($documentation['paths'])->toHaveCount(19);
 });
