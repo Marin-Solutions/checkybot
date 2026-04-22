@@ -21,6 +21,12 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
 
     Route::post('/package/register', ProjectRegistrationsController::class)->middleware('api.key');
     Route::post('/package/sync', PackageSyncController::class)->middleware('api.key');
+    Route::middleware('api.key')->group(function () {
+        Route::get('/projects/{project}', [ProjectChecksController::class, 'project']);
+        Route::get('/projects/{project}/checks', [ProjectChecksController::class, 'index']);
+        Route::get('/projects/{project}/checks/{check}', [ProjectChecksController::class, 'show'])->where('check', '[^/]+');
+        Route::get('/projects/{project}/checks/{check}/results', [ProjectChecksController::class, 'results'])->where('check', '[^/]+');
+    });
     Route::post('/projects/{project}/checks/sync', [ProjectChecksController::class, 'sync'])->middleware('api.key');
     Route::post('/projects/{project}/components/sync', ProjectComponentsController::class)->middleware('api.key');
 

@@ -5,6 +5,7 @@ namespace App\Models;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -157,6 +158,11 @@ class Website extends Model
     public function logHistory()
     {
         return $this->hasMany(WebsiteLogHistory::class);
+    }
+
+    public function latestLogHistory(): HasOne
+    {
+        return $this->hasOne(WebsiteLogHistory::class)->latestOfMany();
     }
 
     public function logHistoryLast24h(): \Illuminate\Database\Eloquent\Relations\HasMany
