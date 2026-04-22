@@ -384,25 +384,32 @@ class CheckybotImportService
             return $url;
         }
 
-        $parts = parse_url($url);
-
-        if ($parts === false) {
-            return $url;
-        }
-
         $sanitizedUrl = preg_replace('/^([a-z][a-z0-9+.-]*:\/\/)([^\/?#@]+@)/i', '$1[redacted]@', $url) ?? $url;
 
-        if (! isset($parts['query'])) {
+        $queryStart = strpos($sanitizedUrl, '?');
+
+        if ($queryStart === false) {
             return $sanitizedUrl;
         }
 
-        parse_str($parts['query'], $query);
+        $prefix = substr($sanitizedUrl, 0, $queryStart);
+        $queryAndFragment = substr($sanitizedUrl, $queryStart + 1);
+        $fragment = '';
+
+        $fragmentStart = strpos($queryAndFragment, '#');
+
+        if ($fragmentStart !== false) {
+            $fragment = substr($queryAndFragment, $fragmentStart);
+            $queryAndFragment = substr($queryAndFragment, 0, $fragmentStart);
+        }
+
+        parse_str($queryAndFragment, $query);
 
         $sanitized = $this->redactQueryParameters($query);
 
         $rebuiltQuery = http_build_query($sanitized);
 
-        return str_replace('?'.$parts['query'], $rebuiltQuery === '' ? '' : '?'.$rebuiltQuery, $sanitizedUrl);
+        return $prefix.($rebuiltQuery === '' ? '' : '?'.$rebuiltQuery).$fragment;
     }
 
     /**

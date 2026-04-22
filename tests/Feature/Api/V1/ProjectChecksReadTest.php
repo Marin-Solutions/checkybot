@@ -437,6 +437,32 @@ test('single check endpoint redacts url userinfo and nested query credentials', 
         ->and(json_encode($response->json()))->not->toContain('path-secret');
 });
 
+test('single check endpoint redacts sensitive query values when url parsing fails', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'url' => 'https://url-user:url-pass@checkybot.test:abc/api/health?api_key=parse-secret&plain=value#fragment',
+        'request_path' => 'https://path-user:path-pass@checkybot.test:abc/api/health?auth=parse-auth-secret&plain=value#fragment',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.target', 'https://[redacted]@checkybot.test:abc/api/health?api_key=%5Bredacted%5D&plain=value#fragment')
+        ->assertJsonPath('data.url', 'https://[redacted]@checkybot.test:abc/api/health?api_key=%5Bredacted%5D&plain=value#fragment')
+        ->assertJsonPath('data.request_path', 'https://[redacted]@checkybot.test:abc/api/health?auth=%5Bredacted%5D&plain=value#fragment');
+
+    expect(json_encode($response->json()))->not->toContain('url-user')
+        ->and(json_encode($response->json()))->not->toContain('url-pass')
+        ->and(json_encode($response->json()))->not->toContain('path-user')
+        ->and(json_encode($response->json()))->not->toContain('path-pass')
+        ->and(json_encode($response->json()))->not->toContain('parse-secret')
+        ->and(json_encode($response->json()))->not->toContain('parse-auth-secret');
+});
+
 test('single check endpoints support url encoded package keys with dots and spaces', function () {
     $api = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
