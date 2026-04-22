@@ -274,7 +274,16 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
      *                     @OA\Property(property="status", type="string", enum={"healthy", "warning", "danger"}, example="healthy"),
      *                     @OA\Property(property="summary", type="string", nullable=true, example="Replication lag is normal"),
-     *                     @OA\Property(property="metrics", type="object", nullable=true),
+     *                     @OA\Property(
+     *                         property="metrics",
+     *                         nullable=true,
+     *                         oneOf={
+     *
+     *                             @OA\Schema(type="object"),
+     *                             @OA\Schema(type="array", @OA\Items())
+     *                         }
+     *                     ),
+     *
      *                     @OA\Property(property="observed_at", type="string", format="date-time", example="2026-04-22T07:00:00Z")
      *                 )
      *             )
@@ -554,6 +563,7 @@ class CheckybotApiDocumentation
      *         required=true,
      *
      *         @OA\JsonContent(
+     *             type="object",
      *             required={"jsonrpc", "method"},
      *
      *             @OA\Property(property="jsonrpc", type="string", enum={"2.0"}, example="2.0"),

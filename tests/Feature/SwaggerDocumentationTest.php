@@ -56,9 +56,14 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['required'])->toBe(['name', 'interval', 'status', 'observed_at'])
         ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['declared_components']['items']['properties']['interval']['pattern'])->toBe('^\d+[mhd]$')
         ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['properties']['interval']['pattern'])->toBe('^\d+[mhd]$')
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['properties']['metrics']['oneOf'])->sequence(
+            fn ($schema) => $schema->type->toBe('object'),
+            fn ($schema) => $schema->type->toBe('array'),
+        )
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['required'])->toBe(['name', 'url'])
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['headers']['additionalProperties']['nullable'])->toBeTrue()
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['assertions']['items']['required'])->toBe(['type', 'path'])
+        ->and($requestSchema('/v1/mcp')['type'])->toBe('object')
         ->and($requestSchema('/v1/mcp')['properties']['jsonrpc']['enum'])->toBe(['2.0'])
         ->and($requestSchema('/v1/mcp')['properties']['params']['oneOf'])->sequence(
             fn ($schema) => $schema->type->toBe('object'),
