@@ -137,7 +137,7 @@ class CheckybotImportService
             ->where(function (Builder $query) use ($projectKey): void {
                 $query->where('package_key', (string) $projectKey);
 
-                if (ctype_digit((string) $projectKey)) {
+                if ($this->isCanonicalNumericId($projectKey)) {
                     $query->orWhere('id', (int) $projectKey);
                 }
             })
@@ -384,7 +384,7 @@ class CheckybotImportService
             return $url;
         }
 
-        $sanitizedUrl = preg_replace('/^([a-z][a-z0-9+.-]*:\/\/)([^\/?#@]+@)/i', '$1[redacted]@', $url) ?? $url;
+        $sanitizedUrl = preg_replace('/^((?:[a-z][a-z0-9+.-]*:)?\/\/)([^\/?#@]+@)/i', '$1[redacted]@', $url) ?? $url;
 
         $queryStart = strpos($sanitizedUrl, '?');
 
@@ -454,5 +454,18 @@ class CheckybotImportService
             || str_contains($compact, 'password')
             || str_contains($compact, 'credential')
             || str_contains($compact, 'cookie');
+    }
+
+    private function isCanonicalNumericId(string|int $value): bool
+    {
+        if (is_int($value)) {
+            return true;
+        }
+
+        if (! ctype_digit($value)) {
+            return false;
+        }
+
+        return (string) ((int) $value) === $value;
     }
 }

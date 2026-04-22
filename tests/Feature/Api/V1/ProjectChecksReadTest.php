@@ -96,6 +96,27 @@ test('project read endpoints reject numeric keys that match both id and package 
         ->assertNotFound();
 });
 
+test('project read endpoints treat zero padded numeric package keys as package keys', function () {
+    Project::factory()->create([
+        'id' => 124,
+        'created_by' => $this->user->id,
+        'package_key' => 'id-match',
+        'name' => 'ID match',
+    ]);
+
+    $packageKeyMatch = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => '00124',
+        'name' => 'Zero padded package key match',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$packageKeyMatch->package_key}")
+        ->assertOk()
+        ->assertJsonPath('data.id', $packageKeyMatch->id)
+        ->assertJsonPath('data.key', '00124');
+});
+
 test('project read endpoint returns project metadata without secrets', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -435,6 +456,30 @@ test('single check endpoint redacts url userinfo and nested query credentials', 
         ->and(json_encode($response->json()))->not->toContain('path-pass')
         ->and(json_encode($response->json()))->not->toContain('nested-secret')
         ->and(json_encode($response->json()))->not->toContain('path-secret');
+});
+
+test('single check endpoint redacts scheme relative url userinfo', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'url' => '//url-user:url-pass@checkybot.test/api/health?plain=value',
+        'request_path' => '//path-user:path-pass@checkybot.test/api/health?plain=value',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.target', '//[redacted]@checkybot.test/api/health?plain=value')
+        ->assertJsonPath('data.url', '//[redacted]@checkybot.test/api/health?plain=value')
+        ->assertJsonPath('data.request_path', '//[redacted]@checkybot.test/api/health?plain=value');
+
+    expect(json_encode($response->json()))->not->toContain('url-user')
+        ->and(json_encode($response->json()))->not->toContain('url-pass')
+        ->and(json_encode($response->json()))->not->toContain('path-user')
+        ->and(json_encode($response->json()))->not->toContain('path-pass');
 });
 
 test('single check endpoint redacts sensitive query values when url parsing fails', function () {
