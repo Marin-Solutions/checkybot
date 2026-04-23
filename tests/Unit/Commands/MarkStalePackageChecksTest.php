@@ -60,16 +60,17 @@ test('command marks overdue package-managed checks as stale danger and notifies 
     Mail::assertSent(HealthStatusAlert::class, 2);
 });
 
-test('command skips disabled package-managed api monitors when marking stale checks', function () {
+test('command skips disabled package-managed api checks when marking stale', function () {
     Mail::fake();
 
-    $api = MonitorApis::factory()->create([
+    $api = MonitorApis::factory()->disabled()->create([
         'source' => 'package',
         'package_name' => 'disabled-api-health',
         'package_interval' => '5m',
-        'current_status' => 'healthy',
-        'is_enabled' => false,
+        'current_status' => 'unknown',
         'last_heartbeat_at' => now()->subMinutes(6),
+        'stale_at' => null,
+        'status_summary' => null,
     ]);
 
     NotificationSetting::factory()
@@ -85,12 +86,14 @@ test('command skips disabled package-managed api monitors when marking stale che
 
     $api->refresh();
 
-    expect($api->current_status)->toBe('healthy')
-        ->and($api->stale_at)->toBeNull();
+    expect($api->current_status)->toBe('unknown');
+    expect($api->stale_at)->toBeNull();
+    expect($api->status_summary)->toBeNull();
 
-    $this->assertDatabaseMissing('monitor_api_results', [
+    assertDatabaseMissing('monitor_api_results', [
         'monitor_api_id' => $api->id,
         'status' => 'danger',
+        'summary' => 'Heartbeat overdue. Expected every 5 minutes.',
     ]);
 
     Mail::assertNothingSent();

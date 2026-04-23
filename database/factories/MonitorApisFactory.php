@@ -43,4 +43,11 @@ class MonitorApisFactory extends Factory
             'data_path' => $path,
         ]);
     }
+
+    public function disabled(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_enabled' => false,
+        ]);
+    }
 }
