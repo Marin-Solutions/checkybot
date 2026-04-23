@@ -12,10 +12,10 @@ trait MonitoringApis
         $validatedData = $form->getState();
 
         if ($form->validate()) {
-            $validatedData['method'] = $validatedData['method'] ?? $validatedData['http_method'] ?? 'GET';
             $callback = \App\Models\MonitorApis::testApi($validatedData);
+            $failedAssertions = array_filter($callback['assertions'] ?? [], fn ($assertion) => ! ($assertion['passed'] ?? false));
 
-            if ($callback['code'] != 200) {
+            if (($callback['code'] ?? 0) === 0) {
                 $responseFail = 'danger';
                 if ($callback['code'] == 60) {
                     $title = 'URL website, problem with certificate';
@@ -35,8 +35,6 @@ trait MonitoringApis
 
                 // Check if we have any assertions to validate
                 if (! empty($callback['assertions'])) {
-                    $failedAssertions = array_filter($callback['assertions'], fn ($assertion) => ! $assertion['passed']);
-
                     if (! empty($failedAssertions)) {
                         $responseFail = 'warning';
                         $title = 'Some API assertions failed';

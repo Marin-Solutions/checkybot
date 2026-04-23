@@ -17,15 +17,23 @@ class PackageHealthStatusService
         };
     }
 
-    public function apiStatusFromResult(array $result): string
+    public function apiStatusFromResult(array $result, ?int $expectedStatus = null): string
     {
+        $code = $result['code'] ?? null;
         $hasFailedAssertions = collect($result['assertions'] ?? [])
             ->contains(fn (array $assertion): bool => ! ($assertion['passed'] ?? false));
 
+        if ($code === 0) {
+            return 'danger';
+        }
+
+        if ($expectedStatus !== null && $code === $expectedStatus) {
+            return $hasFailedAssertions ? 'warning' : 'healthy';
+        }
+
         return match (true) {
-            ($result['code'] ?? null) === 0 => 'danger',
-            ($result['code'] ?? 200) >= 500 => 'danger',
-            ($result['code'] ?? 200) >= 400 => 'warning',
+            ($code ?? 200) >= 500 => 'danger',
+            ($code ?? 200) >= 400 => 'warning',
             $hasFailedAssertions => 'warning',
             default => 'healthy',
         };
@@ -40,9 +48,9 @@ class PackageHealthStatusService
         };
     }
 
-    public function summaryForApi(array $result): string
+    public function summaryForApi(array $result, ?int $expectedStatus = null): string
     {
-        $status = $this->apiStatusFromResult($result);
+        $status = $this->apiStatusFromResult($result, $expectedStatus);
         $code = $result['code'] ?? 0;
 
         if ($status === 'danger') {

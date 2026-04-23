@@ -151,3 +151,26 @@ test('list test action uses stored execution settings', function () {
 
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/health');
 });
+
+test('check api action treats configured non-200 expected status as success', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response('', 204),
+    ]);
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Async API',
+            'url' => 'https://example.com/async-health',
+            'http_method' => 'POST',
+            'expected_status' => 204,
+            'data_path' => null,
+        ])
+        ->call('doMonitoring')
+        ->assertNotified('API response received');
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/async-health');
+});

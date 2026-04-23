@@ -76,6 +76,28 @@ test('command records failed checks', function () {
     ]);
 });
 
+test('command treats matching expected 404 status as healthy', function () {
+    Http::fake([
+        '*' => Http::response(['message' => 'missing by design'], 404),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/missing',
+        'expected_status' => 404,
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('healthy')
+        ->and($monitor->status_summary)->toBe('API heartbeat succeeded with HTTP status 404.')
+        ->and($result?->status)->toBe('healthy')
+        ->and($result?->summary)->toBe('API heartbeat succeeded with HTTP status 404.');
+});
+
 test('command validates assertions', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
