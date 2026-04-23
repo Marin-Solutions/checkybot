@@ -290,6 +290,12 @@ class MonitorApis extends Model
 
             if (json_last_error() !== JSON_ERROR_NONE) {
                 $responseData['error'] = 'Invalid JSON response: '.json_last_error_msg();
+                $responseData['assertions'][] = [
+                    'path' => '_response_body',
+                    'type' => 'json_valid',
+                    'passed' => false,
+                    'message' => $responseData['error'],
+                ];
                 $responseData['body'] = null;
             } else {
                 $responseData['body'] = $parsedBody;

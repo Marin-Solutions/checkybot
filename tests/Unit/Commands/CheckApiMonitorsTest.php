@@ -122,6 +122,33 @@ test('command treats matching expected 404 with failed assertions as warning', f
         ->and($result?->status)->toBe('warning');
 });
 
+test('command treats matching expected 404 with invalid json as warning', function () {
+    Http::fake([
+        '*' => Http::response('not-json', 404),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/malformed-missing',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('warning')
+        ->and($result?->is_success)->toBeFalse()
+        ->and($result?->status)->toBe('warning')
+        ->and($result?->failed_assertions)->toContain([
+            'path' => '_response_body',
+            'type' => 'json_valid',
+            'message' => 'Invalid JSON response: Syntax error',
+        ]);
+});
+
 test('command validates assertions', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),

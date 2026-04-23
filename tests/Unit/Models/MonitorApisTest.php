@@ -195,3 +195,25 @@ test('test api still evaluates assertions for expected 404 json responses', func
             'message' => 'Value does not exist at path',
         ]);
 });
+
+test('test api flags invalid json for expected 404 responses that require assertions', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('not-json', 404),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/malformed-missing',
+        'method' => 'GET',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    expect($result['code'])->toBe(404)
+        ->and($result['error'])->toStartWith('Invalid JSON response:')
+        ->and($result['assertions'])->toContain([
+            'path' => '_response_body',
+            'type' => 'json_valid',
+            'passed' => false,
+            'message' => $result['error'],
+        ]);
+});
