@@ -23,9 +23,14 @@ class ApiKeyResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
-    public static function canViewAny(): bool
+    public static function canManageApiKeys(): bool
     {
         return auth()->user()?->hasAnyRole(['Super Admin', 'Admin']) ?? false;
+    }
+
+    public static function canViewAny(): bool
+    {
+        return static::canManageApiKeys();
     }
 
     public static function getEloquentQuery(): Builder
@@ -36,18 +41,22 @@ class ApiKeyResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema
-            ->schema([
-                Forms\Components\TextInput::make('name')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\DateTimePicker::make('expires_at')
-                    ->label('Expires At')
-                    ->nullable(),
-                Forms\Components\Toggle::make('is_active')
-                    ->label('Active')
-                    ->default(true),
-                // Hide user_id field as it will be set automatically
-            ]);
+            ->schema(static::getFormSchema());
+    }
+
+    public static function getFormSchema(): array
+    {
+        return [
+            Forms\Components\TextInput::make('name')
+                ->required()
+                ->maxLength(255),
+            Forms\Components\DateTimePicker::make('expires_at')
+                ->label('Expires At')
+                ->nullable(),
+            Forms\Components\Toggle::make('is_active')
+                ->label('Active')
+                ->default(true),
+        ];
     }
 
     public static function table(Table $table): Table

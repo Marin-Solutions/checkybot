@@ -58,11 +58,8 @@ class ListApiKeys extends ListRecords
                 ->createAnother(false)
                 ->successNotificationTitle(null)
                 ->using(function (array $data): ApiKey {
-                    $plainTextKey = ApiKey::generateKey();
-                    $data['user_id'] = auth()->id();
-                    $data['key'] = $plainTextKey;
-
-                    $apiKey = ApiKey::create($data);
+                    $apiKey = ApiKey::issueForUser(auth()->id(), $data);
+                    $plainTextKey = $apiKey->key;
 
                     $this->oneTimePlainTextKey = $plainTextKey;
                     $this->oneTimeKeyName = $apiKey->name;

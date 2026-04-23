@@ -60,6 +60,17 @@ class ApiKey extends Model
         return 'ck_'.Str::random(40);
     }
 
+    public static function issueForUser(int $userId, array $attributes): self
+    {
+        return static::create([
+            'name' => $attributes['name'],
+            'expires_at' => $attributes['expires_at'] ?? null,
+            'is_active' => $attributes['is_active'] ?? true,
+            'user_id' => $userId,
+            'key' => static::generateKey(),
+        ]);
+    }
+
     public static function hashKey(string $key): string
     {
         return hash('sha256', $key);
