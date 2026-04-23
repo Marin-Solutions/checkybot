@@ -63,7 +63,9 @@ class ApiKey extends Model
     public static function issueForUser(int $userId, array $attributes): self
     {
         return static::create([
-            ...$attributes,
+            'name' => $attributes['name'],
+            'expires_at' => $attributes['expires_at'] ?? null,
+            'is_active' => $attributes['is_active'] ?? true,
             'user_id' => $userId,
             'key' => static::generateKey(),
         ]);

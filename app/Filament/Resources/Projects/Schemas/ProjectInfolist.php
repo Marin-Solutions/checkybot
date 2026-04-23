@@ -57,7 +57,6 @@ class ProjectInfolist
                             ->schema(ApiKeyResource::getFormSchema())
                             ->fillForm(fn (Project $record): array => [
                                 'name' => "{$record->name} setup key",
-                                'is_active' => true,
                             ])
                             ->action(function (array $data, ViewProject $livewire): void {
                                 $apiKey = $livewire->issueGuidedSetupApiKey($data);
@@ -77,8 +76,8 @@ class ProjectInfolist
                     ->schema([
                         View::make('filament.resources.projects.guided-setup-api-key-panel')
                             ->key('guided_setup_api_key_panel')
-                            ->visible(fn ($livewire): bool => filled($livewire->guidedSetupApiKey))
-                            ->viewData(fn ($livewire, Project $record): array => [
+                            ->visible(fn (ViewProject $livewire): bool => filled($livewire->guidedSetupApiKey))
+                            ->viewData(fn (ViewProject $livewire, Project $record): array => [
                                 'plainTextKey' => $livewire->guidedSetupApiKey,
                                 'keyName' => $livewire->guidedSetupApiKeyName,
                                 'snippet' => $record->guidedSetupSnippet($livewire->guidedSetupApiKey),
@@ -87,7 +86,7 @@ class ProjectInfolist
                         TextEntry::make('guided_setup_snippet')
                             ->key('guided_setup_snippet')
                             ->label('Install Snippet')
-                            ->state(fn (Project $record, $livewire): string => $record->guidedSetupSnippet($livewire->guidedSetupApiKey))
+                            ->state(fn (Project $record, ViewProject $livewire): string => $record->guidedSetupSnippet($livewire->guidedSetupApiKey))
                             ->formatStateUsing(fn (string $state): HtmlString => new HtmlString(
                                 '<pre class="overflow-x-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 text-sm text-white">'
                                 .e($state)

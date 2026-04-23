@@ -1,6 +1,6 @@
 @php
-    $fieldId = 'guided-setup-api-key-field-' . \Illuminate\Support\Str::random(8);
-    $snippetFieldId = 'guided-setup-snippet-field-' . \Illuminate\Support\Str::random(8);
+    $fieldId = 'guided-setup-api-key-field';
+    $snippetFieldId = 'guided-setup-snippet-field';
 @endphp
 
 <div
@@ -12,9 +12,9 @@
         <div class="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div class="min-w-0 flex-1 space-y-2">
                 <div>
-                    <h2 class="text-base font-semibold text-success-950 dark:text-success-100">
+                    <h3 class="text-base font-semibold text-success-950 dark:text-success-100">
                         API key created for this setup flow
-                    </h2>
+                    </h3>
 
                     <p class="mt-1 text-sm text-success-900 dark:text-success-200">
                         @if ($keyName)
