@@ -60,6 +60,56 @@ test('command marks overdue package-managed checks as stale danger and notifies 
     Mail::assertSent(HealthStatusAlert::class, 2);
 });
 
+test('command treats scheduler style package intervals as stale thresholds', function () {
+    $website = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => 'every_5_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => 'every_5_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($website->fresh()->stale_at)->not->toBeNull()
+        ->and($api->fresh()->stale_at)->not->toBeNull()
+        ->and($website->fresh()->status_summary)->toContain('5m')
+        ->and($api->fresh()->status_summary)->toContain('5m');
+});
+
+test('command skips invalid legacy intervals without aborting valid stale checks', function () {
+    $invalidWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'invalid-homepage',
+        'package_interval' => 'every friday',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(30),
+    ]);
+
+    $validApi = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($invalidWebsite->fresh()->stale_at)->toBeNull()
+        ->and($validApi->fresh()->stale_at)->not->toBeNull();
+});
+
 test('command skips disabled package-managed api checks when marking stale', function () {
     Mail::fake();
 

@@ -117,6 +117,8 @@ class CheckybotControlService
                 $check->restore();
             }
 
+            $normalizedSchedule = IntervalParser::normalizeOrFail($data['schedule'] ?? null, 'schedule');
+
             $check->fill([
                 'project_id' => $project->id,
                 'created_by' => $project->created_by,
@@ -129,8 +131,8 @@ class CheckybotControlService
                 'expected_status' => $data['expected_status'] ?? 200,
                 'timeout_seconds' => $data['timeout_seconds'] ?? null,
                 'package_schedule' => $data['schedule'] ?? null,
-                // Existing stale-check logic reads package_interval; package_schedule preserves the control API contract name.
-                'package_interval' => $data['schedule'] ?? null,
+                // Stale detection reads package_interval, so persist the compact normalized form there.
+                'package_interval' => $normalizedSchedule,
                 'is_enabled' => $data['enabled'] ?? true,
                 'source' => 'package',
                 'package_name' => $checkKey,

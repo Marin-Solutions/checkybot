@@ -8,6 +8,28 @@ test('parses minutes correctly', function () {
     expect(IntervalParser::toMinutes('30m'))->toBe(30);
 });
 
+test('normalizes scheduler style minutes correctly', function () {
+    expect(IntervalParser::normalize('every_5_minutes'))->toBe('5m');
+    expect(IntervalParser::toMinutes('every_5_minutes'))->toBe(5);
+});
+
+test('normalizes scheduler style seconds correctly', function () {
+    expect(IntervalParser::normalize('every_30_seconds'))->toBe('30s');
+    expect(IntervalParser::toMinutes('every_30_seconds'))->toBe(1);
+});
+
+test('normalizes singular scheduler style units correctly', function () {
+    expect(IntervalParser::normalize('every_1_second'))->toBe('1s');
+    expect(IntervalParser::normalize('every_1_minute'))->toBe('1m');
+    expect(IntervalParser::normalize('every_1_hour'))->toBe('1h');
+    expect(IntervalParser::normalize('every_1_day'))->toBe('1d');
+});
+
+test('normalizes scheduler style hours and days correctly', function () {
+    expect(IntervalParser::normalize('every_2_hours'))->toBe('2h');
+    expect(IntervalParser::normalize('every_3_days'))->toBe('3d');
+});
+
 test('parses hours to minutes correctly', function () {
     expect(IntervalParser::toMinutes('1h'))->toBe(60);
     expect(IntervalParser::toMinutes('2h'))->toBe(120);
@@ -23,6 +45,14 @@ test('parses days to minutes correctly', function () {
 test('throws exception for invalid format', function () {
     IntervalParser::toMinutes('invalid');
 })->throws(\InvalidArgumentException::class, 'Invalid interval format: invalid');
+
+test('throws exception for zero intervals', function () {
+    IntervalParser::toMinutes('0m');
+})->throws(\InvalidArgumentException::class, 'Interval value must be greater than zero.');
+
+test('throws exception for zero scheduler intervals', function () {
+    IntervalParser::toMinutes('every_0_minutes');
+})->throws(\InvalidArgumentException::class, 'Interval value must be greater than zero.');
 
 test('throws exception for missing unit', function () {
     IntervalParser::toMinutes('5');
@@ -41,6 +71,8 @@ test('validates correct interval formats', function () {
     expect(IntervalParser::isValid('2h'))->toBeTrue();
     expect(IntervalParser::isValid('1d'))->toBeTrue();
     expect(IntervalParser::isValid('30m'))->toBeTrue();
+    expect(IntervalParser::isValid('every_5_minutes'))->toBeTrue();
+    expect(IntervalParser::isValid('every_2_hours'))->toBeTrue();
 });
 
 test('rejects invalid interval formats', function () {
@@ -48,6 +80,8 @@ test('rejects invalid interval formats', function () {
     expect(IntervalParser::isValid('m'))->toBeFalse();
     expect(IntervalParser::isValid('invalid'))->toBeFalse();
     expect(IntervalParser::isValid('5x'))->toBeFalse();
+    expect(IntervalParser::isValid('0m'))->toBeFalse();
+    expect(IntervalParser::isValid('every_0_minutes'))->toBeFalse();
     expect(IntervalParser::isValid(''))->toBeFalse();
 });
 

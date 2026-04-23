@@ -73,7 +73,13 @@ class PackageHealthStatusService
 
     public function staleSummary(string $interval): string
     {
-        return "No heartbeat received within the expected {$interval} interval.";
+        try {
+            $displayInterval = IntervalParser::normalize($interval);
+        } catch (\InvalidArgumentException) {
+            $displayInterval = $interval;
+        }
+
+        return "No heartbeat received within the expected {$displayInterval} interval.";
     }
 
     public function isStale(?CarbonInterface $lastHeartbeatAt, ?string $interval): bool
@@ -82,7 +88,11 @@ class PackageHealthStatusService
             return false;
         }
 
-        return $lastHeartbeatAt->lt(now()->subMinutes($this->intervalToMinutes($interval)));
+        try {
+            return $lastHeartbeatAt->lt(now()->subMinutes($this->intervalToMinutes($interval)));
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 
     public function intervalToMinutes(string $interval): int

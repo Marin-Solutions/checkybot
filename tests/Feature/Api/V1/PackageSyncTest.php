@@ -93,6 +93,7 @@ test('package sync creates a project and api check definitions', function () {
         'expected_status' => 200,
         'timeout_seconds' => 15,
         'package_schedule' => 'every_5_minutes',
+        'package_interval' => '5m',
         'package_name' => 'google-maps-search',
         'source' => 'package',
         'is_enabled' => true,
@@ -211,6 +212,48 @@ test('package sync returns validation errors for malformed payloads', function (
         ]);
 });
 
+test('package sync rejects invalid schedules', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'schedule' => 'every_friday',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.schedule',
+        ]);
+});
+
+test('package sync rejects non string schedules without throwing', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'schedule' => ['every_5_minutes'],
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.schedule',
+        ]);
+});
+
 test('package sync counts reserved non api check types as unsupported', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
@@ -221,6 +264,30 @@ test('package sync counts reserved non api check types as unsupported', function
                     'name' => 'Certificate',
                     'method' => null,
                     'url' => 'https://api.scrappa.co',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.unsupported', 1);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'certificate',
+    ]);
+});
+
+test('package sync ignores unsupported check schedules instead of validating them', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'certificate',
+                    'type' => 'ssl',
+                    'name' => 'Certificate',
+                    'method' => null,
+                    'url' => 'https://api.scrappa.co',
+                    'schedule' => 'daily',
                 ],
             ],
         ]));

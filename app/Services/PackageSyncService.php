@@ -114,6 +114,8 @@ class PackageSyncService
                 $monitorApi->restore();
             }
 
+            $normalizedSchedule = IntervalParser::normalizeOrFail($check['schedule'] ?? null, 'schedule');
+
             $monitorApi->fill([
                 'project_id' => $project->id,
                 'created_by' => $project->created_by,
@@ -126,8 +128,8 @@ class PackageSyncService
                 'expected_status' => $check['expected_status'] ?? 200,
                 'timeout_seconds' => $check['timeout_seconds'] ?? ($defaults['timeout_seconds'] ?? null),
                 'package_schedule' => $check['schedule'] ?? null,
-                // Existing stale-check logic still reads package_interval; package_schedule preserves the v1 contract name.
-                'package_interval' => $check['schedule'] ?? null,
+                // Stale detection still reads package_interval, so persist the compact normalized form there.
+                'package_interval' => $normalizedSchedule,
                 'is_enabled' => $check['enabled'] ?? true,
                 'source' => 'package',
                 'package_name' => $check['key'],

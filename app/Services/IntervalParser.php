@@ -2,8 +2,46 @@
 
 namespace App\Services;
 
+use Illuminate\Validation\ValidationException;
+
 class IntervalParser
 {
+    /**
+     * Normalize supported interval formats to the compact storage form.
+     */
+    public static function normalize(string $interval): string
+    {
+        $interval = trim($interval);
+
+        if (preg_match('/^(\d+)([smhd])$/', $interval, $matches)) {
+            $value = (int) $matches[1];
+
+            if ($value < 1) {
+                throw new \InvalidArgumentException('Interval value must be greater than zero.');
+            }
+
+            return $value.$matches[2];
+        }
+
+        if (preg_match('/^every_(\d+)_(second|seconds|minute|minutes|hour|hours|day|days)$/', $interval, $matches)) {
+            $value = (int) $matches[1];
+            $unit = $matches[2];
+
+            if ($value < 1) {
+                throw new \InvalidArgumentException('Interval value must be greater than zero.');
+            }
+
+            return match ($unit) {
+                'second', 'seconds' => "{$value}s",
+                'minute', 'minutes' => "{$value}m",
+                'hour', 'hours' => "{$value}h",
+                'day', 'days' => "{$value}d",
+            };
+        }
+
+        throw new \InvalidArgumentException("Invalid interval format: {$interval}. Expected format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}");
+    }
+
     /**
      * Parse interval string to minutes
      *
@@ -16,9 +54,8 @@ class IntervalParser
      */
     public static function toMinutes(string $interval): int
     {
-        if (! preg_match('/^(\d+)([smhd])$/', $interval, $matches)) {
-            throw new \InvalidArgumentException("Invalid interval format: {$interval}. Expected format: {number}{s|m|h|d}");
-        }
+        $interval = self::normalize($interval);
+        preg_match('/^(\d+)([smhd])$/', $interval, $matches);
 
         $value = (int) $matches[1];
         $unit = $matches[2];
@@ -28,7 +65,6 @@ class IntervalParser
             'm' => $value,
             'h' => $value * 60,
             'd' => $value * 1440,
-            default => throw new \InvalidArgumentException("Unknown interval unit: {$unit}")
         };
     }
 
@@ -37,7 +73,13 @@ class IntervalParser
      */
     public static function isValid(string $interval): bool
     {
-        return (bool) preg_match('/^(\d+)([smhd])$/', $interval);
+        try {
+            self::normalize($interval);
+
+            return true;
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 
     /**
@@ -54,5 +96,23 @@ class IntervalParser
         }
 
         return $minutes.'m';
+    }
+
+    /**
+     * Normalize an interval string, throwing a ValidationException on invalid input.
+     */
+    public static function normalizeOrFail(?string $interval, string $field = 'interval'): ?string
+    {
+        if ($interval === null) {
+            return null;
+        }
+
+        try {
+            return self::normalize($interval);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                $field => [$exception->getMessage()],
+            ]);
+        }
     }
 }

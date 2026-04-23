@@ -23,18 +23,18 @@ class SyncProjectChecksRequest extends FormRequest
             'uptime_checks' => ['array', 'max:100'],
             'uptime_checks.*.name' => $this->checkNameRules(),
             'uptime_checks.*.url' => ['required', 'url', 'max:1000'],
-            'uptime_checks.*.interval' => ['required', 'string', 'regex:/^\d+[mhd]$/'],
+            'uptime_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
             'uptime_checks.*.max_redirects' => ['integer', 'min:0', 'max:20'],
 
             'ssl_checks' => ['array', 'max:100'],
             'ssl_checks.*.name' => $this->checkNameRules(),
             'ssl_checks.*.url' => ['required', 'url', 'max:1000'],
-            'ssl_checks.*.interval' => ['required', 'string', 'regex:/^\d+[mhd]$/'],
+            'ssl_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
 
             'api_checks' => ['array', 'max:100'],
             'api_checks.*.name' => $this->checkNameRules(),
             'api_checks.*.url' => ['required', 'url', 'max:1000'],
-            'api_checks.*.interval' => ['required', 'string', 'regex:/^\d+[mhd]$/'],
+            'api_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
             'api_checks.*.headers' => ['array'],
             'api_checks.*.assertions' => ['array'],
             'api_checks.*.assertions.*.data_path' => ['required', 'string'],
@@ -51,9 +51,9 @@ class SyncProjectChecksRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'uptime_checks.*.interval.regex' => 'The interval format is invalid. Use format: {number}{m|h|d} (e.g., 5m, 2h, 1d)',
-            'ssl_checks.*.interval.regex' => 'The interval format is invalid. Use format: {number}{m|h|d} (e.g., 5m, 2h, 1d)',
-            'api_checks.*.interval.regex' => 'The interval format is invalid. Use format: {number}{m|h|d} (e.g., 5m, 2h, 1d)',
+            'uptime_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
+            'ssl_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
+            'api_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
             'uptime_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
             'ssl_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
             'api_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
