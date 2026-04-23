@@ -118,8 +118,7 @@ test('command skips disabled api monitors', function () {
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
     ]);
 
-    $monitor = MonitorApis::factory()->create([
-        'is_enabled' => false,
+    $monitor = MonitorApis::factory()->disabled()->create([
         'current_status' => 'unknown',
         'last_heartbeat_at' => null,
         'stale_at' => null,
@@ -131,10 +130,10 @@ test('command skips disabled api monitors', function () {
     assertDatabaseMissing('monitor_api_results', [
         'monitor_api_id' => $monitor->id,
     ]);
+    Http::assertNothingSent();
 
     $monitor->refresh();
 
     expect($monitor->current_status)->toBe('unknown');
     expect($monitor->last_heartbeat_at)->toBeNull();
-    Http::assertNothingSent();
 });
