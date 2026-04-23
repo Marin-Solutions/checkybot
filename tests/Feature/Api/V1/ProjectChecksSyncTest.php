@@ -316,6 +316,24 @@ test('validates interval format', function () {
         ->assertJsonValidationErrors(['uptime_checks.0.interval']);
 });
 
+test('rejects zero intervals at the request boundary', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'test',
+                    'url' => 'https://example.com',
+                    'interval' => '0m',
+                ],
+            ],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['uptime_checks.0.interval']);
+});
+
 test('validates url format', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [

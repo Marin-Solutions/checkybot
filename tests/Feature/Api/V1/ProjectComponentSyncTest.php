@@ -195,3 +195,30 @@ test('warning and danger component events use existing notification settings', f
 
     Http::assertSentCount(1);
 });
+
+test('component sync rejects zero intervals at the request boundary', function () {
+    $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'database',
+                    'interval' => '0m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'database',
+                    'interval' => '0m',
+                    'status' => 'healthy',
+                    'summary' => 'Primary database is healthy',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    )->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'declared_components.0.interval',
+            'components.0.interval',
+        ]);
+});

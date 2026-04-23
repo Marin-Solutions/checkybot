@@ -25,11 +25,11 @@ class SyncProjectComponentsRequest extends FormRequest
         return [
             'declared_components' => ['required', 'array', 'max:100'],
             'declared_components.*.name' => ['required', 'string', 'max:255'],
-            'declared_components.*.interval' => ['required', 'string', 'regex:/^\d+[mhd]$/'],
+            'declared_components.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
 
             'components' => ['required', 'array', 'max:100'],
             'components.*.name' => ['required', 'string', 'max:255'],
-            'components.*.interval' => ['required', 'string', 'regex:/^\d+[mhd]$/'],
+            'components.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
             'components.*.status' => ['required', 'in:healthy,warning,danger'],
             'components.*.summary' => ['nullable', 'string'],
             'components.*.metrics' => ['nullable', 'array'],
@@ -43,8 +43,8 @@ class SyncProjectComponentsRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'declared_components.*.interval.regex' => 'The interval format is invalid. Use format: {number}{m|h|d} (e.g., 5m, 2h, 1d)',
-            'components.*.interval.regex' => 'The interval format is invalid. Use format: {number}{m|h|d} (e.g., 5m, 2h, 1d)',
+            'declared_components.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
+            'components.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
         ];
     }
 }
