@@ -277,6 +277,30 @@ test('package sync counts reserved non api check types as unsupported', function
     ]);
 });
 
+test('package sync ignores unsupported check schedules instead of validating them', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'certificate',
+                    'type' => 'ssl',
+                    'name' => 'Certificate',
+                    'method' => null,
+                    'url' => 'https://api.scrappa.co',
+                    'schedule' => 'daily',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.unsupported', 1);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'certificate',
+    ]);
+});
+
 test('package sync can claim an existing project by identity endpoint fallback', function () {
     $project = Project::factory()->create([
         'created_by' => $this->user->id,

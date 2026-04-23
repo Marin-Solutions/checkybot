@@ -56,6 +56,13 @@ class PackageSyncRequest extends FormRequest
             'checks.*.assertions.*.comparison_operator' => ['nullable', Rule::in(['=', '!=', '>', '>=', '<', '<=', 'contains'])],
             'checks.*.assertions.*.regex_pattern' => ['nullable', 'string', 'max:1000'],
             'checks.*.schedule' => ['nullable', 'string', 'max:50', function (string $attribute, mixed $value, \Closure $fail): void {
+                $segments = explode('.', $attribute);
+                $type = isset($segments[1]) ? $this->input("checks.{$segments[1]}.type") : null;
+
+                if ($type !== 'api') {
+                    return;
+                }
+
                 if ($value !== null && (! is_string($value) || ! IntervalParser::isValid($value))) {
                     $fail('The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
                 }
