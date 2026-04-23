@@ -112,16 +112,12 @@ class MonitorApis extends Model
             $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data, $sanitizedUrl, $method);
             $responseData = self::applyExpectedStatusAssertion($responseData, $expectedStatus);
 
-            if (($responseData['code'] ?? 0) >= 400) {
-                return $responseData;
-            }
-
             if (! self::requiresJsonAssertions($data)) {
                 return $responseData;
             }
 
             $responseData = self::parseJsonResponse($responseData);
-            if ($responseData['body'] === null && ($responseData['code'] ?? 0) < 400) {
+            if ($responseData['body'] === null) {
                 return $responseData;
             }
 

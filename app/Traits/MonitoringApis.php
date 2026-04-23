@@ -17,16 +17,8 @@ trait MonitoringApis
 
             if (($callback['code'] ?? 0) === 0) {
                 $responseFail = 'danger';
-                if ($callback['code'] == 60) {
-                    $title = 'URL website, problem with certificate';
-                    $body = $callback['body'];
-                } elseif ($callback['body'] == 1) {
-                    $title = 'URL Website Response error';
-                    $body = 'The website response is not 200!';
-                } else {
-                    $title = 'URL website a unknown error. try other url';
-                    $body = $callback['body'].' code errno:'.$callback['code'];
-                }
+                $title = 'API request failed';
+                $body = $callback['error'] ?? 'The API request could not be completed.';
             } else {
                 // Initialize response type as success
                 $responseFail = 'success';

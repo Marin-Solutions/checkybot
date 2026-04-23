@@ -175,3 +175,23 @@ test('test api accepts http_method input from filament form flows', function () 
     expect($result['code'])->toBe(204)
         ->and($result['assertions'])->toBe([]);
 });
+
+test('test api still evaluates assertions for expected 404 json responses', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['data' => []], 404),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/missing',
+        'method' => 'GET',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    expect($result['code'])->toBe(404)
+        ->and($result['assertions'])->toContain([
+            'path' => 'data.status',
+            'passed' => false,
+            'message' => 'Value does not exist at path',
+        ]);
+});

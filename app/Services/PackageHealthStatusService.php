@@ -31,6 +31,13 @@ class PackageHealthStatusService
             return $hasFailedAssertions ? 'warning' : 'healthy';
         }
 
+        if ($expectedStatus !== null && $code !== null) {
+            return match (true) {
+                $code >= 500 => 'danger',
+                default => 'warning',
+            };
+        }
+
         return match (true) {
             ($code ?? 200) >= 500 => 'danger',
             ($code ?? 200) >= 400 => 'warning',
