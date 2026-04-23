@@ -32,6 +32,32 @@ test('command checks all active api monitors', function () {
     ]);
 });
 
+test('command skips disabled api monitors', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->disabled()->create([
+        'url' => 'https://api.example.com/disabled-health',
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+    Http::assertNothingSent();
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('unknown');
+    expect($monitor->last_heartbeat_at)->toBeNull();
+});
+
 test('command records failed checks', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 500),
@@ -48,6 +74,105 @@ test('command records failed checks', function () {
         'monitor_api_id' => $monitor->id,
         'is_success' => false,
     ]);
+});
+
+test('command treats matching expected 404 status as healthy', function () {
+    Http::fake([
+        '*' => Http::response(['message' => 'missing by design'], 404),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/missing',
+        'expected_status' => 404,
+        'data_path' => '',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('healthy')
+        ->and($monitor->status_summary)->toBe('API heartbeat succeeded with HTTP status 404.')
+        ->and($result?->is_success)->toBeTrue()
+        ->and($result?->status)->toBe('healthy')
+        ->and($result?->summary)->toBe('API heartbeat succeeded with HTTP status 404.');
+});
+
+test('command treats matching expected 404 with failed assertions as warning', function () {
+    Http::fake([
+        '*' => Http::response(['message' => 'missing by design'], 404),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/missing-with-assertion',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('warning')
+        ->and($result?->is_success)->toBeFalse()
+        ->and($result?->status)->toBe('warning');
+});
+
+test('command treats matching expected 404 with invalid json as warning', function () {
+    Http::fake([
+        '*' => Http::response('not-json', 404),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/malformed-missing',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('warning')
+        ->and($result?->is_success)->toBeFalse()
+        ->and($result?->status)->toBe('warning')
+        ->and($result?->failed_assertions)->toContain([
+            'path' => '_response_body',
+            'type' => 'json_valid',
+            'message' => 'Invalid JSON response: Syntax error',
+        ]);
+});
+
+test('command treats matching expected 404 with literal null json body as warning', function () {
+    Http::fake([
+        '*' => Http::response('null', 404),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/null-body',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('warning')
+        ->and($result?->is_success)->toBeFalse()
+        ->and($result?->status)->toBe('warning')
+        ->and(collect($result?->failed_assertions)->contains(
+            fn (array $assertion): bool => ($assertion['path'] ?? null) === 'data.status'
+                && ($assertion['message'] ?? null) === 'Value does not exist at path'
+        ))->toBeTrue();
 });
 
 test('command validates assertions', function () {
@@ -111,29 +236,4 @@ test('command records warning status history and notifies for package-managed as
     expect($result?->status)->toBe('warning');
 
     Mail::assertSent(HealthStatusAlert::class);
-});
-
-test('command skips disabled api monitors', function () {
-    Http::fake([
-        '*' => Http::response(['data' => ['status' => 'ok']], 200),
-    ]);
-
-    $monitor = MonitorApis::factory()->disabled()->create([
-        'current_status' => 'unknown',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
-    ]);
-
-    $this->artisan('monitor:check-apis')
-        ->assertSuccessful();
-
-    assertDatabaseMissing('monitor_api_results', [
-        'monitor_api_id' => $monitor->id,
-    ]);
-    Http::assertNothingSent();
-
-    $monitor->refresh();
-
-    expect($monitor->current_status)->toBe('unknown');
-    expect($monitor->last_heartbeat_at)->toBeNull();
 });

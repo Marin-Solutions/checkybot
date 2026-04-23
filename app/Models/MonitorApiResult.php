@@ -37,23 +37,14 @@ class MonitorApiResult extends Model
     public static function recordResult(MonitorApis $api, array $testResult, float $startTime, ?string $status = null, ?string $summary = null): self
     {
         // Determine if all assertions passed and HTTP code is successful
-        $isSuccess = true;
+        $isSuccess = $status === null ? true : $status === 'healthy';
         $failedAssertions = [];
 
-        // Check if HTTP code indicates failure
-        // Code 0 = connection error (failure)
-        // Code 200-299 = successful responses (success)
-        // Code 300-399 = redirection messages (usually successful)
-        // Code 400-499 = client error responses (failure)
-        // Code 500-599 = server error responses (failure)
-        // Code 100-199 = informational responses (rare, treat as success)
-        if (isset($testResult['code'])) {
+        if ($status === null && isset($testResult['code'])) {
             $code = $testResult['code'];
-            // Treat as failure: connection errors (0) and HTTP errors (400+)
             if ($code === 0 || $code >= 400) {
                 $isSuccess = false;
             }
-            // Codes 100-399 are considered successful (unless assertions fail)
         }
 
         if (! empty($testResult['assertions'])) {

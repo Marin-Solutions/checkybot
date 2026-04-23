@@ -149,3 +149,20 @@ test('record result calculates response time', function () {
     expect($result->response_time_ms)->toBeGreaterThan(100);
     expect($result->response_time_ms)->toBeLessThan(200);
 });
+
+test('record result treats healthy expected 404 status as success when status is provided', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 404,
+        'body' => ['message' => 'missing by design'],
+        'assertions' => [],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'healthy', 'API heartbeat succeeded with HTTP status 404.');
+
+    expect($result->is_success)->toBeTrue()
+        ->and($result->status)->toBe('healthy')
+        ->and($result->http_code)->toBe(404);
+});

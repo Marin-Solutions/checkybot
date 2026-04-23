@@ -28,8 +28,8 @@ class ApiMonitorExecutionService
             'timeout_seconds' => $monitor->timeout_seconds,
         ]);
 
-        $status = $this->statusService->apiStatusFromResult($rawResult);
-        $summary = $this->statusService->summaryForApi($rawResult);
+        $status = $this->statusService->apiStatusFromResult($rawResult, $monitor->expected_status);
+        $summary = $this->statusService->summaryForApi($rawResult, $monitor->expected_status);
         $previousStatus = $monitor->current_status;
 
         $result = MonitorApiResult::recordResult($monitor, $rawResult, $startTime, $status, $summary);

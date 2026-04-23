@@ -65,7 +65,7 @@ test('command skips disabled package-managed api checks when marking stale', fun
 
     $api = MonitorApis::factory()->disabled()->create([
         'source' => 'package',
-        'package_name' => 'api-health',
+        'package_name' => 'disabled-api-health',
         'package_interval' => '5m',
         'current_status' => 'unknown',
         'last_heartbeat_at' => now()->subMinutes(6),

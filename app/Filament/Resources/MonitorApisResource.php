@@ -7,6 +7,7 @@ use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Models\MonitorApis;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -42,28 +43,75 @@ class MonitorApisResource extends Resource
     {
         return $schema
             ->schema([
-                Forms\Components\TextInput::make('title')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('url')
-                    ->required()
-                    ->url()
-                    ->maxLength(255),
-                Forms\Components\TextInput::make('data_path')
-                    ->helperText('The path to the data in the JSON response (e.g. "data.items")')
-                    ->maxLength(255),
-                Forms\Components\KeyValue::make('headers')
-                    ->keyLabel('Header')
-                    ->valueLabel('Value')
-                    ->keyPlaceholder('Header Name')
-                    ->valuePlaceholder('Header Value')
-                    ->helperText('Optional headers to include in the request')
-                    ->columnSpanFull()
-                    ->addActionLabel('Add Header'),
-                Forms\Components\Toggle::make('save_failed_response')
-                    ->label('Save Response Body on Failure')
-                    ->helperText('When enabled, the full response body will be saved when assertions fail')
-                    ->default(true),
+                Section::make('Monitor Details')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\TextInput::make('title')
+                            ->required()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\Toggle::make('is_enabled')
+                            ->label('Enabled')
+                            ->helperText('Disable this monitor to keep its configuration without running scheduled checks.')
+                            ->default(true)
+                            ->columnSpanFull(),
+                        Forms\Components\TextInput::make('url')
+                            ->required()
+                            ->url()
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                    ]),
+                Section::make('Request Settings')
+                    ->columns(2)
+                    ->schema([
+                        Forms\Components\Select::make('http_method')
+                            ->label('HTTP Method')
+                            ->options([
+                                'GET' => 'GET',
+                                'POST' => 'POST',
+                                'PUT' => 'PUT',
+                                'PATCH' => 'PATCH',
+                                'DELETE' => 'DELETE',
+                                'HEAD' => 'HEAD',
+                                'OPTIONS' => 'OPTIONS',
+                            ])
+                            ->default('GET')
+                            ->required(),
+                        Forms\Components\TextInput::make('expected_status')
+                            ->label('Expected Status Code')
+                            ->numeric()
+                            ->default(200)
+                            ->minValue(100)
+                            ->maxValue(599)
+                            ->required()
+                            ->helperText('The response status code this monitor should treat as healthy.'),
+                        Forms\Components\TextInput::make('timeout_seconds')
+                            ->label('Timeout (seconds)')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(120)
+                            ->placeholder((string) config('monitor.api_timeout', 10))
+                            ->helperText('Optional override for slow endpoints. Leave blank to use the default timeout.'),
+                        Forms\Components\TextInput::make('data_path')
+                            ->helperText('Optional JSON path to validate in the response body (for example: data.items).')
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\KeyValue::make('headers')
+                            ->keyLabel('Header')
+                            ->valueLabel('Value')
+                            ->keyPlaceholder('Header Name')
+                            ->valuePlaceholder('Header Value')
+                            ->helperText('Optional headers to include in the request')
+                            ->columnSpanFull()
+                            ->addActionLabel('Add Header'),
+                    ]),
+                Section::make('Failure Handling')
+                    ->schema([
+                        Forms\Components\Toggle::make('save_failed_response')
+                            ->label('Save Response Body on Failure')
+                            ->helperText('When enabled, the full response body will be saved when assertions fail')
+                            ->default(true),
+                    ]),
             ]);
     }
 
@@ -85,6 +133,9 @@ class MonitorApisResource extends Resource
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\IconColumn::make('is_enabled')
+                    ->label('Enabled')
+                    ->boolean(),
                 Tables\Columns\TextColumn::make('data_path')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('avg_response_time')
@@ -116,7 +167,16 @@ class MonitorApisResource extends Resource
                     ->color('warning')
                     ->icon('heroicon-o-play')
                     ->action(function (MonitorApis $record) {
-                        $record->testApi(['id' => $record->id, 'url' => $record->url]);
+                        MonitorApis::testApi([
+                            'id' => $record->id,
+                            'url' => $record->url,
+                            'method' => $record->http_method,
+                            'data_path' => $record->data_path,
+                            'headers' => $record->headers,
+                            'expected_status' => $record->expected_status,
+                            'timeout_seconds' => $record->timeout_seconds,
+                            'title' => $record->title,
+                        ]);
                     }),
             ])
             ->bulkActions([

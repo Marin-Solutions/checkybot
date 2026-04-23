@@ -158,3 +158,83 @@ test('test api treats null json values as existing data paths', function () {
         ->and($result['assertions'][0]['passed'])->toBeTrue()
         ->and($result['assertions'][0]['message'])->toBe('Value exists at path');
 });
+
+test('test api accepts http_method input from filament form flows', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('', 204),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/health',
+        'http_method' => 'POST',
+        'expected_status' => 204,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://api.example.test/health');
+
+    expect($result['code'])->toBe(204)
+        ->and($result['assertions'])->toBe([]);
+});
+
+test('test api still evaluates assertions for expected 404 json responses', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['data' => []], 404),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/missing',
+        'method' => 'GET',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    expect($result['code'])->toBe(404)
+        ->and($result['assertions'])->toContain([
+            'path' => 'data.status',
+            'passed' => false,
+            'message' => 'Value does not exist at path',
+        ]);
+});
+
+test('test api flags invalid json for expected 404 responses that require assertions', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('not-json', 404),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/malformed-missing',
+        'method' => 'GET',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    expect($result['code'])->toBe(404)
+        ->and($result['error'])->toStartWith('Invalid JSON response:')
+        ->and($result['assertions'])->toContain([
+            'path' => '_response_body',
+            'type' => 'json_valid',
+            'passed' => false,
+            'message' => $result['error'],
+        ]);
+});
+
+test('test api still evaluates assertions when json body is literal null', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('null', 404),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/null-body',
+        'method' => 'GET',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    expect($result['code'])->toBe(404)
+        ->and($result['error'])->toBeNull()
+        ->and($result['assertions'])->toContain([
+            'path' => 'data.status',
+            'passed' => false,
+            'message' => 'Value does not exist at path',
+        ]);
+});

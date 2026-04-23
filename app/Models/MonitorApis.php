@@ -94,7 +94,7 @@ class MonitorApis extends Model
     {
         $url = $data['url'];
         $startTime = microtime(true);
-        $method = strtoupper((string) ($data['method'] ?? 'GET'));
+        $method = strtoupper((string) ($data['method'] ?? $data['http_method'] ?? 'GET'));
         $expectedStatus = isset($data['expected_status']) ? (int) $data['expected_status'] : null;
 
         $responseData = self::initializeResponseData();
@@ -112,16 +112,12 @@ class MonitorApis extends Model
             $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data, $sanitizedUrl, $method);
             $responseData = self::applyExpectedStatusAssertion($responseData, $expectedStatus);
 
-            if (($responseData['code'] ?? 0) >= 400) {
-                return $responseData;
-            }
-
             if (! self::requiresJsonAssertions($data)) {
                 return $responseData;
             }
 
             $responseData = self::parseJsonResponse($responseData);
-            if ($responseData['body'] === null && ($responseData['code'] ?? 0) < 400) {
+            if (self::jsonParsingFailed($responseData)) {
                 return $responseData;
             }
 
@@ -294,6 +290,12 @@ class MonitorApis extends Model
 
             if (json_last_error() !== JSON_ERROR_NONE) {
                 $responseData['error'] = 'Invalid JSON response: '.json_last_error_msg();
+                $responseData['assertions'][] = [
+                    'path' => '_response_body',
+                    'type' => 'json_valid',
+                    'passed' => false,
+                    'message' => $responseData['error'],
+                ];
                 $responseData['body'] = null;
             } else {
                 $responseData['body'] = $parsedBody;
@@ -301,6 +303,13 @@ class MonitorApis extends Model
         }
 
         return $responseData;
+    }
+
+    private static function jsonParsingFailed(array $responseData): bool
+    {
+        return collect($responseData['assertions'] ?? [])
+            ->contains(fn (array $assertion): bool => ($assertion['type'] ?? null) === 'json_valid'
+                && ($assertion['passed'] ?? true) === false);
     }
 
     private static function runAssertions(array $data, array $responseData): array
