@@ -32,8 +32,11 @@ test('assertion validates exists', function () {
     $result = $assertion->validateResponse('value');
     expect($result['passed'])->toBeTrue();
 
-    $result = $assertion->validateResponse(null);
+    $result = $assertion->validateResponse(null, false);
     expect($result['passed'])->toBeFalse();
+
+    $result = $assertion->validateResponse(null, true);
+    expect($result['passed'])->toBeTrue();
 });
 
 test('assertion validates not exists', function () {
@@ -41,10 +44,13 @@ test('assertion validates not exists', function () {
         'assertion_type' => 'not_exists',
     ]);
 
-    $result = $assertion->validateResponse(null);
+    $result = $assertion->validateResponse(null, false);
     expect($result['passed'])->toBeTrue();
 
     $result = $assertion->validateResponse('value');
+    expect($result['passed'])->toBeFalse();
+
+    $result = $assertion->validateResponse(null, true);
     expect($result['passed'])->toBeFalse();
 });
 

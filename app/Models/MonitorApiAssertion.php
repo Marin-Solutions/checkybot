@@ -32,7 +32,7 @@ class MonitorApiAssertion extends Model
         return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
     }
 
-    public function validateResponse($value): array
+    public function validateResponse($value, bool $exists = true): array
     {
         $result = [
             'passed' => false,
@@ -53,14 +53,14 @@ class MonitorApiAssertion extends Model
                 break;
 
             case 'exists':
-                $result['passed'] = isset($value);
+                $result['passed'] = $exists;
                 $result['message'] = $result['passed']
                     ? 'Value exists at path'
                     : 'Value does not exist at path';
                 break;
 
             case 'not_exists':
-                $result['passed'] = ! isset($value);
+                $result['passed'] = ! $exists;
                 $result['message'] = $result['passed']
                     ? 'Value does not exist at path'
                     : 'Value exists at path but should not';

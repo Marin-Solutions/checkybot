@@ -5,6 +5,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 test('monitor api belongs to user', function () {
     $user = User::factory()->create();
@@ -120,4 +121,40 @@ test('monitor api redacts sensitive query parameters in log-safe urls', function
     expect($sanitized)
         ->toBe('https://api.example.test/health?token=%5Bredacted%5D&plain=value')
         ->not->toContain('secret-token');
+});
+
+test('test api preserves final http error status after retries', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['message' => 'forbidden'], 403),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/blocked',
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result['code'])->toBe(403)
+        ->and($result['assertions'])->toContain([
+            'path' => '_http_status',
+            'type' => 'status_code',
+            'passed' => false,
+            'message' => 'Expected HTTP status 200, got 403.',
+        ]);
+});
+
+test('test api treats null json values as existing data paths', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['data' => ['optional' => null]], 200),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/nullable',
+        'method' => 'GET',
+        'data_path' => 'data.optional',
+    ]);
+
+    expect($result['code'])->toBe(200)
+        ->and($result['assertions'][0]['passed'])->toBeTrue()
+        ->and($result['assertions'][0]['message'])->toBe('Value exists at path');
 });
