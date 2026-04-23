@@ -58,12 +58,9 @@ class WebsiteResource extends Resource
                                 \Filament\Forms\Components\TextInput::make('url')
                                     ->translateLabel()
                                     ->required()
-                                    ->activeUrl()
                                     ->default('https://')
-                                    ->validationMessages([
-                                        'active_url' => 'The website Url not exists, try again',
-                                    ])
                                     ->url()
+                                    ->helperText('If DNS, SSL, or HTTP checks fail during setup, Checkybot will still save the monitor and mark it with a warning.')
                                     ->maxLength(255),
                                 \Filament\Forms\Components\Textarea::make('description')
                                     ->translateLabel()

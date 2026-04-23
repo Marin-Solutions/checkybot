@@ -7,54 +7,111 @@ use Filament\Notifications\Notification;
 
 class WebsiteUrlValidator
 {
-    public static function validate(string $url, callable $halt): void
+    public static function inspect(string $url, ?int $ignoreWebsiteId = null): array
     {
-        $urlExistsInDB = Website::whereUrl($url)->count();
+        $query = Website::query()->whereUrl($url);
+
+        if ($ignoreWebsiteId !== null) {
+            $query->whereKeyNot($ignoreWebsiteId);
+        }
+
+        $urlExistsInDB = $query->exists();
         $urlCheckExists = Website::checkWebsiteExists($url);
         $urlResponseCode = Website::checkResponseCode($url);
-        $responseStatus = false;
 
-        if ($urlResponseCode['code'] != 200) {
-            $responseStatus = true;
-            if ($urlResponseCode['code'] == 60) {
-                $title = 'URL website, problem with certificate';
-                $body = $urlResponseCode['body'];
-            } elseif ($urlResponseCode['body'] == 1) {
-                $title = 'URL Website Response error';
-                $body = 'The website response is not 200!';
-            } else {
-                $title = 'URL website a unknown error. try other url';
-                $body = $urlResponseCode['body'].' code errno:'.$urlResponseCode['code'];
-            }
-        }
+        $blockingIssues = [];
+        $warnings = [];
 
-        if ($responseStatus) {
-            Notification::make()
-                ->danger()
-                ->title(__($title))
-                ->body(__($body))
-                ->send();
-            $halt();
-        }
-
-        if ($urlExistsInDB > 0) {
-            Notification::make()
-                ->danger()
-                ->title(__('URL Website Exists in database'))
-                ->body(__('The new website exists in database, try again'))
-                ->send();
+        if ($urlExistsInDB) {
+            $blockingIssues[] = [
+                'title' => 'URL Website Exists in database',
+                'body' => 'The website already exists in the database, try another URL.',
+            ];
         }
 
         if (! $urlCheckExists) {
+            $warnings[] = [
+                'title' => 'DNS lookup failed during setup',
+                'body' => 'The domain did not resolve during setup. The monitor will still be saved so you can finish configuration first.',
+            ];
+        }
+
+        if (($urlResponseCode['code'] ?? null) !== 200) {
+            $warnings[] = self::warningForResponse($urlResponseCode);
+        }
+
+        return [
+            'should_halt' => filled($blockingIssues),
+            'blocking_issues' => $blockingIssues,
+            'warnings' => $warnings,
+            'warning_state' => self::warningState($warnings),
+        ];
+    }
+
+    public static function validate(string $url, callable $halt, ?int $ignoreWebsiteId = null): array
+    {
+        $result = self::inspect($url, $ignoreWebsiteId);
+
+        foreach ($result['blocking_issues'] as $issue) {
             Notification::make()
                 ->danger()
-                ->title(__('website was not registered'))
-                ->body(__('The new website not exists in DNS Lookup'))
+                ->title(__($issue['title']))
+                ->body(__($issue['body']))
                 ->send();
         }
 
-        if ($urlExistsInDB > 0 || ! $urlCheckExists) {
+        if ($result['should_halt']) {
             $halt();
         }
+
+        foreach ($result['warnings'] as $warning) {
+            Notification::make()
+                ->warning()
+                ->title(__($warning['title']))
+                ->body(__($warning['body']))
+                ->persistent()
+                ->send();
+        }
+
+        return $result;
+    }
+
+    public static function warningState(array $warnings): array
+    {
+        if ($warnings === []) {
+            return [];
+        }
+
+        return [
+            'current_status' => 'warning',
+            'status_summary' => collect($warnings)
+                ->pluck('body')
+                ->implode(' '),
+        ];
+    }
+
+    private static function warningForResponse(array $urlResponseCode): array
+    {
+        $code = $urlResponseCode['code'] ?? 0;
+        $body = trim((string) ($urlResponseCode['body'] ?? ''));
+
+        if ($code === 60 || str_contains(strtolower($body), 'ssl')) {
+            return [
+                'title' => 'SSL issue detected during setup',
+                'body' => $body !== '' ? $body : 'The target returned an SSL error during setup. The monitor will still be saved.',
+            ];
+        }
+
+        if ($code >= 400) {
+            return [
+                'title' => 'Website returned a non-200 response',
+                'body' => "The target responded with HTTP {$code} during setup. The monitor will still be saved so you can use it for staging, maintenance, or recovery work.",
+            ];
+        }
+
+        return [
+            'title' => 'Website could not be reached during setup',
+            'body' => $body !== '' ? $body : 'The target could not be reached during setup. The monitor will still be saved.',
+        ];
     }
 }

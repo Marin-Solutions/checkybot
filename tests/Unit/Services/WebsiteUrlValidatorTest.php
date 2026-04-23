@@ -71,7 +71,7 @@ test('halts when website not exists in dns', function () {
         $haltCalled = true;
     });
 
-    expect($haltCalled)->toBeTrue();
+    expect($haltCalled)->toBeFalse();
 });
 
 test('halts on certificate error', function () {
@@ -96,11 +96,7 @@ test('halts on certificate error', function () {
         $haltCalled = true;
     });
 
-    // For ConnectionException, the code is 0 and body is the message
-    // Looking at the validator, it checks for code == 60 for certificate errors
-    // But ConnectionException sets code to 0, so this won't trigger certificate-specific message
-    // However, it should still halt due to non-200 response
-    expect($haltCalled)->toBeTrue();
+    expect($haltCalled)->toBeFalse();
 });
 
 test('halts on non 200 response', function () {
@@ -122,7 +118,7 @@ test('halts on non 200 response', function () {
         $haltCalled = true;
     });
 
-    expect($haltCalled)->toBeTrue();
+    expect($haltCalled)->toBeFalse();
 });
 
 test('halts on unknown error', function () {
@@ -146,5 +142,28 @@ test('halts on unknown error', function () {
         $haltCalled = true;
     });
 
-    expect($haltCalled)->toBeTrue();
+    expect($haltCalled)->toBeFalse();
+});
+
+test('returns warning state when setup checks find issues', function () {
+    $url = 'https://broken.example';
+
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldReceive('getRecords')
+        ->with('broken.example', 'A')
+        ->andReturn([]);
+
+    Http::fake([
+        $url => Http::response('Not Found', 404),
+    ]);
+
+    $result = WebsiteUrlValidator::inspect($url);
+
+    expect($result['should_halt'])->toBeFalse()
+        ->and($result['warnings'])->toHaveCount(2)
+        ->and($result['warning_state'])->toMatchArray([
+            'current_status' => 'warning',
+        ])
+        ->and($result['warning_state']['status_summary'])->toContain('The domain did not resolve during setup.')
+        ->and($result['warning_state']['status_summary'])->toContain('HTTP 404');
 });

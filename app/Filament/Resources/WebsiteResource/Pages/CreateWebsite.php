@@ -5,12 +5,15 @@ namespace App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\SeoSchedule;
 use App\Models\Website;
+use App\Services\WebsiteUrlValidator;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\Auth;
 
 class CreateWebsite extends CreateRecord
 {
     protected static string $resource = WebsiteResource::class;
+
+    protected array $setupValidationResult = [];
 
     protected function getRedirectUrl(): string
     {
@@ -24,12 +27,20 @@ class CreateWebsite extends CreateRecord
         $sslExpiryDate = Website::sslExpiryDate($data['url']);
         $data['ssl_expiry_date'] = $sslExpiryDate;
 
-        return $data;
+        return [
+            ...$data,
+            ...($this->setupValidationResult['warning_state'] ?? []),
+        ];
+    }
+
+    protected function afterValidate(): void
+    {
+        $this->setupValidationResult = WebsiteUrlValidator::inspect($this->data['url']);
     }
 
     protected function beforeCreate(): void
     {
-        \App\Services\WebsiteUrlValidator::validate(
+        $this->setupValidationResult = WebsiteUrlValidator::validate(
             $this->data['url'],
             fn () => $this->halt()
         );

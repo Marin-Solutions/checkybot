@@ -5,7 +5,9 @@ use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
 use App\Models\User;
 use App\Models\Website;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
+use Spatie\Dns\Dns;
 
 test('super admin can render list page', function () {
     $this->actingAsSuperAdmin();
@@ -43,7 +45,15 @@ test('super admin can render create page', function () {
 test('super admin can create website', function () {
     $user = $this->actingAsSuperAdmin();
 
-    // Use an existing valid website URL instead of mocking
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldReceive('getRecords')
+        ->with('example.com', 'A')
+        ->andReturn([['ip' => '192.0.2.1']]);
+
+    Http::fake([
+        'https://example.com' => Http::response('OK', 200),
+    ]);
+
     Livewire::test(CreateWebsite::class)
         ->fillForm([
             'name' => 'Test Website',
@@ -90,6 +100,15 @@ test('super admin can update website', function () {
         'url' => 'https://example.com',
     ]);
 
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldReceive('getRecords')
+        ->with('example.com', 'A')
+        ->andReturn([['ip' => '192.0.2.1']]);
+
+    Http::fake([
+        'https://example.com' => Http::response('OK', 200),
+    ]);
+
     Livewire::test(EditWebsite::class, ['record' => $website->id])
         ->fillForm(['name' => 'New Name'])
         ->call('save')
@@ -99,6 +118,73 @@ test('super admin can update website', function () {
         'id' => $website->id,
         'name' => 'New Name',
     ]);
+});
+
+test('super admin can create website with warning state when target checks fail', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldReceive('getRecords')
+        ->with('broken.example', 'A')
+        ->andReturn([]);
+
+    Http::fake([
+        'https://broken.example' => Http::response('Not Found', 404),
+    ]);
+
+    Livewire::test(CreateWebsite::class)
+        ->fillForm([
+            'name' => 'Broken Website',
+            'url' => 'https://broken.example',
+            'description' => 'Broken target',
+            'uptime_check' => true,
+            'uptime_interval' => 60,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $this->assertDatabaseHas('websites', [
+        'name' => 'Broken Website',
+        'url' => 'https://broken.example',
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+
+    expect(Website::where('url', 'https://broken.example')->first()?->status_summary)
+        ->toContain('The domain did not resolve during setup.')
+        ->toContain('HTTP 404');
+});
+
+test('super admin can update website and keep save flow when target checks fail', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'name' => 'Healthy Website',
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+        'current_status' => 'healthy',
+        'status_summary' => 'Heartbeat received successfully.',
+    ]);
+
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldReceive('getRecords')
+        ->with('broken.example', 'A')
+        ->andReturn([]);
+
+    Http::fake([
+        'https://broken.example' => Http::response('Service Unavailable', 503),
+    ]);
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm(['url' => 'https://broken.example'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $website->refresh();
+
+    expect($website->url)->toBe('https://broken.example')
+        ->and($website->current_status)->toBe('warning')
+        ->and($website->status_summary)->toContain('The domain did not resolve during setup.')
+        ->and($website->status_summary)->toContain('HTTP 503');
 });
 
 test('super admin can delete website', function () {

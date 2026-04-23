@@ -169,6 +169,8 @@ class SitesRelationManager extends RelationManager
                     })
                     ->mutateFormDataUsing(function (array $data, Model $record, \Filament\Actions\Action $action): array {
                         try {
+                            $validationResult = \App\Services\WebsiteUrlValidator::inspect('https://'.$record->domain);
+
                             $data['name'] = $record->server->name.'_'.$record->domain;
                             $data['url'] = 'https://'.$record->domain;
                             $data['description'] = 'Imported from Ploi';
@@ -187,7 +189,10 @@ class SitesRelationManager extends RelationManager
                             $action->halt();
                         }
 
-                        return $data;
+                        return [
+                            ...$data,
+                            ...($validationResult['warning_state'] ?? []),
+                        ];
                     })
                     ->action(function (Model $record, array $data) {
                         try {
