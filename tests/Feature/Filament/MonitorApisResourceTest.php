@@ -124,7 +124,8 @@ test('api monitor list shows enabled state', function () {
     ]);
 
     Livewire::test(ListMonitorApis::class)
-        ->assertCanSeeTableRecords([$enabledMonitor, $disabledMonitor]);
+        ->assertCanSeeTableRecords([$enabledMonitor, $disabledMonitor])
+        ->assertTableColumnExists('is_enabled');
 });
 
 test('list test action uses stored execution settings', function () {
@@ -173,4 +174,27 @@ test('check api action treats configured non-200 expected status as success', fu
         ->assertNotified('API response received');
 
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/async-health');
+});
+
+test('check api action treats server errors as danger', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['error' => 'server blew up'], 500),
+    ]);
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Broken API',
+            'url' => 'https://example.com/broken-health',
+            'http_method' => 'GET',
+            'expected_status' => 200,
+            'data_path' => null,
+        ])
+        ->call('doMonitoring')
+        ->assertNotified('API request failed');
+
+    Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/broken-health');
 });

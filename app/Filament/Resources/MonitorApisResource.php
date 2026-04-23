@@ -167,7 +167,7 @@ class MonitorApisResource extends Resource
                     ->color('warning')
                     ->icon('heroicon-o-play')
                     ->action(function (MonitorApis $record) {
-                        $record->testApi([
+                        MonitorApis::testApi([
                             'id' => $record->id,
                             'url' => $record->url,
                             'method' => $record->http_method,

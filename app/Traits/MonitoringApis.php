@@ -2,6 +2,7 @@
 
 namespace App\Traits;
 
+use App\Services\PackageHealthStatusService;
 use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 
@@ -13,6 +14,8 @@ trait MonitoringApis
 
         if ($form->validate()) {
             $callback = \App\Models\MonitorApis::testApi($validatedData);
+            $expectedStatus = isset($validatedData['expected_status']) ? (int) $validatedData['expected_status'] : null;
+            $status = app(PackageHealthStatusService::class)->apiStatusFromResult($callback, $expectedStatus);
             $failedAssertions = array_filter($callback['assertions'] ?? [], fn ($assertion) => ! ($assertion['passed'] ?? false));
 
             if (($callback['code'] ?? 0) === 0) {
@@ -20,18 +23,20 @@ trait MonitoringApis
                 $title = 'API request failed';
                 $body = $callback['error'] ?? 'The API request could not be completed.';
             } else {
-                // Initialize response type as success
-                $responseFail = 'success';
-                $title = 'API response received';
+                $responseFail = match ($status) {
+                    'danger' => 'danger',
+                    'warning' => 'warning',
+                    default => 'success',
+                };
+                $title = match ($status) {
+                    'danger' => 'API request failed',
+                    'warning' => 'Some API assertions failed',
+                    default => 'API response received',
+                };
                 $body = [];
 
                 // Check if we have any assertions to validate
                 if (! empty($callback['assertions'])) {
-                    if (! empty($failedAssertions)) {
-                        $responseFail = 'warning';
-                        $title = 'Some API assertions failed';
-                    }
-
                     // Build the response message
                     foreach ($callback['assertions'] as $assertion) {
                         $icon = $assertion['passed'] ? '✓' : '✗';
