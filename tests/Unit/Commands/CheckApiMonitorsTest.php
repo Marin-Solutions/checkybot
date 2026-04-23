@@ -32,6 +32,24 @@ test('command checks all active api monitors', function () {
     ]);
 });
 
+test('command skips disabled api monitors', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/disabled-health',
+        'is_enabled' => false,
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+});
+
 test('command records failed checks', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 500),
