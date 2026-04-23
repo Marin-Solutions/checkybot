@@ -112,3 +112,29 @@ test('command records warning status history and notifies for package-managed as
 
     Mail::assertSent(HealthStatusAlert::class);
 });
+
+test('command skips disabled api monitors', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('unknown');
+    expect($monitor->last_heartbeat_at)->toBeNull();
+    Http::assertNothingSent();
+});
