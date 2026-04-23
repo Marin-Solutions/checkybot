@@ -139,7 +139,7 @@ class ProjectComponentInfolist
             return null;
         }
 
-        return $record->is_stale
+        return $thresholdAt->lte(now())
             ? 'Expired '.$thresholdAt->diffForHumans()
             : 'Expires '.$thresholdAt->diffForHumans();
     }

@@ -138,7 +138,7 @@ test('project component detail shows immediate stale threshold for zero-minute i
     Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
         ->assertSuccessful()
         ->assertSee('Stale Threshold')
-        ->assertSee('Expires');
+        ->assertSee('Expired');
 });
 
 test('application list and detail show the worst active component status', function () {
