@@ -54,22 +54,6 @@ trait MonitoringApis
                 ->title(__($title))
                 ->body(__($body))
                 ->send();
-
-            //                if ( $responseFail ) {
-            //                    Notification::make()
-            //                        ->danger()
-            //                        ->title(__($title))
-            //                        ->body(__($body))
-            //                        ->send()
-            //                    ;
-            //                } else {
-            //                    Notification::make()
-            //                        ->success()
-            //                        ->title(__($title))
-            //                        ->body(__($body))
-            //                        ->send()
-            //                    ;
-            //                }
         }
     }
 
