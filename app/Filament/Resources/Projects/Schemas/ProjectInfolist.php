@@ -78,16 +78,16 @@ class ProjectInfolist
                         View::make('filament.resources.projects.guided-setup-api-key-panel')
                             ->key('guided_setup_api_key_panel')
                             ->visible(fn (ViewProject $livewire): bool => filled($livewire->guidedSetupApiKey))
-                            ->viewData(fn (ViewProject $livewire, Project $record): array => [
+                            ->viewData(fn (ViewProject $livewire): array => [
                                 'plainTextKey' => $livewire->guidedSetupApiKey,
                                 'keyName' => $livewire->guidedSetupApiKeyName,
-                                'snippet' => $record->guidedSetupSnippet($livewire->guidedSetupApiKey),
+                                'snippet' => $livewire->guidedSetupSnippet,
                             ])
                             ->columnSpanFull(),
                         TextEntry::make('guided_setup_snippet')
                             ->key('guided_setup_snippet')
                             ->label('Install Snippet')
-                            ->state(fn (Project $record, ViewProject $livewire): string => $record->guidedSetupSnippet($livewire->guidedSetupApiKey))
+                            ->state(fn (ViewProject $livewire): string => $livewire->guidedSetupSnippet)
                             ->formatStateUsing(fn (string $state): HtmlString => new HtmlString(
                                 '<pre class="overflow-x-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 text-sm text-white">'
                                 .e($state)
