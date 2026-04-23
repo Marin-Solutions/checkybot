@@ -23,9 +23,14 @@ class ApiKeyResource extends Resource
 
     protected static ?int $navigationSort = 2;
 
-    public static function canViewAny(): bool
+    public static function canManageApiKeys(): bool
     {
         return auth()->user()?->hasAnyRole(['Super Admin', 'Admin']) ?? false;
+    }
+
+    public static function canViewAny(): bool
+    {
+        return static::canManageApiKeys();
     }
 
     public static function getEloquentQuery(): Builder
@@ -51,7 +56,6 @@ class ApiKeyResource extends Resource
             Forms\Components\Toggle::make('is_active')
                 ->label('Active')
                 ->default(true),
-            // Hide user_id field as it will be set automatically
         ];
     }
 

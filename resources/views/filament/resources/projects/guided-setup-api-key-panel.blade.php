@@ -85,6 +85,10 @@
                             .then(() => {
                                 copiedSnippet = true;
                                 setTimeout(() => copiedSnippet = false, 1600);
+                            })
+                            .catch(() => {
+                                $refs.snippetInput.focus();
+                                $refs.snippetInput.select();
                             });
                     "
                 >
@@ -96,6 +100,7 @@
             <label class="sr-only" for="{{ $snippetFieldId }}">Install snippet</label>
             <textarea
                 id="{{ $snippetFieldId }}"
+                x-ref="snippetInput"
                 class="block min-h-56 w-full rounded-md border border-success-300 bg-white px-3 py-2 font-mono text-sm text-gray-950 shadow-sm outline-none transition focus:border-success-500 focus:ring-2 focus:ring-success-500/30 dark:border-success-700 dark:bg-gray-950 dark:text-white"
                 readonly
             >{{ $snippet }}</textarea>

@@ -53,6 +53,7 @@ class ProjectInfolist
                         Action::make('createApiKey')
                             ->label('Create API Key')
                             ->icon('heroicon-o-key')
+                            ->authorize(fn (): bool => ApiKeyResource::canManageApiKeys())
                             ->schema(ApiKeyResource::getFormSchema())
                             ->fillForm(fn (Project $record): array => [
                                 'name' => "{$record->name} setup key",
