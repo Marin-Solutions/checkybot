@@ -398,6 +398,17 @@ test('control api rejects disabled check runs and relative urls without a projec
         ->assertJsonValidationErrors('url');
 });
 
+test('control api rejects invalid schedules', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/invalid-schedule', [
+            'name' => 'Invalid schedule',
+            'url' => '/health',
+            'schedule' => 'every_friday',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('schedule');
+});
+
 test('mcp endpoint lists tools and calls the shared control surface', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -444,4 +455,26 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         'package_name' => 'search-health',
         'url' => 'https://api.scrappa.test/health',
     ]);
+});
+
+test('mcp endpoint rejects invalid schedules with a field validation error', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'search-health',
+                    'name' => 'Search health',
+                    'url' => '/health',
+                    'schedule' => 'every_friday',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.schedule.0', 'The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
 });

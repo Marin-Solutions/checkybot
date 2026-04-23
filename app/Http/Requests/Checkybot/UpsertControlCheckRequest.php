@@ -44,7 +44,7 @@ class UpsertControlCheckRequest extends FormRequest
             'assertions.*.sort_order' => ['nullable', 'integer', 'min:1'],
             'assertions.*.active' => ['nullable', 'boolean'],
             'schedule' => ['nullable', 'string', 'max:100', function (string $attribute, mixed $value, \Closure $fail): void {
-                if ($value !== null && ! IntervalParser::isValid($value)) {
+                if ($value !== null && (! is_string($value) || ! IntervalParser::isValid($value))) {
                     $fail('The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
                 }
             }],

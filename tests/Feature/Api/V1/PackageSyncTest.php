@@ -217,7 +217,33 @@ test('package sync rejects invalid schedules', function () {
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
                 [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
                     'schedule' => 'every_friday',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.schedule',
+        ]);
+});
+
+test('package sync rejects non string schedules without throwing', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'schedule' => ['every_5_minutes'],
                 ],
             ],
         ]));

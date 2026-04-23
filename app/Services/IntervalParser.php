@@ -12,12 +12,22 @@ class IntervalParser
         $interval = trim($interval);
 
         if (preg_match('/^(\d+)([smhd])$/', $interval, $matches)) {
-            return (int) $matches[1].$matches[2];
+            $value = (int) $matches[1];
+
+            if ($value < 1) {
+                throw new \InvalidArgumentException('Interval value must be greater than zero.');
+            }
+
+            return $value.$matches[2];
         }
 
         if (preg_match('/^every_(\d+)_(second|seconds|minute|minutes|hour|hours|day|days)$/', $interval, $matches)) {
             $value = (int) $matches[1];
             $unit = $matches[2];
+
+            if ($value < 1) {
+                throw new \InvalidArgumentException('Interval value must be greater than zero.');
+            }
 
             return match ($unit) {
                 'second', 'seconds' => "{$value}s",
@@ -53,7 +63,6 @@ class IntervalParser
             'm' => $value,
             'h' => $value * 60,
             'd' => $value * 1440,
-            default => throw new \InvalidArgumentException("Unknown interval unit: {$unit}")
         };
     }
 

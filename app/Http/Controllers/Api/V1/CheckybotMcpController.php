@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
 use App\Services\CheckybotControlService;
+use App\Services\IntervalParser;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -195,7 +196,11 @@ class CheckybotMcpController extends Controller
             'assertions.*.regex_pattern' => ['nullable', 'string', 'max:1000'],
             'assertions.*.sort_order' => ['nullable', 'integer', 'min:1'],
             'assertions.*.active' => ['nullable', 'boolean'],
-            'schedule' => ['nullable', 'string', 'max:100'],
+            'schedule' => ['nullable', 'string', 'max:100', function (string $attribute, mixed $value, \Closure $fail): void {
+                if ($value !== null && (! is_string($value) || ! IntervalParser::isValid($value))) {
+                    $fail('The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
+                }
+            }],
             'enabled' => ['nullable', 'boolean'],
         ])->validate();
     }
