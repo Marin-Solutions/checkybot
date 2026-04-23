@@ -23,47 +23,49 @@ class CheckApiMonitors extends Command
         $executionService = app(ApiMonitorExecutionService::class);
         $notificationService = app(HealthEventNotificationService::class);
 
-        MonitorApis::query()->chunkById(100, function ($monitors) use (&$count, $executionService, $notificationService): void {
-            foreach ($monitors as $monitor) {
-                try {
-                    $execution = $executionService->execute($monitor);
-                    /** @var MonitorApiResult $result */
-                    $result = $execution['result'];
-                    $status = $execution['status'];
-                    $summary = $execution['summary'];
-                    $previousStatus = $execution['previous_status'];
+        MonitorApis::query()
+            ->where('is_enabled', true)
+            ->chunkById(100, function ($monitors) use (&$count, $executionService, $notificationService): void {
+                foreach ($monitors as $monitor) {
+                    try {
+                        $execution = $executionService->execute($monitor);
+                        /** @var MonitorApiResult $result */
+                        $result = $execution['result'];
+                        $status = $execution['status'];
+                        $summary = $execution['summary'];
+                        $previousStatus = $execution['previous_status'];
 
-                    if (! isset($result->http_code)) {
-                        Sentry::configureScope(function (\Sentry\State\Scope $scope) use ($monitor, $execution): void {
-                            $scope->setContext('monitor', [
-                                'monitor_id' => $monitor->id,
-                                'monitor_title' => $monitor->title,
-                                'url' => $monitor->url,
-                                'data_path' => $monitor->data_path,
-                                'result' => $execution,
-                            ]);
-                        });
-                        throw new \Exception('Invalid API test result format - missing code');
+                        if (! isset($result->http_code)) {
+                            Sentry::configureScope(function (\Sentry\State\Scope $scope) use ($monitor, $execution): void {
+                                $scope->setContext('monitor', [
+                                    'monitor_id' => $monitor->id,
+                                    'monitor_title' => $monitor->title,
+                                    'url' => $monitor->url,
+                                    'data_path' => $monitor->data_path,
+                                    'result' => $execution,
+                                ]);
+                            });
+                            throw new \Exception('Invalid API test result format - missing code');
+                        }
+
+                        $count++;
+
+                        if (
+                            $monitor->source === 'package'
+                            && in_array($status, ['warning', 'danger'], true)
+                            && $previousStatus !== $status
+                        ) {
+                            $notificationService->notifyApi($monitor, 'heartbeat', $status, $summary);
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Error checking API monitor: '.$e->getMessage(), [
+                            'monitor_id' => $monitor->id,
+                            'monitor_title' => $monitor->title,
+                        ]);
+                        Sentry::captureException($e);
                     }
-
-                    $count++;
-
-                    if (
-                        $monitor->source === 'package'
-                        && in_array($status, ['warning', 'danger'], true)
-                        && $previousStatus !== $status
-                    ) {
-                        $notificationService->notifyApi($monitor, 'heartbeat', $status, $summary);
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Error checking API monitor: '.$e->getMessage(), [
-                        'monitor_id' => $monitor->id,
-                        'monitor_title' => $monitor->title,
-                    ]);
-                    Sentry::captureException($e);
                 }
-            }
-        });
+            });
 
         $this->info("Completed checking {$count} API monitors.");
 
