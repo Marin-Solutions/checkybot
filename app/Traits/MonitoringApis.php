@@ -12,6 +12,7 @@ trait MonitoringApis
         $validatedData = $form->getState();
 
         if ($form->validate()) {
+            $validatedData['method'] = $validatedData['method'] ?? $validatedData['http_method'] ?? 'GET';
             $callback = \App\Models\MonitorApis::testApi($validatedData);
 
             if ($callback['code'] != 200) {

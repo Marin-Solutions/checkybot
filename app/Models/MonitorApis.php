@@ -94,7 +94,7 @@ class MonitorApis extends Model
     {
         $url = $data['url'];
         $startTime = microtime(true);
-        $method = strtoupper((string) ($data['method'] ?? 'GET'));
+        $method = strtoupper((string) ($data['method'] ?? $data['http_method'] ?? 'GET'));
         $expectedStatus = isset($data['expected_status']) ? (int) $data['expected_status'] : null;
 
         $responseData = self::initializeResponseData();

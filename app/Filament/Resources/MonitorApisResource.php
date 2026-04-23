@@ -78,6 +78,7 @@ class MonitorApisResource extends Resource
                             ->default('GET')
                             ->required(),
                         Forms\Components\TextInput::make('expected_status')
+                            ->label('Expected Status Code')
                             ->numeric()
                             ->default(200)
                             ->minValue(100)
@@ -166,7 +167,16 @@ class MonitorApisResource extends Resource
                     ->color('warning')
                     ->icon('heroicon-o-play')
                     ->action(function (MonitorApis $record) {
-                        $record->testApi(['id' => $record->id, 'url' => $record->url]);
+                        $record->testApi([
+                            'id' => $record->id,
+                            'url' => $record->url,
+                            'method' => $record->http_method,
+                            'data_path' => $record->data_path,
+                            'headers' => $record->headers,
+                            'expected_status' => $record->expected_status,
+                            'timeout_seconds' => $record->timeout_seconds,
+                            'title' => $record->title,
+                        ]);
                     }),
             ])
             ->bulkActions([

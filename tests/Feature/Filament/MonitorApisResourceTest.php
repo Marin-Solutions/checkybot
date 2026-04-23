@@ -5,6 +5,7 @@ use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ListMonitorApis;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
 test('super admin can create api monitor with execution settings', function () {
@@ -65,7 +66,8 @@ test('super admin can update api monitor execution settings', function () {
             'save_failed_response' => false,
         ])
         ->call('save')
-        ->assertHasNoFormErrors();
+        ->assertHasNoFormErrors()
+        ->assertNotified();
 
     $monitor->refresh();
 
@@ -123,4 +125,29 @@ test('api monitor list shows enabled state', function () {
 
     Livewire::test(ListMonitorApis::class)
         ->assertCanSeeTableRecords([$enabledMonitor, $disabledMonitor]);
+});
+
+test('list test action uses stored execution settings', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response('', 204),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'POST health',
+        'url' => 'https://example.com/health',
+        'http_method' => 'POST',
+        'expected_status' => 204,
+        'timeout_seconds' => 30,
+        'data_path' => 'data.status',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableAction('test', $monitor);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/health');
 });

@@ -158,3 +158,20 @@ test('test api treats null json values as existing data paths', function () {
         ->and($result['assertions'][0]['passed'])->toBeTrue()
         ->and($result['assertions'][0]['message'])->toBe('Value exists at path');
 });
+
+test('test api accepts http_method input from filament form flows', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('', 204),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/health',
+        'http_method' => 'POST',
+        'expected_status' => 204,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://api.example.test/health');
+
+    expect($result['code'])->toBe(204)
+        ->and($result['assertions'])->toBe([]);
+});
