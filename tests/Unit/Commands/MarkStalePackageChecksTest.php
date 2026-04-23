@@ -63,11 +63,10 @@ test('command marks overdue package-managed checks as stale danger and notifies 
 test('command skips disabled package-managed api checks when marking stale', function () {
     Mail::fake();
 
-    $api = MonitorApis::factory()->create([
+    $api = MonitorApis::factory()->disabled()->create([
         'source' => 'package',
         'package_name' => 'api-health',
         'package_interval' => '5m',
-        'is_enabled' => false,
         'current_status' => 'unknown',
         'last_heartbeat_at' => now()->subMinutes(6),
         'stale_at' => null,
