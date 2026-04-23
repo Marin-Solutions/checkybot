@@ -326,12 +326,28 @@ test('rejects zero intervals at the request boundary', function () {
                     'interval' => '0m',
                 ],
             ],
-            'ssl_checks' => [],
-            'api_checks' => [],
+            'ssl_checks' => [
+                [
+                    'name' => 'ssl-test',
+                    'url' => 'https://example.com',
+                    'interval' => '0m',
+                ],
+            ],
+            'api_checks' => [
+                [
+                    'name' => 'api-test',
+                    'url' => 'https://api.example.com',
+                    'interval' => '0m',
+                ],
+            ],
         ]);
 
     $response->assertStatus(422)
-        ->assertJsonValidationErrors(['uptime_checks.0.interval']);
+        ->assertJsonValidationErrors([
+            'uptime_checks.0.interval',
+            'ssl_checks.0.interval',
+            'api_checks.0.interval',
+        ]);
 });
 
 test('validates url format', function () {
