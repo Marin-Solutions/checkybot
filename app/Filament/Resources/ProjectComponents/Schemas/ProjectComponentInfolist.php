@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ProjectComponents\Schemas;
 
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
+use App\Support\MetricsPayloadFormatter;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -69,17 +70,18 @@ class ProjectComponentInfolist
                             }),
                     ])->columns(2),
                 Section::make('Current Metrics')
+                    ->hidden(fn (ProjectComponent $record): bool => blank($record->metrics))
                     ->schema([
                         KeyValueEntry::make('metrics')
                             ->label('Latest Payload')
                             ->default([]),
                     ]),
                 Section::make('Recent Event Evidence')
+                    ->hidden(fn (ProjectComponent $record): bool => ! $record->heartbeats()->exists())
                     ->schema([
                         RepeatableEntry::make('recent_heartbeat_evidence')
                             ->label('')
                             ->state(fn (ProjectComponent $record): array => $record->heartbeats()
-                                ->orderByDesc('observed_at')
                                 ->limit(5)
                                 ->get()
                                 ->map(fn (ProjectComponentHeartbeat $heartbeat): array => [
@@ -87,7 +89,7 @@ class ProjectComponentInfolist
                                     'status' => $heartbeat->status,
                                     'observed_at' => $heartbeat->observed_at?->toDateTimeString(),
                                     'summary' => $heartbeat->summary,
-                                    'metrics' => static::formatMetricsForDisplay($heartbeat->metrics),
+                                    'metrics' => MetricsPayloadFormatter::format($heartbeat->metrics),
                                 ])
                                 ->all())
                             ->schema([
@@ -120,21 +122,9 @@ class ProjectComponentInfolist
             ]);
     }
 
-    /**
-     * @param  array<string, mixed>|null  $metrics
-     */
-    private static function formatMetricsForDisplay(?array $metrics): string
-    {
-        if (blank($metrics)) {
-            return '{}';
-        }
-
-        return json_encode($metrics, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
-    }
-
     private static function staleThresholdAt(ProjectComponent $record): ?Carbon
     {
-        if ($record->last_heartbeat_at === null || blank($record->interval_minutes)) {
+        if ($record->last_heartbeat_at === null || $record->interval_minutes === null) {
             return null;
         }
 

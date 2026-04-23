@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\ProjectComponents\RelationManagers;
 
+use App\Models\ProjectComponentHeartbeat;
+use App\Support\MetricsPayloadFormatter;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -34,26 +36,15 @@ class HeartbeatsRelationManager extends RelationManager
                     ->limit(120),
                 Tables\Columns\TextColumn::make('metrics')
                     ->label('Metrics')
-                    ->state(fn ($record): string => static::formatMetricsForDisplay($record->metrics))
+                    ->state(fn (ProjectComponentHeartbeat $record): string => MetricsPayloadFormatter::format($record->metrics))
                     ->fontFamily('mono')
-                    ->wrap(),
+                    ->limit(120)
+                    ->tooltip(fn (ProjectComponentHeartbeat $record): string => MetricsPayloadFormatter::format($record->metrics)),
                 Tables\Columns\TextColumn::make('observed_at')
                     ->dateTime()
                     ->sortable()
                     ->description(fn ($record): ?string => $record->observed_at?->diffForHumans()),
             ])
             ->defaultSort('observed_at', 'desc');
-    }
-
-    /**
-     * @param  array<string, mixed>|null  $metrics
-     */
-    protected static function formatMetricsForDisplay(?array $metrics): string
-    {
-        if (blank($metrics)) {
-            return '{}';
-        }
-
-        return json_encode($metrics, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 }

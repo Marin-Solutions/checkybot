@@ -116,6 +116,31 @@ test('project component detail shows heartbeat history', function () {
         ->assertSee('17');
 });
 
+test('project component detail shows immediate stale threshold for zero-minute intervals', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Zero Interval App',
+        'created_by' => $user->id,
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'instant-check',
+        'created_by' => $user->id,
+        'declared_interval' => '0m',
+        'interval_minutes' => 0,
+        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+
+    Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Stale Threshold')
+        ->assertSee('Expires');
+});
+
 test('application list and detail show the worst active component status', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
