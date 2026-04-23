@@ -58,7 +58,7 @@ class PackageHealthStatusService
 
     public function staleSummary(string $interval): string
     {
-        return "No heartbeat received within the expected {$interval} interval.";
+        return 'No heartbeat received within the expected '.IntervalParser::normalize($interval).' interval.';
     }
 
     public function isStale(?CarbonInterface $lastHeartbeatAt, ?string $interval): bool

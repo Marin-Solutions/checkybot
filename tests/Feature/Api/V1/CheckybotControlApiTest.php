@@ -131,10 +131,18 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
     $rawHeaders = DB::table('monitor_apis')
         ->where('package_name', 'google-maps-search')
         ->value('headers');
+    $storedInterval = DB::table('monitor_apis')
+        ->where('package_name', 'google-maps-search')
+        ->value('package_interval');
+    $storedSchedule = DB::table('monitor_apis')
+        ->where('package_name', 'google-maps-search')
+        ->value('package_schedule');
 
     expect($rawHeaders)->toContain('encrypted')
         ->and($rawHeaders)->not->toContain('package-secret')
         ->and($rawHeaders)->not->toContain('scrappa-secret');
+    expect($storedInterval)->toBe('5m')
+        ->and($storedSchedule)->toBe('every_5_minutes');
 });
 
 test('control api disables checks without deleting data', function () {

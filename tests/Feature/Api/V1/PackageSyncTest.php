@@ -93,6 +93,7 @@ test('package sync creates a project and api check definitions', function () {
         'expected_status' => 200,
         'timeout_seconds' => 15,
         'package_schedule' => 'every_5_minutes',
+        'package_interval' => '5m',
         'package_name' => 'google-maps-search',
         'source' => 'package',
         'is_enabled' => true,
@@ -208,6 +209,22 @@ test('package sync returns validation errors for malformed payloads', function (
             'project.base_url',
             'checks.0.key',
             'checks.0.expected_status',
+        ]);
+});
+
+test('package sync rejects invalid schedules', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'schedule' => 'every_friday',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.schedule',
         ]);
 });
 
