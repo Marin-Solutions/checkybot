@@ -20,6 +20,7 @@ class MonitorApisFactory extends Factory
                 'Accept' => 'application/json',
                 'User-Agent' => 'CheckyBot/1.0',
             ]),
+            'is_enabled' => true,
             'save_failed_response' => true,
             'created_by' => User::factory(),
             'current_status' => 'healthy',
@@ -40,6 +41,13 @@ class MonitorApisFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'data_path' => $path,
+        ]);
+    }
+
+    public function disabled(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'is_enabled' => false,
         ]);
     }
 }
