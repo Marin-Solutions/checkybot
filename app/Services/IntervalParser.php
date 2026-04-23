@@ -98,6 +98,9 @@ class IntervalParser
         return $minutes.'m';
     }
 
+    /**
+     * Normalize an interval string, throwing a ValidationException on invalid input.
+     */
     public static function normalizeOrFail(?string $interval, string $field = 'interval'): ?string
     {
         if ($interval === null) {
