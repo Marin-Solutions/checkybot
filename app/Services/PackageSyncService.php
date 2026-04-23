@@ -10,6 +10,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class PackageSyncService
 {
@@ -114,9 +115,7 @@ class PackageSyncService
                 $monitorApi->restore();
             }
 
-            $normalizedSchedule = isset($check['schedule'])
-                ? IntervalParser::normalize($check['schedule'])
-                : null;
+            $normalizedSchedule = $this->normalizeSchedule($check['schedule'] ?? null);
 
             $monitorApi->fill([
                 'project_id' => $project->id,
@@ -226,6 +225,21 @@ class PackageSyncService
         }
 
         return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
+    }
+
+    private function normalizeSchedule(?string $schedule): ?string
+    {
+        if ($schedule === null) {
+            return null;
+        }
+
+        try {
+            return IntervalParser::normalize($schedule);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'schedule' => [$exception->getMessage()],
+            ]);
+        }
     }
 
     /**

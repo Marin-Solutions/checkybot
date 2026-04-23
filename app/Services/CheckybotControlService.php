@@ -117,9 +117,7 @@ class CheckybotControlService
                 $check->restore();
             }
 
-            $normalizedSchedule = isset($data['schedule'])
-                ? IntervalParser::normalize($data['schedule'])
-                : null;
+            $normalizedSchedule = $this->normalizeSchedule($data['schedule'] ?? null);
 
             $check->fill([
                 'project_id' => $project->id,
@@ -456,6 +454,21 @@ class CheckybotControlService
         }
 
         return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
+    }
+
+    private function normalizeSchedule(?string $schedule): ?string
+    {
+        if ($schedule === null) {
+            return null;
+        }
+
+        try {
+            return IntervalParser::normalize($schedule);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                'schedule' => [$exception->getMessage()],
+            ]);
+        }
     }
 
     /**

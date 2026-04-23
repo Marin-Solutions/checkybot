@@ -18,6 +18,13 @@ test('normalizes scheduler style seconds correctly', function () {
     expect(IntervalParser::toMinutes('every_30_seconds'))->toBe(1);
 });
 
+test('normalizes singular scheduler style units correctly', function () {
+    expect(IntervalParser::normalize('every_1_second'))->toBe('1s');
+    expect(IntervalParser::normalize('every_1_minute'))->toBe('1m');
+    expect(IntervalParser::normalize('every_1_hour'))->toBe('1h');
+    expect(IntervalParser::normalize('every_1_day'))->toBe('1d');
+});
+
 test('normalizes scheduler style hours and days correctly', function () {
     expect(IntervalParser::normalize('every_2_hours'))->toBe('2h');
     expect(IntervalParser::normalize('every_3_days'))->toBe('3d');
