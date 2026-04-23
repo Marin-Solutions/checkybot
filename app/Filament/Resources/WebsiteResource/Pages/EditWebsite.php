@@ -47,6 +47,10 @@ class EditWebsite extends EditRecord
 
     protected function afterValidate(): void
     {
+        if (! $this->isUrlChanged()) {
+            return;
+        }
+
         $this->setupValidationResult = WebsiteUrlValidator::inspect(
             $this->data['url'],
             $this->getRecord()->id,
@@ -55,6 +59,10 @@ class EditWebsite extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        if (! $this->isUrlChanged()) {
+            return $data;
+        }
+
         $this->setupValidationResult ??= WebsiteUrlValidator::inspect(
             $data['url'],
             $this->getRecord()->id,
@@ -68,6 +76,10 @@ class EditWebsite extends EditRecord
 
     protected function beforeSave(): void
     {
+        if (! $this->isUrlChanged()) {
+            return;
+        }
+
         $this->setupValidationResult = WebsiteUrlValidator::validate(
             $this->data['url'],
             fn () => $this->halt(),
@@ -120,5 +132,10 @@ class EditWebsite extends EditRecord
                 $existingSchedule->update(['is_active' => false]);
             }
         }
+    }
+
+    protected function isUrlChanged(): bool
+    {
+        return ($this->data['url'] ?? null) !== $this->getRecord()->url;
     }
 }

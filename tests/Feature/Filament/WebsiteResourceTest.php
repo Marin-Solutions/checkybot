@@ -218,6 +218,34 @@ test('super admin clears setup warning state on healthy website edit', function 
         ->and($website->status_summary)->toBeNull();
 });
 
+test('super admin preserves health state when editing without changing url', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'name' => 'Original Name',
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'current_status' => 'danger',
+        'status_summary' => 'Website returned HTTP 500.',
+    ]);
+
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldNotReceive('getRecords');
+
+    Http::fake();
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm(['name' => 'Renamed Website'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $website->refresh();
+
+    expect($website->name)->toBe('Renamed Website')
+        ->and($website->url)->toBe('https://broken.example')
+        ->and($website->current_status)->toBe('danger')
+        ->and($website->status_summary)->toBe('Website returned HTTP 500.');
+});
+
 test('super admin can delete website', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
