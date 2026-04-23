@@ -36,18 +36,23 @@ class ApiKeyResource extends Resource
     public static function form(Schema $schema): Schema
     {
         return $schema
-            ->schema([
-                Forms\Components\TextInput::make('name')
-                    ->required()
-                    ->maxLength(255),
-                Forms\Components\DateTimePicker::make('expires_at')
-                    ->label('Expires At')
-                    ->nullable(),
-                Forms\Components\Toggle::make('is_active')
-                    ->label('Active')
-                    ->default(true),
-                // Hide user_id field as it will be set automatically
-            ]);
+            ->schema(static::getFormSchema());
+    }
+
+    public static function getFormSchema(): array
+    {
+        return [
+            Forms\Components\TextInput::make('name')
+                ->required()
+                ->maxLength(255),
+            Forms\Components\DateTimePicker::make('expires_at')
+                ->label('Expires At')
+                ->nullable(),
+            Forms\Components\Toggle::make('is_active')
+                ->label('Active')
+                ->default(true),
+            // Hide user_id field as it will be set automatically
+        ];
     }
 
     public static function table(Table $table): Table

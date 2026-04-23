@@ -112,7 +112,7 @@ class Project extends Model
         };
     }
 
-    public function guidedSetupSnippet(): string
+    public function guidedSetupSnippet(?string $apiKey = null): string
     {
         $checkybotUrl = rtrim((string) config('app.url', 'https://checkybot.com'), '/');
 
@@ -120,13 +120,15 @@ class Project extends Model
             $checkybotUrl = 'https://checkybot.com';
         }
 
+        $apiKey ??= 'replace-with-your-api-key';
+
         return implode(PHP_EOL, [
             'composer require marin-solutions/checkybot-laravel',
             'php artisan vendor:publish --tag="checkybot-routes"',
             'php artisan vendor:publish --tag="checkybot-laravel-config"',
             '',
             "cat <<'EOF' >> .env",
-            'CHECKYBOT_API_KEY=replace-with-your-api-key',
+            "CHECKYBOT_API_KEY={$apiKey}",
             "CHECKYBOT_URL={$checkybotUrl}",
             "CHECKYBOT_APP_ID={$this->getKey()}",
             'CHECKYBOT_APPLICATION_NAME="'.$this->escapeEnvDoubleQuotedValue($this->name).'"',
