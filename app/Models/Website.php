@@ -55,13 +55,15 @@ class Website extends Model
      */
     public static function checkWebsiteExists(?string $url): ?bool
     {
-        if (empty($url)) {
+        $host = static::extractHost($url);
+
+        if (blank($host)) {
             return false;
         }
 
         try {
-            $dns = new Dns;
-            $records = $dns->getRecords($url, 'A');
+            $dns = app(Dns::class);
+            $records = $dns->getRecords($host, 'A');
 
             return count($records) > 0;
         } catch (\Exception $e) {
@@ -78,7 +80,7 @@ class Website extends Model
     {
         $dataResponse = [];
         try {
-            $response = Http::get($url);
+            $response = Http::timeout(10)->get($url);
         } catch (RequestException $e) {
             $handlerContext = $e->getHandlerContext();
             $dataResponse['code'] = $handlerContext['errno'];
@@ -91,8 +93,8 @@ class Website extends Model
 
             return $dataResponse;
         }
-        $dataResponse['code'] = $response->ok() ? 200 : 0;
-        $dataResponse['body'] = 1;
+        $dataResponse['code'] = $response->status();
+        $dataResponse['body'] = $response->reason() ?: 'Unexpected response received.';
 
         return $dataResponse;
     }
@@ -104,18 +106,31 @@ class Website extends Model
      */
     public static function sslExpiryDate(?string $url): ?string
     {
-        if (empty($url)) {
+        $host = static::extractHost($url);
+
+        if (blank($host)) {
             return null;
         }
 
         try {
-            $certificate = SslCertificate::createForHostName($url);
+            $certificate = SslCertificate::createForHostName($host);
             $expiration_date = $certificate->expirationDate();
 
             return $expiration_date;
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    public static function extractHost(?string $url): ?string
+    {
+        if (blank($url)) {
+            return null;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) ? $host : $url;
     }
 
     public function user()

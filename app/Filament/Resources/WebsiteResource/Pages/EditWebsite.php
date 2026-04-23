@@ -4,15 +4,16 @@ namespace App\Filament\Resources\WebsiteResource\Pages;
 
 use App\Filament\Resources\WebsiteResource;
 use App\Models\SeoSchedule;
-use App\Models\Website;
+use App\Services\WebsiteUrlValidator;
 use Filament\Actions;
-use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
 use Illuminate\Support\Facades\Auth;
 
 class EditWebsite extends EditRecord
 {
     protected static string $resource = WebsiteResource::class;
+
+    protected ?array $setupValidationResult = null;
 
     protected function getHeaderActions(): array
     {
@@ -38,58 +39,52 @@ class EditWebsite extends EditRecord
         return $data;
     }
 
-    protected function beforeSave()
+    protected function beforeValidate(): void
     {
-        $url = $this->data['url'];
-        $id = $this->getRecord()->id;
-        $urlExistsInDB = Website::whereUrl($url)->where('id', '!=', $id)->count();
-        $urlCheckExists = Website::checkWebsiteExists($url);
-        $urlResponseCode = Website::checkResponseCode($url);
-        $responseStatus = false;
+        WebsiteUrlValidator::flushInspectionCache();
+        $this->setupValidationResult = null;
+    }
 
-        if ($urlResponseCode['code'] != 200) {
-            $responseStatus = true;
-            if ($urlResponseCode['code'] == 60) {
-                $title = 'URL website, problem with certificate';
-                $body = $urlResponseCode['body'];
-            } elseif ($urlResponseCode['body'] == 1) {
-                $title = 'URL Website Response error';
-                $body = 'The website response is not 200!';
-            } else {
-                $title = 'URL website a unknown error';
-                $body = 'code errno:'.$urlResponseCode;
-                $responseStatus = true;
-            }
+    protected function afterValidate(): void
+    {
+        if (! $this->isUrlChanged()) {
+            return;
         }
 
-        if ($responseStatus) {
-            Notification::make()
-                ->danger()
-                ->title(__($title))
-                ->body(__($body))
-                ->send();
-            $this->halt();
+        $this->setupValidationResult = WebsiteUrlValidator::inspect(
+            $this->data['url'],
+            $this->getRecord()->id,
+        );
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if (! $this->isUrlChanged()) {
+            return $data;
         }
 
-        if ($urlExistsInDB > 0) {
-            Notification::make()
-                ->danger()
-                ->title(__('URL Website Exists in database'))
-                ->body(__('The new website exists in database, try again'))
-                ->send();
+        $this->setupValidationResult ??= WebsiteUrlValidator::inspect(
+            $data['url'],
+            $this->getRecord()->id,
+        );
+
+        return [
+            ...$data,
+            ...($this->setupValidationResult['warning_state'] ?? []),
+        ];
+    }
+
+    protected function beforeSave(): void
+    {
+        if (! $this->isUrlChanged()) {
+            return;
         }
 
-        if (! $urlCheckExists) {
-            Notification::make()
-                ->danger()
-                ->title(__('website was not registered'))
-                ->body(__('The new website not exists in DNS Lookup'))
-                ->send();
-        }
-
-        if ($urlExistsInDB > 0 || ! $urlCheckExists) {
-            $this->halt();
-        }
+        $this->setupValidationResult = WebsiteUrlValidator::validate(
+            $this->data['url'],
+            fn () => $this->halt(),
+            $this->getRecord()->id,
+        );
     }
 
     protected function afterSave(): void
@@ -137,5 +132,10 @@ class EditWebsite extends EditRecord
                 $existingSchedule->update(['is_active' => false]);
             }
         }
+    }
+
+    protected function isUrlChanged(): bool
+    {
+        return ($this->data['url'] ?? null) !== $this->getRecord()->url;
     }
 }
