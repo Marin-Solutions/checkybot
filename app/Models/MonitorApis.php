@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use GuzzleHttp\Exception\RequestException;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
@@ -104,7 +104,7 @@ class MonitorApis extends Model
         try {
             // Get headers from data or fetch from database
             $headers = self::normalizeHeaders(
-                $data['headers'] ?? ($data['id'] ? self::find($data['id'])?->headers : [])
+                $data['headers'] ?? (isset($data['id']) ? self::find($data['id'])?->headers : [])
             );
             $httpClient = self::configureHttpClient($httpConfig, $headers);
             $request = $httpClient->send($method, $url);
@@ -153,13 +153,12 @@ class MonitorApis extends Model
                 'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
             ]);
 
-            if ($exception->hasResponse()) {
-                $responseData['code'] = $exception->getResponse()->getStatusCode();
-                $responseData['body'] = $exception->getResponse()->getBody()->getContents();
+            if ($exception->response) {
+                $responseData['code'] = $exception->response->status();
+                $responseData['body'] = $exception->response->body();
             } else {
-                $handlerContext = $exception->getHandlerContext();
-                $responseData['code'] = $handlerContext['errno'] ?? 0;
-                $responseData['body'] = $handlerContext['error'] ?? $exception->getMessage();
+                $responseData['code'] = 0;
+                $responseData['body'] = $exception->getMessage();
             }
             $responseData['error'] = $exception->getMessage();
 
@@ -263,7 +262,7 @@ class MonitorApis extends Model
     private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest
     {
         $client = Http::timeout($config['timeout'])
-            ->retry($config['retries'], $config['retryDelay']);
+            ->retry($config['retries'], $config['retryDelay'], throw: false);
 
         if (! empty($headers)) {
             $client = $client->withHeaders($headers);
@@ -407,12 +406,14 @@ class MonitorApis extends Model
 
     private static function runDataPathAssertion(array $data, array $responseData): array
     {
-        $value = Arr::get($responseData['body'], $data['data_path']);
+        $missing = new \stdClass;
+        $value = Arr::get($responseData['body'], $data['data_path'], $missing);
+        $exists = $value !== $missing;
 
         $responseData['assertions'][] = [
             'path' => $data['data_path'],
-            'passed' => isset($value),
-            'message' => isset($value)
+            'passed' => $exists,
+            'message' => $exists
                 ? 'Value exists at path'
                 : 'Value does not exist at path',
         ];
@@ -433,8 +434,10 @@ class MonitorApis extends Model
                 continue;
             }
 
-            $value = Arr::get($responseData['body'], $assertion->data_path);
-            $validationResult = $assertion->validateResponse($value);
+            $missing = new \stdClass;
+            $value = Arr::get($responseData['body'], $assertion->data_path, $missing);
+            $exists = $value !== $missing;
+            $validationResult = $assertion->validateResponse($exists ? $value : null, $exists);
 
             $responseData['assertions'][] = [
                 'path' => $assertion->data_path,
