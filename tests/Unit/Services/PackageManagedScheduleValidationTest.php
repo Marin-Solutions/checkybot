@@ -57,5 +57,10 @@ test('package sync service converts invalid schedules into validation errors', f
     } catch (ValidationException $exception) {
         expect($exception->errors())->toHaveKey('schedule')
             ->and($exception->errors()['schedule'][0])->toContain('Invalid interval format: every_friday');
+
+        $this->assertDatabaseMissing('projects', [
+            'created_by' => $user->id,
+            'package_key' => 'scrappa',
+        ]);
     }
 });
