@@ -17,6 +17,8 @@ trait MonitoringApis
             $expectedStatus = isset($validatedData['expected_status']) ? (int) $validatedData['expected_status'] : null;
             $status = app(PackageHealthStatusService::class)->apiStatusFromResult($callback, $expectedStatus);
             $failedAssertions = array_filter($callback['assertions'] ?? [], fn ($assertion) => ! ($assertion['passed'] ?? false));
+            $hasOnlyStatusFailures = ! empty($failedAssertions)
+                && collect($failedAssertions)->every(fn ($assertion) => ($assertion['path'] ?? null) === '_http_status');
 
             if (($callback['code'] ?? 0) === 0) {
                 $responseFail = 'danger';
@@ -30,7 +32,7 @@ trait MonitoringApis
                 };
                 $title = match ($status) {
                     'danger' => 'API request failed',
-                    'warning' => 'Some API assertions failed',
+                    'warning' => ! empty($failedAssertions) && ! $hasOnlyStatusFailures ? 'Some API assertions failed' : 'API response is degraded',
                     default => 'API response received',
                 };
                 $body = [];

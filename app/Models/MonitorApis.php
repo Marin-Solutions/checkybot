@@ -117,7 +117,7 @@ class MonitorApis extends Model
             }
 
             $responseData = self::parseJsonResponse($responseData);
-            if ($responseData['body'] === null) {
+            if (self::jsonParsingFailed($responseData)) {
                 return $responseData;
             }
 
@@ -303,6 +303,13 @@ class MonitorApis extends Model
         }
 
         return $responseData;
+    }
+
+    private static function jsonParsingFailed(array $responseData): bool
+    {
+        return collect($responseData['assertions'] ?? [])
+            ->contains(fn (array $assertion): bool => ($assertion['type'] ?? null) === 'json_valid'
+                && ($assertion['passed'] ?? true) === false);
     }
 
     private static function runAssertions(array $data, array $responseData): array

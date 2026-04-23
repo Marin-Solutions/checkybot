@@ -149,6 +149,32 @@ test('command treats matching expected 404 with invalid json as warning', functi
         ]);
 });
 
+test('command treats matching expected 404 with literal null json body as warning', function () {
+    Http::fake([
+        '*' => Http::response('null', 404),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/null-body',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('warning')
+        ->and($result?->is_success)->toBeFalse()
+        ->and($result?->status)->toBe('warning')
+        ->and(collect($result?->failed_assertions)->contains(
+            fn (array $assertion): bool => ($assertion['path'] ?? null) === 'data.status'
+                && ($assertion['message'] ?? null) === 'Value does not exist at path'
+        ))->toBeTrue();
+});
+
 test('command validates assertions', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),

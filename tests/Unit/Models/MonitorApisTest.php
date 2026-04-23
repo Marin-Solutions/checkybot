@@ -217,3 +217,24 @@ test('test api flags invalid json for expected 404 responses that require assert
             'message' => $result['error'],
         ]);
 });
+
+test('test api still evaluates assertions when json body is literal null', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('null', 404),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/null-body',
+        'method' => 'GET',
+        'expected_status' => 404,
+        'data_path' => 'data.status',
+    ]);
+
+    expect($result['code'])->toBe(404)
+        ->and($result['error'])->toBeNull()
+        ->and($result['assertions'])->toContain([
+            'path' => 'data.status',
+            'passed' => false,
+            'message' => 'Value does not exist at path',
+        ]);
+});

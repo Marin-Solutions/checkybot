@@ -198,3 +198,26 @@ test('check api action treats server errors as danger', function () {
 
     Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/broken-health');
 });
+
+test('check api action uses degraded title for expected status mismatches without assertion failures', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response('', 200),
+    ]);
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Created API',
+            'url' => 'https://example.com/created-health',
+            'http_method' => 'POST',
+            'expected_status' => 201,
+            'data_path' => null,
+        ])
+        ->call('doMonitoring')
+        ->assertNotified('API response is degraded');
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/created-health');
+});
