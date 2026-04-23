@@ -4,6 +4,7 @@ use App\Filament\Resources\Projects\Pages\CreateProject;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Models\ApiKey;
 use App\Models\Project;
+use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
@@ -98,4 +99,25 @@ test('application view can create an api key inline and update the guided setup 
 
     expect($component->get('guidedSetupApiKey'))->toBeNull()
         ->and($component->get('guidedSetupApiKeyName'))->toBeNull();
+});
+
+test('non-admin cannot create an api key inline from the application view', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = User::factory()->create();
+    $user->givePermissionTo('View:Project');
+    $this->actingAs($user);
+
+    $project = Project::factory()->create([
+        'name' => 'Checkout App',
+        'environment' => 'production',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertInfolistActionDoesNotExist('guided_setup', 'createApiKey')
+        ->assertInfolistActionDoesNotExist('guided_setup', 'manageApiKeys')
+        ->call('issueGuidedSetupApiKey', ['name' => 'Blocked key'])
+        ->assertForbidden();
 });

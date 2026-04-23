@@ -69,6 +69,7 @@ class ProjectInfolist
                             }),
                         Action::make('manageApiKeys')
                             ->label('Manage API Keys')
+                            ->authorize(fn (): bool => ApiKeyResource::canManageApiKeys())
                             ->icon('heroicon-o-cog-6-tooth')
                             ->color('gray')
                             ->url(fn (): string => ApiKeyResource::getUrl('index')),
