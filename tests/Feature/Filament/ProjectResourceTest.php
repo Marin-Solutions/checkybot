@@ -2,6 +2,7 @@
 
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
+use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelationManager;
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\ProjectResource;
@@ -71,6 +72,15 @@ test('project component detail shows heartbeat history', function () {
         'name' => 'legacy-proxy',
         'created_by' => $user->id,
         'summary' => 'Legacy proxy is retired',
+        'metrics' => [
+            'queue_depth' => 17,
+            'healthy' => false,
+        ],
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'interval_minutes' => 5,
+        'declared_interval' => '5m',
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(4),
     ]);
 
     ProjectComponentHeartbeat::factory()->create([
@@ -79,12 +89,31 @@ test('project component detail shows heartbeat history', function () {
         'status' => 'danger',
         'event' => 'stale',
         'summary' => 'Heartbeat expired',
+        'metrics' => [
+            'queue_depth' => 17,
+            'healthy' => false,
+        ],
+        'observed_at' => now()->subMinutes(4),
     ]);
 
     Livewire::test(ViewProjectComponent::class, ['record' => $archivedComponent->getRouteKey()])
         ->assertSuccessful()
+        ->assertSee('Timing Evidence')
+        ->assertSee('Current Metrics')
+        ->assertSee('Stale Threshold')
         ->assertSee('Heartbeat expired')
+        ->assertSee('queue_depth')
+        ->assertSee('17')
         ->assertSee('stale');
+
+    Livewire::test(HeartbeatsRelationManager::class, [
+        'ownerRecord' => $archivedComponent,
+        'pageClass' => ViewProjectComponent::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Metrics')
+        ->assertSee('queue_depth')
+        ->assertSee('17');
 });
 
 test('application list and detail show the worst active component status', function () {

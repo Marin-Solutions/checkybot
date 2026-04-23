@@ -31,11 +31,29 @@ class HeartbeatsRelationManager extends RelationManager
                     }),
                 Tables\Columns\TextColumn::make('summary')
                     ->wrap()
-                    ->limit(100),
+                    ->limit(120),
+                Tables\Columns\TextColumn::make('metrics')
+                    ->label('Metrics')
+                    ->state(fn ($record): string => static::formatMetricsForDisplay($record->metrics))
+                    ->fontFamily('mono')
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('observed_at')
                     ->dateTime()
-                    ->sortable(),
+                    ->sortable()
+                    ->description(fn ($record): ?string => $record->observed_at?->diffForHumans()),
             ])
             ->defaultSort('observed_at', 'desc');
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $metrics
+     */
+    protected static function formatMetricsForDisplay(?array $metrics): string
+    {
+        if (blank($metrics)) {
+            return '{}';
+        }
+
+        return json_encode($metrics, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?: '{}';
     }
 }
