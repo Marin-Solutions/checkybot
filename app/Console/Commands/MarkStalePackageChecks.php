@@ -53,6 +53,7 @@ class MarkStalePackageChecks extends Command
 
         MonitorApis::query()
             ->where('source', 'package')
+            ->where('is_enabled', true)
             ->whereNotNull('package_interval')
             ->get()
             ->each(function (MonitorApis $monitorApi) use ($notificationService, $statusService): void {

@@ -7,6 +7,7 @@ use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Models\MonitorApis;
 use Filament\Forms;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -42,19 +43,25 @@ class MonitorApisResource extends Resource
     {
         return $schema
             ->schema([
-                \Filament\Schemas\Components\Section::make('Monitor Details')
+                Section::make('Monitor Details')
                     ->columns(2)
                     ->schema([
                         Forms\Components\TextInput::make('title')
                             ->required()
-                            ->maxLength(255),
+                            ->maxLength(255)
+                            ->columnSpanFull(),
+                        Forms\Components\Toggle::make('is_enabled')
+                            ->label('Enabled')
+                            ->helperText('Disable this monitor to keep its configuration without running scheduled checks.')
+                            ->default(true)
+                            ->columnSpanFull(),
                         Forms\Components\TextInput::make('url')
                             ->required()
                             ->url()
                             ->maxLength(255)
                             ->columnSpanFull(),
                     ]),
-                \Filament\Schemas\Components\Section::make('Request Settings')
+                Section::make('Request Settings')
                     ->columns(2)
                     ->schema([
                         Forms\Components\Select::make('http_method')
@@ -78,15 +85,12 @@ class MonitorApisResource extends Resource
                             ->required()
                             ->helperText('The response status code this monitor should treat as healthy.'),
                         Forms\Components\TextInput::make('timeout_seconds')
+                            ->label('Timeout (seconds)')
                             ->numeric()
                             ->minValue(1)
                             ->maxValue(120)
                             ->placeholder((string) config('monitor.api_timeout', 10))
                             ->helperText('Optional override for slow endpoints. Leave blank to use the default timeout.'),
-                        Forms\Components\Toggle::make('is_enabled')
-                            ->label('Enabled')
-                            ->helperText('Disable this monitor to keep its configuration without running scheduled checks.')
-                            ->default(true),
                         Forms\Components\TextInput::make('data_path')
                             ->helperText('Optional JSON path to validate in the response body (for example: data.items).')
                             ->maxLength(255)
@@ -100,7 +104,7 @@ class MonitorApisResource extends Resource
                             ->columnSpanFull()
                             ->addActionLabel('Add Header'),
                     ]),
-                \Filament\Schemas\Components\Section::make('Failure Handling')
+                Section::make('Failure Handling')
                     ->schema([
                         Forms\Components\Toggle::make('save_failed_response')
                             ->label('Save Response Body on Failure')
@@ -128,6 +132,9 @@ class MonitorApisResource extends Resource
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\IconColumn::make('is_enabled')
+                    ->label('Enabled')
+                    ->boolean(),
                 Tables\Columns\TextColumn::make('data_path')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('avg_response_time')

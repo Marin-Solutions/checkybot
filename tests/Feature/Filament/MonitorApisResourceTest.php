@@ -27,7 +27,9 @@ test('super admin can create api monitor with execution settings', function () {
             'save_failed_response' => false,
         ])
         ->call('create')
-        ->assertHasNoFormErrors();
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
 
     $monitor = MonitorApis::query()->where('title', 'Checkout API')->firstOrFail();
 
@@ -100,4 +102,25 @@ test('super admin can filter to archived api monitors and keep their history vis
         ->assertCanSeeTableRecords([$archivedMonitor]);
 
     expect($archivedMonitor->results()->count())->toBe(2);
+});
+
+test('api monitor list shows enabled state', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $enabledMonitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Enabled API',
+        'is_enabled' => true,
+    ]);
+
+    $disabledMonitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Disabled API',
+        'is_enabled' => false,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertCanSeeTableRecords([$enabledMonitor, $disabledMonitor]);
 });
