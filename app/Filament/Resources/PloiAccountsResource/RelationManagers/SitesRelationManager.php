@@ -26,6 +26,8 @@ class SitesRelationManager extends RelationManager
 
     public function table(Table $table): Table
     {
+        $setupValidationResults = [];
+
         return $table
             ->recordTitleAttribute('domain')
             ->columns([
@@ -161,15 +163,20 @@ class SitesRelationManager extends RelationManager
                                     ])->columnSpan(1),
                             ]),
                     ])
-                    ->before(function (\Filament\Actions\Action $action, Model $record) {
-                        \App\Services\WebsiteUrlValidator::validate(
-                            'https://'.$record->domain,
+                    ->before(function (\Filament\Actions\Action $action, Model $record) use (&$setupValidationResults) {
+                        $url = 'https://'.$record->domain;
+
+                        \App\Services\WebsiteUrlValidator::flushInspectionCache();
+
+                        $setupValidationResults[$record->id] = \App\Services\WebsiteUrlValidator::validate(
+                            $url,
                             fn () => $action->halt()
                         );
                     })
-                    ->mutateFormDataUsing(function (array $data, Model $record, \Filament\Actions\Action $action): array {
+                    ->mutateFormDataUsing(function (array $data, Model $record, \Filament\Actions\Action $action) use (&$setupValidationResults): array {
                         try {
-                            $validationResult = \App\Services\WebsiteUrlValidator::inspect('https://'.$record->domain);
+                            $validationResult = $setupValidationResults[$record->id]
+                                ?? \App\Services\WebsiteUrlValidator::inspect('https://'.$record->domain);
 
                             $data['name'] = $record->server->name.'_'.$record->domain;
                             $data['url'] = 'https://'.$record->domain;

@@ -187,6 +187,37 @@ test('super admin can update website and keep save flow when target checks fail'
         ->and($website->status_summary)->toContain('HTTP 503');
 });
 
+test('super admin clears setup warning state on healthy website edit', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'name' => 'Warning Website',
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'current_status' => 'warning',
+        'status_summary' => 'The target could not be reached during setup.',
+    ]);
+
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldReceive('getRecords')
+        ->with('example.com', 'A')
+        ->andReturn([['ip' => '192.0.2.1']]);
+
+    Http::fake([
+        'https://example.com' => Http::response('OK', 200),
+    ]);
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm(['url' => 'https://example.com'])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $website->refresh();
+
+    expect($website->url)->toBe('https://example.com')
+        ->and($website->current_status)->toBeNull()
+        ->and($website->status_summary)->toBeNull();
+});
+
 test('super admin can delete website', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);

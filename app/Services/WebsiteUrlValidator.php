@@ -4,11 +4,23 @@ namespace App\Services;
 
 use App\Models\Website;
 use Filament\Notifications\Notification;
+use Illuminate\Support\Str;
 
 class WebsiteUrlValidator
 {
+    /**
+     * @var array<string, array<string, mixed>>
+     */
+    protected static array $inspectionCache = [];
+
     public static function inspect(string $url, ?int $ignoreWebsiteId = null): array
     {
+        $cacheKey = self::cacheKey($url, $ignoreWebsiteId);
+
+        if (array_key_exists($cacheKey, self::$inspectionCache)) {
+            return self::$inspectionCache[$cacheKey];
+        }
+
         $query = Website::query()->whereUrl($url);
 
         if ($ignoreWebsiteId !== null) {
@@ -40,7 +52,7 @@ class WebsiteUrlValidator
             $warnings[] = self::warningForResponse($urlResponseCode);
         }
 
-        return [
+        return self::$inspectionCache[$cacheKey] = [
             'should_halt' => filled($blockingIssues),
             'blocking_issues' => $blockingIssues,
             'warnings' => $warnings,
@@ -79,15 +91,27 @@ class WebsiteUrlValidator
     public static function warningState(array $warnings): array
     {
         if ($warnings === []) {
-            return [];
+            return [
+                'current_status' => null,
+                'status_summary' => null,
+            ];
         }
 
         return [
             'current_status' => 'warning',
-            'status_summary' => collect($warnings)
-                ->pluck('body')
-                ->implode(' '),
+            'status_summary' => Str::limit(
+                collect($warnings)
+                    ->pluck('body')
+                    ->implode(' '),
+                255,
+                ''
+            ),
         ];
+    }
+
+    public static function flushInspectionCache(): void
+    {
+        self::$inspectionCache = [];
     }
 
     private static function warningForResponse(array $urlResponseCode): array
@@ -113,5 +137,10 @@ class WebsiteUrlValidator
             'title' => 'Website could not be reached during setup',
             'body' => $body !== '' ? $body : 'The target could not be reached during setup. The monitor will still be saved.',
         ];
+    }
+
+    protected static function cacheKey(string $url, ?int $ignoreWebsiteId = null): string
+    {
+        return implode('|', [$url, $ignoreWebsiteId ?? 'none']);
     }
 }

@@ -3,7 +3,12 @@
 use App\Models\Website;
 use App\Services\WebsiteUrlValidator;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Spatie\Dns\Dns;
+
+beforeEach(function () {
+    WebsiteUrlValidator::flushInspectionCache();
+});
 
 test('validates successfully for valid url', function () {
     $url = 'https://example.com';
@@ -12,7 +17,7 @@ test('validates successfully for valid url', function () {
     // Mock DNS lookup to return records
     $dnsMock = $this->mock(Dns::class);
     $dnsMock->shouldReceive('getRecords')
-        ->with($url, 'A')
+        ->with('example.com', 'A')
         ->andReturn([['ip' => '192.0.2.1']]);
 
     // Mock HTTP response
@@ -37,7 +42,7 @@ test('halts when url exists in database', function () {
     // Mock DNS lookup to return records
     $dnsMock = $this->mock(Dns::class);
     $dnsMock->shouldReceive('getRecords')
-        ->with($url, 'A')
+        ->with('example.com', 'A')
         ->andReturn([['ip' => '192.0.2.1']]);
 
     // Mock HTTP response
@@ -59,7 +64,7 @@ test('halts when website not exists in dns', function () {
     // Mock DNS lookup to return empty array (no records)
     $dnsMock = $this->mock(Dns::class);
     $dnsMock->shouldReceive('getRecords')
-        ->with($url, 'A')
+        ->with('nonexistent.example', 'A')
         ->andReturn([]);
 
     // Mock HTTP response
@@ -81,7 +86,7 @@ test('halts on certificate error', function () {
     // Mock DNS lookup to return records
     $dnsMock = $this->mock(Dns::class);
     $dnsMock->shouldReceive('getRecords')
-        ->with($url, 'A')
+        ->with('example.com', 'A')
         ->andReturn([['ip' => '192.0.2.1']]);
 
     // Mock HTTP to throw SSL certificate error
@@ -106,7 +111,7 @@ test('halts on non 200 response', function () {
     // Mock DNS lookup to return records
     $dnsMock = $this->mock(Dns::class);
     $dnsMock->shouldReceive('getRecords')
-        ->with($url, 'A')
+        ->with('example.com', 'A')
         ->andReturn([['ip' => '192.0.2.1']]);
 
     // Mock HTTP to return non-200 response
@@ -128,7 +133,7 @@ test('halts on unknown error', function () {
     // Mock DNS lookup to return records
     $dnsMock = $this->mock(Dns::class);
     $dnsMock->shouldReceive('getRecords')
-        ->with($url, 'A')
+        ->with('example.com', 'A')
         ->andReturn([['ip' => '192.0.2.1']]);
 
     // Mock HTTP to throw a connection error (unknown error)
@@ -166,4 +171,23 @@ test('returns warning state when setup checks find issues', function () {
         ])
         ->and($result['warning_state']['status_summary'])->toContain('The domain did not resolve during setup.')
         ->and($result['warning_state']['status_summary'])->toContain('HTTP 404');
+});
+
+test('warning state clears status fields when setup checks pass', function () {
+    expect(WebsiteUrlValidator::warningState([]))->toBe([
+        'current_status' => null,
+        'status_summary' => null,
+    ]);
+});
+
+test('warning state truncates long status summary to database length', function () {
+    $warnings = [
+        ['body' => Str::repeat('a', 200)],
+        ['body' => Str::repeat('b', 200)],
+    ];
+
+    $warningState = WebsiteUrlValidator::warningState($warnings);
+
+    expect($warningState['current_status'])->toBe('warning')
+        ->and($warningState['status_summary'])->toHaveLength(255);
 });

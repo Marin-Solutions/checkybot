@@ -13,7 +13,7 @@ class EditWebsite extends EditRecord
 {
     protected static string $resource = WebsiteResource::class;
 
-    protected array $setupValidationResult = [];
+    protected ?array $setupValidationResult = null;
 
     protected function getHeaderActions(): array
     {
@@ -39,6 +39,33 @@ class EditWebsite extends EditRecord
         return $data;
     }
 
+    protected function beforeValidate(): void
+    {
+        WebsiteUrlValidator::flushInspectionCache();
+        $this->setupValidationResult = null;
+    }
+
+    protected function afterValidate(): void
+    {
+        $this->setupValidationResult = WebsiteUrlValidator::inspect(
+            $this->data['url'],
+            $this->getRecord()->id,
+        );
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        $this->setupValidationResult ??= WebsiteUrlValidator::inspect(
+            $data['url'],
+            $this->getRecord()->id,
+        );
+
+        return [
+            ...$data,
+            ...($this->setupValidationResult['warning_state'] ?? []),
+        ];
+    }
+
     protected function beforeSave(): void
     {
         $this->setupValidationResult = WebsiteUrlValidator::validate(
@@ -46,14 +73,6 @@ class EditWebsite extends EditRecord
             fn () => $this->halt(),
             $this->getRecord()->id,
         );
-    }
-
-    protected function mutateFormDataBeforeSave(array $data): array
-    {
-        return [
-            ...$data,
-            ...($this->setupValidationResult['warning_state'] ?? []),
-        ];
     }
 
     protected function afterSave(): void

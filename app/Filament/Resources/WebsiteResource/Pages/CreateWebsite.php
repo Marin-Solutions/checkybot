@@ -13,7 +13,7 @@ class CreateWebsite extends CreateRecord
 {
     protected static string $resource = WebsiteResource::class;
 
-    protected array $setupValidationResult = [];
+    protected ?array $setupValidationResult = null;
 
     protected function getRedirectUrl(): string
     {
@@ -22,6 +22,8 @@ class CreateWebsite extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $this->setupValidationResult ??= WebsiteUrlValidator::inspect($data['url']);
+
         $user = Auth::user();
         $data['created_by'] = $user->id;
         $sslExpiryDate = Website::sslExpiryDate($data['url']);
@@ -36,6 +38,12 @@ class CreateWebsite extends CreateRecord
     protected function afterValidate(): void
     {
         $this->setupValidationResult = WebsiteUrlValidator::inspect($this->data['url']);
+    }
+
+    protected function beforeValidate(): void
+    {
+        WebsiteUrlValidator::flushInspectionCache();
+        $this->setupValidationResult = null;
     }
 
     protected function beforeCreate(): void
