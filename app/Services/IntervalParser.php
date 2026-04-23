@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use Illuminate\Validation\ValidationException;
+
 class IntervalParser
 {
     /**
@@ -94,5 +96,20 @@ class IntervalParser
         }
 
         return $minutes.'m';
+    }
+
+    public static function normalizeOrFail(?string $interval, string $field = 'interval'): ?string
+    {
+        if ($interval === null) {
+            return null;
+        }
+
+        try {
+            return self::normalize($interval);
+        } catch (\InvalidArgumentException $exception) {
+            throw ValidationException::withMessages([
+                $field => [$exception->getMessage()],
+            ]);
+        }
     }
 }
