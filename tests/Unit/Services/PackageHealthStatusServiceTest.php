@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\PackageHealthStatusService;
+use Carbon\Carbon;
 
 test('api status treats matching expected 404 as healthy', function () {
     $service = app(PackageHealthStatusService::class);
@@ -40,4 +41,17 @@ test('api status treats non-matching expected 201 as warning', function () {
 
     expect($service->apiStatusFromResult($result, 201))->toBe('warning')
         ->and($service->summaryForApi($result, 201))->toBe('API heartbeat is degraded with HTTP status 200.');
+});
+
+test('stale detection waits until after the exact interval boundary', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $service = app(PackageHealthStatusService::class);
+
+    expect($service->isStale(now()->subMinutes(5), '5m'))->toBeFalse()
+        ->and($service->isStale(now()->subMinutes(5)->subSecond(), '5m'))->toBeTrue();
+});
+
+afterEach(function () {
+    Carbon::setTestNow();
 });

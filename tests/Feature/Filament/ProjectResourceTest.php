@@ -215,6 +215,9 @@ test('application record shows package-managed external checks including archive
         'name' => 'homepage',
         'source' => 'package',
         'package_name' => 'homepage',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'status_summary' => 'Homepage heartbeat succeeded with HTTP status 200.',
         'uptime_check' => true,
         'ssl_check' => false,
         'created_by' => $user->id,
@@ -225,6 +228,10 @@ test('application record shows package-managed external checks including archive
         'name' => 'certificate',
         'source' => 'package',
         'package_name' => 'certificate',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(8),
+        'stale_at' => now()->subMinutes(3),
+        'status_summary' => 'No heartbeat received within the expected 5m interval.',
         'uptime_check' => true,
         'ssl_check' => true,
         'created_by' => $user->id,
@@ -236,6 +243,9 @@ test('application record shows package-managed external checks including archive
         'title' => 'health',
         'source' => 'package',
         'package_name' => 'health',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(1),
+        'status_summary' => 'API heartbeat succeeded with HTTP status 200.',
         'created_by' => $user->id,
     ]);
 
@@ -244,9 +254,24 @@ test('application record shows package-managed external checks including archive
         'title' => 'legacy-health',
         'source' => 'package',
         'package_name' => 'legacy-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => null,
+        'status_summary' => 'Awaiting first package heartbeat.',
         'created_by' => $user->id,
     ]);
     $archivedApiMonitor->delete();
+
+    $disabledApiMonitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'title' => 'paused-health',
+        'source' => 'package',
+        'package_name' => 'paused-health',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(20),
+        'stale_at' => now()->subMinutes(10),
+        'status_summary' => 'Disabled by Checkybot control API.',
+        'created_by' => $user->id,
+    ]);
 
     Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
         ->assertSuccessful()
@@ -258,14 +283,29 @@ test('application record shows package-managed external checks including archive
         'pageClass' => ViewProject::class,
     ])
         ->assertSuccessful()
-        ->assertCanSeeTableRecords([$uptimeWebsite, $archivedSslWebsite]);
+        ->assertCanSeeTableRecords([$uptimeWebsite, $archivedSslWebsite])
+        ->assertSee('Summary')
+        ->assertSee('Last Heartbeat')
+        ->assertSee('Freshness')
+        ->assertSee('Homepage heartbeat succeeded with HTTP status 200.')
+        ->assertSee('No heartbeat received within the expected 5m interval.')
+        ->assertSee('Fresh')
+        ->assertSee('Stale');
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
         ->assertSuccessful()
-        ->assertCanSeeTableRecords([$apiMonitor, $archivedApiMonitor]);
+        ->assertCanSeeTableRecords([$apiMonitor, $archivedApiMonitor, $disabledApiMonitor])
+        ->assertSee('Summary')
+        ->assertSee('Last Heartbeat')
+        ->assertSee('Freshness')
+        ->assertSee('API heartbeat succeeded with HTTP status 200.')
+        ->assertSee('Awaiting first package heartbeat.')
+        ->assertSee('Fresh')
+        ->assertSee('Awaiting heartbeat')
+        ->assertSee('Disabled');
 
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)
