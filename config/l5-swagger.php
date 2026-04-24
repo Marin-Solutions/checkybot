@@ -1,5 +1,8 @@
 <?php
 
+$appUrl = env('APP_URL') ?: 'https://checkybot.com';
+$swaggerHost = env('L5_SWAGGER_CONST_HOST') ?: rtrim((string) $appUrl, '/').'/api';
+
 return [
     'default' => 'default',
     'documentations' => [
@@ -294,7 +297,7 @@ return [
          * Constants which can be used in annotations
          */
         'constants' => [
-            'L5_SWAGGER_CONST_HOST' => env('L5_SWAGGER_CONST_HOST', rtrim((string) env('APP_URL', 'https://checkybot.com'), '/').'/api'),
+            'L5_SWAGGER_CONST_HOST' => $swaggerHost,
         ],
     ],
 ];
