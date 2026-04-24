@@ -9,11 +9,13 @@ use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Str;
 
 class NotificationChannelsResource extends Resource
 {
@@ -114,6 +116,17 @@ class NotificationChannelsResource extends Resource
                 //
             ])
             ->actions([
+                \Filament\Actions\Action::make('send_test')
+                    ->label('Send Test')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('Send a test webhook')
+                    ->modalDescription(fn (NotificationChannels $record): string => "This will trigger a real {$record->method} request to {$record->url} using a sample payload so you can verify your integration.")
+                    ->modalSubmitActionLabel('Send test')
+                    ->action(function (NotificationChannels $record): void {
+                        static::sendTestWebhook($record);
+                    }),
                 \Filament\Actions\EditAction::make(),
             ])
             ->bulkActions([
@@ -137,5 +150,58 @@ class NotificationChannelsResource extends Resource
             'create' => Pages\CreateNotificationChannels::route('/create'),
             'edit' => Pages\EditNotificationChannels::route('/{record}/edit'),
         ];
+    }
+
+    /**
+     * Trigger a test webhook for the given channel and surface the response
+     * code + body (or delivery error) in a Filament notification.
+     */
+    public static function sendTestWebhook(NotificationChannels $record): void
+    {
+        $result = NotificationChannels::testWebhook([
+            'method' => $record->method,
+            'url' => $record->url,
+            'description' => $record->description ?? '',
+            'request_body' => $record->request_body ?? [],
+        ]);
+
+        $isSuccess = ($result['code'] ?? 0) === 200;
+        $status = $result['status'] ?? null;
+        $rawBody = (string) ($result['body_raw'] ?? '');
+        $bodyPreview = Str::limit(trim($rawBody), 600);
+
+        $bodyLines = [];
+        if ($status !== null) {
+            $bodyLines[] = '<strong>HTTP status:</strong> '.e((string) $status);
+        } elseif (! $isSuccess && isset($result['code'])) {
+            $bodyLines[] = '<strong>Error code:</strong> '.e((string) $result['code']);
+        }
+
+        if (! empty($result['resolved_url'])) {
+            $bodyLines[] = '<strong>URL:</strong> '.e((string) $result['resolved_url']);
+        }
+
+        if ($bodyPreview !== '') {
+            $bodyLines[] = '<strong>Response:</strong><br><code class="block whitespace-pre-wrap break-all text-xs">'.e($bodyPreview).'</code>';
+        } elseif (! $isSuccess) {
+            $bodyLines[] = 'The request did not return a response body.';
+        }
+
+        $body = new HtmlString(implode('<br>', $bodyLines));
+
+        $notification = Notification::make()
+            ->title($isSuccess
+                ? 'Webhook test delivered successfully'
+                : 'Webhook test failed')
+            ->body($body)
+            ->persistent();
+
+        if ($isSuccess) {
+            $notification->success();
+        } else {
+            $notification->danger();
+        }
+
+        $notification->send();
     }
 }
