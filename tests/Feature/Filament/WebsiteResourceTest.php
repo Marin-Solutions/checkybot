@@ -528,6 +528,33 @@ test('user without Update:Website permission cannot see website bulk actions', f
         ->assertTableBulkActionHidden('disableUptimeCheck');
 });
 
+test('soft-deleted websites are not counted in bulk uptime disable notification', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $active = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('disableUptimeCheck', $selection)
+        ->assertNotified('2 websites disabled');
+
+    foreach ($active as $website) {
+        expect($website->refresh()->uptime_check)->toBeFalse();
+    }
+
+    expect(Website::withTrashed()->find($trashed->id)->uptime_check)->toBeTrue();
+});
+
 test('super admin can render view page with infolist sections', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([

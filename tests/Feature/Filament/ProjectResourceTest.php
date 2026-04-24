@@ -446,6 +446,28 @@ test('bulk disable on already disabled components notifies that nothing changed'
     }
 });
 
+test('bulk enable on already active components notifies that nothing changed', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('enable', $components)
+        ->assertNotified('Nothing to enable');
+
+    foreach ($components as $component) {
+        expect($component->refresh()->is_archived)->toBeFalse();
+    }
+});
+
 test('bulk disable on applications with nothing to pause reports no changes', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');

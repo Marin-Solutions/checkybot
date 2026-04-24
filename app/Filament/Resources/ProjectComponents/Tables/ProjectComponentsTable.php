@@ -62,14 +62,12 @@ class ProjectComponentsTable
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
                             $ids = $records->where('is_archived', true)->pluck('id');
-                            $count = $ids->count();
-
-                            if ($count > 0) {
-                                ProjectComponent::query()->whereIn('id', $ids)->update([
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : ProjectComponent::query()->whereIn('id', $ids)->update([
                                     'is_archived' => false,
                                     'archived_at' => null,
                                 ]);
-                            }
 
                             Notification::make()
                                 ->title($count === 0
@@ -93,14 +91,12 @@ class ProjectComponentsTable
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
                             $ids = $records->where('is_archived', false)->pluck('id');
-                            $count = $ids->count();
-
-                            if ($count > 0) {
-                                ProjectComponent::query()->whereIn('id', $ids)->update([
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : ProjectComponent::query()->whereIn('id', $ids)->update([
                                     'is_archived' => true,
                                     'archived_at' => now(),
                                 ]);
-                            }
 
                             Notification::make()
                                 ->title($count === 0

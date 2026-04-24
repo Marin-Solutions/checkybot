@@ -404,6 +404,27 @@ test('super admin can bulk change the interval of api monitors', function () {
     }
 });
 
+test('bulk change interval on monitors already at the target interval notifies that nothing changed', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'package_interval' => '15m',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('changeInterval', $monitors, data: [
+            'interval' => '15m',
+        ])
+        ->assertNotified('Nothing to update');
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->package_interval)->toBe('15m');
+    }
+});
+
 test('bulk disable on already disabled api monitors notifies that nothing changed', function () {
     $this->createResourcePermissions('MonitorApis');
 
