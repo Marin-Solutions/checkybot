@@ -1,7 +1,7 @@
 <?php
 
 $appUrl = env('APP_URL') ?: 'https://checkybot.com';
-$swaggerHost = env('L5_SWAGGER_CONST_HOST') ?: rtrim((string) $appUrl, '/').'/api';
+$swaggerHost = env('L5_SWAGGER_CONST_HOST') ?: rtrim($appUrl, '/').'/api';
 
 return [
     'default' => 'default',
