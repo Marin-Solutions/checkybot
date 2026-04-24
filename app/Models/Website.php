@@ -133,7 +133,7 @@ class Website extends Model
         return is_string($host) ? $host : $url;
     }
 
-    public function user()
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }

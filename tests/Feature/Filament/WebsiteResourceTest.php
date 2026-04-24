@@ -258,6 +258,28 @@ test('super admin can update website-scoped webhook notification from website pa
     ]);
 });
 
+test('super admin can delete website-scoped notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $setting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('delete', $setting)
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseMissing('notification_settings', [
+        'id' => $setting->id,
+    ]);
+});
+
 test('super admin can create website with warning state when target checks fail', function () {
     $user = $this->actingAsSuperAdmin();
 
