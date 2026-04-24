@@ -237,3 +237,75 @@ test('command records warning status history and notifies for package-managed as
 
     Mail::assertSent(HealthStatusAlert::class);
 });
+
+test('command sends notifications for failed manual api monitor regressions', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'error']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'manual-health',
+        'url' => 'https://api.example.com/health',
+        'source' => 'manual',
+        'current_status' => 'healthy',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('warning');
+
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
+test('command does not notify when a manual api monitor remains in the same failing status', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'error']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'manual-health',
+        'url' => 'https://api.example.com/health',
+        'source' => 'manual',
+        'current_status' => 'warning',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    Mail::assertNothingSent();
+});
