@@ -140,6 +140,7 @@ class MonitorApis extends Model
             $responseData['code'] = 0;
             $responseData['body'] = null;
             $responseData['error'] = 'Connection timeout: '.$exception->getMessage();
+            $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
             return $responseData;
         } catch (RequestException $exception) {
@@ -162,6 +163,7 @@ class MonitorApis extends Model
                 $responseData['raw_body'] = $exception->getMessage();
             }
             $responseData['error'] = $exception->getMessage();
+            $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
             return $responseData;
         } catch (\Exception $exception) {
@@ -176,6 +178,7 @@ class MonitorApis extends Model
             $responseData['code'] = 0;
             $responseData['body'] = null;
             $responseData['error'] = 'Unexpected error: '.$exception->getMessage();
+            $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
             return $responseData;
         }
@@ -191,7 +194,13 @@ class MonitorApis extends Model
             'error' => null,
             'request_headers' => [],
             'response_headers' => [],
+            'response_time_ms' => 0,
         ];
+    }
+
+    private static function elapsedMilliseconds(float $startTime): int
+    {
+        return (int) round((microtime(true) - $startTime) * 1000);
     }
 
     private static function getHttpConfiguration(array $data): array
@@ -281,13 +290,14 @@ class MonitorApis extends Model
         $responseData['body'] = $request->body();
         $responseData['raw_body'] = $request->body();
         $responseData['response_headers'] = ApiMonitorEvidenceFormatter::maskHeaders($request->headers());
+        $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
         Log::debug('API Monitor response received', [
             'monitor_id' => $data['id'] ?? null,
             'method' => $method,
             'url' => $sanitizedUrl,
             'status' => $request->status(),
-            'response_time' => round((microtime(true) - $startTime) * 1000, 2).'ms',
+            'response_time' => $responseData['response_time_ms'].'ms',
         ]);
 
         return $responseData;

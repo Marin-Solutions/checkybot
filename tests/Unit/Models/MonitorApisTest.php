@@ -123,6 +123,22 @@ test('monitor api redacts sensitive query parameters in log-safe urls', function
         ->not->toContain('secret-token');
 });
 
+test('test api returns response time in milliseconds on success', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/timing',
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result)->toHaveKey('response_time_ms');
+    expect($result['response_time_ms'])->toBeInt();
+    expect($result['response_time_ms'])->toBeGreaterThanOrEqual(0);
+});
+
 test('test api preserves final http error status after retries', function () {
     Http::fake([
         'https://api.example.test/*' => Http::response(['message' => 'forbidden'], 403),
