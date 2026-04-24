@@ -42,7 +42,7 @@ class NotificationChannels extends Model
                 $url = str_replace('{description}', $data['description'] ?? '', $url);
             }
 
-            if ($method === WebhookHttpMethod::POST->value && count($data['request_body'])) {
+            if ($method === WebhookHttpMethod::POST->value && count($data['request_body'] ?? [])) {
                 foreach ($requestBody as $key => $value) {
                     if ($value === '{message}') {
                         $requestBody[$key] = $messageTest;
@@ -60,6 +60,9 @@ class NotificationChannels extends Model
 
             $responseData['code'] = $webhookCallback->ok() ? 200 : 0;
             $responseData['body'] = $webhookCallback->json();
+            $responseData['status'] = $webhookCallback->status();
+            $responseData['body_raw'] = $webhookCallback->body();
+            $responseData['resolved_url'] = $url;
 
             return $responseData;
         } catch (RequestException $exception) {
@@ -67,6 +70,9 @@ class NotificationChannels extends Model
             $handlerContext = $exception->getHandlerContext();
             $responseData['code'] = $handlerContext['errno'];
             $responseData['body'] = $handlerContext['error'];
+            $responseData['status'] = null;
+            $responseData['body_raw'] = (string) ($handlerContext['error'] ?? $exception->getMessage());
+            $responseData['resolved_url'] = $url;
 
             return $responseData;
         }
