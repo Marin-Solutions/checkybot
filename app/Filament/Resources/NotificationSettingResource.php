@@ -144,16 +144,25 @@ class NotificationSettingResource extends Resource
      * surface the outcome to the user so they can validate their configuration
      * before waiting for a real incident.
      *
-     * Uses `match` over the enum so that adding a new NotificationChannelTypesEnum
-     * case without handling it here fails loudly (UnhandledMatchError) instead of
-     * silently falling through to a no-op notification.
+     * Uses `match` over the enum so a new NotificationChannelTypesEnum case
+     * without a handler here fails loudly in development. The try/catch still
+     * renders a user-friendly notification at runtime instead of an uncaught
+     * exception reaching the Filament error handler.
      */
     public static function sendTestNotification(NotificationSetting $record): void
     {
-        match ($record->channel_type) {
-            NotificationChannelTypesEnum::MAIL => static::sendTestEmail($record),
-            NotificationChannelTypesEnum::WEBHOOK => static::sendTestWebhook($record),
-        };
+        try {
+            match ($record->channel_type) {
+                NotificationChannelTypesEnum::MAIL => static::sendTestEmail($record),
+                NotificationChannelTypesEnum::WEBHOOK => static::sendTestWebhook($record),
+            };
+        } catch (\UnhandledMatchError) {
+            Notification::make()
+                ->danger()
+                ->title('Test not supported')
+                ->body('This channel type does not support test delivery yet. Please contact support or pick another channel type.')
+                ->send();
+        }
     }
 
     protected static function sendTestEmail(NotificationSetting $record): void

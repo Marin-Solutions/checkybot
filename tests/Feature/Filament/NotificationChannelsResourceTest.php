@@ -1,10 +1,12 @@
 <?php
 
 use App\Filament\Resources\NotificationChannelsResource\Pages\ListNotificationChannels;
+use App\Filament\Resources\NotificationSettingResource;
 use App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings;
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
@@ -120,4 +122,22 @@ test('send test action warns when webhook setting has no linked channel', functi
     Livewire::test(ListNotificationSettings::class)
         ->callTableAction('send_test', $setting)
         ->assertNotified('Missing webhook channel');
+});
+
+test('send test action catches unhandled channel types and notifies gracefully', function () {
+    // Build an in-memory setting whose cast resolves to null, simulating a
+    // future enum case that the match expression does not yet handle. This
+    // verifies that the try/catch around the match keeps users out of an
+    // uncaught UnhandledMatchError page.
+    $setting = new NotificationSetting;
+    $setting->forceFill([
+        'user_id' => 1,
+        'channel_type' => null,
+        'address' => null,
+        'flag_active' => true,
+    ]);
+
+    NotificationSettingResource::sendTestNotification($setting);
+
+    Notification::assertNotified('Test not supported');
 });
