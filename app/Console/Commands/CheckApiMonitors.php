@@ -51,8 +51,7 @@ class CheckApiMonitors extends Command
                         $count++;
 
                         if (
-                            $monitor->source === 'package'
-                            && in_array($status, ['warning', 'danger'], true)
+                            in_array($status, ['warning', 'danger'], true)
                             && $previousStatus !== $status
                         ) {
                             $notificationService->notifyApi($monitor, 'heartbeat', $status, $summary);
