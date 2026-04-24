@@ -21,6 +21,7 @@ test('swagger documentation can be generated', function () {
             '/v1/package/sync',
         )
         ->and($documentation['components']['securitySchemes'])->toHaveKey('checkybotApiKey')
+        ->and($documentation['servers'][0]['url'])->toBe(config('l5-swagger.defaults.constants.L5_SWAGGER_CONST_HOST'))
         ->and($documentation['paths']['/v1/package/register']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
         ->and($documentation['paths']['/v1/package/sync']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
         ->and($documentation['paths']['/v1/projects/{project}/checks/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
