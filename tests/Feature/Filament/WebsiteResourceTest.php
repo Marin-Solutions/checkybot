@@ -3,6 +3,9 @@
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
+use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
+use App\Models\NotificationChannels;
+use App\Models\NotificationSetting;
 use App\Models\User;
 use App\Models\Website;
 use Illuminate\Support\Facades\Http;
@@ -117,6 +120,106 @@ test('super admin can update website', function () {
     $this->assertDatabaseHas('websites', [
         'id' => $website->id,
         'name' => 'New Name',
+    ]);
+});
+
+test('website edit page exposes website notification management', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Website Notifications');
+
+    expect(\App\Filament\Resources\WebsiteResource::getRelations())
+        ->toContain(NotificationSettingsRelationManager::class);
+});
+
+test('website notification relation manager only shows alerts for the current website', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $otherWebsite = Website::factory()->create(['created_by' => $user->id]);
+
+    $visibleSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+    ]);
+    $hiddenSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $otherWebsite->id,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleSetting])
+        ->assertCanNotSeeTableRecords([$hiddenSetting]);
+});
+
+test('super admin can create website-scoped email notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => 'WEBSITE_CHECK',
+            'channel_type' => 'MAIL',
+            'address' => 'ops@example.com',
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'scope' => 'WEBSITE',
+        'inspection' => 'WEBSITE_CHECK',
+        'channel_type' => 'MAIL',
+        'address' => 'ops@example.com',
+        'flag_active' => true,
+    ]);
+});
+
+test('super admin can update website-scoped webhook notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $oldChannel = NotificationChannels::factory()->create(['created_by' => $user->id, 'title' => 'Old Hook']);
+    $newChannel = NotificationChannels::factory()->create(['created_by' => $user->id, 'title' => 'Primary Hook']);
+
+    $setting = NotificationSetting::factory()->websiteScope()->webhook()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'notification_channel_id' => $oldChannel->id,
+        'inspection' => 'WEBSITE_CHECK',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('edit', $setting, data: [
+            'inspection' => 'ALL_CHECK',
+            'channel_type' => 'WEBHOOK',
+            'notification_channel_id' => $newChannel->id,
+            'flag_active' => false,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'id' => $setting->id,
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'scope' => 'WEBSITE',
+        'inspection' => 'ALL_CHECK',
+        'channel_type' => 'WEBHOOK',
+        'notification_channel_id' => $newChannel->id,
+        'address' => null,
+        'flag_active' => false,
     ]);
 });
 

@@ -148,6 +148,11 @@ class Website extends Model
         return $this->hasMany(NotificationSetting::class)->websiteScope()->active();
     }
 
+    public function notificationSettings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->websiteScope();
+    }
+
     public function getBaseURL(): string
     {
         $parsedUrl = parse_url($this->url);
