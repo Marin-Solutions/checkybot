@@ -279,6 +279,7 @@ test('command sends recovery notifications when a package-managed api monitor re
 
     Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
         return $mail->event === 'recovered'
+            && $mail->eventLabel === 'recovered'
             && $mail->status === 'healthy'
             && $mail->summary === 'API heartbeat succeeded with HTTP status 200.';
     });

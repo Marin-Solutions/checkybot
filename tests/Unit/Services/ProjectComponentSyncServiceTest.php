@@ -120,3 +120,53 @@ test('project component sync sends recovery notifications when a component retur
             && ($mail->payload['title'] ?? null) === 'Application component recovered';
     });
 });
+
+test('project component sync sends recovery notifications when a stale-only component returns to healthy', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'worker-b',
+        'source' => 'package',
+        'created_by' => $project->created_by,
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::APPLICATION_HEALTH,
+        ]);
+
+    app(ProjectComponentSyncService::class)->sync($project, [
+        'declared_components' => [
+            ['name' => 'worker-b', 'interval' => '5m'],
+        ],
+        'components' => [
+            [
+                'name' => 'worker-b',
+                'status' => 'healthy',
+                'summary' => 'Queue worker heartbeat resumed.',
+                'interval' => '5m',
+                'observed_at' => now()->toDateTimeString(),
+                'metrics' => ['latency' => 10],
+            ],
+        ],
+    ]);
+
+    $component->refresh();
+
+    expect($component->is_stale)->toBeFalse()
+        ->and($component->stale_detected_at)->toBeNull();
+
+    Mail::assertSent(\App\Mail\ProjectComponentAlertMail::class, function (\App\Mail\ProjectComponentAlertMail $mail): bool {
+        return ($mail->payload['subject'] ?? null) === 'Application component recovered: worker-b';
+    });
+});

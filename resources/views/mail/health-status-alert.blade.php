@@ -1,7 +1,7 @@
 <x-mail::message>
 # Health Status Alert
 
-`{{ $name }}` reported a `{{ $event === 'recovered' ? 'recovered' : $status }}` event.
+`{{ $name }}` reported a `{{ $eventLabel }}` event.
 
 {{ $summary }}
 
