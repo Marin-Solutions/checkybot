@@ -111,7 +111,7 @@ class HealthEventNotificationService
 
     private function webhookMessage(string $name, string $event, string $status): string
     {
-        $label = $event === 'recovered' ? 'recovered' : $status;
+        $label = $this->eventLabel($event, $status);
 
         return "[{$label}] {$name} {$event}";
     }
