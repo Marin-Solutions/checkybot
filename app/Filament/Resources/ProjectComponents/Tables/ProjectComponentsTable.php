@@ -24,6 +24,7 @@ class ProjectComponentsTable
                     ->searchable(),
                 TextColumn::make('current_status')
                     ->badge()
+                    ->formatStateUsing(fn (string $state): string => ucfirst($state))
                     ->color(fn (?string $state): string => match ($state) {
                         'healthy' => 'success',
                         'warning' => 'warning',

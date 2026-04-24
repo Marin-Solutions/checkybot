@@ -434,6 +434,11 @@ test('super admin can filter application components by current status', function
         ->filterTable('current_status', 'warning')
         ->assertCanSeeTableRecords([$warning])
         ->assertCanNotSeeTableRecords([$healthy, $danger]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('current_status', 'healthy')
+        ->assertCanSeeTableRecords([$healthy])
+        ->assertCanNotSeeTableRecords([$warning, $danger]);
 });
 
 test('super admin can filter application components to only failing', function () {
