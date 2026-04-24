@@ -133,7 +133,7 @@ class Website extends Model
         return is_string($host) ? $host : $url;
     }
 
-    public function user()
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
@@ -146,6 +146,11 @@ class Website extends Model
     public function notificationChannels(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(NotificationSetting::class)->websiteScope()->active();
+    }
+
+    public function notificationSettings(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->websiteScope();
     }
 
     public function getBaseURL(): string

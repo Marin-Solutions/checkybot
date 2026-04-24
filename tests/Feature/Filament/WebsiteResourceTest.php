@@ -1,8 +1,14 @@
 <?php
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\NotificationScopesEnum;
+use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
+use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
+use App\Models\NotificationChannels;
+use App\Models\NotificationSetting;
 use App\Models\User;
 use App\Models\Website;
 use Illuminate\Support\Facades\Http;
@@ -117,6 +123,160 @@ test('super admin can update website', function () {
     $this->assertDatabaseHas('websites', [
         'id' => $website->id,
         'name' => 'New Name',
+    ]);
+});
+
+test('website edit page exposes website notification management', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Website Notifications');
+
+    expect(\App\Filament\Resources\WebsiteResource::getRelations())
+        ->toContain(NotificationSettingsRelationManager::class);
+});
+
+test('website notification relation manager only shows alerts for the current website', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $otherWebsite = Website::factory()->create(['created_by' => $user->id]);
+
+    $visibleSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+    ]);
+    $hiddenSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $otherWebsite->id,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleSetting])
+        ->assertCanNotSeeTableRecords([$hiddenSetting]);
+});
+
+test('super admin can create website-scoped email notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+            'address' => 'ops@example.com',
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'scope' => NotificationScopesEnum::WEBSITE->value,
+        'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+        'address' => 'ops@example.com',
+        'flag_active' => true,
+    ]);
+});
+
+test('super admin can create website-scoped webhook notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Ops Hook',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $channel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'scope' => NotificationScopesEnum::WEBSITE->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+        'notification_channel_id' => $channel->id,
+        'address' => null,
+        'flag_active' => true,
+    ]);
+});
+
+test('super admin can update website-scoped webhook notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $oldChannel = NotificationChannels::factory()->create(['created_by' => $user->id, 'title' => 'Old Hook']);
+    $newChannel = NotificationChannels::factory()->create(['created_by' => $user->id, 'title' => 'Primary Hook']);
+
+    $setting = NotificationSetting::factory()->websiteScope()->webhook()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'notification_channel_id' => $oldChannel->id,
+        'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('edit', $setting, data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $newChannel->id,
+            'flag_active' => false,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'id' => $setting->id,
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'scope' => NotificationScopesEnum::WEBSITE->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+        'notification_channel_id' => $newChannel->id,
+        'address' => null,
+        'flag_active' => false,
+    ]);
+});
+
+test('super admin can delete website-scoped notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $setting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('delete', $setting)
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseMissing('notification_settings', [
+        'id' => $setting->id,
     ]);
 });
 

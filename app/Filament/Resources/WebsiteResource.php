@@ -434,6 +434,7 @@ class WebsiteResource extends Resource
     public static function getRelations(): array
     {
         return [
+            \App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager::class,
             \App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager::class,
         ];
     }
