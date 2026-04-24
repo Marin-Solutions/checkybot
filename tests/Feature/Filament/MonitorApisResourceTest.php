@@ -367,3 +367,23 @@ test('api monitor navigation badge is scoped to the current user', function () {
     expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('1')
         ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
 });
+
+test('api monitor navigation badge excludes soft-deleted records', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    $trashed = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    \App\Filament\Resources\MonitorApisResource::flushUnhealthyNavigationBadgeCache();
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
+});

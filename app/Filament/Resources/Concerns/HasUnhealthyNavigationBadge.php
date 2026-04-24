@@ -9,7 +9,9 @@ namespace App\Filament\Resources\Concerns;
  * color) when everything is healthy.
  *
  * The counts are based on `static::getEloquentQuery()` so the badge always
- * reflects the exact same scope as the resource's list table.
+ * reflects the exact same scope as the resource's list table. When the model
+ * uses `SoftDeletes` the scope is re-applied via `withoutTrashed()` so badges
+ * never count soft-deleted rows that the default table view hides.
  *
  * Both helpers share a single pair of queries via a container-bound cache so
  * they cannot query twice per render and cannot drift apart on what
@@ -59,6 +61,17 @@ trait HasUnhealthyNavigationBadge
         }
 
         $base = static::getEloquentQuery();
+
+        /**
+         * Resources that expose a TrashedFilter strip SoftDeletingScope from
+         * getEloquentQuery() so the filter can opt trashed rows back in. The
+         * badge should always mirror the default (non-trashed) table view, so
+         * re-apply the scope here when the model uses SoftDeletes. Otherwise a
+         * soft-deleted unhealthy record would silently inflate the alert.
+         */
+        if (in_array(\Illuminate\Database\Eloquent\SoftDeletes::class, class_uses_recursive(static::getModel()), true)) {
+            $base->withoutTrashed();
+        }
 
         $total = (clone $base)->toBase()->count();
         $unhealthy = (clone $base)

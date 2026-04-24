@@ -663,3 +663,23 @@ test('website navigation badge caches counts between badge and color lookups', f
     // for unhealthy. The color lookup reuses the cached result.
     expect($queries)->toBe(2);
 });
+
+test('website navigation badge excludes soft-deleted records', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    \App\Filament\Resources\WebsiteResource::flushUnhealthyNavigationBadgeCache();
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBeNull();
+});
