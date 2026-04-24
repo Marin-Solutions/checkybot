@@ -501,6 +501,41 @@ test('bulk disable on applications with nothing to pause reports no changes', fu
         ->and($component->refresh()->is_archived)->toBeTrue();
 });
 
+test('bulk enable on applications with nothing to resume reports no changes', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]))
+        ->assertNotified('Nothing to enable');
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue()
+        ->and($website->refresh()->uptime_check)->toBeTrue()
+        ->and($component->refresh()->is_archived)->toBeFalse();
+});
+
 test('regular users only see their own applications and components', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
@@ -549,6 +584,28 @@ test('admin without Update:Project permission cannot see project bulk actions', 
     $user = User::factory()->create();
     $user->assignRole('Admin');
     $user->givePermissionTo('ViewAny:Project');
+    $this->actingAs($user);
+
+    Project::factory()->count(2)->create(['created_by' => $user->id]);
+
+    Livewire::test(ListProjects::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable');
+});
+
+test('admin with Update:Project but missing child update permissions cannot see cascade actions', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+    // Website permissions are already created in TestCase::setUp().
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo([
+        'ViewAny:Project',
+        'Update:Project',
+        // Deliberately missing Update:Website, Update:MonitorApis, Update:ProjectComponent.
+    ]);
     $this->actingAs($user);
 
     Project::factory()->count(2)->create(['created_by' => $user->id]);

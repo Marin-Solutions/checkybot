@@ -60,7 +60,7 @@ class ProjectsTable
                         ->label('Enable monitoring')
                         ->icon('heroicon-o-play')
                         ->color('success')
-                        ->authorize(fn (): bool => auth()->user()?->can('Update:Project') ?? false)
+                        ->authorize(fn (): bool => static::userCanCascadeMonitoring())
                         ->requiresConfirmation()
                         ->modalHeading('Enable monitoring for selected applications')
                         ->modalDescription('All websites and API monitors tied to these applications will resume scheduled checks. Archived components will be un-archived and start accepting heartbeats again.')
@@ -80,7 +80,7 @@ class ProjectsTable
                         ->label('Disable monitoring')
                         ->icon('heroicon-o-pause')
                         ->color('warning')
-                        ->authorize(fn (): bool => auth()->user()?->can('Update:Project') ?? false)
+                        ->authorize(fn (): bool => static::userCanCascadeMonitoring())
                         ->requiresConfirmation()
                         ->modalHeading('Disable monitoring for selected applications')
                         ->modalDescription('Scheduled uptime checks, API checks, and heartbeat tracking will pause for every website, API monitor, and component in the selected applications. Use this during maintenance windows. History and configuration are preserved.')
@@ -99,6 +99,26 @@ class ProjectsTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * Gate the project cascade behind update permissions for every child resource it mutates.
+     *
+     * The cascade touches Website, MonitorApis, and ProjectComponent rows directly, so
+     * a project-only update permission is not sufficient authorization by itself.
+     */
+    protected static function userCanCascadeMonitoring(): bool
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return false;
+        }
+
+        return $user->can('Update:Project')
+            && $user->can('Update:Website')
+            && $user->can('Update:MonitorApis')
+            && $user->can('Update:ProjectComponent');
     }
 
     /**

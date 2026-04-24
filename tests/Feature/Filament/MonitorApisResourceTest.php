@@ -546,3 +546,30 @@ test('soft-deleted API monitors are not counted in bulk disable notification', f
 
     expect(MonitorApis::withTrashed()->find($trashed->id)->is_enabled)->toBeTrue();
 });
+
+test('soft-deleted API monitors are not counted in bulk enable notification', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $active = MonitorApis::factory()->disabled()->count(2)->create([
+        'created_by' => $user->id,
+    ]);
+
+    $trashed = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('enable', $selection)
+        ->assertNotified('2 API monitors enabled');
+
+    foreach ($active as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeTrue();
+    }
+
+    expect(MonitorApis::withTrashed()->find($trashed->id)->is_enabled)->toBeFalse();
+});
