@@ -7,6 +7,7 @@ use App\Filament\Resources\MonitorApisResource\Pages\ViewMonitorApis;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\ResultsRelationManager;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -318,4 +319,51 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('API heartbeat is degraded with HTTP status 404.')
         ->assertSee('View Evidence')
         ->assertSee('1');
+});
+
+test('api monitor navigation badge shows plain total when everything is healthy', function () {
+    $user = $this->actingAsSuperAdmin();
+    MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('2')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('api monitor navigation badge highlights unhealthy count in danger color', function () {
+    $user = $this->actingAsSuperAdmin();
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('2/3')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBe('danger');
+});
+
+test('api monitor navigation badge is scoped to the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
 });

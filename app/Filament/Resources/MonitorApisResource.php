@@ -31,6 +31,41 @@ class MonitorApisResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-rectangle-stack';
 
+    /**
+     * Get the navigation badge for the resource.
+     *
+     * Shows "unhealthy/total" when any monitor is in warning or danger state so
+     * the sidebar surfaces broken checks at a glance.
+     */
+    public static function getNavigationBadge(): ?string
+    {
+        $baseQuery = static::getModel()::query()->where('created_by', auth()->id());
+
+        $total = (clone $baseQuery)->count();
+        $unhealthy = (clone $baseQuery)
+            ->whereIn('current_status', ['warning', 'danger'])
+            ->count();
+
+        if ($unhealthy > 0) {
+            return $unhealthy.'/'.number_format($total);
+        }
+
+        return number_format($total);
+    }
+
+    /**
+     * Color the navigation badge danger whenever any monitor is unhealthy.
+     */
+    public static function getNavigationBadgeColor(): ?string
+    {
+        $hasUnhealthy = static::getModel()::query()
+            ->where('created_by', auth()->id())
+            ->whereIn('current_status', ['warning', 'danger'])
+            ->exists();
+
+        return $hasUnhealthy ? 'danger' : null;
+    }
+
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()

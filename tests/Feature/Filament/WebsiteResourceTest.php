@@ -442,3 +442,50 @@ test('regular user cannot access website resource', function () {
     Livewire::test(ListWebsites::class)
         ->assertForbidden();
 });
+
+test('website navigation badge shows plain total when everything is healthy', function () {
+    $user = $this->actingAsSuperAdmin();
+    Website::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('3')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('website navigation badge highlights unhealthy count in danger color', function () {
+    $user = $this->actingAsSuperAdmin();
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('2/4')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBe('danger');
+});
+
+test('website navigation badge is scoped to the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    Website::factory()->create([
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBeNull();
+});
