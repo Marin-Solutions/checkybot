@@ -67,6 +67,19 @@ test('freshness evidence treats disabled api monitors as disabled instead of sta
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Heartbeats are not expected.');
 });
 
+test('freshness evidence stays fresh at the exact stale boundary until backend stale detection triggers', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $record = (object) [
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'stale_at' => null,
+    ];
+
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+        ->and(PackageCheckTableEvidence::freshnessDescription($record))->toContain('Expires');
+});
+
 afterEach(function () {
     Carbon::setTestNow();
 });

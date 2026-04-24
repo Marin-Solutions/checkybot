@@ -27,7 +27,7 @@ class PackageCheckTableEvidence
             return $record->stale_at !== null ? 'Stale' : 'Schedule unknown';
         }
 
-        if ($thresholdAt->lte(now()) || $record->stale_at !== null) {
+        if ($thresholdAt->lt(now()) || $record->stale_at !== null) {
             return 'Stale';
         }
 
@@ -68,7 +68,7 @@ class PackageCheckTableEvidence
                 : "Package interval {$record->package_interval} cannot be evaluated.";
         }
 
-        if ($thresholdAt->lte(now()) || $record->stale_at !== null) {
+        if ($thresholdAt->lt(now()) || $record->stale_at !== null) {
             $referenceTime = $record->stale_at ?? $thresholdAt;
 
             return 'Expired '.$referenceTime->diffForHumans().'.';
