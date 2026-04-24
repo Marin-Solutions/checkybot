@@ -31,7 +31,7 @@ class WebsiteInfolist
                             ->color(fn (?string $state): string => static::statusColor($state)),
                         TextEntry::make('status_summary')
                             ->label('Latest Summary')
-                            ->default('No status summary yet. Checkybot will update this after the next monitor run.')
+                            ->placeholder('Awaiting first monitor run')
                             ->columnSpanFull(),
                         TextEntry::make('description')
                             ->default('-')
@@ -44,11 +44,10 @@ class WebsiteInfolist
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => match ($state) {
                                 'package' => 'Package',
-                                'manual' => 'Manual',
-                                default => $state ? ucfirst($state) : 'Manual',
+                                null, '', 'manual' => 'Manual',
+                                default => ucfirst($state),
                             })
-                            ->color(fn (?string $state): string => $state === 'package' ? 'info' : 'gray')
-                            ->default('manual'),
+                            ->color(fn (?string $state): string => $state === 'package' ? 'info' : 'gray'),
                     ])
                     ->columns(2),
                 Section::make('Heartbeat & Freshness')
@@ -73,10 +72,9 @@ class WebsiteInfolist
                         TextEntry::make('average_response_time_24h')
                             ->label('Avg Response (24h)')
                             ->state(function (Website $record): string {
-                                $avg = $record->average_response_time
-                                    ?? $record->logHistoryLast24h()->avg('speed');
+                                $avg = $record->average_response_time;
 
-                                return $avg ? round($avg).'ms' : '-';
+                                return $avg !== null ? round($avg).'ms' : '-';
                             }),
                     ])
                     ->columns(2),
@@ -136,18 +134,15 @@ class WebsiteInfolist
                     ])
                     ->columns(2),
                 Section::make('Outbound Link Check')
+                    ->description('Checkybot verifies external links on this website for broken targets.')
                     ->hidden(fn (Website $record): bool => ! $record->outbound_check)
                     ->schema([
-                        IconEntry::make('outbound_check')
-                            ->label('Outbound Check')
-                            ->boolean(),
                         TextEntry::make('last_outbound_checked_at')
                             ->label('Last Outbound Scan')
                             ->state(fn (Website $record): ?string => $record->last_outbound_checked_at?->toDayDateTimeString())
                             ->default('Never')
                             ->hint(fn (Website $record): ?string => $record->last_outbound_checked_at?->diffForHumans()),
-                    ])
-                    ->columns(2),
+                    ]),
                 Section::make('Recent Failures')
                     ->description('Most recent non-healthy monitor runs from the last 7 days.')
                     ->hidden(fn (Website $record): bool => $record->logHistory()
@@ -214,11 +209,12 @@ class WebsiteInfolist
         }
 
         return match (true) {
+            $code <= 0 => 'danger',
             $code >= 200 && $code < 300 => 'success',
             $code >= 300 && $code < 400 => 'info',
             $code >= 400 && $code < 500 => 'warning',
             $code >= 500 => 'danger',
-            default => 'gray',
+            default => 'danger',
         };
     }
 

@@ -504,6 +504,24 @@ test('view page hides recent failures when no failing logs exist', function () {
         ->assertDontSee('Recent Failures');
 });
 
+test('view page excludes failures older than 7 days from the recent failures panel', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'http_status_code' => 500,
+        'speed' => 1500,
+        'summary' => 'Stale incident from last month.',
+        'created_at' => now()->subDays(30),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertDontSee('Most recent non-healthy monitor runs from the last 7 days.');
+});
+
 test('log history relation manager renders on view page', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
