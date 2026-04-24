@@ -89,6 +89,7 @@ class ProjectComponentSyncService
                 }
 
                 $previousStatus = $component->current_status;
+                $wasStale = $component->is_stale;
 
                 $component->fill([
                     'summary' => $payload['summary'] ?? null,
@@ -133,6 +134,18 @@ class ProjectComponentSyncService
                     $this->projectComponentNotificationService->notify(
                         $component->loadMissing('project'),
                         'heartbeat',
+                        $payload['status']
+                    );
+                } elseif (
+                    $payload['status'] === 'healthy'
+                    && (
+                        in_array($previousStatus, ['warning', 'danger'], true)
+                        || $wasStale
+                    )
+                ) {
+                    $this->projectComponentNotificationService->notify(
+                        $component->loadMissing('project'),
+                        'recovered',
                         $payload['status']
                     );
                 }

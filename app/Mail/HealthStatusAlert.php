@@ -15,6 +15,7 @@ class HealthStatusAlert extends Mailable
     public function __construct(
         public string $name,
         public string $event,
+        public string $eventLabel,
         public string $status,
         public string $summary,
         public ?string $url = null,
@@ -34,6 +35,7 @@ class HealthStatusAlert extends Mailable
             with: [
                 'name' => $this->name,
                 'event' => $this->event,
+                'eventLabel' => $this->eventLabel,
                 'status' => $this->status,
                 'summary' => $this->summary,
                 'url' => $this->url,

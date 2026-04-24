@@ -238,6 +238,93 @@ test('command records warning status history and notifies for package-managed as
     Mail::assertSent(HealthStatusAlert::class);
 });
 
+test('command sends recovery notifications when a package-managed api monitor returns to healthy', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'package-health',
+        'url' => 'https://api.example.com/health',
+        'source' => 'package',
+        'package_name' => 'package-health',
+        'package_interval' => '5m',
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('healthy')
+        ->and($monitor->stale_at)->toBeNull();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->eventLabel === 'recovered'
+            && $mail->status === 'healthy'
+            && $mail->summary === 'API heartbeat succeeded with HTTP status 200.';
+    });
+});
+
+test('command sends recovery notifications when a warning api monitor returns to healthy', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'package-health',
+        'url' => 'https://api.example.com/health',
+        'source' => 'package',
+        'package_name' => 'package-health',
+        'package_interval' => '5m',
+        'current_status' => 'warning',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->eventLabel === 'recovered'
+            && $mail->status === 'healthy';
+    });
+});
+
 test('command sends notifications for failed manual api monitor regressions', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),

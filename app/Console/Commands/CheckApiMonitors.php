@@ -55,6 +55,12 @@ class CheckApiMonitors extends Command
                             && $previousStatus !== $status
                         ) {
                             $notificationService->notifyApi($monitor, 'heartbeat', $status, $summary);
+                        } elseif (
+                            $monitor->source === 'package'
+                            && $status === 'healthy'
+                            && in_array($previousStatus, ['warning', 'danger'], true)
+                        ) {
+                            $notificationService->notifyApi($monitor, 'recovered', $status, $summary);
                         }
                     } catch (\Exception $e) {
                         Log::error('Error checking API monitor: '.$e->getMessage(), [

@@ -101,6 +101,81 @@ test('job records danger status history and sends notifications for failed packa
     Mail::assertSent(\App\Mail\HealthStatusAlert::class);
 });
 
+test('job sends recovery notifications when a package-managed website returns to healthy', function () {
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '5m',
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle();
+
+    $website->refresh();
+
+    expect($website->current_status)->toBe('healthy')
+        ->and($website->stale_at)->toBeNull();
+
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class, function (\App\Mail\HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->eventLabel === 'recovered'
+            && $mail->status === 'healthy'
+            && $mail->summary === 'Website heartbeat succeeded with HTTP status 200.';
+    });
+});
+
+test('job sends recovery notifications when a warning website returns to healthy', function () {
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '5m',
+        'current_status' => 'warning',
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle();
+
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class, function (\App\Mail\HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->eventLabel === 'recovered'
+            && $mail->status === 'healthy';
+    });
+});
+
 test('job sends notifications for failed manual website heartbeats', function () {
     Http::fake([
         '*' => Http::response('', 500),
