@@ -68,7 +68,7 @@ class HealthEventNotificationService
     private function deliver(EloquentCollection $settings, string $name, string $event, string $status, string $summary, string $url): void
     {
         $eventLabel = $this->eventLabel($event, $status);
-        $message = $this->webhookMessage($name, $event, $status, $eventLabel);
+        $message = $this->webhookMessage($name, $event, $status);
 
         $settings->each(function (NotificationSetting $setting) use ($event, $eventLabel, $message, $name, $status, $summary, $url): void {
 
@@ -109,12 +109,10 @@ class HealthEventNotificationService
         return $event === 'recovered' ? 'recovered' : $status;
     }
 
-    private function webhookMessage(string $name, string $event, string $status, string $eventLabel): string
+    private function webhookMessage(string $name, string $event, string $status): string
     {
-        if ($event === 'recovered') {
-            return "[{$eventLabel}] {$name} {$event}";
-        }
+        $label = $event === 'recovered' ? 'recovered' : $status;
 
-        return "[{$status}] {$name} {$event}";
+        return "[{$label}] {$name} {$event}";
     }
 }
