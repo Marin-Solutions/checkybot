@@ -390,7 +390,7 @@ class MonitorApis extends Model
 
         $sanitized = collect($query)
             ->mapWithKeys(fn (mixed $value, string $key): array => [
-                $key => self::isSensitiveField($key) ? '[redacted]' : $value,
+                $key => ApiMonitorEvidenceFormatter::isSensitiveHeader($key) ? '[redacted]' : $value,
             ])
             ->all();
 
@@ -408,19 +408,6 @@ class MonitorApis extends Model
         }
 
         return str_replace($rawUrl, $sanitizedUrl, $message);
-    }
-
-    private static function isSensitiveField(string $name): bool
-    {
-        $normalized = strtolower($name);
-
-        return $normalized === 'authorization'
-            || str_contains($normalized, 'token')
-            || str_contains($normalized, 'secret')
-            || str_contains($normalized, 'api-key')
-            || str_contains($normalized, 'apikey')
-            || str_contains($normalized, 'auth')
-            || str_contains($normalized, 'signature');
     }
 
     private static function runDataPathAssertion(array $data, array $responseData): array

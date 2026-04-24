@@ -9,7 +9,6 @@ use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Illuminate\Support\HtmlString;
 
 class MonitorApiInfolist
 {
@@ -23,7 +22,7 @@ class MonitorApiInfolist
                             ->label('Latest Status')
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => static::statusColor($state)),
+                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
                         TextEntry::make('status_summary')
                             ->label('Latest Summary')
                             ->default('No runs recorded yet.')
@@ -38,7 +37,7 @@ class MonitorApiInfolist
                             ->state(fn (MonitorApis $record): ?int => $record->latestResult?->http_code)
                             ->default('-')
                             ->badge()
-                            ->color(fn (mixed $state): string => static::httpCodeColor(is_numeric($state) ? (int) $state : null)),
+                            ->color(fn (mixed $state): string => ApiMonitorEvidenceFormatter::httpCodeColor(is_numeric($state) ? (int) $state : null)),
                         TextEntry::make('latest_result_response_time')
                             ->label('Latest Response Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->response_time_ms !== null ? "{$record->latestResult->response_time_ms}ms" : null)
@@ -67,8 +66,8 @@ class MonitorApiInfolist
                         TextEntry::make('save_failed_response')
                             ->label('Save Failure Payloads')
                             ->badge()
-                            ->formatStateUsing(fn (bool $state): string => $state ? 'Enabled' : 'Disabled')
-                            ->color(fn (bool $state): string => $state ? 'success' : 'gray'),
+                            ->formatStateUsing(fn (?bool $state): string => $state ? 'Enabled' : 'Disabled')
+                            ->color(fn (?bool $state): string => $state ? 'success' : 'gray'),
                         KeyValueEntry::make('request_headers')
                             ->label('Configured Headers')
                             ->state(fn (MonitorApis $record): array => ApiMonitorEvidenceFormatter::maskHeaders($record->headers))
@@ -83,7 +82,7 @@ class MonitorApiInfolist
                             ->label('Run Status')
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => static::statusColor($state)),
+                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
                         TextEntry::make('latestResult.summary')
                             ->label('Run Summary')
                             ->default('-')
@@ -118,36 +117,10 @@ class MonitorApiInfolist
                             ->state(fn (MonitorApis $record): string => ApiMonitorEvidenceFormatter::formatPayload($record->latestResult?->response_body))
                             ->hidden(fn (MonitorApis $record): bool => blank($record->latestResult?->response_body))
                             ->html()
-                            ->formatStateUsing(fn (string $state): HtmlString => static::asPre($state))
+                            ->formatStateUsing(fn (string $state) => ApiMonitorEvidenceFormatter::formatAsPreHtml($state))
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
             ]);
-    }
-
-    private static function asPre(string $value): HtmlString
-    {
-        return new HtmlString('<pre style="white-space: pre-wrap; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;">'.e($value).'</pre>');
-    }
-
-    private static function httpCodeColor(?int $httpCode): string
-    {
-        return match (true) {
-            $httpCode === null => 'gray',
-            $httpCode >= 500 => 'danger',
-            $httpCode >= 400 => 'warning',
-            $httpCode >= 200 => 'success',
-            default => 'gray',
-        };
-    }
-
-    private static function statusColor(?string $state): string
-    {
-        return match ($state) {
-            'healthy' => 'success',
-            'warning' => 'warning',
-            'danger' => 'danger',
-            default => 'gray',
-        };
     }
 }

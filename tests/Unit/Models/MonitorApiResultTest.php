@@ -182,6 +182,15 @@ test('record result preserves raw failure payloads when json parsing fails', fun
     ]);
 });
 
+test('response body attribute preserves invalid utf8 payload data instead of dropping it', function () {
+    $result = MonitorApiResult::factory()->create([
+        'response_body' => ['raw_body' => "bad\xB1value"],
+    ]);
+
+    expect($result->getRawOriginal('response_body'))->toContain('bad�value')
+        ->and($result->response_body)->toBe(['raw_body' => 'bad�value']);
+});
+
 test('record result calculates response time', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true) - 0.15; // 150ms ago

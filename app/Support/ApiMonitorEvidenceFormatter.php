@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Support\HtmlString;
+
 class ApiMonitorEvidenceFormatter
 {
     /**
@@ -35,9 +37,25 @@ class ApiMonitorEvidenceFormatter
             return $payload;
         }
 
-        $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $encoded = json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
 
         return $encoded === false ? $empty : $encoded;
+    }
+
+    public static function formatAsPreHtml(string $value): HtmlString
+    {
+        return new HtmlString('<pre style="white-space: pre-wrap; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;">'.e($value).'</pre>');
+    }
+
+    public static function httpCodeColor(?int $httpCode): string
+    {
+        return match (true) {
+            $httpCode === null => 'gray',
+            $httpCode >= 500 => 'danger',
+            $httpCode >= 400 => 'warning',
+            $httpCode >= 200 => 'success',
+            default => 'gray',
+        };
     }
 
     /**
@@ -60,16 +78,17 @@ class ApiMonitorEvidenceFormatter
             ->all();
     }
 
-    private static function normalizeHeaderValue(mixed $value): string
+    public static function statusColor(?string $state): string
     {
-        if (is_array($value)) {
-            return implode(', ', array_map(fn (mixed $item): string => (string) $item, $value));
-        }
-
-        return (string) $value;
+        return match ($state) {
+            'healthy' => 'success',
+            'warning' => 'warning',
+            'danger' => 'danger',
+            default => 'gray',
+        };
     }
 
-    private static function isSensitiveHeader(string $name): bool
+    public static function isSensitiveHeader(string $name): bool
     {
         $normalized = strtolower($name);
 
@@ -81,5 +100,14 @@ class ApiMonitorEvidenceFormatter
             || str_contains($normalized, 'auth')
             || str_contains($normalized, 'signature')
             || str_contains($normalized, 'cookie');
+    }
+
+    private static function normalizeHeaderValue(mixed $value): string
+    {
+        if (is_array($value)) {
+            return implode(', ', array_map(fn (mixed $item): string => (string) $item, $value));
+        }
+
+        return (string) $value;
     }
 }

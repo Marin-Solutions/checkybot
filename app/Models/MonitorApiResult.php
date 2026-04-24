@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ApiMonitorEvidenceFormatter;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -48,7 +49,6 @@ class MonitorApiResult extends Model
 
     public static function recordResult(MonitorApis $api, array $testResult, float $startTime, ?string $status = null, ?string $summary = null): self
     {
-        // Determine if all assertions passed and HTTP code is successful
         $isSuccess = $status === null ? true : $status === 'healthy';
         $failedAssertions = [];
 
@@ -72,12 +72,10 @@ class MonitorApiResult extends Model
             }
         }
 
-        // Calculate response time
         $responseTime = (int) ((microtime(true) - $startTime) * 1000);
 
         $savedResponseBody = static::prepareSavedResponseBody($api, $isSuccess, $testResult);
 
-        // Create new result for every request
         return self::create([
             'monitor_api_id' => $api->id,
             'is_success' => $isSuccess,
@@ -144,8 +142,8 @@ class MonitorApiResult extends Model
             return $value;
         }
 
-        $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
 
-        return $encoded === false ? null : $encoded;
+        return $encoded === false ? ApiMonitorEvidenceFormatter::formatPayload($value, '') : $encoded;
     }
 }

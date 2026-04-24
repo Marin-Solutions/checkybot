@@ -14,7 +14,6 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
-use Illuminate\Support\HtmlString;
 
 class ResultsRelationManager extends RelationManager
 {
@@ -48,7 +47,7 @@ class ResultsRelationManager extends RelationManager
                     ->label('Status')
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => static::statusColor($state)),
+                    ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
 
                 Tables\Columns\TextColumn::make('summary')
                     ->label('Summary')
@@ -64,7 +63,7 @@ class ResultsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('http_code')
                     ->label('HTTP Code')
                     ->badge()
-                    ->color(fn (?int $state): string => static::httpCodeColor($state)),
+                    ->color(fn (?int $state): string => ApiMonitorEvidenceFormatter::httpCodeColor($state)),
 
                 Tables\Columns\TextColumn::make('failed_assertions')
                     ->label('Failed Assertions')
@@ -95,9 +94,7 @@ class ResultsRelationManager extends RelationManager
                     ->label('View Evidence')
                     ->modalWidth('5xl'),
             ])
-            ->bulkActions([
-                // No bulk actions needed
-            ]);
+            ->bulkActions([]);
     }
 
     public function infolist(Schema $schema): Schema
@@ -109,14 +106,14 @@ class ResultsRelationManager extends RelationManager
                         TextEntry::make('status')
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => static::statusColor($state)),
+                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
                         TextEntry::make('summary')
                             ->default('-')
                             ->columnSpanFull(),
                         TextEntry::make('http_code')
                             ->label('HTTP Code')
                             ->badge()
-                            ->color(fn (?int $state): string => static::httpCodeColor($state)),
+                            ->color(fn (?int $state): string => ApiMonitorEvidenceFormatter::httpCodeColor($state)),
                         TextEntry::make('response_time_ms')
                             ->label('Response Time')
                             ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
@@ -164,30 +161,9 @@ class ResultsRelationManager extends RelationManager
                             ->label('')
                             ->state(fn (MonitorApiResult $record): string => ApiMonitorEvidenceFormatter::formatPayload($record->response_body))
                             ->html()
-                            ->formatStateUsing(fn (string $state): HtmlString => new HtmlString('<pre style="white-space: pre-wrap; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;">'.e($state).'</pre>'))
+                            ->formatStateUsing(fn (string $state) => ApiMonitorEvidenceFormatter::formatAsPreHtml($state))
                             ->columnSpanFull(),
                     ]),
             ]);
-    }
-
-    private static function httpCodeColor(?int $httpCode): string
-    {
-        return match (true) {
-            $httpCode === null => 'gray',
-            $httpCode >= 500 => 'danger',
-            $httpCode >= 400 => 'warning',
-            $httpCode >= 200 => 'success',
-            default => 'gray',
-        };
-    }
-
-    private static function statusColor(?string $state): string
-    {
-        return match ($state) {
-            'healthy' => 'success',
-            'warning' => 'warning',
-            'danger' => 'danger',
-            default => 'gray',
-        };
     }
 }
