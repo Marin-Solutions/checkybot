@@ -135,6 +135,15 @@ class ProjectComponentSyncService
                         'heartbeat',
                         $payload['status']
                     );
+                } elseif (
+                    $payload['status'] === 'healthy'
+                    && in_array($previousStatus, ['warning', 'danger'], true)
+                ) {
+                    $this->projectComponentNotificationService->notify(
+                        $component->loadMissing('project'),
+                        'recovered',
+                        $payload['status']
+                    );
                 }
             }
 

@@ -13,7 +13,10 @@ class ProjectComponentNotificationService
 {
     public function notify(ProjectComponent $component, string $event, string $status): void
     {
-        if (! in_array($status, ['warning', 'danger'], true) && $event !== 'stale') {
+        if (
+            ! in_array($status, ['warning', 'danger'], true)
+            && ! in_array($event, ['stale', 'recovered'], true)
+        ) {
             return;
         }
 
@@ -48,7 +51,11 @@ class ProjectComponentNotificationService
      */
     private function buildPayload(ProjectComponent $component, string $event, string $status): array
     {
-        $eventLabel = $event === 'stale' ? 'stale' : $status;
+        $eventLabel = match ($event) {
+            'stale' => 'stale',
+            'recovered' => 'recovered',
+            default => $status,
+        };
 
         return [
             'subject' => "Application component {$eventLabel}: {$component->name}",

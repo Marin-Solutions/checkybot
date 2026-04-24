@@ -68,6 +68,8 @@ class HealthEventNotificationService
     private function deliver(EloquentCollection $settings, string $name, string $event, string $status, string $summary, string $url): void
     {
         $settings->each(function (NotificationSetting $setting) use ($event, $name, $status, $summary, $url): void {
+            $eventLabel = $this->eventLabel($event, $status);
+
             if ($setting->channel_type === NotificationChannelTypesEnum::MAIL) {
                 Mail::to($setting->address)->send(new HealthStatusAlert(
                     name: $name,
@@ -92,10 +94,15 @@ class HealthEventNotificationService
                 }
 
                 $channel->sendWebhookNotification([
-                    'message' => "[{$status}] {$name} {$event}",
+                    'message' => "[{$eventLabel}] {$name}",
                     'description' => $summary,
                 ]);
             }
         });
+    }
+
+    private function eventLabel(string $event, string $status): string
+    {
+        return $event === 'recovered' ? 'recovered' : $status;
     }
 }
