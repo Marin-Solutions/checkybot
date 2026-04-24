@@ -6,13 +6,16 @@ use App\Filament\Resources\MonitorApis\Schemas\MonitorApiInfolist;
 use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Models\MonitorApis;
+use App\Services\IntervalParser;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class MonitorApisResource extends Resource
@@ -183,6 +186,104 @@ class MonitorApisResource extends Resource
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\BulkAction::make('enable')
+                        ->label('Enable')
+                        ->icon('heroicon-o-play')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Enable selected API monitors')
+                        ->modalDescription('Scheduled checks will resume for every selected monitor.')
+                        ->modalSubmitActionLabel('Enable')
+                        ->action(function (Collection $records): void {
+                            $count = $records->where('is_enabled', false)->count();
+
+                            $records->each(function (MonitorApis $monitor): void {
+                                if (! $monitor->is_enabled) {
+                                    $monitor->forceFill(['is_enabled' => true])->save();
+                                }
+                            });
+
+                            Notification::make()
+                                ->title($count === 0
+                                    ? 'Nothing to enable'
+                                    : ($count === 1 ? '1 API monitor enabled' : "{$count} API monitors enabled"))
+                                ->body($count === 0
+                                    ? 'All selected API monitors were already enabled.'
+                                    : 'Scheduled checks will resume on their next run.')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('disable')
+                        ->label('Disable')
+                        ->icon('heroicon-o-pause')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Disable selected API monitors')
+                        ->modalDescription('Scheduled checks will pause until the monitors are re-enabled. Configuration and history are preserved.')
+                        ->modalSubmitActionLabel('Disable')
+                        ->action(function (Collection $records): void {
+                            $count = $records->where('is_enabled', true)->count();
+
+                            $records->each(function (MonitorApis $monitor): void {
+                                if ($monitor->is_enabled) {
+                                    $monitor->forceFill(['is_enabled' => false])->save();
+                                }
+                            });
+
+                            Notification::make()
+                                ->title($count === 0
+                                    ? 'Nothing to disable'
+                                    : ($count === 1 ? '1 API monitor disabled' : "{$count} API monitors disabled"))
+                                ->body($count === 0
+                                    ? 'All selected API monitors were already disabled.'
+                                    : 'No new scheduled checks will run until they are re-enabled.')
+                                ->warning()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('changeInterval')
+                        ->label('Change interval')
+                        ->icon('heroicon-o-clock')
+                        ->color('gray')
+                        ->modalHeading('Change check interval')
+                        ->modalDescription('Pick how often the selected API monitors should run. This overrides the package-provided interval until the next package sync.')
+                        ->modalSubmitActionLabel('Apply')
+                        ->schema([
+                            Forms\Components\Select::make('interval')
+                                ->label('Interval')
+                                ->options([
+                                    '1m' => 'Every minute',
+                                    '5m' => 'Every 5 minutes',
+                                    '10m' => 'Every 10 minutes',
+                                    '15m' => 'Every 15 minutes',
+                                    '30m' => 'Every 30 minutes',
+                                    '1h' => 'Every hour',
+                                    '6h' => 'Every 6 hours',
+                                    '12h' => 'Every 12 hours',
+                                    '1d' => 'Every 24 hours',
+                                ])
+                                ->required()
+                                ->native(false),
+                        ])
+                        ->action(function (Collection $records, array $data): void {
+                            $interval = IntervalParser::normalize($data['interval']);
+
+                            $records->each(function (MonitorApis $monitor) use ($interval): void {
+                                $monitor->forceFill(['package_interval' => $interval])->save();
+                            });
+
+                            $count = $records->count();
+
+                            Notification::make()
+                                ->title($count === 1
+                                    ? '1 API monitor updated'
+                                    : "{$count} API monitors updated")
+                                ->body("New check interval: {$interval}.")
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ])

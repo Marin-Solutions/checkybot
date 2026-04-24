@@ -442,3 +442,35 @@ test('regular user cannot access website resource', function () {
     Livewire::test(ListWebsites::class)
         ->assertForbidden();
 });
+
+test('super admin can bulk disable uptime checks on websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('disableUptimeCheck', $websites);
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeFalse();
+    }
+});
+
+test('super admin can bulk enable uptime checks on websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('enableUptimeCheck', $websites);
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeTrue();
+    }
+});

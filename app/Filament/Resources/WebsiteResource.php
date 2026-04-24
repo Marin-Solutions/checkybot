@@ -13,6 +13,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class WebsiteResource extends Resource
@@ -424,6 +425,62 @@ class WebsiteResource extends Resource
             ])
             ->bulkActions([
                 \Filament\Actions\BulkActionGroup::make([
+                    \Filament\Actions\BulkAction::make('enableUptimeCheck')
+                        ->label('Enable uptime check')
+                        ->icon('heroicon-o-play')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Enable uptime checks')
+                        ->modalDescription('Scheduled uptime checks will resume for every selected website.')
+                        ->modalSubmitActionLabel('Enable')
+                        ->action(function (Collection $records): void {
+                            $count = $records->where('uptime_check', false)->count();
+
+                            $records->each(function (Website $website): void {
+                                if (! $website->uptime_check) {
+                                    $website->forceFill(['uptime_check' => true])->save();
+                                }
+                            });
+
+                            Notification::make()
+                                ->title($count === 0
+                                    ? 'Nothing to enable'
+                                    : ($count === 1 ? '1 website enabled' : "{$count} websites enabled"))
+                                ->body($count === 0
+                                    ? 'Every selected website already had uptime checks enabled.'
+                                    : 'Uptime checks will resume on their next scheduled run.')
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('disableUptimeCheck')
+                        ->label('Disable uptime check')
+                        ->icon('heroicon-o-pause')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Disable uptime checks')
+                        ->modalDescription('Uptime checks will pause for the selected websites until they are re-enabled. SSL and outbound checks are not affected.')
+                        ->modalSubmitActionLabel('Disable')
+                        ->action(function (Collection $records): void {
+                            $count = $records->where('uptime_check', true)->count();
+
+                            $records->each(function (Website $website): void {
+                                if ($website->uptime_check) {
+                                    $website->forceFill(['uptime_check' => false])->save();
+                                }
+                            });
+
+                            Notification::make()
+                                ->title($count === 0
+                                    ? 'Nothing to disable'
+                                    : ($count === 1 ? '1 website disabled' : "{$count} websites disabled"))
+                                ->body($count === 0
+                                    ? 'Every selected website already had uptime checks disabled.'
+                                    : 'Uptime checks will stay paused until they are re-enabled.')
+                                ->warning()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     \Filament\Actions\DeleteBulkAction::make(),
                     \Filament\Actions\ForceDeleteBulkAction::make(),
                     \Filament\Actions\RestoreBulkAction::make(),

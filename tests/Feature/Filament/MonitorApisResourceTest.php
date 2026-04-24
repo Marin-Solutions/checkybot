@@ -280,6 +280,61 @@ test('api monitor view shows evidence rich latest run overview', function () {
         ->assertSee('trace-123');
 });
 
+test('super admin can bulk disable api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('disable', $monitors);
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeFalse();
+    }
+});
+
+test('super admin can bulk enable api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->disabled()->count(3)->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('enable', $monitors);
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeTrue();
+    }
+});
+
+test('super admin can bulk change the interval of api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'package_interval' => '5m',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('changeInterval', $monitors, data: [
+            'interval' => '15m',
+        ]);
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->package_interval)->toBe('15m');
+    }
+});
+
 test('api monitor results list exposes drill down action with evidence summary', function () {
     $this->createResourcePermissions('MonitorApis');
 

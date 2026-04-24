@@ -312,6 +312,119 @@ test('application record shows package-managed external checks including archive
         ->toContain(PackageManagedApisRelationManager::class);
 });
 
+test('super admin can bulk disable project components', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->count(3)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('disable', $components);
+
+    foreach ($components as $component) {
+        $component->refresh();
+        expect($component->is_archived)->toBeTrue()
+            ->and($component->archived_at)->not->toBeNull();
+    }
+});
+
+test('super admin can bulk enable project components', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->archived()->count(3)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('enable', $components);
+
+    foreach ($components as $component) {
+        $component->refresh();
+        expect($component->is_archived)->toBeFalse()
+            ->and($component->archived_at)->toBeNull();
+    }
+});
+
+test('super admin can bulk pause monitoring across selected applications', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]));
+
+    expect($website->refresh()->uptime_check)->toBeFalse()
+        ->and($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($component->refresh()->is_archived)->toBeTrue();
+});
+
+test('super admin can bulk resume monitoring across selected applications', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    $monitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    $component = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($website->refresh()->uptime_check)->toBeTrue()
+        ->and($monitor->refresh()->is_enabled)->toBeTrue()
+        ->and($component->refresh()->is_archived)->toBeFalse();
+});
+
 test('regular users only see their own applications and components', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
