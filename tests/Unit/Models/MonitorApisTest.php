@@ -139,6 +139,24 @@ test('test api returns response time in milliseconds on success', function () {
     expect($result['response_time_ms'])->toBeGreaterThanOrEqual(0);
 });
 
+test('test api returns response time in milliseconds when the request throws a connection exception', function () {
+    Http::fake(function (): never {
+        throw new \Illuminate\Http\Client\ConnectionException('timeout');
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/timeout',
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result)->toHaveKey('response_time_ms')
+        ->and($result['response_time_ms'])->toBeInt()
+        ->and($result['response_time_ms'])->toBeGreaterThanOrEqual(0)
+        ->and($result['code'])->toBe(0)
+        ->and($result['error'])->toStartWith('Connection timeout:');
+});
+
 test('test api preserves final http error status after retries', function () {
     Http::fake([
         'https://api.example.test/*' => Http::response(['message' => 'forbidden'], 403),

@@ -31,12 +31,6 @@ class ApiMonitorTestNotification
                 fn (array $assertion): bool => ($assertion['path'] ?? null) === '_http_status',
             );
 
-        $notificationType = match ($status) {
-            'danger' => 'danger',
-            'warning' => 'warning',
-            default => 'success',
-        };
-
         if ($code === 0) {
             $title = 'API request failed';
         } else {
@@ -51,10 +45,15 @@ class ApiMonitorTestNotification
 
         $body = self::formatBody($result, $code, $responseTimeMs, $assertions);
 
-        return Notification::make()
-            ->{$notificationType}()
+        $notification = Notification::make()
             ->title(__($title))
-            ->body(__($body));
+            ->body($body);
+
+        return match ($status) {
+            'danger' => $notification->danger(),
+            'warning' => $notification->warning(),
+            default => $notification->success(),
+        };
     }
 
     /**
@@ -66,6 +65,7 @@ class ApiMonitorTestNotification
 
         if ($code === 0) {
             $error = $result['error'] ?? 'The API request could not be completed.';
+            $lines[] = "Request failed after {$responseTimeMs}ms";
             $lines[] = (string) $error;
         } else {
             $lines[] = "HTTP {$code} • {$responseTimeMs}ms";
@@ -85,6 +85,6 @@ class ApiMonitorTestNotification
             $lines[] = 'No assertions configured for this API endpoint.';
         }
 
-        return implode("\n", $lines);
+        return implode('<br>', array_map(fn (string $line): string => e($line), $lines));
     }
 }

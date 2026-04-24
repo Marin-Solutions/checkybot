@@ -17,16 +17,17 @@ test('healthy result produces success notification with status code and response
     expect($notification->getStatus())->toBe('success');
 });
 
-test('connection failure produces danger notification with error body', function () {
+test('connection failure produces danger notification with error body and elapsed time', function () {
     $notification = ApiMonitorTestNotification::fromResult([
         'code' => 0,
         'error' => 'Connection timeout: boom',
-        'response_time_ms' => 0,
+        'response_time_ms' => 9876,
         'assertions' => [],
     ], 200);
 
     expect($notification->getTitle())->toBe('API request failed');
     expect($notification->getBody())->toContain('Connection timeout: boom');
+    expect($notification->getBody())->toContain('9876ms');
     expect($notification->getStatus())->toBe('danger');
 });
 
@@ -80,4 +81,31 @@ test('status mismatch without assertion failures produces degraded warning', fun
 
     expect($notification->getTitle())->toBe('API response is degraded');
     expect($notification->getStatus())->toBe('warning');
+});
+
+test('body separates lines with <br> so filament renders them as line breaks', function () {
+    $notification = ApiMonitorTestNotification::fromResult([
+        'code' => 200,
+        'response_time_ms' => 42,
+        'assertions' => [[
+            'path' => 'data.status',
+            'passed' => false,
+            'message' => 'Value does not exist at path',
+        ]],
+    ], 200);
+
+    expect($notification->getBody())->toContain('<br>');
+    expect($notification->getBody())->not->toContain("\n");
+});
+
+test('body escapes html in error messages and assertion payloads', function () {
+    $notification = ApiMonitorTestNotification::fromResult([
+        'code' => 0,
+        'error' => '<script>alert(1)</script>',
+        'response_time_ms' => 120,
+        'assertions' => [],
+    ], 200);
+
+    expect($notification->getBody())->not->toContain('<script>');
+    expect($notification->getBody())->toContain('&lt;script&gt;');
 });
