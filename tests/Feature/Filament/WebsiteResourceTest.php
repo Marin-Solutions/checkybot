@@ -6,11 +6,14 @@ use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
+use App\Filament\Resources\WebsiteResource\Pages\ViewWebsite;
+use App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\User;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Spatie\Dns\Dns;
@@ -441,6 +444,153 @@ test('regular user cannot access website resource', function () {
 
     Livewire::test(ListWebsites::class)
         ->assertForbidden();
+});
+
+test('super admin can render view page with infolist sections', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'status_summary' => 'Website returned HTTP 500.',
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->addDays(45)->toDateString(),
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(12),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Heartbeat & Freshness')
+        ->assertSee('Uptime Monitoring')
+        ->assertSee('SSL Certificate')
+        ->assertSee('Website returned HTTP 500.')
+        ->assertSee('Danger');
+});
+
+test('view page renders recent failures when non-healthy logs exist', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'http_status_code' => 503,
+        'speed' => 4200,
+        'summary' => 'Origin returned HTTP 503 Service Unavailable.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Recent Failures')
+        ->assertSee('Origin returned HTTP 503 Service Unavailable.')
+        ->assertSee('503');
+});
+
+test('view page hides recent failures when no failing logs exist', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'http_status_code' => 200,
+        'speed' => 180,
+        'summary' => 'Heartbeat received successfully.',
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertDontSee('Recent Failures');
+});
+
+test('view page reports SSL cert expiring today as expiring, not expired', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->toDateString(),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Expires today')
+        ->assertDontSee('Expired ');
+});
+
+test('view page reports SSL cert expired yesterday as expired', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->subDay()->toDateString(),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Expired yesterday');
+});
+
+test('view page excludes failures older than 7 days from the recent failures panel', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'http_status_code' => 500,
+        'speed' => 1500,
+        'summary' => 'Stale incident from last month.',
+        'created_at' => now()->subDays(30),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertDontSee('Recent Failures')
+        ->assertDontSee('Most recent non-healthy monitor runs from the last 7 days.');
+});
+
+test('log history relation manager renders on view page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $log = WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'warning',
+        'http_status_code' => 429,
+        'speed' => 920,
+        'summary' => 'Origin throttled the request.',
+    ]);
+
+    Livewire::test(LogHistoryRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$log]);
+});
+
+test('notification relation manager renders on view page and is website scoped', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $otherWebsite = Website::factory()->create(['created_by' => $user->id]);
+
+    $visibleSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+    ]);
+    $hiddenSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $otherWebsite->id,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleSetting])
+        ->assertCanNotSeeTableRecords([$hiddenSetting]);
 });
 
 test('website navigation badge shows plain total when everything is healthy', function () {
