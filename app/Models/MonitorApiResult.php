@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Support\ApiMonitorEvidenceFormatter;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -142,8 +141,6 @@ class MonitorApiResult extends Model
             return $value;
         }
 
-        $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
-
-        return $encoded === false ? ApiMonitorEvidenceFormatter::formatPayload($value, '') : $encoded;
+        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
 }

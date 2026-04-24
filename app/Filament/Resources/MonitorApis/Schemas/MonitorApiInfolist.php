@@ -66,8 +66,8 @@ class MonitorApiInfolist
                         TextEntry::make('save_failed_response')
                             ->label('Save Failure Payloads')
                             ->badge()
-                            ->formatStateUsing(fn (?bool $state): string => $state ? 'Enabled' : 'Disabled')
-                            ->color(fn (?bool $state): string => $state ? 'success' : 'gray'),
+                            ->formatStateUsing(fn (bool $state): string => $state ? 'Enabled' : 'Disabled')
+                            ->color(fn (bool $state): string => $state ? 'success' : 'gray'),
                         KeyValueEntry::make('request_headers')
                             ->label('Configured Headers')
                             ->state(fn (MonitorApis $record): array => ApiMonitorEvidenceFormatter::maskHeaders($record->headers))

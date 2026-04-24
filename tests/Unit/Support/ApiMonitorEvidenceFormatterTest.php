@@ -42,3 +42,10 @@ test('status and http code colors follow monitor severity rules', function () {
         ->and(ApiMonitorEvidenceFormatter::httpCodeColor(404))->toBe('warning')
         ->and(ApiMonitorEvidenceFormatter::httpCodeColor(200))->toBe('success');
 });
+
+test('format as pre html escapes raw html content', function () {
+    $html = ApiMonitorEvidenceFormatter::formatAsPreHtml('<script>alert(1)</script>')->toHtml();
+
+    expect($html)->toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
+        ->not->toContain('<script>alert(1)</script>');
+});
