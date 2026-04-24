@@ -15,11 +15,16 @@ use Filament\Tables\Table;
 
 class NotificationSettingsRelationManager extends RelationManager
 {
+    private const WEBSITE_INSPECTION_OPTIONS = [
+        WebsiteServicesEnum::WEBSITE_CHECK->value => 'Website Check',
+        WebsiteServicesEnum::ALL_CHECK->value => 'All Check',
+    ];
+
     protected static string $relationship = 'notificationSettings';
 
     protected static ?string $title = 'Website Notifications';
 
-    protected static ?string $recordTitleAttribute = 'inspection';
+    protected static ?string $recordTitleAttribute = 'inspection_value';
 
     public function form(Schema $schema): Schema
     {
@@ -27,10 +32,7 @@ class NotificationSettingsRelationManager extends RelationManager
             ->schema([
                 Forms\Components\Select::make('inspection')
                     ->label('Monitor')
-                    ->options([
-                        WebsiteServicesEnum::WEBSITE_CHECK->value => WebsiteServicesEnum::WEBSITE_CHECK->label(),
-                        WebsiteServicesEnum::ALL_CHECK->value => WebsiteServicesEnum::ALL_CHECK->label(),
-                    ])
+                    ->options(self::WEBSITE_INSPECTION_OPTIONS)
                     ->default(WebsiteServicesEnum::WEBSITE_CHECK->value)
                     ->required(),
                 Forms\Components\Select::make('channel_type')
@@ -45,7 +47,7 @@ class NotificationSettingsRelationManager extends RelationManager
                     ->hidden(fn (Get $get): bool => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->value),
                 Forms\Components\Select::make('notification_channel_id')
                     ->label('Notification Channel')
-                    ->options(fn (): array => $this->getOwnerRecord()->user->webhookChannels()->pluck('title', 'id')->all())
+                    ->options(fn (): array => $this->getOwnerRecord()->user?->webhookChannels()?->pluck('title', 'id')->all() ?? [])
                     ->required(fn (Get $get): bool => $get('channel_type') === NotificationChannelTypesEnum::WEBHOOK->value)
                     ->hidden(fn (Get $get): bool => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->value),
                 Forms\Components\Toggle::make('flag_active')
@@ -57,7 +59,7 @@ class NotificationSettingsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('inspection')
+            ->recordTitleAttribute('inspection_value')
             ->columns([
                 Tables\Columns\TextColumn::make('inspection_value')
                     ->label('Monitor'),
@@ -89,7 +91,7 @@ class NotificationSettingsRelationManager extends RelationManager
                 ]),
             ])
             ->emptyStateHeading('No website-specific alerts configured')
-            ->emptyStateDescription('Route alerts for this website directly from the check detail page.');
+            ->emptyStateDescription('Add an alert below to be notified when this website changes state.');
     }
 
     protected function mutateNotificationData(array $data): array

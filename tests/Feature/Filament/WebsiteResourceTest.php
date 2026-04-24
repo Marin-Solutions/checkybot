@@ -1,5 +1,8 @@
 <?php
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\NotificationScopesEnum;
+use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
@@ -167,8 +170,8 @@ test('super admin can create website-scoped email notification from website page
         'pageClass' => EditWebsite::class,
     ])
         ->callTableAction('create', data: [
-            'inspection' => 'WEBSITE_CHECK',
-            'channel_type' => 'MAIL',
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
             'address' => 'ops@example.com',
             'flag_active' => true,
         ])
@@ -177,10 +180,42 @@ test('super admin can create website-scoped email notification from website page
     $this->assertDatabaseHas('notification_settings', [
         'user_id' => $user->id,
         'website_id' => $website->id,
-        'scope' => 'WEBSITE',
-        'inspection' => 'WEBSITE_CHECK',
-        'channel_type' => 'MAIL',
+        'scope' => NotificationScopesEnum::WEBSITE->value,
+        'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
         'address' => 'ops@example.com',
+        'flag_active' => true,
+    ]);
+});
+
+test('super admin can create website-scoped webhook notification from website page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Ops Hook',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $channel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'scope' => NotificationScopesEnum::WEBSITE->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+        'notification_channel_id' => $channel->id,
+        'address' => null,
         'flag_active' => true,
     ]);
 });
@@ -195,7 +230,7 @@ test('super admin can update website-scoped webhook notification from website pa
         'user_id' => $user->id,
         'website_id' => $website->id,
         'notification_channel_id' => $oldChannel->id,
-        'inspection' => 'WEBSITE_CHECK',
+        'inspection' => WebsiteServicesEnum::WEBSITE_CHECK->value,
     ]);
 
     Livewire::test(NotificationSettingsRelationManager::class, [
@@ -203,8 +238,8 @@ test('super admin can update website-scoped webhook notification from website pa
         'pageClass' => EditWebsite::class,
     ])
         ->callTableAction('edit', $setting, data: [
-            'inspection' => 'ALL_CHECK',
-            'channel_type' => 'WEBHOOK',
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
             'notification_channel_id' => $newChannel->id,
             'flag_active' => false,
         ])
@@ -214,9 +249,9 @@ test('super admin can update website-scoped webhook notification from website pa
         'id' => $setting->id,
         'user_id' => $user->id,
         'website_id' => $website->id,
-        'scope' => 'WEBSITE',
-        'inspection' => 'ALL_CHECK',
-        'channel_type' => 'WEBHOOK',
+        'scope' => NotificationScopesEnum::WEBSITE->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
         'notification_channel_id' => $newChannel->id,
         'address' => null,
         'flag_active' => false,
