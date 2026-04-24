@@ -434,13 +434,12 @@ class WebsiteResource extends Resource
                         ->modalDescription('Scheduled uptime checks will resume for every selected website.')
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
-                            $count = $records->where('uptime_check', false)->count();
+                            $ids = $records->where('uptime_check', false)->pluck('id');
+                            $count = $ids->count();
 
-                            $records->each(function (Website $website): void {
-                                if (! $website->uptime_check) {
-                                    $website->forceFill(['uptime_check' => true])->save();
-                                }
-                            });
+                            if ($count > 0) {
+                                Website::query()->whereIn('id', $ids)->update(['uptime_check' => true]);
+                            }
 
                             Notification::make()
                                 ->title($count === 0
@@ -462,13 +461,12 @@ class WebsiteResource extends Resource
                         ->modalDescription('Uptime checks will pause for the selected websites until they are re-enabled. SSL and outbound checks are not affected.')
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
-                            $count = $records->where('uptime_check', true)->count();
+                            $ids = $records->where('uptime_check', true)->pluck('id');
+                            $count = $ids->count();
 
-                            $records->each(function (Website $website): void {
-                                if ($website->uptime_check) {
-                                    $website->forceFill(['uptime_check' => false])->save();
-                                }
-                            });
+                            if ($count > 0) {
+                                Website::query()->whereIn('id', $ids)->update(['uptime_check' => false]);
+                            }
 
                             Notification::make()
                                 ->title($count === 0

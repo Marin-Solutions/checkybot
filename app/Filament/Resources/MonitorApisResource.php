@@ -195,13 +195,12 @@ class MonitorApisResource extends Resource
                         ->modalDescription('Scheduled checks will resume for every selected monitor.')
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
-                            $count = $records->where('is_enabled', false)->count();
+                            $ids = $records->where('is_enabled', false)->pluck('id');
+                            $count = $ids->count();
 
-                            $records->each(function (MonitorApis $monitor): void {
-                                if (! $monitor->is_enabled) {
-                                    $monitor->forceFill(['is_enabled' => true])->save();
-                                }
-                            });
+                            if ($count > 0) {
+                                MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => true]);
+                            }
 
                             Notification::make()
                                 ->title($count === 0
@@ -223,13 +222,12 @@ class MonitorApisResource extends Resource
                         ->modalDescription('Scheduled checks will pause until the monitors are re-enabled. Configuration and history are preserved.')
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
-                            $count = $records->where('is_enabled', true)->count();
+                            $ids = $records->where('is_enabled', true)->pluck('id');
+                            $count = $ids->count();
 
-                            $records->each(function (MonitorApis $monitor): void {
-                                if ($monitor->is_enabled) {
-                                    $monitor->forceFill(['is_enabled' => false])->save();
-                                }
-                            });
+                            if ($count > 0) {
+                                MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => false]);
+                            }
 
                             Notification::make()
                                 ->title($count === 0
@@ -267,13 +265,15 @@ class MonitorApisResource extends Resource
                                 ->native(false),
                         ])
                         ->action(function (Collection $records, array $data): void {
-                            $interval = IntervalParser::normalize($data['interval']);
-
-                            $records->each(function (MonitorApis $monitor) use ($interval): void {
-                                $monitor->forceFill(['package_interval' => $interval])->save();
-                            });
+                            $interval = IntervalParser::normalizeOrFail($data['interval'], 'interval');
 
                             $count = $records->count();
+
+                            if ($count > 0) {
+                                MonitorApis::query()
+                                    ->whereIn('id', $records->pluck('id'))
+                                    ->update(['package_interval' => $interval]);
+                            }
 
                             Notification::make()
                                 ->title($count === 1

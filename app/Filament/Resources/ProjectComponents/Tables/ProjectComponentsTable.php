@@ -60,16 +60,15 @@ class ProjectComponentsTable
                         ->modalDescription('Selected components will be un-archived and will resume tracking incoming heartbeats.')
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
-                            $count = $records->where('is_archived', true)->count();
+                            $ids = $records->where('is_archived', true)->pluck('id');
+                            $count = $ids->count();
 
-                            $records->each(function (ProjectComponent $component): void {
-                                if ($component->is_archived) {
-                                    $component->forceFill([
-                                        'is_archived' => false,
-                                        'archived_at' => null,
-                                    ])->save();
-                                }
-                            });
+                            if ($count > 0) {
+                                ProjectComponent::query()->whereIn('id', $ids)->update([
+                                    'is_archived' => false,
+                                    'archived_at' => null,
+                                ]);
+                            }
 
                             Notification::make()
                                 ->title($count === 0
@@ -91,16 +90,15 @@ class ProjectComponentsTable
                         ->modalDescription('Selected components will be archived. Incoming heartbeats are ignored and stale alerts will stop firing, but history is preserved.')
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
-                            $count = $records->where('is_archived', false)->count();
+                            $ids = $records->where('is_archived', false)->pluck('id');
+                            $count = $ids->count();
 
-                            $records->each(function (ProjectComponent $component): void {
-                                if (! $component->is_archived) {
-                                    $component->forceFill([
-                                        'is_archived' => true,
-                                        'archived_at' => now(),
-                                    ])->save();
-                                }
-                            });
+                            if ($count > 0) {
+                                ProjectComponent::query()->whereIn('id', $ids)->update([
+                                    'is_archived' => true,
+                                    'archived_at' => now(),
+                                ]);
+                            }
 
                             Notification::make()
                                 ->title($count === 0

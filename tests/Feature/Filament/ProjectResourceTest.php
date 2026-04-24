@@ -425,6 +425,60 @@ test('super admin can bulk resume monitoring across selected applications', func
         ->and($component->refresh()->is_archived)->toBeFalse();
 });
 
+test('bulk disable on already disabled components notifies that nothing changed', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->archived()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('disable', $components)
+        ->assertNotified('Nothing to disable');
+
+    foreach ($components as $component) {
+        expect($component->refresh()->is_archived)->toBeTrue();
+    }
+});
+
+test('bulk disable on applications with nothing to pause reports no changes', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $monitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    $component = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]))
+        ->assertNotified();
+
+    expect($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($website->refresh()->uptime_check)->toBeFalse()
+        ->and($component->refresh()->is_archived)->toBeTrue();
+});
+
 test('regular users only see their own applications and components', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');

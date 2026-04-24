@@ -474,3 +474,20 @@ test('super admin can bulk enable uptime checks on websites', function () {
         expect($website->refresh()->uptime_check)->toBeTrue();
     }
 });
+
+test('bulk disable on already disabled websites notifies that nothing changed', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('disableUptimeCheck', $websites)
+        ->assertNotified('Nothing to disable');
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeFalse();
+    }
+});

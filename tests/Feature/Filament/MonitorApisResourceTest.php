@@ -335,6 +335,43 @@ test('super admin can bulk change the interval of api monitors', function () {
     }
 });
 
+test('bulk disable on already disabled api monitors notifies that nothing changed', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->disabled()->count(2)->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('disable', $monitors)
+        ->assertNotified('Nothing to disable');
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeFalse();
+    }
+});
+
+test('bulk enable on already enabled api monitors notifies that nothing changed', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('enable', $monitors)
+        ->assertNotified('Nothing to enable');
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeTrue();
+    }
+});
+
 test('api monitor results list exposes drill down action with evidence summary', function () {
     $this->createResourcePermissions('MonitorApis');
 

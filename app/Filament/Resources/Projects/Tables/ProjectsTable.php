@@ -15,6 +15,7 @@ use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 class ProjectsTable
 {
@@ -110,29 +111,31 @@ class ProjectsTable
             return ['websites' => 0, 'apis' => 0, 'components' => 0];
         }
 
-        $websitesChanged = Website::query()
-            ->whereIn('project_id', $projectIds)
-            ->where('uptime_check', ! $enable)
-            ->update(['uptime_check' => $enable]);
+        return DB::transaction(function () use ($projectIds, $enable): array {
+            $websitesChanged = Website::query()
+                ->whereIn('project_id', $projectIds)
+                ->where('uptime_check', ! $enable)
+                ->update(['uptime_check' => $enable]);
 
-        $apisChanged = MonitorApis::query()
-            ->whereIn('project_id', $projectIds)
-            ->where('is_enabled', ! $enable)
-            ->update(['is_enabled' => $enable]);
+            $apisChanged = MonitorApis::query()
+                ->whereIn('project_id', $projectIds)
+                ->where('is_enabled', ! $enable)
+                ->update(['is_enabled' => $enable]);
 
-        $componentsChanged = ProjectComponent::query()
-            ->whereIn('project_id', $projectIds)
-            ->where('is_archived', $enable)
-            ->update([
-                'is_archived' => ! $enable,
-                'archived_at' => $enable ? null : now(),
-            ]);
+            $componentsChanged = ProjectComponent::query()
+                ->whereIn('project_id', $projectIds)
+                ->where('is_archived', $enable)
+                ->update([
+                    'is_archived' => ! $enable,
+                    'archived_at' => $enable ? null : now(),
+                ]);
 
-        return [
-            'websites' => $websitesChanged,
-            'apis' => $apisChanged,
-            'components' => $componentsChanged,
-        ];
+            return [
+                'websites' => $websitesChanged,
+                'apis' => $apisChanged,
+                'components' => $componentsChanged,
+            ];
+        });
     }
 
     protected static function summaryTitle(int $projectCount, bool $enable): string
