@@ -7,6 +7,7 @@ use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Models\MonitorApis;
 use App\Services\IntervalParser;
+use App\Support\ApiMonitorTestNotification;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -171,8 +172,8 @@ class MonitorApisResource extends Resource
                     ->label('Test API')
                     ->color('warning')
                     ->icon('heroicon-o-play')
-                    ->action(function (MonitorApis $record) {
-                        MonitorApis::testApi([
+                    ->action(function (MonitorApis $record): void {
+                        $result = MonitorApis::testApi([
                             'id' => $record->id,
                             'url' => $record->url,
                             'method' => $record->http_method,
@@ -182,6 +183,9 @@ class MonitorApisResource extends Resource
                             'timeout_seconds' => $record->timeout_seconds,
                             'title' => $record->title,
                         ]);
+
+                        ApiMonitorTestNotification::fromResult($result, $record->expected_status)
+                            ->send();
                     }),
             ])
             ->bulkActions([

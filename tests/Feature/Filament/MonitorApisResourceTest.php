@@ -155,6 +155,74 @@ test('list test action uses stored execution settings', function () {
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/health');
 });
 
+test('list test action flashes success notification with status code and response time', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Healthy API',
+        'url' => 'https://example.com/health',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'data_path' => 'data.status',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableAction('test', $monitor)
+        ->assertNotified('API response received');
+});
+
+test('list test action flashes danger notification when the upstream returns a server error', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['error' => 'boom'], 500),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Broken API',
+        'url' => 'https://example.com/broken',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableAction('test', $monitor)
+        ->assertNotified('API request failed');
+});
+
+test('list test action flashes warning notification when an assertion fails', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['data' => []], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Partial API',
+        'url' => 'https://example.com/partial',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'data_path' => 'data.status',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableAction('test', $monitor)
+        ->assertNotified('Some API assertions failed');
+});
+
 test('check api action treats configured non-200 expected status as success', function () {
     $this->createResourcePermissions('MonitorApis');
 
