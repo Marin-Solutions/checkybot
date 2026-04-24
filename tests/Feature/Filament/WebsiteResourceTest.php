@@ -555,6 +555,33 @@ test('soft-deleted websites are not counted in bulk uptime disable notification'
     expect(Website::withTrashed()->find($trashed->id)->uptime_check)->toBeTrue();
 });
 
+test('soft-deleted websites are not counted in bulk uptime enable notification', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $active = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('enableUptimeCheck', $selection)
+        ->assertNotified('2 websites enabled');
+
+    foreach ($active as $website) {
+        expect($website->refresh()->uptime_check)->toBeTrue();
+    }
+
+    expect(Website::withTrashed()->find($trashed->id)->uptime_check)->toBeFalse();
+});
+
 test('super admin can render view page with infolist sections', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
