@@ -65,6 +65,16 @@ test('monitor api result casts response body to array', function () {
     expect($result->response_body)->toBe(['data' => ['status' => 'ok']]);
 });
 
+test('monitor api result casts request and response headers to arrays', function () {
+    $result = MonitorApiResult::factory()->create([
+        'request_headers' => ['Authorization' => '[redacted]'],
+        'response_headers' => ['content-type' => 'application/json'],
+    ]);
+
+    expect($result->request_headers)->toBe(['Authorization' => '[redacted]'])
+        ->and($result->response_headers)->toBe(['content-type' => 'application/json']);
+});
+
 test('record result creates successful result', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);
@@ -111,6 +121,24 @@ test('record result creates failed result with assertions', function () {
     expect($result->failed_assertions[0]['path'])->toBe('status');
 });
 
+test('record result stores header snapshots for run evidence', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 500,
+        'body' => ['status' => 'error'],
+        'assertions' => [],
+        'request_headers' => ['Authorization' => '[redacted]'],
+        'response_headers' => ['content-type' => 'application/json'],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
+
+    expect($result->request_headers)->toBe(['Authorization' => '[redacted]'])
+        ->and($result->response_headers)->toBe(['content-type' => 'application/json']);
+});
+
 test('record result only saves response body on error', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);
@@ -132,6 +160,26 @@ test('record result only saves response body on error', function () {
 
     $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime);
     expect($result->response_body)->not->toBeNull();
+});
+
+test('record result preserves raw failure payloads when json parsing fails', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $failedResult = [
+        'code' => 500,
+        'body' => null,
+        'raw_body' => '<html>upstream exploded</html>',
+        'assertions' => [['passed' => false, 'message' => 'Invalid JSON response']],
+        'error' => 'Invalid JSON response: Syntax error',
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
+
+    expect($result->response_body)->toBe([
+        'raw_body' => '<html>upstream exploded</html>',
+        'error' => 'Invalid JSON response: Syntax error',
+    ]);
 });
 
 test('record result calculates response time', function () {

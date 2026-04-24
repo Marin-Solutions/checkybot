@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ApiMonitorEvidenceFormatter;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -106,6 +107,7 @@ class MonitorApis extends Model
             $headers = self::normalizeHeaders(
                 $data['headers'] ?? (isset($data['id']) ? self::find($data['id'])?->headers : [])
             );
+            $responseData['request_headers'] = ApiMonitorEvidenceFormatter::maskHeaders($headers);
             $httpClient = self::configureHttpClient($httpConfig, $headers);
             $request = $httpClient->send($method, $url);
 
@@ -152,9 +154,12 @@ class MonitorApis extends Model
             if ($exception->response) {
                 $responseData['code'] = $exception->response->status();
                 $responseData['body'] = $exception->response->body();
+                $responseData['raw_body'] = $exception->response->body();
+                $responseData['response_headers'] = ApiMonitorEvidenceFormatter::maskHeaders($exception->response->headers());
             } else {
                 $responseData['code'] = 0;
                 $responseData['body'] = $exception->getMessage();
+                $responseData['raw_body'] = $exception->getMessage();
             }
             $responseData['error'] = $exception->getMessage();
 
@@ -181,8 +186,11 @@ class MonitorApis extends Model
         return [
             'code' => 0,
             'body' => null,
+            'raw_body' => null,
             'assertions' => [],
             'error' => null,
+            'request_headers' => [],
+            'response_headers' => [],
         ];
     }
 
@@ -271,6 +279,8 @@ class MonitorApis extends Model
     {
         $responseData['code'] = $request->status();
         $responseData['body'] = $request->body();
+        $responseData['raw_body'] = $request->body();
+        $responseData['response_headers'] = ApiMonitorEvidenceFormatter::maskHeaders($request->headers());
 
         Log::debug('API Monitor response received', [
             'monitor_id' => $data['id'] ?? null,

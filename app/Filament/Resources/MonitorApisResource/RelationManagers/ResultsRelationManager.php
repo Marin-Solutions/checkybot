@@ -3,15 +3,24 @@
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
 use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
+use App\Models\MonitorApiResult;
+use App\Support\ApiMonitorEvidenceFormatter;
+use Filament\Actions\ViewAction;
+use Filament\Infolists\Components\KeyValueEntry;
+use Filament\Infolists\Components\RepeatableEntry;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Support\HtmlString;
 
 class ResultsRelationManager extends RelationManager
 {
     protected static string $relationship = 'results';
 
-    protected static ?string $title = 'Monitoring Results';
+    protected static ?string $title = 'Run History';
 
     protected static ?string $recordTitleAttribute = 'created_at';
 
@@ -35,48 +44,33 @@ class ResultsRelationManager extends RelationManager
     {
         return $table
             ->columns([
-                Tables\Columns\IconColumn::make('is_success')
+                Tables\Columns\TextColumn::make('status')
                     ->label('Status')
-                    ->boolean()
-                    ->trueIcon('heroicon-o-check-circle')
-                    ->falseIcon('heroicon-o-x-circle')
-                    ->trueColor('success')
-                    ->falseColor('danger'),
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                    ->color(fn (?string $state): string => static::statusColor($state)),
+
+                Tables\Columns\TextColumn::make('summary')
+                    ->label('Summary')
+                    ->wrap()
+                    ->limit(90)
+                    ->default('-'),
 
                 Tables\Columns\TextColumn::make('response_time_ms')
                     ->label('Response Time')
-                    ->formatStateUsing(fn ($state) => "{$state}ms")
+                    ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('http_code')
                     ->label('HTTP Code')
                     ->badge()
-                    ->color(fn ($state) => match (true) {
-                        $state >= 500 => 'danger',
-                        $state >= 400 => 'warning',
-                        $state >= 200 && $state < 300 => 'success',
-                        default => 'gray'
-                    }),
-
-                Tables\Columns\TextColumn::make('response_body')
-                    ->label('Response')
-                    ->copyable()
-                    ->limit(100)
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->color(fn (?int $state): string => static::httpCodeColor($state)),
 
                 Tables\Columns\TextColumn::make('failed_assertions')
                     ->label('Failed Assertions')
-                    ->visible(fn ($record) => $record && ! $record->is_success)
-                    ->formatStateUsing(function ($state) {
-                        if (empty($state)) {
-                            return '-';
-                        }
-
-                        return collect($state)->map(function ($assertion) {
-                            return "{$assertion['path']} - {$assertion['message']}";
-                        })->join("\n");
-                    })
-                    ->wrap(),
+                    ->state(fn (MonitorApiResult $record): int => count($record->failed_assertions ?? []))
+                    ->badge()
+                    ->color(fn (int $state): string => $state > 0 ? 'danger' : 'gray'),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Timestamp')
@@ -96,11 +90,104 @@ class ResultsRelationManager extends RelationManager
                     ->label('High Response Time')
                     ->query(fn ($query) => $query->where('response_time_ms', '>', 1000)),
             ])
-            ->actions([
-                // No actions needed for results
+            ->recordActions([
+                ViewAction::make()
+                    ->label('View Evidence')
+                    ->modalWidth('5xl'),
             ])
             ->bulkActions([
                 // No bulk actions needed
             ]);
+    }
+
+    public function infolist(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                Section::make('Run Overview')
+                    ->schema([
+                        TextEntry::make('status')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                            ->color(fn (?string $state): string => static::statusColor($state)),
+                        TextEntry::make('summary')
+                            ->default('-')
+                            ->columnSpanFull(),
+                        TextEntry::make('http_code')
+                            ->label('HTTP Code')
+                            ->badge()
+                            ->color(fn (?int $state): string => static::httpCodeColor($state)),
+                        TextEntry::make('response_time_ms')
+                            ->label('Response Time')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
+                        TextEntry::make('created_at')
+                            ->label('Captured At')
+                            ->dateTime(),
+                    ])
+                    ->columns(3),
+                Section::make('Failed Assertions')
+                    ->hidden(fn (MonitorApiResult $record): bool => blank($record->failed_assertions))
+                    ->schema([
+                        RepeatableEntry::make('failed_assertions')
+                            ->label('')
+                            ->state(fn (MonitorApiResult $record): array => ApiMonitorEvidenceFormatter::normalizeAssertions($record->failed_assertions))
+                            ->schema([
+                                TextEntry::make('path')
+                                    ->badge()
+                                    ->color('danger'),
+                                TextEntry::make('type')
+                                    ->badge()
+                                    ->color('gray'),
+                                TextEntry::make('message')
+                                    ->columnSpanFull(),
+                            ])
+                            ->contained(false)
+                            ->columns(2),
+                    ]),
+                Section::make('Header Snapshots')
+                    ->hidden(fn (MonitorApiResult $record): bool => blank($record->request_headers) && blank($record->response_headers))
+                    ->schema([
+                        KeyValueEntry::make('request_headers')
+                            ->label('Request Headers')
+                            ->state(fn (MonitorApiResult $record): array => $record->request_headers ?? [])
+                            ->hidden(fn (MonitorApiResult $record): bool => blank($record->request_headers)),
+                        KeyValueEntry::make('response_headers')
+                            ->label('Response Headers')
+                            ->state(fn (MonitorApiResult $record): array => $record->response_headers ?? [])
+                            ->hidden(fn (MonitorApiResult $record): bool => blank($record->response_headers)),
+                    ])
+                    ->columns(2),
+                Section::make('Saved Failure Payload')
+                    ->hidden(fn (MonitorApiResult $record): bool => blank($record->response_body))
+                    ->schema([
+                        TextEntry::make('response_body')
+                            ->label('')
+                            ->state(fn (MonitorApiResult $record): string => ApiMonitorEvidenceFormatter::formatPayload($record->response_body))
+                            ->html()
+                            ->formatStateUsing(fn (string $state): HtmlString => new HtmlString('<pre style="white-space: pre-wrap; margin: 0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, Liberation Mono, Courier New, monospace;">'.e($state).'</pre>'))
+                            ->columnSpanFull(),
+                    ]),
+            ]);
+    }
+
+    private static function httpCodeColor(?int $httpCode): string
+    {
+        return match (true) {
+            $httpCode === null => 'gray',
+            $httpCode >= 500 => 'danger',
+            $httpCode >= 400 => 'warning',
+            $httpCode >= 200 => 'success',
+            default => 'gray',
+        };
+    }
+
+    private static function statusColor(?string $state): string
+    {
+        return match ($state) {
+            'healthy' => 'success',
+            'warning' => 'warning',
+            'danger' => 'danger',
+            default => 'gray',
+        };
     }
 }

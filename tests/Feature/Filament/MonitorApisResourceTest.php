@@ -3,6 +3,8 @@
 use App\Filament\Resources\MonitorApisResource\Pages\CreateMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ListMonitorApis;
+use App\Filament\Resources\MonitorApisResource\Pages\ViewMonitorApis;
+use App\Filament\Resources\MonitorApisResource\RelationManagers\ResultsRelationManager;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use Illuminate\Support\Facades\Http;
@@ -220,4 +222,100 @@ test('check api action uses degraded title for expected status mismatches withou
         ->assertNotified('API response is degraded');
 
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/created-health');
+});
+
+test('api monitor view shows evidence rich latest run overview', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Orders API',
+        'url' => 'https://example.com/orders/health',
+        'http_method' => 'POST',
+        'expected_status' => 200,
+        'data_path' => 'data.status',
+        'headers' => [
+            'Authorization' => 'Bearer secret-token',
+            'X-Env' => 'staging',
+        ],
+        'current_status' => 'danger',
+        'status_summary' => 'API heartbeat failed with HTTP status 500.',
+        'save_failed_response' => true,
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'danger',
+        'summary' => 'API heartbeat failed with HTTP status 500.',
+        'http_code' => 500,
+        'response_time_ms' => 1450,
+        'failed_assertions' => [[
+            'path' => '_http_status',
+            'type' => 'status_code',
+            'message' => 'Expected HTTP status 200, got 500.',
+        ]],
+        'request_headers' => [
+            'Authorization' => '[redacted]',
+            'X-Env' => 'staging',
+        ],
+        'response_headers' => [
+            'content-type' => 'application/json',
+            'x-request-id' => 'req-123',
+        ],
+        'response_body' => [
+            'error' => 'server blew up',
+            'trace_id' => 'trace-123',
+        ],
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSee('Overview')
+        ->assertSee('Latest Run Evidence')
+        ->assertSee('API heartbeat failed with HTTP status 500.')
+        ->assertSee('Expected HTTP status 200, got 500.')
+        ->assertSee('[redacted]')
+        ->assertSee('x-request-id')
+        ->assertSee('trace-123');
+});
+
+test('api monitor results list exposes drill down action with evidence summary', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $result = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'warning',
+        'summary' => 'API heartbeat is degraded with HTTP status 404.',
+        'http_code' => 404,
+        'failed_assertions' => [[
+            'path' => 'data.status',
+            'type' => 'value_compare',
+            'message' => 'Expected ok, got missing.',
+        ]],
+        'request_headers' => [
+            'Authorization' => '[redacted]',
+        ],
+        'response_headers' => [
+            'content-type' => 'application/json',
+        ],
+        'response_body' => [
+            'raw_body' => '{"status":"missing"}',
+        ],
+    ]);
+
+    Livewire::test(ResultsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => ViewMonitorApis::class,
+    ])
+        ->assertTableActionExists('view', null, $result)
+        ->assertSee('API heartbeat is degraded with HTTP status 404.')
+        ->assertSee('View Evidence')
+        ->assertSee('1');
 });
