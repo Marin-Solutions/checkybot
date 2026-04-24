@@ -339,6 +339,16 @@ test('super admin can filter api monitors by current status', function () {
         ->assertCanNotSeeTableRecords([$healthy, $warning, $unknownNull, $unknownLiteral]);
 
     Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'warning')
+        ->assertCanSeeTableRecords([$warning])
+        ->assertCanNotSeeTableRecords([$healthy, $danger, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'healthy')
+        ->assertCanSeeTableRecords([$healthy])
+        ->assertCanNotSeeTableRecords([$warning, $danger, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListMonitorApis::class)
         ->filterTable('current_status', 'unknown')
         ->assertCanSeeTableRecords([$unknownNull, $unknownLiteral])
         ->assertCanNotSeeTableRecords([$healthy, $warning, $danger]);
