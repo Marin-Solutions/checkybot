@@ -495,6 +495,39 @@ test('bulk disable on already disabled websites notifies that nothing changed', 
     }
 });
 
+test('bulk enable on already enabled websites notifies that nothing changed', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('enableUptimeCheck', $websites)
+        ->assertNotified('Nothing to enable');
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeTrue();
+    }
+});
+
+test('user without Update:Website permission cannot see website bulk actions', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:Website');
+    $this->actingAs($user);
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableBulkActionHidden('enableUptimeCheck')
+        ->assertTableBulkActionHidden('disableUptimeCheck');
+});
+
 test('super admin can render view page with infolist sections', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([

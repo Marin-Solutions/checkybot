@@ -472,7 +472,7 @@ test('bulk disable on applications with nothing to pause reports no changes', fu
 
     Livewire::test(ListProjects::class)
         ->callTableBulkAction('disable', collect([$project]))
-        ->assertNotified();
+        ->assertNotified('Nothing to disable');
 
     expect($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($website->refresh()->uptime_check)->toBeFalse()

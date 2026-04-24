@@ -60,15 +60,17 @@ class ProjectsTable
                         ->label('Enable monitoring')
                         ->icon('heroicon-o-play')
                         ->color('success')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:Project') ?? false)
                         ->requiresConfirmation()
                         ->modalHeading('Enable monitoring for selected applications')
                         ->modalDescription('All websites and API monitors tied to these applications will resume scheduled checks. Archived components will be un-archived and start accepting heartbeats again.')
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
                             $summary = static::cascadeProjectState($records, true);
+                            $totalChanged = $summary['websites'] + $summary['apis'] + $summary['components'];
 
                             Notification::make()
-                                ->title(static::summaryTitle($records->count(), true))
+                                ->title(static::summaryTitle($records->count(), true, $totalChanged))
                                 ->body(static::summaryBody($summary, true))
                                 ->success()
                                 ->send();
@@ -78,15 +80,17 @@ class ProjectsTable
                         ->label('Disable monitoring')
                         ->icon('heroicon-o-pause')
                         ->color('warning')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:Project') ?? false)
                         ->requiresConfirmation()
                         ->modalHeading('Disable monitoring for selected applications')
                         ->modalDescription('Scheduled uptime checks, API checks, and heartbeat tracking will pause for every website, API monitor, and component in the selected applications. Use this during maintenance windows. History and configuration are preserved.')
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
                             $summary = static::cascadeProjectState($records, false);
+                            $totalChanged = $summary['websites'] + $summary['apis'] + $summary['components'];
 
                             Notification::make()
-                                ->title(static::summaryTitle($records->count(), false))
+                                ->title(static::summaryTitle($records->count(), false, $totalChanged))
                                 ->body(static::summaryBody($summary, false))
                                 ->warning()
                                 ->send();
@@ -138,8 +142,12 @@ class ProjectsTable
         });
     }
 
-    protected static function summaryTitle(int $projectCount, bool $enable): string
+    protected static function summaryTitle(int $projectCount, bool $enable, int $totalChanged): string
     {
+        if ($totalChanged === 0) {
+            return $enable ? 'Nothing to enable' : 'Nothing to disable';
+        }
+
         $verb = $enable ? 'Monitoring enabled' : 'Monitoring paused';
 
         $subject = $projectCount === 1
