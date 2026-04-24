@@ -252,7 +252,7 @@ class WebsiteInfolist
             return 'gray';
         }
 
-        $daysRemaining = now()->diffInDays($date, false);
+        $daysRemaining = static::daysUntilExpiry($date);
 
         return match (true) {
             $daysRemaining < 0 => 'danger',
@@ -269,9 +269,37 @@ class WebsiteInfolist
             return null;
         }
 
-        return $date->isPast()
-            ? 'Expired '.$date->diffForHumans()
-            : 'Expires '.$date->diffForHumans();
+        $daysRemaining = static::daysUntilExpiry($date);
+
+        if ($daysRemaining === 0) {
+            return 'Expires today';
+        }
+
+        if ($daysRemaining === 1) {
+            return 'Expires tomorrow';
+        }
+
+        if ($daysRemaining === -1) {
+            return 'Expired yesterday';
+        }
+
+        return $daysRemaining < 0
+            ? 'Expired '.abs($daysRemaining).' days ago'
+            : "Expires in {$daysRemaining} days";
+    }
+
+    /**
+     * Whole days remaining until the expiry date, comparing dates at the
+     * start of day so certificates that expire "today" report 0 days
+     * remaining (rather than being flagged as already expired at noon)
+     * and the color and hint stay consistent.
+     */
+    private static function daysUntilExpiry(Carbon $expiryDate): int
+    {
+        $today = now()->startOfDay();
+        $expiry = $expiryDate->copy()->startOfDay();
+
+        return (int) round($today->diffInDays($expiry, false));
     }
 
     private static function staleHint(?Carbon $staleAt): ?string

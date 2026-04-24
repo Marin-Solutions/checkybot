@@ -504,6 +504,33 @@ test('view page hides recent failures when no failing logs exist', function () {
         ->assertDontSee('Recent Failures');
 });
 
+test('view page reports SSL cert expiring today as expiring, not expired', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->toDateString(),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Expires today')
+        ->assertDontSee('Expired ');
+});
+
+test('view page reports SSL cert expired yesterday as expired', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->subDay()->toDateString(),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Expired yesterday');
+});
+
 test('view page excludes failures older than 7 days from the recent failures panel', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
