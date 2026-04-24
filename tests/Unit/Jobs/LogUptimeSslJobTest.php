@@ -158,6 +158,10 @@ test('job does not notify when a manual website remains in the same failing stat
     $job = new LogUptimeSslJob($website);
     $job->handle();
 
+    $website->refresh();
+
+    expect($website->current_status)->toBe('danger');
+
     Mail::assertNothingSent();
 });
 

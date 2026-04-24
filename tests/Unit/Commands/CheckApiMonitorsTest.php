@@ -307,5 +307,9 @@ test('command does not notify when a manual api monitor remains in the same fail
     $this->artisan('monitor:check-apis')
         ->assertSuccessful();
 
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('warning');
+
     Mail::assertNothingSent();
 });
