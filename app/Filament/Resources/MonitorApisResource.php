@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\MonitorApis\Schemas\MonitorApiInfolist;
 use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Models\MonitorApis;
@@ -34,6 +35,7 @@ class MonitorApisResource extends Resource
     {
         return parent::getEloquentQuery()
             ->withAvg('results as avg_response_time', 'response_time_ms')
+            ->with(['latestResult'])
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);
@@ -185,6 +187,11 @@ class MonitorApisResource extends Resource
                 ]),
             ])
             ->emptyStateHeading('No APIs');
+    }
+
+    public static function infolist(Schema $schema): Schema
+    {
+        return MonitorApiInfolist::configure($schema);
     }
 
     public static function getRelations(): array

@@ -19,10 +19,16 @@ class MonitorApiResultFactory extends Factory
             'is_success' => $isSuccess,
             'response_time_ms' => fake()->numberBetween(50, 2000),
             'http_code' => $isSuccess ? 200 : fake()->randomElement([400, 404, 500, 503]),
-            'failed_assertions' => $isSuccess ? null : json_encode(['data.status' => 'Expected: success, Got: error']),
-            'response_body' => json_encode(['data' => ['status' => $isSuccess ? 'success' : 'error']]),
+            'failed_assertions' => $isSuccess ? null : [[
+                'path' => 'data.status',
+                'type' => 'value_compare',
+                'message' => 'Expected: success, Got: error',
+            ]],
+            'response_body' => ['data' => ['status' => $isSuccess ? 'success' : 'error']],
             'status' => $isSuccess ? 'healthy' : 'danger',
             'summary' => $isSuccess ? 'Heartbeat received successfully.' : 'API heartbeat failed.',
+            'request_headers' => ['Accept' => 'application/json'],
+            'response_headers' => ['content-type' => 'application/json'],
         ];
     }
 
@@ -41,7 +47,11 @@ class MonitorApiResultFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'is_success' => false,
             'http_code' => fake()->randomElement([400, 404, 500, 503]),
-            'failed_assertions' => json_encode(['error' => 'Test failed']),
+            'failed_assertions' => [[
+                'path' => 'error',
+                'type' => 'value_compare',
+                'message' => 'Test failed',
+            ]],
             'status' => 'danger',
         ]);
     }
