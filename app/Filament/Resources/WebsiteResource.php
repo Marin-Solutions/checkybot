@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\WebsiteResource\Pages;
+use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
 use App\Tables\Columns\SparklineColumn;
@@ -429,6 +430,11 @@ class WebsiteResource extends Resource
                     \Filament\Actions\RestoreBulkAction::make(),
                 ]),
             ]);
+    }
+
+    public static function infolist(Schema $schema): Schema
+    {
+        return WebsiteInfolist::configure($schema);
     }
 
     public static function getRelations(): array
