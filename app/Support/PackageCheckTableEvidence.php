@@ -17,7 +17,13 @@ class PackageCheckTableEvidence
             return 'Awaiting heartbeat';
         }
 
-        if (static::staleThresholdAt($record)?->lte(now()) || $record->stale_at !== null) {
+        $thresholdAt = static::staleThresholdAt($record);
+
+        if ($thresholdAt === null) {
+            return $record->stale_at !== null ? 'Stale' : 'Schedule unknown';
+        }
+
+        if ($thresholdAt->lte(now()) || $record->stale_at !== null) {
             return 'Stale';
         }
 
@@ -36,24 +42,28 @@ class PackageCheckTableEvidence
 
     public static function freshnessDescription(object $record): ?string
     {
-        $interval = static::displayInterval($record->package_interval);
-
         if (blank($record->package_interval)) {
             return 'No package interval configured yet.';
         }
 
+        $interval = static::displayInterval($record->package_interval);
+
         if ($record->last_heartbeat_at === null) {
-            return $interval ? "Expected every {$interval}." : 'No heartbeat received yet.';
+            return "Expected every {$interval}.";
         }
 
         $thresholdAt = static::staleThresholdAt($record);
 
         if ($thresholdAt === null) {
-            return "Package interval {$record->package_interval} cannot be evaluated.";
+            return $record->stale_at !== null
+                ? 'Expired '.$record->stale_at->diffForHumans().'.'
+                : "Package interval {$record->package_interval} cannot be evaluated.";
         }
 
         if ($thresholdAt->lte(now()) || $record->stale_at !== null) {
-            return 'Expired '.$thresholdAt->diffForHumans().'.';
+            $referenceTime = $record->stale_at ?? $thresholdAt;
+
+            return 'Expired '.$referenceTime->diffForHumans().'.';
         }
 
         return 'Expires '.$thresholdAt->diffForHumans().'.';
