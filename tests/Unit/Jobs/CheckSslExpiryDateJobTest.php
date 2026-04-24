@@ -3,6 +3,7 @@
 use App\Jobs\CheckSslExpiryDateJob;
 use App\Models\NotificationSetting;
 use App\Models\Website;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 
@@ -73,4 +74,20 @@ test('job handles websites without ssl', function () {
 
     // Job should handle gracefully
     expect(true)->toBeTrue();
+});
+
+test('job resolves the host before checking ssl expiry', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com/status?from=checkybot',
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->subDay(),
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle();
+
+    $updatedWebsite = $website->fresh();
+
+    expect($updatedWebsite->ssl_expiry_date)->not->toBeNull();
+    expect(Carbon::parse($updatedWebsite->ssl_expiry_date)->isFuture())->toBeTrue();
 });

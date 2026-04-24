@@ -46,15 +46,20 @@ class LogUptimeSslJob implements ShouldQueue
         $ssl_expiry_date = null;
         $http_status_code = null;
         $speed = null;
+        $host = Website::extractHost($this->website->url);
 
         try {
             // Get SSL expiry date (with error handling)
-            try {
-                $certificate = SslCertificate::createForHostName($this->website->url);
-                $ssl_expiry_date = $certificate->expirationDate();
-            } catch (\Exception $sslException) {
-                Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
-                // Continue without SSL info rather than failing completely
+            if (blank($host)) {
+                Log::warning('Could not determine SSL host for '.$this->website->url);
+            } else {
+                try {
+                    $certificate = SslCertificate::createForHostName($host);
+                    $ssl_expiry_date = $certificate->expirationDate();
+                } catch (\Exception $sslException) {
+                    Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
+                    // Continue without SSL info rather than failing completely
+                }
             }
 
             // Get status code and speed with timeout and retry configuration

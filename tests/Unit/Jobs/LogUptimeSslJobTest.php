@@ -4,6 +4,7 @@ use App\Jobs\LogUptimeSslJob;
 use App\Models\NotificationSetting;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 
@@ -372,4 +373,23 @@ test('job skips websites with uptime check disabled', function () {
     assertDatabaseMissing('website_log_history', [
         'website_id' => $website->id,
     ]);
+});
+
+test('job resolves the host before looking up the ssl certificate', function () {
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com/health?foo=bar',
+        'uptime_check' => true,
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle();
+
+    $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+
+    expect($log?->ssl_expiry_date)->not->toBeNull();
+    expect(Carbon::parse($log?->ssl_expiry_date)->isFuture())->toBeTrue();
 });

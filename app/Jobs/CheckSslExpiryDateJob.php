@@ -27,8 +27,16 @@ class CheckSslExpiryDateJob implements ShouldQueue
      */
     public function handle(): void
     {
+        $host = Website::extractHost($this->website->url);
+
+        if (blank($host)) {
+            Log::error('Could not determine SSL host for website '.$this->website->url);
+
+            return;
+        }
+
         try {
-            $certificate = SslCertificate::createForHostName($this->website->url);
+            $certificate = SslCertificate::createForHostName($host);
             $newExpiryDate = $certificate->expirationDate();
         } catch (\Exception $e) {
             Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage());
