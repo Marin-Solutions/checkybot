@@ -21,7 +21,7 @@ test('job checks ssl expiry for website', function () {
     ]);
 
     $job = new CheckSslExpiryDateJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     // SSL certificate check should have been attempted
     expect(true)->toBeTrue(); // Job executed without errors
@@ -36,7 +36,7 @@ test('job skips websites with ssl check disabled', function () {
     Mail::fake();
 
     $job = new CheckSslExpiryDateJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     Mail::assertNothingSent();
 });
@@ -60,7 +60,7 @@ test('job sends notification when ssl expiry approaching', function () {
     ]);
 
     $job = new CheckSslExpiryDateJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     // Job should complete successfully
     expect(true)->toBeTrue();
@@ -73,7 +73,7 @@ test('job handles websites without ssl', function () {
     ]);
 
     $job = new CheckSslExpiryDateJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     // Job should handle gracefully
     expect(true)->toBeTrue();
@@ -99,7 +99,7 @@ test('job resolves the host before checking ssl expiry', function () {
     ]);
 
     $job = new CheckSslExpiryDateJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $updatedWebsite = $website->fresh();
 
@@ -126,7 +126,7 @@ test('job returns early when ssl host cannot be determined', function () {
     ]);
 
     $job = new CheckSslExpiryDateJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     Log::shouldHaveReceived('error')
         ->once()

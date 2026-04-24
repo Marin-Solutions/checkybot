@@ -25,9 +25,8 @@ class CheckSslExpiryDateJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(SslCertificateService $sslCertificateService): void
     {
-        $sslCertificateService = app(SslCertificateService::class);
         $host = $sslCertificateService->extractHost($this->website->url);
 
         if (blank($host)) {

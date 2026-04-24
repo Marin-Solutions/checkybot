@@ -7,6 +7,7 @@ use App\Models\WebsiteLogHistory;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Mockery\MockInterface;
 
@@ -21,7 +22,7 @@ test('job creates log history for successful check', function () {
     ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     assertDatabaseHas('website_log_history', [
         'website_id' => $website->id,
@@ -40,7 +41,7 @@ test('job records response time', function () {
     ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $log = WebsiteLogHistory::where('website_id', $website->id)->first();
 
@@ -60,7 +61,7 @@ test('job handles failed requests', function () {
     ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     assertDatabaseHas('website_log_history', [
         'website_id' => $website->id,
@@ -92,7 +93,7 @@ test('job records danger status history and sends notifications for failed packa
         ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $website->refresh();
     $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
@@ -370,7 +371,7 @@ test('job skips websites with uptime check disabled', function () {
     ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     assertDatabaseMissing('website_log_history', [
         'website_id' => $website->id,
@@ -400,10 +401,45 @@ test('job resolves the host before looking up the ssl certificate', function () 
     ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
 
     expect($log?->ssl_expiry_date)->not->toBeNull();
     expect(Carbon::parse($log?->ssl_expiry_date)->isFuture())->toBeTrue();
+});
+
+test('job logs a warning and continues when ssl host cannot be determined', function () {
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    Log::spy();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('not-a-url/path')
+            ->andReturn(null);
+
+        $mock->shouldNotReceive('getExpirationDateForHost');
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'not-a-url/path',
+        'uptime_check' => true,
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->with('Could not determine SSL host for not-a-url/path');
+
+    $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+
+    expect($log)->not->toBeNull();
+    expect($log?->ssl_expiry_date)->toBeNull();
+    expect($log?->http_status_code)->toBe(200);
 });

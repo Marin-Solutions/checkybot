@@ -34,7 +34,7 @@ class LogUptimeSslJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(SslCertificateService $sslCertificateService): void
     {
         if (! $this->website->uptime_check) {
             return;
@@ -42,7 +42,6 @@ class LogUptimeSslJob implements ShouldQueue
 
         $statusService = app(PackageHealthStatusService::class);
         $notificationService = app(HealthEventNotificationService::class);
-        $sslCertificateService = app(SslCertificateService::class);
 
         $ssl_expiry_date = null;
         $http_status_code = null;
