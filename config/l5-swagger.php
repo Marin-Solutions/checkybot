@@ -294,7 +294,7 @@ return [
          * Constants which can be used in annotations
          */
         'constants' => [
-            'L5_SWAGGER_CONST_HOST' => env('L5_SWAGGER_CONST_HOST', 'https://checkybot.com/api'),
+            'L5_SWAGGER_CONST_HOST' => env('L5_SWAGGER_CONST_HOST', rtrim((string) env('APP_URL', 'https://checkybot.com'), '/').'/api'),
         ],
     ],
 ];
