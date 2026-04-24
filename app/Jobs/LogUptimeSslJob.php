@@ -6,12 +6,12 @@ use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\HealthEventNotificationService;
 use App\Services\PackageHealthStatusService;
+use App\Services\SslCertificateService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Spatie\SslCertificate\SslCertificate;
 
 class LogUptimeSslJob implements ShouldQueue
 {
@@ -42,11 +42,12 @@ class LogUptimeSslJob implements ShouldQueue
 
         $statusService = app(PackageHealthStatusService::class);
         $notificationService = app(HealthEventNotificationService::class);
+        $sslCertificateService = app(SslCertificateService::class);
 
         $ssl_expiry_date = null;
         $http_status_code = null;
         $speed = null;
-        $host = Website::extractHost($this->website->url);
+        $host = $sslCertificateService->extractHost($this->website->url);
 
         try {
             // Get SSL expiry date (with error handling)
@@ -54,8 +55,7 @@ class LogUptimeSslJob implements ShouldQueue
                 Log::warning('Could not determine SSL host for '.$this->website->url);
             } else {
                 try {
-                    $certificate = SslCertificate::createForHostName($host);
-                    $ssl_expiry_date = $certificate->expirationDate();
+                    $ssl_expiry_date = $sslCertificateService->getExpirationDateForHost($host);
                 } catch (\Exception $sslException) {
                     Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
                     // Continue without SSL info rather than failing completely

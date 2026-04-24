@@ -130,7 +130,23 @@ class Website extends Model
 
         $host = parse_url($url, PHP_URL_HOST);
 
-        return is_string($host) ? $host : $url;
+        if (is_string($host) && $host !== '') {
+            return $host;
+        }
+
+        $url = trim($url);
+
+        if ($url === '') {
+            return null;
+        }
+
+        if (filter_var($url, FILTER_VALIDATE_IP) !== false || strtolower($url) === 'localhost') {
+            return $url;
+        }
+
+        return preg_match('/^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$/i', $url) === 1
+            ? $url
+            : null;
     }
 
     public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo

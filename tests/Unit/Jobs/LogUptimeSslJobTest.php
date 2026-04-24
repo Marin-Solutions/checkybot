@@ -4,9 +4,11 @@ use App\Jobs\LogUptimeSslJob;
 use App\Models\NotificationSetting;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Mockery\MockInterface;
 
 test('job creates log history for successful check', function () {
     Http::fake([
@@ -379,6 +381,18 @@ test('job resolves the host before looking up the ssl certificate', function () 
     Http::fake([
         '*' => Http::response('', 200),
     ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com/health?foo=bar')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com')
+            ->andReturn(now()->addDays(30));
+    });
 
     $website = Website::factory()->create([
         'url' => 'https://example.com/health?foo=bar',

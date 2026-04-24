@@ -90,3 +90,15 @@ test('website tracks ssl expiry date', function () {
 
     expect($website->ssl_expiry_date->format('Y-m-d'))->toBe($expiryDate->format('Y-m-d'));
 });
+
+test('extractHost returns the hostname from a full url', function () {
+    expect(Website::extractHost('https://example.com/health?foo=bar'))->toBe('example.com');
+});
+
+test('extractHost accepts a bare hostname', function () {
+    expect(Website::extractHost('example.com'))->toBe('example.com');
+});
+
+test('extractHost returns null for malformed urls with paths', function () {
+    expect(Website::extractHost('not-a-url/path'))->toBeNull();
+});
