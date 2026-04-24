@@ -143,26 +143,17 @@ class NotificationSettingResource extends Resource
      * Send a real test notification for this setting (email or webhook) and
      * surface the outcome to the user so they can validate their configuration
      * before waiting for a real incident.
+     *
+     * Uses `match` over the enum so that adding a new NotificationChannelTypesEnum
+     * case without handling it here fails loudly (UnhandledMatchError) instead of
+     * silently falling through to a no-op notification.
      */
     public static function sendTestNotification(NotificationSetting $record): void
     {
-        if ($record->channel_type === NotificationChannelTypesEnum::MAIL) {
-            static::sendTestEmail($record);
-
-            return;
-        }
-
-        if ($record->channel_type === NotificationChannelTypesEnum::WEBHOOK) {
-            static::sendTestWebhook($record);
-
-            return;
-        }
-
-        Notification::make()
-            ->danger()
-            ->title('Test not supported')
-            ->body('This notification setting does not have a channel type we can test.')
-            ->send();
+        match ($record->channel_type) {
+            NotificationChannelTypesEnum::MAIL => static::sendTestEmail($record),
+            NotificationChannelTypesEnum::WEBHOOK => static::sendTestWebhook($record),
+        };
     }
 
     protected static function sendTestEmail(NotificationSetting $record): void

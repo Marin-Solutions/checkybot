@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Resources\NotificationChannelsResource\Pages\ListNotificationChannels;
+use App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings;
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
@@ -68,7 +69,7 @@ test('send test action sends email for mail channel setting', function () {
         'address' => 'inbox@example.com',
     ]);
 
-    Livewire::test(\App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings::class)
+    Livewire::test(ListNotificationSettings::class)
         ->callTableAction('send_test', $setting)
         ->assertNotified('Test email sent');
 
@@ -99,7 +100,7 @@ test('send test action triggers webhook for webhook channel setting', function (
         'notification_channel_id' => $channel->id,
     ]);
 
-    Livewire::test(\App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings::class)
+    Livewire::test(ListNotificationSettings::class)
         ->callTableAction('send_test', $setting)
         ->assertNotified('Webhook test delivered successfully');
 
@@ -116,7 +117,7 @@ test('send test action warns when webhook setting has no linked channel', functi
         'notification_channel_id' => null,
     ]);
 
-    Livewire::test(\App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings::class)
+    Livewire::test(ListNotificationSettings::class)
         ->callTableAction('send_test', $setting)
         ->assertNotified('Missing webhook channel');
 });

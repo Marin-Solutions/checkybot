@@ -189,13 +189,19 @@ class NotificationChannelsResource extends Resource
 
         $body = new HtmlString(implode('<br>', $bodyLines));
 
-        Notification::make()
-            ->{$isSuccess ? 'success' : 'danger'}()
+        $notification = Notification::make()
             ->title($isSuccess
                 ? 'Webhook test delivered successfully'
                 : 'Webhook test failed')
             ->body($body)
-            ->persistent()
-            ->send();
+            ->persistent();
+
+        if ($isSuccess) {
+            $notification->success();
+        } else {
+            $notification->danger();
+        }
+
+        $notification->send();
     }
 }
