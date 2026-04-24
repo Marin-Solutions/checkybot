@@ -9,6 +9,10 @@ class PackageCheckTableEvidence
 {
     public static function freshnessState(object $record): string
     {
+        if (static::isMonitoringDisabled($record)) {
+            return 'Disabled';
+        }
+
         if (blank($record->package_interval)) {
             return 'Schedule unknown';
         }
@@ -42,6 +46,10 @@ class PackageCheckTableEvidence
 
     public static function freshnessDescription(object $record): ?string
     {
+        if (static::isMonitoringDisabled($record)) {
+            return 'Monitor is disabled. Heartbeats are not expected.';
+        }
+
         if (blank($record->package_interval)) {
             return 'No package interval configured yet.';
         }
@@ -93,5 +101,10 @@ class PackageCheckTableEvidence
         } catch (\InvalidArgumentException) {
             return $interval;
         }
+    }
+
+    private static function isMonitoringDisabled(object $record): bool
+    {
+        return ($record->is_enabled ?? true) === false;
     }
 }

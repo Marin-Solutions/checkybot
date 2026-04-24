@@ -53,6 +53,20 @@ test('freshness evidence marks blank intervals as schedule unknown', function ()
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('No package interval configured yet.');
 });
 
+test('freshness evidence treats disabled api monitors as disabled instead of stale', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $record = (object) [
+        'is_enabled' => false,
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subHour(),
+        'stale_at' => now()->subMinutes(30),
+    ];
+
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Disabled')
+        ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Heartbeats are not expected.');
+});
+
 afterEach(function () {
     Carbon::setTestNow();
 });

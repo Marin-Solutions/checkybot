@@ -261,6 +261,18 @@ test('application record shows package-managed external checks including archive
     ]);
     $archivedApiMonitor->delete();
 
+    $disabledApiMonitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'title' => 'paused-health',
+        'source' => 'package',
+        'package_name' => 'paused-health',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(20),
+        'stale_at' => now()->subMinutes(10),
+        'status_summary' => 'Disabled by Checkybot control API.',
+        'created_by' => $user->id,
+    ]);
+
     Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
         ->assertSuccessful()
         ->assertSee('Package-managed Websites')
@@ -285,14 +297,15 @@ test('application record shows package-managed external checks including archive
         'pageClass' => ViewProject::class,
     ])
         ->assertSuccessful()
-        ->assertCanSeeTableRecords([$apiMonitor, $archivedApiMonitor])
+        ->assertCanSeeTableRecords([$apiMonitor, $archivedApiMonitor, $disabledApiMonitor])
         ->assertSee('Summary')
         ->assertSee('Last Heartbeat')
         ->assertSee('Freshness')
         ->assertSee('API heartbeat succeeded with HTTP status 200.')
         ->assertSee('Awaiting first package heartbeat.')
         ->assertSee('Fresh')
-        ->assertSee('Awaiting heartbeat');
+        ->assertSee('Awaiting heartbeat')
+        ->assertSee('Disabled');
 
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)
