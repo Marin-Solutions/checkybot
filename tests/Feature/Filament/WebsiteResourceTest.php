@@ -442,3 +442,36 @@ test('regular user cannot access website resource', function () {
     Livewire::test(ListWebsites::class)
         ->assertForbidden();
 });
+
+test('super admin can filter websites by current status', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknown = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('current_status', 'danger')
+        ->assertCanSeeTableRecords([$danger])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknown]);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('current_status', 'unknown')
+        ->assertCanSeeTableRecords([$unknown])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $danger]);
+});
+
+test('super admin can filter websites to only failing', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknown = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('only_failing', true)
+        ->assertCanSeeTableRecords([$warning, $danger])
+        ->assertCanNotSeeTableRecords([$healthy, $unknown]);
+});

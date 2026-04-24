@@ -8,7 +8,10 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ProjectComponentsTable
 {
@@ -40,7 +43,31 @@ class ProjectComponentsTable
                     ->since(),
             ])
             ->filters([
-                //
+                SelectFilter::make('current_status')
+                    ->label('Current Status')
+                    ->options([
+                        'healthy' => 'Healthy',
+                        'warning' => 'Warning',
+                        'danger' => 'Danger',
+                        'unknown' => 'Unknown',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $value = $data['value'] ?? null;
+
+                        if ($value === null || $value === '') {
+                            return $query;
+                        }
+
+                        if ($value === 'unknown') {
+                            return $query->whereNull('current_status');
+                        }
+
+                        return $query->where('current_status', $value);
+                    }),
+                Filter::make('only_failing')
+                    ->label('Show only failing')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereIn('current_status', ['warning', 'danger'])),
             ])
             ->recordActions([
                 ViewAction::make(),

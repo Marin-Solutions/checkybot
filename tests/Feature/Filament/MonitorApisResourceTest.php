@@ -319,3 +319,40 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('View Evidence')
         ->assertSee('1');
 });
+
+test('super admin can filter api monitors by current status', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknown = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'danger')
+        ->assertCanSeeTableRecords([$danger])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknown]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'unknown')
+        ->assertCanSeeTableRecords([$unknown])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $danger]);
+});
+
+test('super admin can filter api monitors to only failing', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknown = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('only_failing', true)
+        ->assertCanSeeTableRecords([$warning, $danger])
+        ->assertCanNotSeeTableRecords([$healthy, $unknown]);
+});

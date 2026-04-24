@@ -8,7 +8,10 @@ use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ProjectsTable
 {
@@ -41,7 +44,52 @@ class ProjectsTable
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                SelectFilter::make('application_status')
+                    ->label('Current Status')
+                    ->options([
+                        'healthy' => 'Healthy',
+                        'warning' => 'Warning',
+                        'danger' => 'Danger',
+                        'unknown' => 'Unknown',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $value = $data['value'] ?? null;
+
+                        if ($value === null || $value === '') {
+                            return $query;
+                        }
+
+                        return match ($value) {
+                            'danger' => $query->whereHas(
+                                'activeComponents',
+                                fn (Builder $components) => $components->where('current_status', 'danger'),
+                            ),
+                            'warning' => $query
+                                ->whereHas(
+                                    'activeComponents',
+                                    fn (Builder $components) => $components->where('current_status', 'warning'),
+                                )
+                                ->whereDoesntHave(
+                                    'activeComponents',
+                                    fn (Builder $components) => $components->where('current_status', 'danger'),
+                                ),
+                            'healthy' => $query
+                                ->whereHas('activeComponents')
+                                ->whereDoesntHave(
+                                    'activeComponents',
+                                    fn (Builder $components) => $components->whereIn('current_status', ['warning', 'danger']),
+                                ),
+                            'unknown' => $query->whereDoesntHave('activeComponents'),
+                            default => $query,
+                        };
+                    }),
+                Filter::make('only_failing')
+                    ->label('Show only failing')
+                    ->toggle()
+                    ->query(fn (Builder $query): Builder => $query->whereHas(
+                        'activeComponents',
+                        fn (Builder $components) => $components->whereIn('current_status', ['warning', 'danger']),
+                    )),
             ])
             ->recordActions([
                 ViewAction::make(),
