@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\WebsiteResource\Pages;
+use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Filament\Support\HealthStatusFilter;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
@@ -434,6 +435,11 @@ class WebsiteResource extends Resource
             ]);
     }
 
+    public static function infolist(Schema $schema): Schema
+    {
+        return WebsiteInfolist::configure($schema);
+    }
+
     public static function getRelations(): array
     {
         return [
@@ -460,6 +466,7 @@ class WebsiteResource extends Resource
                 'user:id,name',
                 'globalNotifications:id,user_id,website_id,inspection',
                 'individualNotifications:id,website_id,inspection',
+                'latestLogHistory',
                 'latestSeoCheck:id,website_id,status,started_at,total_urls_crawled,total_crawlable_urls,progress',
             ])
             ->where('created_by', auth()->id())
