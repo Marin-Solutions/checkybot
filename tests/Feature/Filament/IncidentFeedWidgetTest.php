@@ -134,6 +134,38 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('Theirs homepage');
     });
 
+    it('excludes incidents from soft-deleted websites and API monitors', function () {
+        $deletedWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Deleted homepage',
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $deletedWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Deleted homepage danger',
+            'created_at' => now()->subMinute(),
+        ]);
+        $deletedWebsite->delete();
+
+        $deletedApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Deleted API',
+        ]);
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $deletedApi->id,
+            'summary' => 'Deleted API danger',
+            'created_at' => now()->subMinute(),
+        ]);
+        $deletedApi->delete();
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertDontSee('Deleted homepage')
+            ->assertDontSee('Deleted homepage danger')
+            ->assertDontSee('Deleted API')
+            ->assertDontSee('Deleted API danger')
+            ->assertSee('All clear');
+    });
+
     it('excludes incidents older than the 7-day window', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,

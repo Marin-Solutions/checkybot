@@ -124,6 +124,7 @@ class IncidentFeedWidget extends BaseWidget
 
         $websiteQuery = WebsiteLogHistory::query()
             ->join('websites', 'websites.id', '=', 'website_log_history.website_id')
+            ->whereNull('websites.deleted_at')
             ->whereIn('website_log_history.status', self::INCIDENT_STATUSES)
             ->where('websites.created_by', $userId)
             ->where('website_log_history.created_at', '>=', $since)
@@ -135,6 +136,11 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("COALESCE(NULLIF(website_log_history.summary, ''), CONCAT('HTTP ', COALESCE(website_log_history.http_status_code, 0))) as summary")
             ->selectRaw('website_log_history.created_at as occurred_at');
 
+        // API results use a stricter severity definition than websites or components:
+        // older rows written before the `status` column existed still need to surface
+        // as incidents, so we also pick up any failed result (`is_success = false`)
+        // even when `status` is null/empty. The SELECT below coalesces that case to
+        // 'danger' so the severity badge always has a value.
         $apiQuery = MonitorApiResult::query()
             ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
             ->where(function (Builder $builder): void {
