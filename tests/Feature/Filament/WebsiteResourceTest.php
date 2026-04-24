@@ -519,6 +519,7 @@ test('view page excludes failures older than 7 days from the recent failures pan
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
+        ->assertDontSee('Recent Failures')
         ->assertDontSee('Most recent non-healthy monitor runs from the last 7 days.');
 });
 

@@ -13,6 +13,16 @@ use Illuminate\Support\Carbon;
 
 class WebsiteInfolist
 {
+    /**
+     * Per-object cache of recent failure evidence keyed by the website instance's
+     * `spl_object_id`, so the `Recent Failures` section's visibility check and
+     * repeater state share a single query without leaking across requests or
+     * test cases.
+     *
+     * @var array<int, array<int, array<string, mixed>>>
+     */
+    private static array $recentFailureCache = [];
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -145,27 +155,11 @@ class WebsiteInfolist
                     ]),
                 Section::make('Recent Failures')
                     ->description('Most recent non-healthy monitor runs from the last 7 days.')
-                    ->hidden(fn (Website $record): bool => $record->logHistory()
-                        ->whereIn('status', ['warning', 'danger'])
-                        ->where('created_at', '>=', now()->subDays(7))
-                        ->doesntExist())
+                    ->hidden(fn (Website $record): bool => empty(static::recentFailures($record)))
                     ->schema([
                         RepeatableEntry::make('recent_failure_evidence')
                             ->label('')
-                            ->state(fn (Website $record): array => $record->logHistory()
-                                ->whereIn('status', ['warning', 'danger'])
-                                ->where('created_at', '>=', now()->subDays(7))
-                                ->latest('created_at')
-                                ->limit(5)
-                                ->get()
-                                ->map(fn (WebsiteLogHistory $log): array => [
-                                    'status' => $log->status,
-                                    'http_status_code' => $log->http_status_code,
-                                    'speed' => $log->speed !== null ? "{$log->speed}ms" : '-',
-                                    'summary' => $log->summary ?: '-',
-                                    'created_at' => $log->created_at?->toDayDateTimeString(),
-                                ])
-                                ->all())
+                            ->state(fn (Website $record): array => static::recentFailures($record))
                             ->schema([
                                 TextEntry::make('status')
                                     ->badge()
@@ -190,6 +184,33 @@ class WebsiteInfolist
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private static function recentFailures(Website $record): array
+    {
+        $key = spl_object_id($record);
+
+        if (! isset(static::$recentFailureCache[$key])) {
+            static::$recentFailureCache[$key] = $record->logHistory()
+                ->whereIn('status', ['warning', 'danger'])
+                ->where('created_at', '>=', now()->subDays(7))
+                ->latest('created_at')
+                ->limit(5)
+                ->get()
+                ->map(fn (WebsiteLogHistory $log): array => [
+                    'status' => $log->status,
+                    'http_status_code' => $log->http_status_code,
+                    'speed' => $log->speed !== null ? "{$log->speed}ms" : '-',
+                    'summary' => $log->summary ?: '-',
+                    'created_at' => $log->created_at?->toDayDateTimeString(),
+                ])
+                ->all();
+        }
+
+        return static::$recentFailureCache[$key];
     }
 
     private static function statusColor(?string $state): string
