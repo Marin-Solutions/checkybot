@@ -14,14 +14,16 @@ use Illuminate\Support\Carbon;
 class WebsiteInfolist
 {
     /**
-     * Per-object cache of recent failure evidence keyed by the website instance's
-     * `spl_object_id`, so the `Recent Failures` section's visibility check and
-     * repeater state share a single query without leaking across requests or
-     * test cases.
+     * Per-object cache of recent failure evidence keyed by the website instance
+     * itself, so the `Recent Failures` section's visibility check and repeater
+     * state share a single query. Using a `WeakMap` ties the cached rows to
+     * the live object reference and lets PHP auto-evict entries when the
+     * record is garbage-collected, avoiding stale hits from reused object ids
+     * across requests or test cases.
      *
-     * @var array<int, array<int, array<string, mixed>>>
+     * @var \WeakMap<Website, array<int, array<string, mixed>>>|null
      */
-    private static array $recentFailureCache = [];
+    private static ?\WeakMap $recentFailureCache = null;
 
     public static function configure(Schema $schema): Schema
     {
@@ -191,26 +193,22 @@ class WebsiteInfolist
      */
     private static function recentFailures(Website $record): array
     {
-        $key = spl_object_id($record);
+        static::$recentFailureCache ??= new \WeakMap;
 
-        if (! isset(static::$recentFailureCache[$key])) {
-            static::$recentFailureCache[$key] = $record->logHistory()
-                ->whereIn('status', ['warning', 'danger'])
-                ->where('created_at', '>=', now()->subDays(7))
-                ->latest('created_at')
-                ->limit(5)
-                ->get()
-                ->map(fn (WebsiteLogHistory $log): array => [
-                    'status' => $log->status,
-                    'http_status_code' => $log->http_status_code,
-                    'speed' => $log->speed !== null ? "{$log->speed}ms" : '-',
-                    'summary' => $log->summary ?: '-',
-                    'created_at' => $log->created_at?->toDayDateTimeString(),
-                ])
-                ->all();
-        }
-
-        return static::$recentFailureCache[$key];
+        return static::$recentFailureCache[$record] ??= $record->logHistory()
+            ->whereIn('status', ['warning', 'danger'])
+            ->where('created_at', '>=', now()->subDays(7))
+            ->latest('created_at')
+            ->limit(5)
+            ->get()
+            ->map(fn (WebsiteLogHistory $log): array => [
+                'status' => $log->status,
+                'http_status_code' => $log->http_status_code,
+                'speed' => $log->speed !== null ? "{$log->speed}ms" : '-',
+                'summary' => $log->summary ?: '-',
+                'created_at' => $log->created_at?->toDayDateTimeString(),
+            ])
+            ->all();
     }
 
     private static function statusColor(?string $state): string
