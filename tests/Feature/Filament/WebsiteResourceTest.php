@@ -449,16 +449,17 @@ test('super admin can filter websites by current status', function () {
     $healthy = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
     $warning = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
     $danger = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
-    $unknown = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $unknownNull = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $unknownLiteral = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'unknown']);
 
     Livewire::test(ListWebsites::class)
         ->filterTable('current_status', 'danger')
         ->assertCanSeeTableRecords([$danger])
-        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknown]);
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknownNull, $unknownLiteral]);
 
     Livewire::test(ListWebsites::class)
         ->filterTable('current_status', 'unknown')
-        ->assertCanSeeTableRecords([$unknown])
+        ->assertCanSeeTableRecords([$unknownNull, $unknownLiteral])
         ->assertCanNotSeeTableRecords([$healthy, $warning, $danger]);
 });
 

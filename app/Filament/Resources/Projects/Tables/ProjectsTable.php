@@ -24,6 +24,7 @@ class ProjectsTable
                 TextColumn::make('application_status')
                     ->label('Current Status')
                     ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
                     ->color(fn (?string $state): string => match ($state) {
                         'healthy' => 'success',
                         'warning' => 'warning',
@@ -59,6 +60,11 @@ class ProjectsTable
                             return $query;
                         }
 
+                        // Mirror Project::resolveApplicationStatus(): the project's
+                        // status is the worst active component status. Warning and
+                        // Healthy therefore require both a positive check (has the
+                        // matching status) AND a negation (no worse statuses exist),
+                        // so the computed rollup and the filter always agree.
                         return match ($value) {
                             'danger' => $query->whereHas(
                                 'activeComponents',

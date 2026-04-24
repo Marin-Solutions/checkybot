@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\MonitorApis\Schemas\MonitorApiInfolist;
 use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
+use App\Filament\Support\HealthStatusFilter;
 use App\Models\MonitorApis;
 use Filament\Forms;
 use Filament\Resources\Resource;
@@ -159,31 +160,8 @@ class MonitorApisResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                Tables\Filters\SelectFilter::make('current_status')
-                    ->label('Current Status')
-                    ->options([
-                        'healthy' => 'Healthy',
-                        'warning' => 'Warning',
-                        'danger' => 'Danger',
-                        'unknown' => 'Unknown',
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        $value = $data['value'] ?? null;
-
-                        if ($value === null || $value === '') {
-                            return $query;
-                        }
-
-                        if ($value === 'unknown') {
-                            return $query->whereNull('current_status');
-                        }
-
-                        return $query->where('current_status', $value);
-                    }),
-                Tables\Filters\Filter::make('only_failing')
-                    ->label('Show only failing')
-                    ->toggle()
-                    ->query(fn (Builder $query): Builder => $query->whereIn('current_status', ['warning', 'danger'])),
+                HealthStatusFilter::make(),
+                HealthStatusFilter::onlyFailing(),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([

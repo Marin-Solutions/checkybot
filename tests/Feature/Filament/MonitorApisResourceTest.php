@@ -328,16 +328,19 @@ test('super admin can filter api monitors by current status', function () {
     $healthy = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
     $warning = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
     $danger = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
-    $unknown = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $unknownNull = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    // PackageSyncService::disableMissingApiChecks and CheckybotControlService::disableCheck
+    // persist the literal string 'unknown', so the filter must surface that representation too.
+    $unknownLiteral = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'unknown']);
 
     Livewire::test(ListMonitorApis::class)
         ->filterTable('current_status', 'danger')
         ->assertCanSeeTableRecords([$danger])
-        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknown]);
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknownNull, $unknownLiteral]);
 
     Livewire::test(ListMonitorApis::class)
         ->filterTable('current_status', 'unknown')
-        ->assertCanSeeTableRecords([$unknown])
+        ->assertCanSeeTableRecords([$unknownNull, $unknownLiteral])
         ->assertCanNotSeeTableRecords([$healthy, $warning, $danger]);
 });
 
