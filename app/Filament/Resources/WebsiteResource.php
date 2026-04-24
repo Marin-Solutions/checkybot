@@ -437,11 +437,9 @@ class WebsiteResource extends Resource
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
                             $ids = $records->where('uptime_check', false)->pluck('id');
-                            $count = $ids->count();
-
-                            if ($count > 0) {
-                                Website::query()->whereIn('id', $ids)->update(['uptime_check' => true]);
-                            }
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : Website::query()->whereIn('id', $ids)->update(['uptime_check' => true]);
 
                             Notification::make()
                                 ->title($count === 0
@@ -465,11 +463,9 @@ class WebsiteResource extends Resource
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
                             $ids = $records->where('uptime_check', true)->pluck('id');
-                            $count = $ids->count();
-
-                            if ($count > 0) {
-                                Website::query()->whereIn('id', $ids)->update(['uptime_check' => false]);
-                            }
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : Website::query()->whereIn('id', $ids)->update(['uptime_check' => false]);
 
                             Notification::make()
                                 ->title($count === 0

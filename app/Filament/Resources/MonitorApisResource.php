@@ -201,11 +201,9 @@ class MonitorApisResource extends Resource
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
                             $ids = $records->where('is_enabled', false)->pluck('id');
-                            $count = $ids->count();
-
-                            if ($count > 0) {
-                                MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => true]);
-                            }
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => true]);
 
                             Notification::make()
                                 ->title($count === 0
@@ -229,11 +227,9 @@ class MonitorApisResource extends Resource
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
                             $ids = $records->where('is_enabled', true)->pluck('id');
-                            $count = $ids->count();
-
-                            if ($count > 0) {
-                                MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => false]);
-                            }
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => false]);
 
                             Notification::make()
                                 ->title($count === 0
@@ -274,19 +270,21 @@ class MonitorApisResource extends Resource
                         ->action(function (Collection $records, array $data): void {
                             $interval = IntervalParser::normalizeOrFail($data['interval'], 'interval');
 
-                            $count = $records->count();
+                            $ids = $records
+                                ->reject(fn (MonitorApis $monitor): bool => $monitor->package_interval === $interval)
+                                ->pluck('id');
 
-                            if ($count > 0) {
-                                MonitorApis::query()
-                                    ->whereIn('id', $records->pluck('id'))
-                                    ->update(['package_interval' => $interval]);
-                            }
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : MonitorApis::query()->whereIn('id', $ids)->update(['package_interval' => $interval]);
 
                             Notification::make()
-                                ->title($count === 1
-                                    ? '1 API monitor updated'
-                                    : "{$count} API monitors updated")
-                                ->body("New check interval: {$interval}.")
+                                ->title($count === 0
+                                    ? 'Nothing to update'
+                                    : ($count === 1 ? '1 API monitor updated' : "{$count} API monitors updated"))
+                                ->body($count === 0
+                                    ? "All selected API monitors already run every {$interval}."
+                                    : "New check interval: {$interval}.")
                                 ->success()
                                 ->send();
                         })

@@ -7,6 +7,7 @@ use App\Filament\Resources\MonitorApisResource\Pages\ViewMonitorApis;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\ResultsRelationManager;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -478,4 +479,49 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('API heartbeat is degraded with HTTP status 404.')
         ->assertSee('View Evidence')
         ->assertSee('1');
+});
+
+test('user without Update:MonitorApis permission cannot see API monitor bulk actions', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:MonitorApis');
+    $this->actingAs($user);
+
+    MonitorApis::factory()->count(2)->create(['created_by' => $user->id]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable')
+        ->assertTableBulkActionHidden('changeInterval');
+});
+
+test('soft-deleted API monitors are not counted in bulk disable notification', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $active = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    $trashed = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('disable', $selection)
+        ->assertNotified('2 API monitors disabled');
+
+    foreach ($active as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeFalse();
+    }
+
+    expect(MonitorApis::withTrashed()->find($trashed->id)->is_enabled)->toBeTrue();
 });

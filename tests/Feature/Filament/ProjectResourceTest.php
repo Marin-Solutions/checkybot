@@ -520,3 +520,38 @@ test('regular users only see their own applications and components', function ()
         ->assertCanSeeTableRecords([$ownComponent])
         ->assertCanNotSeeTableRecords([$otherComponent]);
 });
+
+test('admin without Update:Project permission cannot see project bulk actions', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:Project');
+    $this->actingAs($user);
+
+    Project::factory()->count(2)->create(['created_by' => $user->id]);
+
+    Livewire::test(ListProjects::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable');
+});
+
+test('admin without Update:ProjectComponent permission cannot see component bulk actions', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:ProjectComponent');
+    $this->actingAs($user);
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable');
+});
