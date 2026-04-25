@@ -105,6 +105,39 @@ test('notifyWebsite re-reads silenced_until and skips delivery when the monitor 
     Mail::assertNothingSent();
 });
 
+test('notifyWebsite honours a manual unsnooze even when the in-memory model still carries a future silenced_until', function () {
+    Mail::fake();
+
+    // Caller loaded the model at the start of a check cycle while it was
+    // snoozed. Operator unsnoozes via the UI mid-cycle (DB row → null),
+    // but the caller still holds the stale future timestamp in memory.
+    // The service must consult the persisted state and deliver the alert.
+    $website = Website::factory()->create([
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    Website::query()
+        ->whereKey($website->id)
+        ->update(['silenced_until' => null]);
+
+    expect($website->silenced_until)->not->toBeNull()
+        ->and($website->silenced_until->isFuture())->toBeTrue();
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyWebsite($website, 'heartbeat', 'danger', 'Returned HTTP 500.');
+
+    expect($result)->toBeTrue();
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
 test('notifyApi re-reads silenced_until and skips delivery when the monitor was snoozed concurrently', function () {
     Mail::fake();
 

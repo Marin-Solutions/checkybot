@@ -198,21 +198,29 @@ class HealthEventNotificationService
     }
 
     /**
-     * Re-read the persisted silenced_until before deciding whether to
-     * deliver. Callers like CheckApiMonitors::handle and LogUptimeSslJob
-     * load the model at the start of a check cycle and pass it here at
-     * the end — if an operator snoozes during that window, the in-memory
-     * instance still carries the old (null/past) value and we would page
-     * them through their maintenance window. A targeted PK lookup on
-     * `silenced_until` keeps the cost trivial while honouring the latest
-     * intent every time. Local mutations to the in-memory model are
-     * preferred over the persisted value so test scenarios that set the
-     * timestamp without persisting still behave consistently.
+     * Decide whether the monitor is currently silenced, consulting the
+     * authoritative state at decision time.
+     *
+     * Concurrency hazard: callers like CheckApiMonitors::handle and
+     * LogUptimeSslJob load the model at the start of a check cycle and only
+     * call notify after the check finishes. In that window an operator can
+     * snooze (or unsnooze) the monitor — in either direction the in-memory
+     * `silenced_until` is stale. Trusting it would page the on-call through
+     * their maintenance window, or — symmetrically — would silently swallow
+     * the post-unsnooze alert because we still saw the old future timestamp.
+     *
+     * The contract here:
+     *
+     * - If the caller has a dirty in-memory mutation, respect it. This
+     *   covers test fixtures that set `silenced_until` without persisting,
+     *   and any code that legitimately overrides the value before notify.
+     * - Otherwise re-read the persisted value with a targeted PK lookup so
+     *   the latest concurrent change wins.
      */
     private function isSilencedNow(Website|MonitorApis $monitor): bool
     {
-        if ($monitor->isSilenced()) {
-            return true;
+        if ($monitor->isDirty('silenced_until')) {
+            return $monitor->isSilenced();
         }
 
         $persistedSilencedUntil = $monitor::query()

@@ -244,13 +244,16 @@ test('command skips disabled api monitors but still clears their expired snooze'
     Mail::assertNothingSent();
 });
 
-test('command skips websites with every check toggled off but still clears their expired snooze', function () {
+test('command skips websites with uptime_check disabled even when ssl and outbound checks are on', function () {
     Mail::fake();
 
+    // ssl/outbound checks don't refresh current_status — only uptime does —
+    // so the stored "danger" is frozen from before the toggle change. The
+    // command must not re-fire an alert from that stale state.
     $website = Website::factory()->create([
         'uptime_check' => false,
-        'ssl_check' => false,
-        'outbound_check' => false,
+        'ssl_check' => true,
+        'outbound_check' => true,
         'current_status' => 'danger',
         'silenced_until' => now()->subMinute(),
     ]);
@@ -265,6 +268,55 @@ test('command skips websites with every check toggled off but still clears their
 
     $this->artisan('app:process-expired-snoozes')
         ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+
+    Mail::assertNothingSent();
+});
+
+test('command skips snooze_expired alert when the monitor recovered concurrently before delivery', function () {
+    Mail::fake();
+
+    // The status is unhealthy at fresh-fetch time but flips to healthy
+    // before deliverIfStillUnhealthy issues its second probe — simulating
+    // a concurrent LogUptimeSslJob landing in the millisecond window. The
+    // command must not page about a now-healthy monitor.
+    $website = Website::factory()->create([
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    // Mutate the DB on the SECOND retrieval (the fresh() call inside the
+    // command) so the helper's third retrieval observes the recovery.
+    // This forces the test to exercise deliverIfStillUnhealthy specifically
+    // rather than short-circuiting at the fresh-fetch shouldAlert check.
+    $retrievals = 0;
+    \Illuminate\Support\Facades\Event::listen(
+        'eloquent.retrieved: '.Website::class,
+        function (Website $retrieved) use (&$retrievals, $website): void {
+            $retrievals++;
+
+            if ($retrievals === 2 && $retrieved->id === $website->id) {
+                Website::query()
+                    ->whereKey($website->id)
+                    ->update(['current_status' => 'healthy']);
+            }
+        }
+    );
+
+    try {
+        $this->artisan('app:process-expired-snoozes')->assertSuccessful();
+    } finally {
+        \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: '.Website::class);
+    }
 
     expect($website->refresh()->silenced_until)->toBeNull();
 
