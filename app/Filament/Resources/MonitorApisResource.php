@@ -143,6 +143,16 @@ class MonitorApisResource extends Resource
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('silenced_until')
+                    ->label('Snoozed')
+                    ->badge()
+                    ->color('warning')
+                    ->icon('heroicon-o-bell-slash')
+                    ->state(fn (MonitorApis $record): ?string => $record->isSilenced()
+                        ? 'Until '.$record->silenced_until->format('M j, H:i')
+                        : null)
+                    ->placeholder('—')
+                    ->toggleable(),
                 Tables\Columns\IconColumn::make('is_enabled')
                     ->label('Enabled')
                     ->boolean(),
@@ -172,6 +182,85 @@ class MonitorApisResource extends Resource
             ->actions([
                 \Filament\Actions\ViewAction::make(),
                 \Filament\Actions\EditAction::make(),
+                \Filament\Actions\Action::make('snooze')
+                    ->label(fn (MonitorApis $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')
+                    ->icon('heroicon-o-bell-slash')
+                    ->color(fn (MonitorApis $record): string => $record->isSilenced() ? 'warning' : 'gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                    ->modalHeading('Snooze notifications for this API monitor')
+                    ->modalDescription('Suppress alert delivery during a maintenance window. Checks keep running, the dashboard keeps updating, but no emails or webhooks fire while snoozed.')
+                    ->modalSubmitActionLabel('Snooze')
+                    ->fillForm(fn (MonitorApis $record): array => [
+                        'duration' => $record->isSilenced() ? 'custom' : '1h',
+                        'until' => $record->silenced_until,
+                    ])
+                    ->schema([
+                        Forms\Components\Select::make('duration')
+                            ->label('Snooze for')
+                            ->options([
+                                '1h' => '1 hour',
+                                '4h' => '4 hours',
+                                '24h' => '24 hours',
+                                'custom' => 'Custom time…',
+                            ])
+                            ->default('1h')
+                            ->required()
+                            ->live()
+                            ->native(false),
+                        Forms\Components\DateTimePicker::make('until')
+                            ->label('Snooze until')
+                            ->seconds(false)
+                            ->minDate(now())
+                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom')
+                            ->required(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom')
+                            ->helperText('Notifications will resume automatically after this time.'),
+                    ])
+                    ->action(function (MonitorApis $record, array $data): void {
+                        $until = match ($data['duration']) {
+                            '1h' => now()->addHour(),
+                            '4h' => now()->addHours(4),
+                            '24h' => now()->addDay(),
+                            'custom' => \Illuminate\Support\Carbon::parse($data['until']),
+                            default => now()->addHour(),
+                        };
+
+                        if ($until->isPast()) {
+                            Notification::make()
+                                ->title('Snooze time must be in the future')
+                                ->body('Pick a future moment, or use Unsnooze now to clear the silence.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $record->forceFill(['silenced_until' => $until])->save();
+
+                        Notification::make()
+                            ->title('Notifications snoozed')
+                            ->body("Alerts paused for {$record->title} until {$until->format('M j, Y H:i')}.")
+                            ->success()
+                            ->send();
+                    }),
+                \Filament\Actions\Action::make('unsnooze')
+                    ->label('Unsnooze')
+                    ->icon('heroicon-o-bell')
+                    ->color('gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                    ->visible(fn (MonitorApis $record): bool => $record->isSilenced())
+                    ->requiresConfirmation()
+                    ->modalHeading('Resume notifications')
+                    ->modalDescription('Notifications for this API monitor will fire again on the next status change.')
+                    ->modalSubmitActionLabel('Unsnooze')
+                    ->action(function (MonitorApis $record): void {
+                        $record->forceFill(['silenced_until' => null])->save();
+
+                        Notification::make()
+                            ->title('Notifications resumed')
+                            ->body("{$record->title} will alert again on the next status change.")
+                            ->success()
+                            ->send();
+                    }),
                 \Filament\Actions\Action::make('test')
                     ->label('Test API')
                     ->color('warning')
@@ -289,6 +378,89 @@ class MonitorApisResource extends Resource
                                 ->body($count === 0
                                     ? "All selected API monitors already run every {$interval}."
                                     : "New check interval: {$interval}.")
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('snooze')
+                        ->label('Snooze notifications')
+                        ->icon('heroicon-o-bell-slash')
+                        ->color('warning')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                        ->modalHeading('Snooze notifications for selected API monitors')
+                        ->modalDescription('Suppress alert delivery during a maintenance window. Checks keep running, but no emails or webhooks fire while snoozed.')
+                        ->modalSubmitActionLabel('Snooze')
+                        ->schema([
+                            Forms\Components\Select::make('duration')
+                                ->label('Snooze for')
+                                ->options([
+                                    '1h' => '1 hour',
+                                    '4h' => '4 hours',
+                                    '24h' => '24 hours',
+                                    'custom' => 'Custom time…',
+                                ])
+                                ->default('1h')
+                                ->required()
+                                ->live()
+                                ->native(false),
+                            Forms\Components\DateTimePicker::make('until')
+                                ->label('Snooze until')
+                                ->seconds(false)
+                                ->minDate(now())
+                                ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom')
+                                ->required(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom'),
+                        ])
+                        ->action(function (Collection $records, array $data): void {
+                            $until = match ($data['duration']) {
+                                '1h' => now()->addHour(),
+                                '4h' => now()->addHours(4),
+                                '24h' => now()->addDay(),
+                                'custom' => \Illuminate\Support\Carbon::parse($data['until']),
+                                default => now()->addHour(),
+                            };
+
+                            if ($until->isPast()) {
+                                Notification::make()
+                                    ->title('Snooze time must be in the future')
+                                    ->danger()
+                                    ->send();
+
+                                return;
+                            }
+
+                            $count = MonitorApis::query()
+                                ->whereIn('id', $records->pluck('id'))
+                                ->update(['silenced_until' => $until]);
+
+                            Notification::make()
+                                ->title($count === 1 ? '1 API monitor snoozed' : "{$count} API monitors snoozed")
+                                ->body("Alerts paused until {$until->format('M j, Y H:i')}.")
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('unsnooze')
+                        ->label('Unsnooze')
+                        ->icon('heroicon-o-bell')
+                        ->color('gray')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                        ->requiresConfirmation()
+                        ->modalHeading('Unsnooze selected API monitors')
+                        ->modalDescription('Notifications will resume immediately on the next status change for these monitors.')
+                        ->modalSubmitActionLabel('Unsnooze')
+                        ->action(function (Collection $records): void {
+                            $ids = $records->whereNotNull('silenced_until')->pluck('id');
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : MonitorApis::query()->whereIn('id', $ids)->update(['silenced_until' => null]);
+
+                            Notification::make()
+                                ->title($count === 0
+                                    ? 'Nothing to unsnooze'
+                                    : ($count === 1 ? '1 API monitor unsnoozed' : "{$count} API monitors unsnoozed"))
+                                ->body($count === 0
+                                    ? 'None of the selected API monitors had an active snooze.'
+                                    : 'Notifications will resume on the next status change.')
                                 ->success()
                                 ->send();
                         })

@@ -45,6 +45,7 @@ class MonitorApis extends Model
         'last_heartbeat_at',
         'stale_at',
         'status_summary',
+        'silenced_until',
     ];
 
     protected $casts = [
@@ -55,7 +56,13 @@ class MonitorApis extends Model
         'last_synced_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
         'stale_at' => 'datetime',
+        'silenced_until' => 'datetime',
     ];
+
+    public function isSilenced(): bool
+    {
+        return $this->silenced_until !== null && $this->silenced_until->isFuture();
+    }
 
     protected function headers(): Attribute
     {

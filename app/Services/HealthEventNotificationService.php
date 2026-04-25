@@ -16,6 +16,17 @@ class HealthEventNotificationService
 {
     public function notifyWebsite(Website $website, string $event, string $status, string $summary): void
     {
+        if ($this->isSilenced($website)) {
+            Log::info('Skipping website health notification while monitor is snoozed', [
+                'website_id' => $website->id,
+                'silenced_until' => optional($website->silenced_until)->toIso8601String(),
+                'event' => $event,
+                'status' => $status,
+            ]);
+
+            return;
+        }
+
         $settings = NotificationSetting::query()
             ->active()
             ->where(function ($query) use ($website): void {
@@ -45,6 +56,17 @@ class HealthEventNotificationService
 
     public function notifyApi(MonitorApis $monitorApi, string $event, string $status, string $summary): void
     {
+        if ($this->isSilenced($monitorApi)) {
+            Log::info('Skipping API monitor health notification while monitor is snoozed', [
+                'monitor_api_id' => $monitorApi->id,
+                'silenced_until' => optional($monitorApi->silenced_until)->toIso8601String(),
+                'event' => $event,
+                'status' => $status,
+            ]);
+
+            return;
+        }
+
         $settings = NotificationSetting::query()
             ->active()
             ->globalScope()
@@ -63,6 +85,11 @@ class HealthEventNotificationService
             summary: $summary,
             url: $monitorApi->url,
         );
+    }
+
+    private function isSilenced(Website|MonitorApis $monitor): bool
+    {
+        return $monitor->silenced_until !== null && $monitor->silenced_until->isFuture();
     }
 
     private function deliver(EloquentCollection $settings, string $name, string $event, string $status, string $summary, string $url): void

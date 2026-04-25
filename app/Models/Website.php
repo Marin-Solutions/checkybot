@@ -37,6 +37,7 @@ class Website extends Model
         'last_heartbeat_at',
         'stale_at',
         'status_summary',
+        'silenced_until',
     ];
 
     protected $casts = [
@@ -46,7 +47,13 @@ class Website extends Model
         'last_outbound_checked_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
         'stale_at' => 'datetime',
+        'silenced_until' => 'datetime',
     ];
+
+    public function isSilenced(): bool
+    {
+        return $this->silenced_until !== null && $this->silenced_until->isFuture();
+    }
 
     /**
      * Check website exists with look up dns spatie library
