@@ -58,7 +58,7 @@ class NotificationChannels extends Model
                 default => Http::{$method}($url, $requestBody)
             };
 
-            $responseData['code'] = $webhookCallback->ok() ? 200 : 0;
+            $responseData['code'] = $webhookCallback->status();
             $responseData['body'] = $webhookCallback->json();
 
             return $responseData;
@@ -117,7 +117,7 @@ class NotificationChannels extends Model
                 default => Http::{$method}($url, $requestBody)
             };
 
-            $responseData['code'] = $webhookCallback->ok() ? 200 : 0;
+            $responseData['code'] = $webhookCallback->status();
             $responseData['body'] = $webhookCallback->json();
 
             Log::info('Webhook response received', [
