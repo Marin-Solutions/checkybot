@@ -8,6 +8,7 @@ use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Filament\Support\HealthStatusFilter;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
+use App\Support\UserTimezone;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -330,13 +331,21 @@ class WebsiteResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('latest_seo_check.started_at')
                     ->label('Last SEO Crawl')
-                    ->formatStateUsing(function ($state, $record) {
+                    ->formatStateUsing(function ($state, $record): string {
                         $latestCheck = $record->latestSeoCheck;
                         if (! $latestCheck || ! $latestCheck->started_at) {
                             return 'Never';
                         }
 
-                        return $latestCheck->started_at->diffForHumans();
+                        // Custom formatter (rather than ->sinceInUserZone()) is
+                        // needed because of the "Never" fallback when there is
+                        // no related SEO check. We still apply the viewer's
+                        // timezone preference so the "x ago" anchor matches the
+                        // rest of the table.
+                        return $latestCheck->started_at
+                            ->copy()
+                            ->setTimezone(UserTimezone::currentOrAppDefault())
+                            ->diffForHumans();
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('latest_seo_check.total_urls_crawled')

@@ -56,6 +56,16 @@ test('UserTimezone helper rejects invalid timezone identifiers', function () {
     expect(UserTimezone::current())->toBeNull();
 });
 
+test('UserTimezone identifiers and options share the same underlying source', function () {
+    $identifiers = UserTimezone::identifiers();
+    $options = UserTimezone::options();
+
+    expect($identifiers)
+        ->toBeArray()
+        ->toContain('UTC', 'Europe/Berlin', 'Asia/Tokyo')
+        ->and(array_keys($options))->toBe($identifiers);
+});
+
 test('UserTimezone exposes a list of selectable identifiers with UTC offsets', function () {
     $options = UserTimezone::options();
 

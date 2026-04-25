@@ -37,6 +37,6 @@ class PersonalInfoWithTimezone extends PersonalInfo
             ->placeholder(__('Application default (:timezone)', [
                 'timezone' => config('app.timezone', 'UTC'),
             ]))
-            ->in(\DateTimeZone::listIdentifiers());
+            ->in(UserTimezone::identifiers());
     }
 }

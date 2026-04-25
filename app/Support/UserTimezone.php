@@ -57,6 +57,18 @@ class UserTimezone
     }
 
     /**
+     * The full list of selectable timezone identifiers, served from the
+     * memoized lookup so callers (the profile select, the validation rule,
+     * and `isValid`) all read from the same source of truth.
+     *
+     * @return list<string>
+     */
+    public static function identifiers(): array
+    {
+        return array_keys(static::identifierLookup());
+    }
+
+    /**
      * The list of timezone identifiers offered to users in the profile page.
      *
      * Each label includes the current UTC offset (e.g. "Europe/Berlin
@@ -69,7 +81,7 @@ class UserTimezone
     {
         $reference = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
 
-        return collect(\DateTimeZone::listIdentifiers())
+        return collect(static::identifiers())
             ->mapWithKeys(static function (string $tz) use ($reference): array {
                 $offsetSeconds = (new \DateTimeZone($tz))->getOffset($reference);
                 $sign = $offsetSeconds >= 0 ? '+' : '-';
