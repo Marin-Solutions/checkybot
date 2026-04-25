@@ -1088,3 +1088,14 @@ test('api monitor list failing tab excludes soft-deleted monitors', function () 
         ->assertCanSeeTableRecords([$visible])
         ->assertCanNotSeeTableRecords([$trashed]);
 });
+
+test('api monitor list shows empty state with create CTA when no monitors exist', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertSee('No API monitors yet')
+        ->assertSee('Add your first API monitor to start tracking response time, status codes, and assertions on a schedule.')
+        ->assertSee('Add API monitor');
+});

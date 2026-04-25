@@ -7,12 +7,12 @@ use App\Mail\EmailReminderSsl;
 use App\Models\NotificationSetting;
 use App\Models\User;
 use App\Models\Website;
+use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Spatie\SslCertificate\SslCertificate;
 
 class CheckSslExpiryDateJob implements ShouldQueue
 {
@@ -25,11 +25,19 @@ class CheckSslExpiryDateJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(): void
+    public function handle(SslCertificateService $sslCertificateService): void
     {
+        $host = $sslCertificateService->extractHost($this->website->url);
+        $port = $sslCertificateService->extractPort($this->website->url);
+
+        if (blank($host)) {
+            Log::error('Could not determine SSL host for website '.$this->website->url);
+
+            return;
+        }
+
         try {
-            $certificate = SslCertificate::createForHostName($this->website->url);
-            $newExpiryDate = $certificate->expirationDate();
+            $newExpiryDate = $sslCertificateService->getExpirationDateForHost($host, $port);
         } catch (\Exception $e) {
             Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage());
 

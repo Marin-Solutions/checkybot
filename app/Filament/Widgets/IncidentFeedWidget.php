@@ -14,6 +14,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 
 class IncidentFeedWidget extends BaseWidget
 {
@@ -113,21 +114,51 @@ class IncidentFeedWidget extends BaseWidget
             ->paginated([10, 25, 50])
             ->defaultPaginationPageOption(10)
             ->emptyStateHeading('All clear')
-            ->emptyStateDescription('No warning or danger transitions from your websites, API monitors or components in the selected window.')
+            ->emptyStateDescription($this->getEmptyStateDescriptionText())
             ->emptyStateIcon('heroicon-o-shield-check');
+    }
+
+    /**
+     * Returns the project id the feed is scoped to, or null for the global feed.
+     *
+     * Subclasses must derive this from a Livewire-tracked public property
+     * (mount() runs only on initial render, so reading from a protected
+     * field set in mount() is unsafe across polling/sort/filter requests).
+     */
+    protected function getScopedProjectId(): ?int
+    {
+        return null;
+    }
+
+    protected function getEmptyStateDescriptionText(): string
+    {
+        return 'No warning or danger transitions from your websites, API monitors or components in the selected window.';
     }
 
     protected function buildIncidentsQuery(): Builder
     {
-        $userId = auth()->id();
-        $since = now()->subDays(7);
+        return self::buildIncidentsQueryFor(
+            userId: (int) Auth::id(),
+            since: now()->subDays(7),
+            projectId: $this->getScopedProjectId(),
+        );
+    }
 
+    /**
+     * Build the union query that powers every incident feed in the app.
+     *
+     * Pass a $projectId to restrict the feed to a single application's
+     * websites, monitor APIs and components.
+     */
+    public static function buildIncidentsQueryFor(int $userId, \Carbon\CarbonInterface $since, ?int $projectId = null): Builder
+    {
         $websiteQuery = WebsiteLogHistory::query()
             ->join('websites', 'websites.id', '=', 'website_log_history.website_id')
             ->whereNull('websites.deleted_at')
             ->whereIn('website_log_history.status', self::INCIDENT_STATUSES)
             ->where('websites.created_by', $userId)
             ->where('website_log_history.created_at', '>=', $since)
+            ->when($projectId !== null, fn (Builder $query): Builder => $query->where('websites.project_id', $projectId))
             ->selectRaw("CONCAT('website_log-', website_log_history.id) as id")
             ->selectRaw("'website' as source")
             ->selectRaw('website_log_history.status as status')
@@ -150,6 +181,7 @@ class IncidentFeedWidget extends BaseWidget
             ->where('monitor_apis.created_by', $userId)
             ->whereNull('monitor_apis.deleted_at')
             ->where('monitor_api_results.created_at', '>=', $since)
+            ->when($projectId !== null, fn (Builder $query): Builder => $query->where('monitor_apis.project_id', $projectId))
             ->selectRaw("CONCAT('api_result-', monitor_api_results.id) as id")
             ->selectRaw("'api' as source")
             ->selectRaw("COALESCE(NULLIF(monitor_api_results.status, ''), 'danger') as status")
@@ -163,6 +195,7 @@ class IncidentFeedWidget extends BaseWidget
             ->whereIn('project_component_heartbeats.status', self::INCIDENT_STATUSES)
             ->where('project_components.created_by', $userId)
             ->where('project_component_heartbeats.observed_at', '>=', $since)
+            ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_components.project_id', $projectId))
             ->selectRaw("CONCAT('component_heartbeat-', project_component_heartbeats.id) as id")
             ->selectRaw("'component' as source")
             ->selectRaw('project_component_heartbeats.status as status')

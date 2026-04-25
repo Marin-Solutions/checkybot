@@ -90,3 +90,55 @@ test('website tracks ssl expiry date', function () {
 
     expect($website->ssl_expiry_date->format('Y-m-d'))->toBe($expiryDate->format('Y-m-d'));
 });
+
+test('extractHost returns the hostname from a full url', function () {
+    expect(Website::extractHost('https://example.com/health?foo=bar'))->toBe('example.com');
+});
+
+test('extractHost accepts a bare hostname', function () {
+    expect(Website::extractHost('example.com'))->toBe('example.com');
+});
+
+test('extractHost accepts a schemeless hostname with path', function () {
+    expect(Website::extractHost('example.com/health'))->toBe('example.com');
+});
+
+test('extractHost accepts a schemeless single-label hostname with path', function () {
+    expect(Website::extractHost('internal-api/health'))->toBe('internal-api');
+});
+
+test('extractHost returns null for malformed urls with paths', function () {
+    expect(Website::extractHost('bad host/path'))->toBeNull();
+});
+
+test('extractHost rejects opaque uris', function () {
+    expect(Website::extractHost('mailto:ops@example.com'))->toBeNull();
+});
+
+test('extractHost accepts bare ipv6 hosts that begin with letters', function () {
+    expect(Website::extractHost('fe80::1'))->toBe('fe80::1');
+});
+
+test('extractHost accepts bracketed ipv6 hosts in schemeless urls', function () {
+    expect(Website::extractHost('[2001:db8::1]:8443/health'))->toBe('2001:db8::1');
+});
+
+test('extractPort returns an explicit port from a full url', function () {
+    expect(Website::extractPort('https://example.com:8443/health?foo=bar'))->toBe(8443);
+});
+
+test('extractPort returns an explicit port from a schemeless url with path', function () {
+    expect(Website::extractPort('example.com:8443/health'))->toBe(8443);
+});
+
+test('extractPort falls back to 443 when no port is present', function () {
+    expect(Website::extractPort('https://example.com/health'))->toBe(443);
+});
+
+test('extractPort preserves default port for bare ipv6 hosts', function () {
+    expect(Website::extractPort('2001:db8::1'))->toBe(443);
+});
+
+test('extractPort returns an explicit port from a bracketed ipv6 schemeless url', function () {
+    expect(Website::extractPort('[2001:db8::1]:8443/health'))->toBe(8443);
+});
