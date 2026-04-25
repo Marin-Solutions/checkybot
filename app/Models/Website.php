@@ -179,9 +179,14 @@ class Website extends Model
         return $this->hasMany(NotificationSetting::class, 'website_id')->websiteScope()->active();
     }
 
-    public function logHistory()
+    public function logHistory(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(WebsiteLogHistory::class);
+    }
+
+    public function outboundLinks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(OutboundLink::class);
     }
 
     public function latestLogHistory(): HasOne

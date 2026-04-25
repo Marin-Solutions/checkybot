@@ -9,8 +9,10 @@ use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
 use App\Filament\Resources\WebsiteResource\Pages\ViewWebsite;
 use App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
+use App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelationManager;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
+use App\Models\OutboundLink;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -446,6 +448,60 @@ test('regular user cannot access website resource', function () {
         ->assertForbidden();
 });
 
+test('super admin can filter websites by current status', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknownNull = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $unknownLiteral = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'unknown']);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('current_status', 'danger')
+        ->assertCanSeeTableRecords([$danger])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('current_status', 'warning')
+        ->assertCanSeeTableRecords([$warning])
+        ->assertCanNotSeeTableRecords([$healthy, $danger, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('current_status', 'healthy')
+        ->assertCanSeeTableRecords([$healthy])
+        ->assertCanNotSeeTableRecords([$warning, $danger, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('current_status', 'unknown')
+        ->assertCanSeeTableRecords([$unknownNull, $unknownLiteral])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $danger]);
+});
+
+test('super admin can filter websites to only failing', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknown = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $pausedWarning = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+        'uptime_check' => false,
+    ]);
+    $pausedDanger = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('only_failing', true)
+        ->assertCanSeeTableRecords([$warning, $danger])
+        ->assertCanNotSeeTableRecords([$healthy, $unknown, $pausedWarning, $pausedDanger]);
+});
+
 test('super admin can bulk disable uptime checks on websites', function () {
     $user = $this->actingAsSuperAdmin();
 
@@ -603,6 +659,123 @@ test('super admin can render view page with infolist sections', function () {
         ->assertSee('Danger');
 });
 
+test('view page run now action persists a real heartbeat and surfaces evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'current_status' => null,
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+    ]);
+
+    Http::fake([
+        'https://example.com' => Http::response('OK', 200),
+    ]);
+
+    expect($website->logHistory()->count())->toBe(0);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check succeeded');
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(1)
+        ->and($website->logHistory()->first()->status)->toBe('healthy')
+        ->and($website->current_status)->toBeNull()
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->status_summary)->toBeNull();
+});
+
+test('view page run now action surfaces failure when target returns server error', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+        'status_summary' => 'Heartbeat received successfully.',
+    ]);
+
+    Http::fake([
+        'https://broken.example' => Http::response('boom', 500),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check failed');
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(1)
+        ->and($website->logHistory()->first()->http_status_code)->toBe(500)
+        ->and($website->logHistory()->first()->status)->toBe('danger')
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->status_summary)->toBe('Heartbeat received successfully.');
+});
+
+test('view page hides run now action when uptime check is disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page hides run now action for users without update permission', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Website', 'View:Website']);
+    $this->actingAs($user);
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page run now action does not fire user-facing health alerts and preserves the live status baseline', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $heartbeatBefore = $website->last_heartbeat_at;
+
+    Http::fake([
+        'https://broken.example' => Http::response('boom', 500),
+    ]);
+
+    $notificationService = Mockery::mock(\App\Services\HealthEventNotificationService::class);
+    $notificationService->shouldNotReceive('notifyWebsite');
+    $this->app->instance(\App\Services\HealthEventNotificationService::class, $notificationService);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check failed');
+
+    $website->refresh();
+
+    expect($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->logHistory()->latest('id')->first()->status)->toBe('danger');
+});
+
 test('view page renders recent failures when non-healthy logs exist', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
@@ -704,6 +877,113 @@ test('log history relation manager renders on view page', function () {
     ])
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$log]);
+});
+
+test('outbound links relation manager is registered on website resource', function () {
+    expect(\App\Filament\Resources\WebsiteResource::getRelations())
+        ->toContain(OutboundLinksRelationManager::class);
+});
+
+test('outbound links relation manager only shows links for the current website', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $otherWebsite = Website::factory()->create(['created_by' => $user->id]);
+
+    $visibleLink = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/visible',
+        'http_status_code' => 200,
+    ]);
+    $hiddenLink = OutboundLink::factory()->create([
+        'website_id' => $otherWebsite->id,
+        'outgoing_url' => 'https://partner.example/hidden',
+        'http_status_code' => 200,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleLink])
+        ->assertCanNotSeeTableRecords([$hiddenLink]);
+});
+
+test('outbound links relation manager filters broken links by status code range', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $healthy = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/ok',
+        'http_status_code' => 200,
+    ]);
+    $notFound = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/missing',
+        'http_status_code' => 404,
+    ]);
+    $serverError = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/down',
+        'http_status_code' => 503,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', 'broken')
+        ->assertCanSeeTableRecords([$notFound, $serverError])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+test('outbound links relation manager filters by exact status code', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $notFound = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/missing',
+        'http_status_code' => 404,
+    ]);
+    $serverError = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/down',
+        'http_status_code' => 500,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', '404')
+        ->assertCanSeeTableRecords([$notFound])
+        ->assertCanNotSeeTableRecords([$serverError]);
+});
+
+test('outbound links relation manager filters to rows with no response recorded', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $missingResponse = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/no-response',
+        'http_status_code' => null,
+    ]);
+    $healthy = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/ok',
+        'http_status_code' => 200,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', 'unknown')
+        ->assertCanSeeTableRecords([$missingResponse])
+        ->assertCanNotSeeTableRecords([$healthy]);
 });
 
 test('notification relation manager renders on view page and is website scoped', function () {
@@ -818,4 +1098,221 @@ test('website navigation badge excludes soft-deleted records', function () {
 
     expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('1')
         ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('website list shows all four health status tabs', function () {
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(ListWebsites::class)
+        ->assertSee('All')
+        ->assertSee('Failing')
+        ->assertSee('Disabled')
+        ->assertSee('Recently Recovered');
+});
+
+test('website list failing tab only shows warning and danger websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    $warning = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    $danger = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->set('activeTab', 'failing')
+        ->assertCanSeeTableRecords([$warning, $danger])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+test('website list disabled tab only shows websites with uptime check off', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $enabled = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+    $disabled = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->set('activeTab', 'disabled')
+        ->assertCanSeeTableRecords([$disabled])
+        ->assertCanNotSeeTableRecords([$enabled]);
+});
+
+test('website list recently recovered tab requires healthy status with prior failure in window', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $recovered = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $recovered->id,
+        'status' => 'danger',
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $stillHealthy = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $stillHealthy->id,
+        'status' => 'healthy',
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $stillFailing = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $stillFailing->id,
+        'status' => 'danger',
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    $oldRecovery = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $oldRecovery->id,
+        'status' => 'danger',
+        'created_at' => now()->subDays(3),
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->set('activeTab', 'recently_recovered')
+        ->assertCanSeeTableRecords([$recovered])
+        ->assertCanNotSeeTableRecords([$stillHealthy, $stillFailing, $oldRecovery]);
+});
+
+test('website list all tab shows every visible website regardless of health', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'uptime_check' => true,
+    ]);
+    $warning = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+        'uptime_check' => true,
+    ]);
+    $disabled = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->set('activeTab', 'all')
+        ->assertCanSeeTableRecords([$healthy, $warning, $disabled]);
+});
+
+test('website list tab badges report accurate per-tab counts', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'uptime_check' => false,
+    ]);
+
+    $recovered = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $recovered->id,
+        'status' => 'danger',
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $page = Livewire::test(ListWebsites::class)->instance();
+
+    expect(invade($page)->resolveTabCounts())->toMatchArray([
+        'failing' => 3,
+        'disabled' => 2,
+        'recently_recovered' => 1,
+    ]);
+});
+
+test('website list tab badges scope counts to the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    Website::factory()->count(5)->create([
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    $page = Livewire::test(ListWebsites::class)->instance();
+
+    expect(invade($page)->resolveTabCounts()['failing'])->toBe(2);
+});
+
+test('website list tab badges exclude soft-deleted websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    $page = Livewire::test(ListWebsites::class)->instance();
+
+    expect(invade($page)->resolveTabCounts()['failing'])->toBe(2);
+});
+
+test('website list failing tab excludes soft-deleted websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $visible = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    Livewire::test(ListWebsites::class)
+        ->set('activeTab', 'failing')
+        ->assertCanSeeTableRecords([$visible])
+        ->assertCanNotSeeTableRecords([$trashed]);
 });

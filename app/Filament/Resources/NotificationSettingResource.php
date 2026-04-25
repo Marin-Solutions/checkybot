@@ -7,6 +7,7 @@ use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\NotificationSettingResource\Pages;
 use App\Models\NotificationSetting;
 use Filament\Forms;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
@@ -88,6 +89,31 @@ class NotificationSettingResource extends Resource
             ])
             ->filters([])
             ->actions([
+                \Filament\Actions\Action::make('sendTest')
+                    ->label('Send Test')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('Send a test notification?')
+                    ->modalDescription(function (NotificationSetting $record): string {
+                        if ($record->channel_type === NotificationChannelTypesEnum::MAIL) {
+                            return 'A sample alert email will be delivered to '.($record->address ?? 'the configured address').'.';
+                        }
+
+                        $title = $record->channel?->title;
+
+                        return 'A sample payload will be sent to the linked webhook channel'.($title ? ' "'.$title.'"' : '').'.';
+                    })
+                    ->modalSubmitActionLabel('Send test')
+                    ->action(function (NotificationSetting $record): void {
+                        $result = $record->sendTestNotification();
+
+                        $notification = Notification::make()
+                            ->title(__($result['title']))
+                            ->body(__($result['body']));
+
+                        ($result['ok'] ? $notification->success() : $notification->danger())->send();
+                    }),
                 \Filament\Actions\EditAction::make(),
                 \Filament\Actions\DeleteAction::make(),
             ])

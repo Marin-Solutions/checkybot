@@ -156,7 +156,7 @@ test('send webhook notification replaces placeholders', function () {
     });
 });
 
-test('send webhook notification handles errors', function () {
+test('send webhook notification preserves the upstream http status code', function () {
     Http::fake(['*' => Http::response([], 500)]);
 
     $channel = NotificationChannels::factory()->create();
@@ -165,5 +165,17 @@ test('send webhook notification handles errors', function () {
         'message' => 'Test',
     ]);
 
-    expect($result['code'])->toBe(0);
+    expect($result['code'])->toBe(500);
+});
+
+test('send webhook notification preserves a 4xx status code so operators can debug it', function () {
+    Http::fake(['*' => Http::response(['error' => 'unauthorized'], 401)]);
+
+    $channel = NotificationChannels::factory()->create();
+
+    $result = $channel->sendWebhookNotification([
+        'message' => 'Test',
+    ]);
+
+    expect($result['code'])->toBe(401);
 });

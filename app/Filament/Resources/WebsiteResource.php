@@ -6,6 +6,7 @@ use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
+use App\Filament\Support\HealthStatusFilter;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
 use App\Tables\Columns\SparklineColumn;
@@ -375,6 +376,10 @@ class WebsiteResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                HealthStatusFilter::make(),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('uptime_check', true),
+                ),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
@@ -612,6 +617,7 @@ class WebsiteResource extends Resource
         return [
             \App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager::class,
             \App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager::class,
+            \App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelationManager::class,
         ];
     }
 

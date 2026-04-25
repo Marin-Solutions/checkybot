@@ -7,6 +7,7 @@ use App\Filament\Resources\MonitorApis\Schemas\MonitorApiInfolist;
 use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
+use App\Filament\Support\HealthStatusFilter;
 use App\Models\MonitorApis;
 use App\Services\IntervalParser;
 use App\Support\ApiMonitorTestNotification;
@@ -178,6 +179,10 @@ class MonitorApisResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                HealthStatusFilter::make(),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('is_enabled', true),
+                ),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([
