@@ -130,7 +130,96 @@ class Website extends Model
 
         $host = parse_url($url, PHP_URL_HOST);
 
-        return is_string($host) ? $host : $url;
+        if (is_string($host) && $host !== '') {
+            return $host;
+        }
+
+        $url = trim($url);
+
+        if ($url === '') {
+            return null;
+        }
+
+        if (filter_var($url, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false && self::isOpaqueUri($url)) {
+            return null;
+        }
+
+        if (preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) !== 1) {
+            $schemedHost = parse_url('https://'.$url, PHP_URL_HOST);
+            $normalizedSchemedHost = self::normalizeParsedHost($schemedHost);
+
+            if (is_string($normalizedSchemedHost) && self::isValidHost($normalizedSchemedHost)) {
+                return $normalizedSchemedHost;
+            }
+        }
+
+        return self::isValidHost($url)
+            ? $url
+            : null;
+    }
+
+    public static function extractPort(?string $url, int $default = 443): int
+    {
+        if (blank($url)) {
+            return $default;
+        }
+
+        $port = parse_url($url, PHP_URL_PORT);
+
+        if (is_int($port)) {
+            return $port;
+        }
+
+        $url = trim($url);
+
+        if ($url === '' || preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) === 1) {
+            return $default;
+        }
+
+        if (filter_var($url, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false || self::isOpaqueUri($url)) {
+            return $default;
+        }
+
+        $schemedPort = parse_url('https://'.$url, PHP_URL_PORT);
+
+        return is_int($schemedPort) ? $schemedPort : $default;
+    }
+
+    protected static function isOpaqueUri(string $value): bool
+    {
+        if (preg_match('/^(?<scheme>[a-z][a-z0-9+.-]*):(?<rest>.*)$/i', $value, $matches) !== 1) {
+            return false;
+        }
+
+        if (str_starts_with($matches['rest'], '//')) {
+            return false;
+        }
+
+        return preg_match('/^\d+(?:[\/?#]|$)/', $matches['rest']) !== 1;
+    }
+
+    protected static function normalizeParsedHost(string|false|null $host): ?string
+    {
+        if (! is_string($host) || $host === '') {
+            return null;
+        }
+
+        if (
+            str_starts_with($host, '[')
+            && str_ends_with($host, ']')
+            && filter_var(substr($host, 1, -1), FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false
+        ) {
+            return substr($host, 1, -1);
+        }
+
+        return $host;
+    }
+
+    protected static function isValidHost(string $host): bool
+    {
+        return filter_var($host, FILTER_VALIDATE_IP) !== false
+            || strtolower($host) === 'localhost'
+            || preg_match('/^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$/i', $host) === 1;
     }
 
     public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
