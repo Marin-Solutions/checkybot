@@ -131,6 +131,45 @@ test('api monitor list shows enabled state', function () {
         ->assertTableColumnExists('is_enabled');
 });
 
+test('super admin can toggle is_enabled inline from the api monitors table', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false);
+
+    expect($monitor->refresh()->is_enabled)->toBeFalse();
+
+    Livewire::test(ListMonitorApis::class)
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), true);
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue();
+});
+
+test('user without Update:MonitorApis permission cannot toggle is_enabled inline', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:MonitorApis', 'View:MonitorApis']);
+    $this->actingAs($user);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false);
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue();
+});
+
 test('list test action uses stored execution settings', function () {
     $this->createResourcePermissions('MonitorApis');
 

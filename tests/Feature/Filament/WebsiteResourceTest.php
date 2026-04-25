@@ -568,6 +568,70 @@ test('bulk enable on already enabled websites notifies that nothing changed', fu
     }
 });
 
+test('super admin can toggle uptime_check inline from the websites table', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false);
+
+    expect($website->refresh()->uptime_check)->toBeFalse();
+
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), true);
+
+    expect($website->refresh()->uptime_check)->toBeTrue();
+});
+
+test('super admin can toggle ssl_check and outbound_check inline from the websites table', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'ssl_check' => true,
+        'outbound_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'ssl_check', $website->getKey(), false);
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'outbound_check', $website->getKey(), false);
+
+    $website->refresh();
+    expect($website->ssl_check)->toBeFalse()
+        ->and($website->outbound_check)->toBeFalse();
+});
+
+test('user without Update:Website permission cannot toggle website columns inline', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Website', 'View:Website']);
+    $this->actingAs($user);
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'outbound_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false);
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'ssl_check', $website->getKey(), false);
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'outbound_check', $website->getKey(), false);
+
+    $website->refresh();
+    expect($website->uptime_check)->toBeTrue()
+        ->and($website->ssl_check)->toBeTrue()
+        ->and($website->outbound_check)->toBeTrue();
+});
+
 test('user without Update:Website permission cannot see website bulk actions', function () {
     $user = User::factory()->create();
     $user->assignRole('Admin');

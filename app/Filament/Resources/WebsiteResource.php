@@ -237,6 +237,24 @@ class WebsiteResource extends Resource
                     ->sortable(),
                 Tables\Columns\ToggleColumn::make('uptime_check')
                     ->translateLabel()
+                    ->tooltip(fn (): string => auth()->user()?->can('Update:Website')
+                        ? 'Pause or resume scheduled uptime checks for this website.'
+                        : 'You need the Update:Website permission to change this.')
+                    ->disabled(fn (): bool => ! (auth()->user()?->can('Update:Website') ?? false))
+                    ->beforeStateUpdated(function (): void {
+                        abort_unless(auth()->user()?->can('Update:Website') ?? false, 403);
+                    })
+                    ->afterStateUpdated(function (Website $record, bool $state): void {
+                        Notification::make()
+                            ->title($state
+                                ? "Uptime checks enabled for {$record->name}"
+                                : "Uptime checks disabled for {$record->name}")
+                            ->body($state
+                                ? 'Scheduled uptime checks will resume on their next run.'
+                                : 'Uptime checks are paused. SSL and outbound checks are not affected.')
+                            ->color($state ? 'success' : 'warning')
+                            ->send();
+                    })
                     ->sortable(),
                 Tables\Columns\SelectColumn::make('uptime_interval')
                     ->translateLabel()
@@ -255,6 +273,24 @@ class WebsiteResource extends Resource
                 Tables\Columns\ToggleColumn::make('ssl_check')
                     ->label('SSL check')
                     ->translateLabel()
+                    ->tooltip(fn (): string => auth()->user()?->can('Update:Website')
+                        ? 'Pause or resume SSL expiry checks for this website.'
+                        : 'You need the Update:Website permission to change this.')
+                    ->disabled(fn (): bool => ! (auth()->user()?->can('Update:Website') ?? false))
+                    ->beforeStateUpdated(function (): void {
+                        abort_unless(auth()->user()?->can('Update:Website') ?? false, 403);
+                    })
+                    ->afterStateUpdated(function (Website $record, bool $state): void {
+                        Notification::make()
+                            ->title($state
+                                ? "SSL checks enabled for {$record->name}"
+                                : "SSL checks disabled for {$record->name}")
+                            ->body($state
+                                ? 'SSL expiry monitoring will resume on the next scheduled run.'
+                                : 'SSL expiry monitoring is paused for this website.')
+                            ->color($state ? 'success' : 'warning')
+                            ->send();
+                    })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('ssl_expiry_date')
                     ->label('SSL expiry date')
@@ -264,6 +300,24 @@ class WebsiteResource extends Resource
                 Tables\Columns\ToggleColumn::make('outbound_check')
                     ->label('Outbound check')
                     ->translateLabel()
+                    ->tooltip(fn (): string => auth()->user()?->can('Update:Website')
+                        ? 'Pause or resume outbound link checks for this website.'
+                        : 'You need the Update:Website permission to change this.')
+                    ->disabled(fn (): bool => ! (auth()->user()?->can('Update:Website') ?? false))
+                    ->beforeStateUpdated(function (): void {
+                        abort_unless(auth()->user()?->can('Update:Website') ?? false, 403);
+                    })
+                    ->afterStateUpdated(function (Website $record, bool $state): void {
+                        Notification::make()
+                            ->title($state
+                                ? "Outbound checks enabled for {$record->name}"
+                                : "Outbound checks disabled for {$record->name}")
+                            ->body($state
+                                ? 'Outbound link monitoring will resume on the next scheduled run.'
+                                : 'Outbound link monitoring is paused for this website.')
+                            ->color($state ? 'success' : 'warning')
+                            ->send();
+                    })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('global_notifications_count')
                     ->label('Global Notifications Channels')
