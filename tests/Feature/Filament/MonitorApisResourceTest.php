@@ -325,8 +325,10 @@ test('view page run now action persists a real run and surfaces evidence', funct
     $monitor->refresh();
 
     expect($monitor->results()->count())->toBe(1)
-        ->and($monitor->current_status)->toBe('healthy')
-        ->and($monitor->last_heartbeat_at)->not->toBeNull();
+        ->and($monitor->results()->latest('id')->first()->status)->toBe('healthy')
+        ->and($monitor->current_status)->toBeNull()
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->status_summary)->toBeNull();
 });
 
 test('view page run now action surfaces failure evidence and persists the failed run', function () {
@@ -345,7 +347,11 @@ test('view page run now action surfaces failure evidence and persists the failed
         'http_method' => 'GET',
         'expected_status' => 200,
         'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'status_summary' => 'API responded as expected.',
     ]);
+
+    $heartbeatBefore = $monitor->last_heartbeat_at;
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->callAction('run_now')
@@ -355,7 +361,10 @@ test('view page run now action surfaces failure evidence and persists the failed
 
     expect($monitor->results()->count())->toBe(1)
         ->and($monitor->results()->first()->http_code)->toBe(500)
-        ->and($monitor->current_status)->toBe('danger');
+        ->and($monitor->results()->first()->status)->toBe('danger')
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($monitor->status_summary)->toBe('API responded as expected.');
 });
 
 test('view page hides run now action when api monitor is disabled', function () {

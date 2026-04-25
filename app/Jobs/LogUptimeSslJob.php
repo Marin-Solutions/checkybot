@@ -17,9 +17,16 @@ class LogUptimeSslJob implements ShouldQueue
 {
     use Queueable;
 
+    /**
+     * @param  bool  $onDemand  When true, the job is treated as an operator-triggered diagnostic run:
+     *                          the result is appended to history but the website's live status fields
+     *                          (`current_status`, `last_heartbeat_at`, `stale_at`, `status_summary`)
+     *                          are left untouched so the scheduler's transition-based alerting baseline
+     *                          stays accurate, and no health notifications are sent.
+     */
     public function __construct(
         public Website $website,
-        public bool $suppressNotifications = false,
+        public bool $onDemand = false,
     ) {
         //
     }
@@ -87,14 +94,17 @@ class LogUptimeSslJob implements ShouldQueue
                 'summary' => $summary,
             ]);
 
-            $this->website->forceFill([
-                'current_status' => $status,
-                'last_heartbeat_at' => now(),
-                'stale_at' => null,
-                'status_summary' => $summary,
-            ])->save();
+            // On-demand runs are diagnostic only: persist the history row, but leave the live
+            // status fields and notification firing to the scheduler so the alert-transition
+            // baseline stays accurate.
+            if (! ($this->onDemand ?? false)) {
+                $this->website->forceFill([
+                    'current_status' => $status,
+                    'last_heartbeat_at' => now(),
+                    'stale_at' => null,
+                    'status_summary' => $summary,
+                ])->save();
 
-            if (! ($this->suppressNotifications ?? false)) {
                 if (
                     in_array($status, ['warning', 'danger'], true)
                     && $previousStatus !== $status

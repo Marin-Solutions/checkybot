@@ -24,13 +24,13 @@ class ViewWebsite extends ViewRecord
                 ->requiresConfirmation()
                 ->modalIcon('heroicon-o-bolt')
                 ->modalHeading('Run uptime + SSL check now')
-                ->modalDescription('Checkybot will run the same heartbeat job that runs on the schedule against this website right now and append the result to its log history. Subscribers will not be alerted by this manual run. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
+                ->modalDescription('Checkybot will run a real heartbeat against this website right now and append the result to its log history. The website\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->uptime_check)
                 ->action(function (): void {
                     try {
-                        LogUptimeSslJob::dispatchSync($this->record, suppressNotifications: true);
+                        LogUptimeSslJob::dispatchSync($this->record, onDemand: true);
                     } catch (\Throwable $e) {
                         Log::error('Run Now uptime/SSL check failed', [
                             'website_id' => $this->record->id,
@@ -46,14 +46,12 @@ class ViewWebsite extends ViewRecord
                         return;
                     }
 
-                    $this->record->refresh();
-
                     $latestLog = $this->record->logHistory()
                         ->latest('created_at')
                         ->latest('id')
                         ->first();
 
-                    static::sendRunNowNotification($this->record->current_status, $latestLog);
+                    static::sendRunNowNotification($latestLog?->status, $latestLog);
                 }),
             Actions\EditAction::make(),
         ];

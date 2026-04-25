@@ -176,7 +176,7 @@ test('job sends recovery notifications when a warning website returns to healthy
     });
 });
 
-test('job does not notify when suppressNotifications is set, even on status change', function () {
+test('on-demand runs do not notify and leave the live status fields untouched', function () {
     Http::fake([
         '*' => Http::response('', 500),
     ]);
@@ -188,6 +188,8 @@ test('job does not notify when suppressNotifications is set, even on status chan
         'uptime_check' => true,
         'source' => 'manual',
         'current_status' => 'healthy',
+        'last_heartbeat_at' => null,
+        'status_summary' => null,
     ]);
 
     NotificationSetting::factory()
@@ -198,12 +200,16 @@ test('job does not notify when suppressNotifications is set, even on status chan
             'website_id' => $website->id,
         ]);
 
-    $job = new LogUptimeSslJob($website, suppressNotifications: true);
+    $job = new LogUptimeSslJob($website, onDemand: true);
     $job->handle();
 
+    $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
     $website->refresh();
 
-    expect($website->current_status)->toBe('danger');
+    expect($log?->status)->toBe('danger')
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->status_summary)->toBeNull();
 
     Mail::assertNothingSent();
 });
@@ -311,7 +317,7 @@ test('job does not notify when a manual website remains in the same failing stat
     Mail::assertNothingSent();
 });
 
-test('job tolerates pre-deploy payloads where suppressNotifications was never initialized', function () {
+test('job tolerates pre-deploy payloads where onDemand was never initialized', function () {
     Http::fake([
         '*' => Http::response('', 200),
     ]);
@@ -335,9 +341,11 @@ test('job tolerates pre-deploy payloads where suppressNotifications was never in
         ]);
 
     /**
-     * Simulate a job payload serialized before suppressNotifications existed:
+     * Simulate a job payload serialized before onDemand existed:
      * the typed property is left uninitialized after unserialization. The handler
-     * must not fatally error when reading it.
+     * must not fatally error when reading it, and must fall back to the pre-deploy
+     * behaviour (live status fields written, notifications fired) so in-flight
+     * scheduled heartbeats keep working through the deploy.
      */
     $reflection = new ReflectionClass(LogUptimeSslJob::class);
     $job = $reflection->newInstanceWithoutConstructor();

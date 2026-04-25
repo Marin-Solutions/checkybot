@@ -24,14 +24,14 @@ class ViewMonitorApis extends ViewRecord
                 ->requiresConfirmation()
                 ->modalIcon('heroicon-o-bolt')
                 ->modalHeading('Run API monitor now')
-                ->modalDescription('Checkybot will execute a real heartbeat against this endpoint immediately and append the result to its run history. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
+                ->modalDescription('Checkybot will execute a real heartbeat against this endpoint immediately and append the result to its run history. The monitor\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->is_enabled)
                 ->action(function (): void {
                     try {
                         /** @var array{result: MonitorApiResult, status: string, summary: string, previous_status: string|null} $outcome */
-                        $outcome = app(ApiMonitorExecutionService::class)->execute($this->record);
+                        $outcome = app(ApiMonitorExecutionService::class)->execute($this->record, onDemand: true);
                     } catch (\Throwable $e) {
                         Log::error('Run Now API monitor check failed', [
                             'monitor_api_id' => $this->record->id,
@@ -47,7 +47,6 @@ class ViewMonitorApis extends ViewRecord
                         return;
                     }
 
-                    $this->record->refresh();
                     $this->record->load('latestResult');
 
                     static::sendRunNowNotification($outcome);

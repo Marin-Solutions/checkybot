@@ -666,6 +666,7 @@ test('view page run now action persists a real heartbeat and surfaces evidence',
         'uptime_check' => true,
         'current_status' => null,
         'status_summary' => null,
+        'last_heartbeat_at' => null,
     ]);
 
     Http::fake([
@@ -681,8 +682,10 @@ test('view page run now action persists a real heartbeat and surfaces evidence',
     $website->refresh();
 
     expect($website->logHistory()->count())->toBe(1)
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at)->not->toBeNull();
+        ->and($website->logHistory()->first()->status)->toBe('healthy')
+        ->and($website->current_status)->toBeNull()
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->status_summary)->toBeNull();
 });
 
 test('view page run now action surfaces failure when target returns server error', function () {
@@ -693,6 +696,7 @@ test('view page run now action surfaces failure when target returns server error
         'url' => 'https://broken.example',
         'uptime_check' => true,
         'current_status' => 'healthy',
+        'status_summary' => 'Heartbeat received successfully.',
     ]);
 
     Http::fake([
@@ -707,7 +711,9 @@ test('view page run now action surfaces failure when target returns server error
 
     expect($website->logHistory()->count())->toBe(1)
         ->and($website->logHistory()->first()->http_status_code)->toBe(500)
-        ->and($website->current_status)->toBe('danger');
+        ->and($website->logHistory()->first()->status)->toBe('danger')
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->status_summary)->toBe('Heartbeat received successfully.');
 });
 
 test('view page hides run now action when uptime check is disabled', function () {
@@ -736,7 +742,7 @@ test('view page hides run now action for users without update permission', funct
         ->assertActionHidden('run_now');
 });
 
-test('view page run now action does not fire user-facing health alerts', function () {
+test('view page run now action does not fire user-facing health alerts and preserves the live status baseline', function () {
     $user = $this->actingAsSuperAdmin();
 
     $website = Website::factory()->create([
@@ -744,7 +750,10 @@ test('view page run now action does not fire user-facing health alerts', functio
         'url' => 'https://broken.example',
         'uptime_check' => true,
         'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
     ]);
+
+    $heartbeatBefore = $website->last_heartbeat_at;
 
     Http::fake([
         'https://broken.example' => Http::response('boom', 500),
@@ -758,7 +767,11 @@ test('view page run now action does not fire user-facing health alerts', functio
         ->callAction('run_now')
         ->assertNotified('On-demand check failed');
 
-    expect($website->refresh()->current_status)->toBe('danger');
+    $website->refresh();
+
+    expect($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->logHistory()->latest('id')->first()->status)->toBe('danger');
 });
 
 test('view page renders recent failures when non-healthy logs exist', function () {
