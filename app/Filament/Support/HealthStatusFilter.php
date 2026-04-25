@@ -97,7 +97,7 @@ class HealthStatusFilter
                 $query->whereIn($column, ['warning', 'danger']);
 
                 if ($activeScope !== null) {
-                    $activeScope($query);
+                    $query = $activeScope($query);
                 }
 
                 return $query;
