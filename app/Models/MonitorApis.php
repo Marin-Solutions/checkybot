@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasSnooze;
 use App\Support\ApiMonitorEvidenceFormatter;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -21,6 +22,7 @@ use Illuminate\Support\Facades\Log;
 class MonitorApis extends Model
 {
     use HasFactory;
+    use HasSnooze;
     use SoftDeletes;
 
     protected $fillable = [
@@ -58,11 +60,6 @@ class MonitorApis extends Model
         'stale_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
-
-    public function isSilenced(): bool
-    {
-        return $this->silenced_until !== null && $this->silenced_until->isFuture();
-    }
 
     protected function headers(): Attribute
     {

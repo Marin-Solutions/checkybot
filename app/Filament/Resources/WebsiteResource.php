@@ -3,7 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
-use App\Filament\Resources\Concerns\MonitorSnoozeAction;
+use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Models\Website;

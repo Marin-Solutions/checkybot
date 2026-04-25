@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\Concerns;
+namespace App\Filament\Resources\Support;
 
 use Filament\Forms;
 use Filament\Schemas\Components\Utilities\Get;
@@ -49,8 +49,10 @@ class MonitorSnoozeAction
     /**
      * Resolve the snooze duration form data into a future Carbon instance.
      *
-     * Returns null when the chosen target lies in the past so callers can
-     * surface a validation error instead of silently writing a stale value.
+     * Returns null when the form data is malformed, the duration preset is
+     * unknown, or the chosen target lies in the past — callers treat null
+     * as a validation failure and surface an error instead of silently
+     * writing a stale or unintended value.
      */
     public static function resolveUntil(array $data): ?Carbon
     {
@@ -59,7 +61,7 @@ class MonitorSnoozeAction
             '4h' => now()->addHours(4),
             '24h' => now()->addDay(),
             'custom' => isset($data['until']) ? Carbon::parse($data['until']) : null,
-            default => now()->addHour(),
+            default => null,
         };
 
         if ($until === null || $until->isPast()) {

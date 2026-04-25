@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasSnooze;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,7 @@ use Spatie\SslCertificate\SslCertificate;
 class Website extends Model
 {
     use HasFactory;
+    use HasSnooze;
     use SoftDeletes;
 
     protected $fillable = [
@@ -49,11 +51,6 @@ class Website extends Model
         'stale_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
-
-    public function isSilenced(): bool
-    {
-        return $this->silenced_until !== null && $this->silenced_until->isFuture();
-    }
 
     /**
      * Check website exists with look up dns spatie library

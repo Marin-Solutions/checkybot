@@ -3,10 +3,10 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
-use App\Filament\Resources\Concerns\MonitorSnoozeAction;
 use App\Filament\Resources\MonitorApis\Schemas\MonitorApiInfolist;
 use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
+use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Models\MonitorApis;
 use App\Services\IntervalParser;
 use App\Support\ApiMonitorTestNotification;
