@@ -573,3 +573,70 @@ test('soft-deleted API monitors are not counted in bulk enable notification', fu
 
     expect(MonitorApis::withTrashed()->find($trashed->id)->is_enabled)->toBeFalse();
 });
+
+test('api monitor navigation badge shows plain total when everything is healthy', function () {
+    $user = $this->actingAsSuperAdmin();
+    MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('2')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('api monitor navigation badge highlights unhealthy count in danger color', function () {
+    $user = $this->actingAsSuperAdmin();
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('2/3')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBe('danger');
+});
+
+test('api monitor navigation badge is scoped to the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('api monitor navigation badge excludes soft-deleted records', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    $trashed = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    \App\Filament\Resources\MonitorApisResource::flushUnhealthyNavigationBadgeCache();
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
+});

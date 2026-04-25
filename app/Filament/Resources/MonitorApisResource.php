@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
 use App\Filament\Resources\MonitorApis\Schemas\MonitorApiInfolist;
 use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
@@ -21,6 +22,8 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class MonitorApisResource extends Resource
 {
+    use HasUnhealthyNavigationBadge;
+
     protected static ?string $model = MonitorApis::class;
 
     protected static \UnitEnum|string|null $navigationGroup = 'Operations';
@@ -38,6 +41,7 @@ class MonitorApisResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
+            ->where('created_by', auth()->id())
             ->withAvg('results as avg_response_time', 'response_time_ms')
             ->with(['latestResult'])
             ->withoutGlobalScopes([

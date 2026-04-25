@@ -728,3 +728,94 @@ test('notification relation manager renders on view page and is website scoped',
         ->assertCanSeeTableRecords([$visibleSetting])
         ->assertCanNotSeeTableRecords([$hiddenSetting]);
 });
+
+test('website navigation badge shows plain total when everything is healthy', function () {
+    $user = $this->actingAsSuperAdmin();
+    Website::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('3')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('website navigation badge highlights unhealthy count in danger color', function () {
+    $user = $this->actingAsSuperAdmin();
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('2/4')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBe('danger');
+});
+
+test('website navigation badge is scoped to the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    Website::factory()->create([
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('website navigation badge caches counts between badge and color lookups', function () {
+    $user = $this->actingAsSuperAdmin();
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    \App\Filament\Resources\WebsiteResource::flushUnhealthyNavigationBadgeCache();
+
+    $queries = 0;
+    \DB::listen(function ($query) use (&$queries) {
+        if (str_contains($query->sql, 'websites')) {
+            $queries++;
+        }
+    });
+
+    \App\Filament\Resources\WebsiteResource::getNavigationBadge();
+    \App\Filament\Resources\WebsiteResource::getNavigationBadgeColor();
+
+    // Exactly 2 website queries: count(*) for total, and count(*) with whereIn
+    // for unhealthy. The color lookup reuses the cached result.
+    expect($queries)->toBe(2);
+});
+
+test('website navigation badge excludes soft-deleted records', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    \App\Filament\Resources\WebsiteResource::flushUnhealthyNavigationBadgeCache();
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBeNull();
+});

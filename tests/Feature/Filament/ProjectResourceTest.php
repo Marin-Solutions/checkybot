@@ -634,3 +634,62 @@ test('admin without Update:ProjectComponent permission cannot see component bulk
         ->assertTableBulkActionHidden('enable')
         ->assertTableBulkActionHidden('disable');
 });
+
+test('project component navigation badge shows plain total when everything is healthy', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    expect(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadge())->toBe('2')
+        ->and(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadgeColor())->toBeNull();
+});
+
+test('project component navigation badge highlights unhealthy count in danger color', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadge())->toBe('2/3')
+        ->and(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadgeColor())->toBe('danger');
+});
+
+test('project component navigation badge is scoped to the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $otherProject = Project::factory()->create(['created_by' => $otherUser->id]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $otherProject->id,
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadge())->toBe('1')
+        ->and(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadgeColor())->toBeNull();
+});

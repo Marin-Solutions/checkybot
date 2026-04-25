@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Models\Website;
@@ -19,6 +20,8 @@ use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class WebsiteResource extends Resource
 {
+    use HasUnhealthyNavigationBadge;
+
     protected static ?string $model = Website::class;
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-globe-alt';
@@ -26,14 +29,6 @@ class WebsiteResource extends Resource
     protected static \UnitEnum|string|null $navigationGroup = 'Operations';
 
     protected static ?int $navigationSort = 1;
-
-    /**
-     * Get the navigation badge for the resource.
-     */
-    public static function getNavigationBadge(): ?string
-    {
-        return number_format(static::getModel()::where('created_by', auth()->id())->count());
-    }
 
     public static function canViewAny(): bool
     {

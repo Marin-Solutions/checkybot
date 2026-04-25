@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectComponents;
 
+use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
 use App\Filament\Resources\ProjectComponents\Pages\CreateProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
@@ -20,6 +21,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class ProjectComponentResource extends Resource
 {
+    use HasUnhealthyNavigationBadge;
+
     protected static ?string $model = ProjectComponent::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
