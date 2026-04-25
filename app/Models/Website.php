@@ -147,15 +147,7 @@ class Website extends Model
         if (preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) !== 1) {
             $schemedHost = parse_url('https://'.$url, PHP_URL_HOST);
 
-            if (
-                is_string($schemedHost)
-                && self::isValidHost($schemedHost)
-                && (
-                    str_contains($schemedHost, '.')
-                    || filter_var($schemedHost, FILTER_VALIDATE_IP) !== false
-                    || strtolower($schemedHost) === 'localhost'
-                )
-            ) {
+            if (is_string($schemedHost) && self::isValidHost($schemedHost)) {
                 return $schemedHost;
             }
         }

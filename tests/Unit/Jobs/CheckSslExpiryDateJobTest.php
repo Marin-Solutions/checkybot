@@ -118,19 +118,19 @@ test('job returns early when ssl host cannot be determined', function () {
     $this->mock(SslCertificateService::class, function (MockInterface $mock) {
         $mock->shouldReceive('extractHost')
             ->once()
-            ->with('not-a-url/path')
+            ->with('bad host/path')
             ->andReturn(null);
 
         $mock->shouldReceive('extractPort')
             ->once()
-            ->with('not-a-url/path')
+            ->with('bad host/path')
             ->andReturn(443);
 
         $mock->shouldNotReceive('getExpirationDateForHost');
     });
 
     $website = Website::factory()->create([
-        'url' => 'not-a-url/path',
+        'url' => 'bad host/path',
         'ssl_check' => true,
         'ssl_expiry_date' => now()->addDays(10),
     ]);
@@ -140,7 +140,7 @@ test('job returns early when ssl host cannot be determined', function () {
 
     Log::shouldHaveReceived('error')
         ->once()
-        ->with('Could not determine SSL host for website not-a-url/path');
+        ->with('Could not determine SSL host for website bad host/path');
 
     expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isSameDay(now()->addDays(10)))->toBeTrue();
 });

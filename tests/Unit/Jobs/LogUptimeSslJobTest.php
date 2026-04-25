@@ -424,19 +424,19 @@ test('job logs a warning and continues when ssl host cannot be determined', func
     $this->mock(SslCertificateService::class, function (MockInterface $mock) {
         $mock->shouldReceive('extractHost')
             ->once()
-            ->with('not-a-url/path')
+            ->with('bad host/path')
             ->andReturn(null);
 
         $mock->shouldReceive('extractPort')
             ->once()
-            ->with('not-a-url/path')
+            ->with('bad host/path')
             ->andReturn(443);
 
         $mock->shouldNotReceive('getExpirationDateForHost');
     });
 
     $website = Website::factory()->create([
-        'url' => 'not-a-url/path',
+        'url' => 'bad host/path',
         'uptime_check' => true,
     ]);
 
@@ -445,7 +445,7 @@ test('job logs a warning and continues when ssl host cannot be determined', func
 
     Log::shouldHaveReceived('warning')
         ->once()
-        ->with('Could not determine SSL host for not-a-url/path');
+        ->with('Could not determine SSL host for bad host/path');
 
     $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
 

@@ -103,8 +103,12 @@ test('extractHost accepts a schemeless hostname with path', function () {
     expect(Website::extractHost('example.com/health'))->toBe('example.com');
 });
 
+test('extractHost accepts a schemeless single-label hostname with path', function () {
+    expect(Website::extractHost('internal-api/health'))->toBe('internal-api');
+});
+
 test('extractHost returns null for malformed urls with paths', function () {
-    expect(Website::extractHost('not-a-url/path'))->toBeNull();
+    expect(Website::extractHost('bad host/path'))->toBeNull();
 });
 
 test('extractHost rejects opaque uris', function () {
