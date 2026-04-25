@@ -34,7 +34,7 @@ class SslExpiryStatsWidget extends BaseWidget
         // as the empty-state guard so we only round-trip to the database once.
         if ($aggregates === null || $aggregates->expired_count === null) {
             return [
-                Stat::make('SSL monitoring', 0)
+                Stat::make('SSL Monitoring', 0)
                     ->description('No websites with SSL monitoring enabled')
                     ->descriptionIcon('heroicon-m-shield-check')
                     ->color('gray'),
@@ -47,22 +47,22 @@ class SslExpiryStatsWidget extends BaseWidget
         $within30DaysCount = (int) $aggregates->within_30_count;
 
         return [
-            Stat::make('SSL expired', $expiredCount)
+            Stat::make('SSL Expired', $expiredCount)
                 ->description($expiredCount > 0 ? 'Renew immediately' : 'No expired certificates')
                 ->descriptionIcon($expiredCount > 0 ? 'heroicon-m-x-circle' : 'heroicon-m-check-circle')
                 ->color($expiredCount > 0 ? 'danger' : 'success'),
 
-            Stat::make('Expiring within 7 days', $within7DaysCount)
+            Stat::make('Expiring Within 7 Days', $within7DaysCount)
                 ->description($within7DaysCount > 0 ? 'Action required' : 'Nothing expiring this week')
                 ->descriptionIcon('heroicon-m-exclamation-triangle')
                 ->color($within7DaysCount > 0 ? 'danger' : 'success'),
 
-            Stat::make('Expiring within 14 days', $within14DaysCount)
-                ->description($within14DaysCount > 0 ? 'Includes the 7-day window' : 'All clear for the next 14 days')
+            Stat::make('Expiring Within 14 Days', $within14DaysCount)
+                ->description($within14DaysCount > 0 ? 'Includes certs expiring sooner' : 'All clear for the next 14 days')
                 ->descriptionIcon('heroicon-m-clock')
                 ->color($within14DaysCount > 0 ? 'warning' : 'success'),
 
-            Stat::make('Expiring within 30 days', $within30DaysCount)
+            Stat::make('Expiring Within 30 Days', $within30DaysCount)
                 ->description($within30DaysCount > 0 ? 'Plan renewals for this month' : 'All clear for the next 30 days')
                 ->descriptionIcon('heroicon-m-calendar-days')
                 ->color($within30DaysCount > 0 ? 'warning' : 'success'),

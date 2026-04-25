@@ -17,9 +17,9 @@ describe('SslExpiryStatsWidget', function () {
 
     it('shows an empty state when the user has no SSL-monitored websites', function () {
         Livewire::test(SslExpiryStatsWidget::class)
-            ->assertSee('SSL monitoring')
+            ->assertSee('SSL Monitoring')
             ->assertSee('No websites with SSL monitoring enabled')
-            ->assertDontSee('SSL expired');
+            ->assertDontSee('SSL Expired');
     });
 
     it('shows the four expiry buckets when the user has at least one SSL-monitored website', function () {
@@ -30,10 +30,10 @@ describe('SslExpiryStatsWidget', function () {
         ]);
 
         Livewire::test(SslExpiryStatsWidget::class)
-            ->assertSee('SSL expired')
-            ->assertSee('Expiring within 7 days')
-            ->assertSee('Expiring within 14 days')
-            ->assertSee('Expiring within 30 days');
+            ->assertSee('SSL Expired')
+            ->assertSee('Expiring Within 7 Days')
+            ->assertSee('Expiring Within 14 Days')
+            ->assertSee('Expiring Within 30 Days');
     });
 
     it('counts websites with certificates that have already expired', function () {
@@ -51,8 +51,8 @@ describe('SslExpiryStatsWidget', function () {
 
         $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
-        expect(sslStat($stats, 'SSL expired')->getValue())->toBe(2)
-            ->and(sslStat($stats, 'SSL expired')->getDescription())->toBe('Renew immediately');
+        expect(sslStat($stats, 'SSL Expired')->getValue())->toBe(2)
+            ->and(sslStat($stats, 'SSL Expired')->getDescription())->toBe('Renew immediately');
     });
 
     it('counts certificates expiring within the next 7 days', function () {
@@ -70,9 +70,9 @@ describe('SslExpiryStatsWidget', function () {
 
         $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
-        expect(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
-            ->and(sslStat($stats, 'Expiring within 14 days')->getValue())->toBe(1)
-            ->and(sslStat($stats, 'Expiring within 30 days')->getValue())->toBe(2);
+        expect(sslStat($stats, 'Expiring Within 7 Days')->getValue())->toBe(1)
+            ->and(sslStat($stats, 'Expiring Within 14 Days')->getValue())->toBe(1)
+            ->and(sslStat($stats, 'Expiring Within 30 Days')->getValue())->toBe(2);
     });
 
     it('treats the 14 and 30 day buckets as cumulative windows', function () {
@@ -99,9 +99,9 @@ describe('SslExpiryStatsWidget', function () {
 
         $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
-        expect(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
-            ->and(sslStat($stats, 'Expiring within 14 days')->getValue())->toBe(2)
-            ->and(sslStat($stats, 'Expiring within 30 days')->getValue())->toBe(3);
+        expect(sslStat($stats, 'Expiring Within 7 Days')->getValue())->toBe(1)
+            ->and(sslStat($stats, 'Expiring Within 14 Days')->getValue())->toBe(2)
+            ->and(sslStat($stats, 'Expiring Within 30 Days')->getValue())->toBe(3);
     });
 
     it('treats a certificate expiring today as still in the upcoming buckets, not expired', function () {
@@ -113,10 +113,10 @@ describe('SslExpiryStatsWidget', function () {
 
         $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
-        expect(sslStat($stats, 'SSL expired')->getValue())->toBe(0)
-            ->and(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
-            ->and(sslStat($stats, 'Expiring within 14 days')->getValue())->toBe(1)
-            ->and(sslStat($stats, 'Expiring within 30 days')->getValue())->toBe(1);
+        expect(sslStat($stats, 'SSL Expired')->getValue())->toBe(0)
+            ->and(sslStat($stats, 'Expiring Within 7 Days')->getValue())->toBe(1)
+            ->and(sslStat($stats, 'Expiring Within 14 Days')->getValue())->toBe(1)
+            ->and(sslStat($stats, 'Expiring Within 30 Days')->getValue())->toBe(1);
     });
 
     it('includes certificates expiring on the exact bucket boundary', function () {
@@ -138,9 +138,9 @@ describe('SslExpiryStatsWidget', function () {
 
         $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
-        expect(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
-            ->and(sslStat($stats, 'Expiring within 14 days')->getValue())->toBe(2)
-            ->and(sslStat($stats, 'Expiring within 30 days')->getValue())->toBe(3);
+        expect(sslStat($stats, 'Expiring Within 7 Days')->getValue())->toBe(1)
+            ->and(sslStat($stats, 'Expiring Within 14 Days')->getValue())->toBe(2)
+            ->and(sslStat($stats, 'Expiring Within 30 Days')->getValue())->toBe(3);
     });
 
     it('treats yesterday as expired', function () {
@@ -152,8 +152,8 @@ describe('SslExpiryStatsWidget', function () {
 
         $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
-        expect(sslStat($stats, 'SSL expired')->getValue())->toBe(1)
-            ->and(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(0);
+        expect(sslStat($stats, 'SSL Expired')->getValue())->toBe(1)
+            ->and(sslStat($stats, 'Expiring Within 7 Days')->getValue())->toBe(0);
     });
 
     it('ignores websites where ssl_check is disabled', function () {
@@ -200,8 +200,8 @@ describe('SslExpiryStatsWidget', function () {
 
         $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
-        expect(sslStat($stats, 'SSL expired')->getValue())->toBe(0)
-            ->and(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1);
+        expect(sslStat($stats, 'SSL Expired')->getValue())->toBe(0)
+            ->and(sslStat($stats, 'Expiring Within 7 Days')->getValue())->toBe(1);
     });
 
     it('renders on the dashboard page for a super admin', function () {
