@@ -119,6 +119,10 @@ test('extractHost accepts bare ipv6 hosts that begin with letters', function () 
     expect(Website::extractHost('fe80::1'))->toBe('fe80::1');
 });
 
+test('extractHost accepts bracketed ipv6 hosts in schemeless urls', function () {
+    expect(Website::extractHost('[2001:db8::1]:8443/health'))->toBe('2001:db8::1');
+});
+
 test('extractPort returns an explicit port from a full url', function () {
     expect(Website::extractPort('https://example.com:8443/health?foo=bar'))->toBe(8443);
 });
@@ -133,4 +137,8 @@ test('extractPort falls back to 443 when no port is present', function () {
 
 test('extractPort preserves default port for bare ipv6 hosts', function () {
     expect(Website::extractPort('2001:db8::1'))->toBe(443);
+});
+
+test('extractPort returns an explicit port from a bracketed ipv6 schemeless url', function () {
+    expect(Website::extractPort('[2001:db8::1]:8443/health'))->toBe(8443);
 });

@@ -146,9 +146,10 @@ class Website extends Model
 
         if (preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) !== 1) {
             $schemedHost = parse_url('https://'.$url, PHP_URL_HOST);
+            $normalizedSchemedHost = self::normalizeParsedHost($schemedHost);
 
-            if (is_string($schemedHost) && self::isValidHost($schemedHost)) {
-                return $schemedHost;
+            if (is_string($normalizedSchemedHost) && self::isValidHost($normalizedSchemedHost)) {
+                return $normalizedSchemedHost;
             }
         }
 
@@ -195,6 +196,23 @@ class Website extends Model
         }
 
         return preg_match('/^\d+(?:[\/?#]|$)/', $matches['rest']) !== 1;
+    }
+
+    protected static function normalizeParsedHost(string|false|null $host): ?string
+    {
+        if (! is_string($host) || $host === '') {
+            return null;
+        }
+
+        if (
+            str_starts_with($host, '[')
+            && str_ends_with($host, ']')
+            && filter_var(substr($host, 1, -1), FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false
+        ) {
+            return substr($host, 1, -1);
+        }
+
+        return $host;
     }
 
     protected static function isValidHost(string $host): bool
