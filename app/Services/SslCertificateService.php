@@ -21,8 +21,16 @@ class SslCertificateService
     public function getExpirationDateForHost(string $host, int $port = 443): CarbonInterface
     {
         return SslCertificate::download()
-            ->usingPort($port)
-            ->forHost($host)
+            ->forHost($this->formatHostForDownload($host, $port))
             ->expirationDate();
+    }
+
+    private function formatHostForDownload(string $host, int $port): string
+    {
+        $formattedHost = filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false
+            ? "[{$host}]"
+            : $host;
+
+        return "{$formattedHost}:{$port}";
     }
 }
