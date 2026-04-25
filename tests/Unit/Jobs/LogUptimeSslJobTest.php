@@ -220,6 +220,7 @@ test('job sends recovery notifications when a manual website returns to healthy'
         'uptime_check' => true,
         'source' => 'manual',
         'current_status' => 'danger',
+        'stale_at' => now()->subMinute(),
     ]);
 
     NotificationSetting::factory()
@@ -235,12 +236,14 @@ test('job sends recovery notifications when a manual website returns to healthy'
 
     $website->refresh();
 
-    expect($website->current_status)->toBe('healthy');
+    expect($website->current_status)->toBe('healthy')
+        ->and($website->stale_at)->toBeNull();
 
     Mail::assertSent(\App\Mail\HealthStatusAlert::class, function (\App\Mail\HealthStatusAlert $mail): bool {
         return $mail->event === 'recovered'
             && $mail->eventLabel === 'recovered'
-            && $mail->status === 'healthy';
+            && $mail->status === 'healthy'
+            && $mail->summary === 'Website heartbeat succeeded with HTTP status 200.';
     });
 });
 
