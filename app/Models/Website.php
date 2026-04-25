@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasSnooze;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,6 +16,7 @@ use Spatie\SslCertificate\SslCertificate;
 class Website extends Model
 {
     use HasFactory;
+    use HasSnooze;
     use SoftDeletes;
 
     protected $fillable = [
@@ -37,6 +39,7 @@ class Website extends Model
         'last_heartbeat_at',
         'stale_at',
         'status_summary',
+        'silenced_until',
     ];
 
     protected $casts = [
@@ -46,6 +49,7 @@ class Website extends Model
         'last_outbound_checked_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
         'stale_at' => 'datetime',
+        'silenced_until' => 'datetime',
     ];
 
     /**

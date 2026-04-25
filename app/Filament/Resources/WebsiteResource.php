@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
+use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Filament\Support\HealthStatusFilter;
@@ -205,6 +206,16 @@ class WebsiteResource extends Resource
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('silenced_until')
+                    ->label('Snoozed')
+                    ->badge()
+                    ->color('warning')
+                    ->icon('heroicon-o-bell-slash')
+                    ->state(fn (Website $record): ?string => $record->isSilenced()
+                        ? 'Until '.$record->silenced_until->format('M j, H:i')
+                        : null)
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 SparklineColumn::make('response_times')
                     ->label('Response Time (24h)')
                     ->translateLabel()
@@ -425,6 +436,59 @@ class WebsiteResource extends Resource
             ->actions([
                 \Filament\Actions\ViewAction::make(),
                 \Filament\Actions\EditAction::make(),
+                \Filament\Actions\Action::make('snooze')
+                    ->label(fn (Website $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')
+                    ->icon('heroicon-o-bell-slash')
+                    ->color(fn (Website $record): string => $record->isSilenced() ? 'warning' : 'gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                    ->modalHeading('Snooze notifications for this website')
+                    ->modalDescription('Suppress alert delivery during a maintenance window. Checks keep running, the dashboard keeps updating, but no emails or webhooks fire while snoozed.')
+                    ->modalSubmitActionLabel('Snooze')
+                    ->fillForm(fn (Website $record): array => [
+                        'duration' => $record->isSilenced() ? 'custom' : '1h',
+                        'until' => $record->silenced_until,
+                    ])
+                    ->schema(MonitorSnoozeAction::formSchema())
+                    ->action(function (Website $record, array $data): void {
+                        $until = MonitorSnoozeAction::resolveUntil($data);
+
+                        if ($until === null) {
+                            Notification::make()
+                                ->title('Snooze time must be in the future')
+                                ->body('Pick a future moment, or use Unsnooze to clear the silence.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $record->update(['silenced_until' => $until]);
+
+                        Notification::make()
+                            ->title('Notifications snoozed')
+                            ->body("Alerts paused for {$record->name} until {$until->format('M j, Y H:i')}.")
+                            ->success()
+                            ->send();
+                    }),
+                \Filament\Actions\Action::make('unsnooze')
+                    ->label('Unsnooze')
+                    ->icon('heroicon-o-bell')
+                    ->color('gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                    ->visible(fn (Website $record): bool => $record->isSilenced())
+                    ->requiresConfirmation()
+                    ->modalHeading('Resume notifications')
+                    ->modalDescription('Notifications for this website will fire again on the next status change.')
+                    ->modalSubmitActionLabel('Unsnooze')
+                    ->action(function (Website $record): void {
+                        $record->update(['silenced_until' => null]);
+
+                        Notification::make()
+                            ->title('Notifications resumed')
+                            ->body("{$record->name} will alert again on the next status change.")
+                            ->success()
+                            ->send();
+                    }),
                 \Filament\Actions\Action::make('view_seo_progress')
                     ->label('View Progress')
                     ->icon('heroicon-o-chart-bar')
@@ -526,6 +590,65 @@ class WebsiteResource extends Resource
                                     ? 'Every selected website already had uptime checks disabled.'
                                     : 'Uptime checks will stay paused until they are re-enabled.')
                                 ->warning()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('snooze')
+                        ->label('Snooze notifications')
+                        ->icon('heroicon-o-bell-slash')
+                        ->color('warning')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                        ->modalHeading('Snooze notifications for selected websites')
+                        ->modalDescription('Suppress alert delivery during a maintenance window. Checks keep running, but no emails or webhooks fire while snoozed.')
+                        ->modalSubmitActionLabel('Snooze')
+                        ->schema(MonitorSnoozeAction::formSchema())
+                        ->action(function (Collection $records, array $data): void {
+                            $until = MonitorSnoozeAction::resolveUntil($data);
+
+                            if ($until === null) {
+                                Notification::make()
+                                    ->title('Snooze time must be in the future')
+                                    ->body('Pick a future moment, or use Unsnooze to clear the silence.')
+                                    ->danger()
+                                    ->send();
+
+                                return;
+                            }
+
+                            $count = Website::query()
+                                ->whereIn('id', $records->pluck('id'))
+                                ->update(['silenced_until' => $until]);
+
+                            Notification::make()
+                                ->title($count === 1 ? '1 website snoozed' : "{$count} websites snoozed")
+                                ->body("Alerts paused until {$until->format('M j, Y H:i')}.")
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('unsnooze')
+                        ->label('Unsnooze')
+                        ->icon('heroicon-o-bell')
+                        ->color('gray')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                        ->requiresConfirmation()
+                        ->modalHeading('Unsnooze selected websites')
+                        ->modalDescription('Notifications will resume immediately on the next status change for these websites.')
+                        ->modalSubmitActionLabel('Unsnooze')
+                        ->action(function (Collection $records): void {
+                            $ids = $records->whereNotNull('silenced_until')->pluck('id');
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : Website::query()->whereIn('id', $ids)->update(['silenced_until' => null]);
+
+                            Notification::make()
+                                ->title($count === 0
+                                    ? 'Nothing to unsnooze'
+                                    : ($count === 1 ? '1 website unsnoozed' : "{$count} websites unsnoozed"))
+                                ->body($count === 0
+                                    ? 'None of the selected websites had an active snooze.'
+                                    : 'Notifications will resume on the next status change.')
+                                ->success()
                                 ->send();
                         })
                         ->deselectRecordsAfterCompletion(),
