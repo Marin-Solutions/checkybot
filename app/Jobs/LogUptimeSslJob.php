@@ -94,7 +94,7 @@ class LogUptimeSslJob implements ShouldQueue
                 'status_summary' => $summary,
             ])->save();
 
-            if (! $this->suppressNotifications) {
+            if (! ($this->suppressNotifications ?? false)) {
                 if (
                     in_array($status, ['warning', 'danger'], true)
                     && $previousStatus !== $status

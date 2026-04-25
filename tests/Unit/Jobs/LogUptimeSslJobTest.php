@@ -311,6 +311,47 @@ test('job does not notify when a manual website remains in the same failing stat
     Mail::assertNothingSent();
 });
 
+test('job tolerates pre-deploy payloads where suppressNotifications was never initialized', function () {
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'source' => 'manual',
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    /**
+     * Simulate a job payload serialized before suppressNotifications existed:
+     * the typed property is left uninitialized after unserialization. The handler
+     * must not fatally error when reading it.
+     */
+    $reflection = new ReflectionClass(LogUptimeSslJob::class);
+    $job = $reflection->newInstanceWithoutConstructor();
+    $reflection->getProperty('website')->setValue($job, $website);
+
+    expect(fn () => $job->handle())->not->toThrow(\Throwable::class);
+
+    $website->refresh();
+
+    expect($website->current_status)->toBe('healthy');
+
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class);
+});
+
 test('job skips websites with uptime check disabled', function () {
     $website = Website::factory()->create([
         'url' => 'https://example.com',
