@@ -15,8 +15,20 @@ class ProjectIncidentFeedWidget extends IncidentFeedWidget
 
     public ?Project $record = null;
 
-    public function mount(): void
+    /**
+     * Reads from the public `$record` property so the project scope is
+     * preserved across every Livewire request (polling, sort, filter,
+     * pagination), not just the initial mount() call.
+     */
+    protected function getScopedProjectId(): ?int
     {
-        $this->projectId = $this->record?->getKey();
+        $key = $this->record?->getKey();
+
+        return $key === null ? null : (int) $key;
+    }
+
+    protected function getEmptyStateDescriptionText(): string
+    {
+        return 'No warning or danger transitions from this application\'s websites, API monitors or components in the last 7 days.';
     }
 }

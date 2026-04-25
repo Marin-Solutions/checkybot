@@ -23,10 +23,11 @@ describe('ProjectIncidentFeedWidget', function () {
         ]);
     });
 
-    it('renders successfully and shows the empty state when the project has no incidents', function () {
+    it('renders successfully and shows the project-scoped empty state when the project has no incidents', function () {
         Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
             ->assertSuccessful()
-            ->assertSee('All clear');
+            ->assertSee('All clear')
+            ->assertSee('this application');
     });
 
     it('shows incidents from this project and hides incidents from other projects', function () {
@@ -123,5 +124,40 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertSee('Queue depth growing')
             ->assertDontSee('reporting-cron')
             ->assertDontSee('Reporting cron unreachable');
+    });
+
+    it('keeps the project scope after a Livewire refresh (sort/filter/poll)', function () {
+        $mineWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Mine homepage',
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $mineWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Mine project incident',
+            'created_at' => now()->subMinute(),
+        ]);
+
+        $theirsWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->otherProject->id,
+            'name' => 'Other project homepage',
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $theirsWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Other project incident',
+            'created_at' => now()->subMinute(),
+        ]);
+
+        // Simulate a Livewire roundtrip (e.g. a sort change) by calling a
+        // public action on the widget after the initial render. The base
+        // table widget exposes `sortTable`, which retriggers the query —
+        // the scope must still be applied.
+        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->call('sortTable', 'occurred_at')
+            ->assertSee('Mine homepage')
+            ->assertDontSee('Other project homepage');
     });
 });

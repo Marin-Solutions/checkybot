@@ -6,19 +6,25 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\Website;
+use Carbon\CarbonInterface;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Collection;
 
 /**
  * Header strip on the project view that summarises how many of this
- * application's tracked surfaces (components, websites, monitor APIs)
- * are failing, healthy, stale or still waiting on data.
+ * application's tracked surfaces (active components, actively-monitored
+ * websites, enabled monitor APIs) are failing, healthy, stale or still
+ * waiting on data.
  *
- * The numbers should always add up to the total tracked surfaces, so
- * "failing" here means current_status of warning/danger but excludes
- * stale rows; stale is reported separately and "no data" rolls up
- * everything that has not reported yet so users can spot misconfigured
- * checks immediately.
+ * Paused websites (uptime_check = false), disabled monitor APIs
+ * (is_enabled = false) and archived components are excluded so the
+ * counts only reflect surfaces the user has actually opted in to.
+ *
+ * "Failing" means current_status of warning/danger but excludes stale
+ * rows; stale is reported separately and "no data" rolls up everything
+ * that has not reported yet so users can spot misconfigured checks
+ * immediately.
  */
 class ProjectHealthOverviewWidget extends BaseWidget
 {
@@ -29,6 +35,13 @@ class ProjectHealthOverviewWidget extends BaseWidget
     protected int|string|array $columnSpan = 'full';
 
     public ?Project $record = null;
+
+    private const EMPTY_BUCKETS = [
+        'failing' => 0,
+        'healthy' => 0,
+        'stale' => 0,
+        'no_data' => 0,
+    ];
 
     /**
      * @return array<int, Stat>
@@ -52,17 +65,9 @@ class ProjectHealthOverviewWidget extends BaseWidget
         $stale = $counts['stale'];
         $noData = $counts['no_data'];
 
-        $failingDescription = collect([
-            $counts['failing_components'] > 0 ? "{$counts['failing_components']} components" : null,
-            $counts['failing_websites'] > 0 ? "{$counts['failing_websites']} websites" : null,
-            $counts['failing_apis'] > 0 ? "{$counts['failing_apis']} APIs" : null,
-        ])->filter()->implode(', ');
-
         return [
             Stat::make('Failing', $failing)
-                ->description($failing === 0
-                    ? 'No warning or danger surfaces'
-                    : ($failingDescription !== '' ? $failingDescription : 'Warning or danger right now'))
+                ->description($this->buildFailingDescription($counts))
                 ->descriptionIcon($failing === 0 ? 'heroicon-m-shield-check' : 'heroicon-m-exclamation-triangle')
                 ->color($failing === 0 ? 'success' : 'danger'),
 
@@ -90,7 +95,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
      *     failing_apis: int,
      * }
      */
-    protected function collectCounts(): array
+    public function collectCounts(): array
     {
         $project = $this->record;
 
@@ -107,6 +112,8 @@ class ProjectHealthOverviewWidget extends BaseWidget
             ];
         }
 
+        $now = now();
+
         $components = ProjectComponent::query()
             ->where('project_id', $project->getKey())
             ->where('is_archived', false)
@@ -114,56 +121,25 @@ class ProjectHealthOverviewWidget extends BaseWidget
 
         $websites = Website::query()
             ->where('project_id', $project->getKey())
+            ->where('uptime_check', true)
             ->get(['current_status', 'stale_at']);
 
         $apis = MonitorApis::query()
             ->where('project_id', $project->getKey())
+            ->where('is_enabled', true)
             ->get(['current_status', 'stale_at']);
 
-        $now = now();
-
-        $componentBuckets = $components->reduce(function (array $carry, ProjectComponent $component) {
-            $bucket = match (true) {
-                (bool) $component->is_stale => 'stale',
-                $component->current_status === 'healthy' => 'healthy',
-                in_array($component->current_status, ['warning', 'danger'], true) => 'failing',
-                default => 'no_data',
-            };
-            $carry[$bucket]++;
+        $componentBuckets = $components->reduce(function (array $carry, ProjectComponent $component): array {
+            $carry[$this->classifyComponent($component)]++;
 
             return $carry;
-        }, ['failing' => 0, 'healthy' => 0, 'stale' => 0, 'no_data' => 0]);
+        }, self::EMPTY_BUCKETS);
 
-        $websiteBuckets = $websites->reduce(function (array $carry, Website $website) use ($now) {
-            $isStale = $website->stale_at !== null && $website->stale_at->lessThan($now);
-            $bucket = match (true) {
-                $isStale => 'stale',
-                $website->current_status === 'healthy' => 'healthy',
-                in_array($website->current_status, ['warning', 'danger'], true) => 'failing',
-                default => 'no_data',
-            };
-            $carry[$bucket]++;
-
-            return $carry;
-        }, ['failing' => 0, 'healthy' => 0, 'stale' => 0, 'no_data' => 0]);
-
-        $apiBuckets = $apis->reduce(function (array $carry, MonitorApis $api) use ($now) {
-            $isStale = $api->stale_at !== null && $api->stale_at->lessThan($now);
-            $bucket = match (true) {
-                $isStale => 'stale',
-                $api->current_status === 'healthy' => 'healthy',
-                in_array($api->current_status, ['warning', 'danger'], true) => 'failing',
-                default => 'no_data',
-            };
-            $carry[$bucket]++;
-
-            return $carry;
-        }, ['failing' => 0, 'healthy' => 0, 'stale' => 0, 'no_data' => 0]);
-
-        $tracked = $components->count() + $websites->count() + $apis->count();
+        $websiteBuckets = $this->bucketByStaleAt($websites, $now);
+        $apiBuckets = $this->bucketByStaleAt($apis, $now);
 
         return [
-            'tracked' => $tracked,
+            'tracked' => $components->count() + $websites->count() + $apis->count(),
             'failing' => $componentBuckets['failing'] + $websiteBuckets['failing'] + $apiBuckets['failing'],
             'healthy' => $componentBuckets['healthy'] + $websiteBuckets['healthy'] + $apiBuckets['healthy'],
             'stale' => $componentBuckets['stale'] + $websiteBuckets['stale'] + $apiBuckets['stale'],
@@ -174,7 +150,57 @@ class ProjectHealthOverviewWidget extends BaseWidget
         ];
     }
 
-    protected function buildStaleDescription(int $stale, int $noData): string
+    private function classifyComponent(ProjectComponent $component): string
+    {
+        return match (true) {
+            (bool) $component->is_stale => 'stale',
+            $component->current_status === 'healthy' => 'healthy',
+            in_array($component->current_status, ['warning', 'danger'], true) => 'failing',
+            default => 'no_data',
+        };
+    }
+
+    /**
+     * Bucket Website / MonitorApis records by their current_status, treating
+     * any record whose stale_at threshold has elapsed as stale regardless of
+     * the recorded current_status.
+     *
+     * @param  Collection<int, Website|MonitorApis>  $items
+     * @return array{failing: int, healthy: int, stale: int, no_data: int}
+     */
+    private function bucketByStaleAt(Collection $items, CarbonInterface $now): array
+    {
+        return $items->reduce(function (array $carry, $item) use ($now): array {
+            $isStale = $item->stale_at !== null && $item->stale_at->lessThan($now);
+            $bucket = match (true) {
+                $isStale => 'stale',
+                $item->current_status === 'healthy' => 'healthy',
+                in_array($item->current_status, ['warning', 'danger'], true) => 'failing',
+                default => 'no_data',
+            };
+            $carry[$bucket]++;
+
+            return $carry;
+        }, self::EMPTY_BUCKETS);
+    }
+
+    /**
+     * @param  array{failing: int, failing_components: int, failing_websites: int, failing_apis: int}  $counts
+     */
+    private function buildFailingDescription(array $counts): string
+    {
+        if ($counts['failing'] === 0) {
+            return 'No warning or danger surfaces';
+        }
+
+        return collect([
+            $counts['failing_components'] > 0 ? "{$counts['failing_components']} components" : null,
+            $counts['failing_websites'] > 0 ? "{$counts['failing_websites']} websites" : null,
+            $counts['failing_apis'] > 0 ? "{$counts['failing_apis']} APIs" : null,
+        ])->filter()->implode(', ');
+    }
+
+    private function buildStaleDescription(int $stale, int $noData): string
     {
         if ($stale === 0 && $noData === 0) {
             return 'Heartbeats are fresh';

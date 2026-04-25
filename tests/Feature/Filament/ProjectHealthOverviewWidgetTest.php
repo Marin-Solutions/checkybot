@@ -24,6 +24,7 @@ describe('ProjectHealthOverviewWidget', function () {
     });
 
     it('groups failing, healthy and stale counts across components, websites and APIs', function () {
+        // 1 healthy component, 1 failing component, 1 stale component
         ProjectComponent::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
@@ -43,10 +44,12 @@ describe('ProjectHealthOverviewWidget', function () {
             'is_stale' => true,
         ]);
 
+        // 1 healthy website, 1 stale website
         Website::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'source' => 'package',
+            'uptime_check' => true,
             'current_status' => 'healthy',
             'stale_at' => null,
         ]);
@@ -54,14 +57,17 @@ describe('ProjectHealthOverviewWidget', function () {
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'source' => 'package',
+            'uptime_check' => true,
             'current_status' => 'warning',
             'stale_at' => now()->subMinutes(10),
         ]);
 
+        // 1 failing API, 1 awaiting first heartbeat (no data)
         MonitorApis::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'source' => 'package',
+            'is_enabled' => true,
             'current_status' => 'danger',
             'stale_at' => null,
         ]);
@@ -69,15 +75,29 @@ describe('ProjectHealthOverviewWidget', function () {
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'source' => 'package',
+            'is_enabled' => true,
             'current_status' => null,
             'stale_at' => null,
         ]);
 
-        Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+        $widget = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
             ->assertSuccessful()
             ->assertSee('Failing')
             ->assertSee('Healthy')
             ->assertSee('Stale / No data');
+
+        $counts = $widget->instance()->collectCounts();
+
+        expect($counts)->toMatchArray([
+            'tracked' => 7,
+            'failing' => 2, // 1 danger component + 1 danger api (warning component is stale, not failing)
+            'healthy' => 2, // 1 healthy component + 1 healthy website
+            'stale' => 2,   // 1 stale component + 1 stale website
+            'no_data' => 1, // 1 api awaiting heartbeat
+            'failing_components' => 1,
+            'failing_websites' => 0,
+            'failing_apis' => 1,
+        ]);
     });
 
     it('ignores archived components and other projects', function () {
@@ -99,12 +119,9 @@ describe('ProjectHealthOverviewWidget', function () {
             'current_status' => 'danger',
         ]);
 
-        $widget = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project]);
-
-        $instance = $widget->instance();
-        $reflection = new ReflectionMethod($instance, 'collectCounts');
-        $reflection->setAccessible(true);
-        $counts = $reflection->invoke($instance);
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
 
         expect($counts['tracked'])->toBe(1)
             ->and($counts['healthy'])->toBe(1)
@@ -117,18 +134,75 @@ describe('ProjectHealthOverviewWidget', function () {
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'source' => 'package',
+            'uptime_check' => true,
             'current_status' => 'healthy',
             'stale_at' => now()->subMinutes(10),
         ]);
 
-        $widget = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project]);
-
-        $reflection = new ReflectionMethod($widget->instance(), 'collectCounts');
-        $reflection->setAccessible(true);
-        $counts = $reflection->invoke($widget->instance());
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
 
         expect($counts['tracked'])->toBe(1)
             ->and($counts['stale'])->toBe(1)
             ->and($counts['healthy'])->toBe(0);
+    });
+
+    it('excludes paused websites from the failing and stale counts', function () {
+        // An actively-monitored healthy website
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => true,
+            'current_status' => 'healthy',
+        ]);
+
+        // A paused website that previously went into danger — should not count
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => false,
+            'current_status' => 'danger',
+            'stale_at' => now()->subHour(),
+        ]);
+
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
+
+        expect($counts['tracked'])->toBe(1)
+            ->and($counts['failing'])->toBe(0)
+            ->and($counts['stale'])->toBe(0)
+            ->and($counts['healthy'])->toBe(1);
+    });
+
+    it('excludes disabled API monitors from the failing and stale counts', function () {
+        MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'is_enabled' => true,
+            'current_status' => 'healthy',
+        ]);
+
+        // A disabled API that was failing — should not count
+        MonitorApis::factory()->disabled()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'current_status' => 'danger',
+            'stale_at' => now()->subHour(),
+        ]);
+
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
+
+        expect($counts['tracked'])->toBe(1)
+            ->and($counts['failing'])->toBe(0)
+            ->and($counts['stale'])->toBe(0)
+            ->and($counts['healthy'])->toBe(1);
     });
 });

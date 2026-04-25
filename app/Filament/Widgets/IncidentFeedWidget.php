@@ -30,12 +30,6 @@ class IncidentFeedWidget extends BaseWidget
 
     protected const INCIDENT_STATUSES = ['warning', 'danger'];
 
-    /**
-     * Optional project id used to scope the incident feed to a single application.
-     * Null means show every incident the current user owns.
-     */
-    protected ?int $projectId = null;
-
     public function table(Table $table): Table
     {
         return $table
@@ -120,8 +114,25 @@ class IncidentFeedWidget extends BaseWidget
             ->paginated([10, 25, 50])
             ->defaultPaginationPageOption(10)
             ->emptyStateHeading('All clear')
-            ->emptyStateDescription('No warning or danger transitions from your websites, API monitors or components in the selected window.')
+            ->emptyStateDescription($this->getEmptyStateDescriptionText())
             ->emptyStateIcon('heroicon-o-shield-check');
+    }
+
+    /**
+     * Returns the project id the feed is scoped to, or null for the global feed.
+     *
+     * Subclasses must derive this from a Livewire-tracked public property
+     * (mount() runs only on initial render, so reading from a protected
+     * field set in mount() is unsafe across polling/sort/filter requests).
+     */
+    protected function getScopedProjectId(): ?int
+    {
+        return null;
+    }
+
+    protected function getEmptyStateDescriptionText(): string
+    {
+        return 'No warning or danger transitions from your websites, API monitors or components in the selected window.';
     }
 
     protected function buildIncidentsQuery(): Builder
@@ -129,7 +140,7 @@ class IncidentFeedWidget extends BaseWidget
         return self::buildIncidentsQueryFor(
             userId: (int) Auth::id(),
             since: now()->subDays(7),
-            projectId: $this->projectId,
+            projectId: $this->getScopedProjectId(),
         );
     }
 
