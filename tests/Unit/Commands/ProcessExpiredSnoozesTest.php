@@ -5,6 +5,8 @@ use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
+use App\Services\HealthEventNotificationService;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 test('command clears expired snooze on a website that is still unhealthy and re-fires the alert', function () {
@@ -147,6 +149,79 @@ test('command ignores monitors that were never snoozed', function () {
 
     $this->artisan('app:process-expired-snoozes')
         ->assertSuccessful();
+
+    Mail::assertNothingSent();
+});
+
+test('command preserves silenced_until when delivery throws so the next run retries', function () {
+    Log::spy();
+
+    $website = Website::factory()->create([
+        'current_status' => 'danger',
+        'status_summary' => 'Returned HTTP 500.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    $this->mock(HealthEventNotificationService::class, function ($mock): void {
+        $mock->shouldReceive('notifyWebsite')->once()->andThrow(new RuntimeException('SMTP down'));
+    });
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->not->toBeNull();
+
+    Log::shouldHaveReceived('error')->once();
+});
+
+test('command skips disabled api monitors but still clears their expired snooze', function () {
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'is_enabled' => false,
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($monitor->refresh()->silenced_until)->toBeNull();
+
+    Mail::assertNothingSent();
+});
+
+test('command skips websites with every check toggled off but still clears their expired snooze', function () {
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'outbound_check' => false,
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
 
     Mail::assertNothingSent();
 });

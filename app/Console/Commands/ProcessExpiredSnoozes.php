@@ -6,6 +6,8 @@ use App\Models\MonitorApis;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * Reconciles monitors whose snooze window has just expired.
@@ -20,9 +22,17 @@ use Illuminate\Console\Command;
  * a maintenance window would remain unalerted indefinitely.
  *
  * The reconciliation pass runs every minute. For each monitor whose
- * `silenced_until` has just passed, it clears the timestamp (so subsequent
- * runs ignore the row) and, if the monitor is still unhealthy, re-fires the
- * suppressed alert via the notification service.
+ * `silenced_until` has just passed:
+ *
+ * - We attempt to deliver the suppressed alert *first*, only clearing the
+ *   timestamp once delivery succeeds. A transport failure (mail bounce,
+ *   webhook timeout) leaves `silenced_until` set so the next run retries
+ *   instead of silently losing the alert.
+ * - Disabled API monitors and websites with every check toggled off are
+ *   skipped — their `current_status` is frozen and re-firing a stale alert
+ *   would mislead the operator. The snooze marker is still cleared so the
+ *   UI doesn't keep showing an expired window.
+ * - Healthy monitors get their snooze cleared with no alert.
  */
 class ProcessExpiredSnoozes extends Command
 {
@@ -46,13 +56,24 @@ class ProcessExpiredSnoozes extends Command
             ->get()
             ->each(function (Website $website) use ($notificationService): void {
                 $status = $website->current_status;
-                $summary = $this->summaryFor($website->status_summary, $status);
+
+                if ($this->shouldAlert($status, $this->isWebsiteActivelyMonitored($website))) {
+                    $delivered = $this->safelyDeliver(
+                        fn () => $notificationService->notifyWebsite(
+                            $website,
+                            'snooze_expired',
+                            $status,
+                            $this->summaryFor($website->status_summary, $status),
+                        ),
+                        ['website_id' => $website->id],
+                    );
+
+                    if (! $delivered) {
+                        return;
+                    }
+                }
 
                 $website->update(['silenced_until' => null]);
-
-                if ($this->isUnhealthy($status)) {
-                    $notificationService->notifyWebsite($website, 'snooze_expired', $status, $summary);
-                }
             });
     }
 
@@ -64,19 +85,60 @@ class ProcessExpiredSnoozes extends Command
             ->get()
             ->each(function (MonitorApis $monitorApi) use ($notificationService): void {
                 $status = $monitorApi->current_status;
-                $summary = $this->summaryFor($monitorApi->status_summary, $status);
+
+                if ($this->shouldAlert($status, (bool) $monitorApi->is_enabled)) {
+                    $delivered = $this->safelyDeliver(
+                        fn () => $notificationService->notifyApi(
+                            $monitorApi,
+                            'snooze_expired',
+                            $status,
+                            $this->summaryFor($monitorApi->status_summary, $status),
+                        ),
+                        ['monitor_api_id' => $monitorApi->id],
+                    );
+
+                    if (! $delivered) {
+                        return;
+                    }
+                }
 
                 $monitorApi->update(['silenced_until' => null]);
-
-                if ($this->isUnhealthy($status)) {
-                    $notificationService->notifyApi($monitorApi, 'snooze_expired', $status, $summary);
-                }
             });
     }
 
-    private function isUnhealthy(?string $status): bool
+    private function shouldAlert(?string $status, bool $isActivelyMonitored): bool
     {
-        return in_array($status, ['warning', 'danger'], true);
+        return $isActivelyMonitored && in_array($status, ['warning', 'danger'], true);
+    }
+
+    private function isWebsiteActivelyMonitored(Website $website): bool
+    {
+        return (bool) ($website->uptime_check || $website->ssl_check || $website->outbound_check);
+    }
+
+    /**
+     * Run the delivery callback and return whether it completed successfully.
+     *
+     * On failure we leave `silenced_until` intact so the next reconciliation
+     * retries — preferable to silently dropping an alert when a transport is
+     * temporarily down.
+     *
+     * @param  array<string, mixed>  $logContext
+     */
+    private function safelyDeliver(\Closure $deliver, array $logContext): bool
+    {
+        try {
+            $deliver();
+
+            return true;
+        } catch (Throwable $exception) {
+            Log::error('Failed to deliver snooze-expired alert; retaining silenced_until for retry', [
+                ...$logContext,
+                'exception' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     private function summaryFor(?string $existingSummary, ?string $status): string
