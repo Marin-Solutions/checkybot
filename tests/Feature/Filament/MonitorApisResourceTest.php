@@ -545,11 +545,19 @@ test('super admin can filter api monitors to only failing', function () {
     $warning = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
     $danger = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
     $unknown = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $disabledWarning = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    $disabledDanger = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
 
     Livewire::test(ListMonitorApis::class)
         ->filterTable('only_failing', true)
         ->assertCanSeeTableRecords([$warning, $danger])
-        ->assertCanNotSeeTableRecords([$healthy, $unknown]);
+        ->assertCanNotSeeTableRecords([$healthy, $unknown, $disabledWarning, $disabledDanger]);
 });
 
 test('user without Update:MonitorApis permission cannot see API monitor bulk actions', function () {

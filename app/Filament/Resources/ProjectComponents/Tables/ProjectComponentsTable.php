@@ -12,6 +12,7 @@ use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 class ProjectComponentsTable
@@ -46,7 +47,9 @@ class ProjectComponentsTable
             ])
             ->filters([
                 HealthStatusFilter::makeForNonNullableColumn(),
-                HealthStatusFilter::onlyFailing(),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('is_archived', false),
+                ),
             ])
             ->recordActions([
                 ViewAction::make(),

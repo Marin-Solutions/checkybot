@@ -165,7 +165,9 @@ class MonitorApisResource extends Resource
             ])
             ->filters([
                 HealthStatusFilter::make(),
-                HealthStatusFilter::onlyFailing(),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('is_enabled', true),
+                ),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([

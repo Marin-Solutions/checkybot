@@ -483,11 +483,21 @@ test('super admin can filter websites to only failing', function () {
     $warning = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
     $danger = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
     $unknown = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $pausedWarning = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+        'uptime_check' => false,
+    ]);
+    $pausedDanger = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'uptime_check' => false,
+    ]);
 
     Livewire::test(ListWebsites::class)
         ->filterTable('only_failing', true)
         ->assertCanSeeTableRecords([$warning, $danger])
-        ->assertCanNotSeeTableRecords([$healthy, $unknown]);
+        ->assertCanNotSeeTableRecords([$healthy, $unknown, $pausedWarning, $pausedDanger]);
 });
 
 test('super admin can bulk disable uptime checks on websites', function () {

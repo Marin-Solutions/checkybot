@@ -396,10 +396,19 @@ test('super admin can filter applications to only failing', function () {
 
     $unknownProject = Project::factory()->create(['name' => 'Unknown App', 'created_by' => $user->id]);
 
+    $archivedFailingProject = Project::factory()->create(['name' => 'Archived Failing App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $archivedFailingProject->id,
+        'current_status' => 'danger',
+        'is_archived' => true,
+        'archived_at' => now()->subHour(),
+        'created_by' => $user->id,
+    ]);
+
     Livewire::test(ListProjects::class)
         ->filterTable('only_failing', true)
         ->assertCanSeeTableRecords([$warningProject, $dangerProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $unknownProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $unknownProject, $archivedFailingProject]);
 });
 
 test('super admin can filter application components by current status', function () {
@@ -463,11 +472,21 @@ test('super admin can filter application components to only failing', function (
         'current_status' => 'danger',
         'created_by' => $user->id,
     ]);
+    $archivedWarning = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    $archivedDanger = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
 
     Livewire::test(ListProjectComponents::class)
         ->filterTable('only_failing', true)
         ->assertCanSeeTableRecords([$warning, $danger])
-        ->assertCanNotSeeTableRecords([$healthy]);
+        ->assertCanNotSeeTableRecords([$healthy, $archivedWarning, $archivedDanger]);
 });
 
 test('super admin can bulk disable project components', function () {

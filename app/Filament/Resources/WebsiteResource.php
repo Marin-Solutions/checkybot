@@ -371,7 +371,9 @@ class WebsiteResource extends Resource
             ])
             ->filters([
                 HealthStatusFilter::make(),
-                HealthStatusFilter::onlyFailing(),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('uptime_check', true),
+                ),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([

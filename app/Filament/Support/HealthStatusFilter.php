@@ -2,6 +2,7 @@
 
 namespace App\Filament\Support;
 
+use Closure;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
@@ -78,12 +79,28 @@ class HealthStatusFilter
     /**
      * Toggle that narrows the table to records currently in warning or
      * danger — the "show me only what is broken right now" shortcut.
+     *
+     * Disable flows for websites, API monitors, and components toggle
+     * `uptime_check` / `is_enabled` / `is_archived` without normalising
+     * `current_status`, so a stale failing status can linger on a paused
+     * row. Callers pass an `$activeScope` closure that constrains the
+     * query to records that are currently being checked, ensuring the
+     * "only failing" shortcut surfaces a real triage list rather than
+     * frozen historical state.
      */
-    public static function onlyFailing(string $column = 'current_status'): Filter
+    public static function onlyFailing(string $column = 'current_status', ?Closure $activeScope = null): Filter
     {
         return Filter::make('only_failing')
             ->label('Show only failing')
             ->toggle()
-            ->query(fn (Builder $query): Builder => $query->whereIn($column, ['warning', 'danger']));
+            ->query(function (Builder $query) use ($column, $activeScope): Builder {
+                $query->whereIn($column, ['warning', 'danger']);
+
+                if ($activeScope !== null) {
+                    $activeScope($query);
+                }
+
+                return $query;
+            });
     }
 }
