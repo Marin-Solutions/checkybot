@@ -121,6 +121,14 @@ class NotificationSettingResource extends Resource
                 \Filament\Actions\BulkActionGroup::make([
                     \Filament\Actions\DeleteBulkAction::make(),
                 ]),
+            ])
+            ->emptyStateHeading('No global notification rules yet')
+            ->emptyStateDescription('Create a rule to be alerted by email or webhook when any of your monitors changes state. Rules added here apply across every website that opts into the matching monitor.')
+            ->emptyStateIcon('heroicon-o-bell-alert')
+            ->emptyStateActions([
+                \Filament\Actions\CreateAction::make()
+                    ->label('Add notification rule')
+                    ->icon('heroicon-o-plus'),
             ]);
     }
 

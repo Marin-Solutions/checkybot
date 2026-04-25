@@ -301,7 +301,14 @@ class MonitorApisResource extends Resource
                     \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->emptyStateHeading('No APIs');
+            ->emptyStateHeading('No API monitors yet')
+            ->emptyStateDescription('Add your first API monitor to start tracking response time, status codes, and assertions on a schedule.')
+            ->emptyStateIcon('heroicon-o-rectangle-stack')
+            ->emptyStateActions([
+                \Filament\Actions\CreateAction::make()
+                    ->label('Add API monitor')
+                    ->icon('heroicon-o-plus'),
+            ]);
     }
 
     public static function infolist(Schema $schema): Schema
