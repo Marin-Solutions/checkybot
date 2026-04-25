@@ -274,6 +274,122 @@ test('command skips websites with uptime_check disabled even when ssl and outbou
     Mail::assertNothingSent();
 });
 
+test('command alerts on a package-managed website with uptime_check off because MarkStalePackageChecks keeps current_status fresh', function () {
+    Mail::fake();
+
+    // syncSslChecks() creates package SSL websites with uptime_check=false.
+    // LogUptimeSslJob never runs for them, but MarkStalePackageChecks does
+    // and writes current_status='danger' on staleness — so a snooze that
+    // expires while one is unhealthy must still re-fire the alert.
+    $website = Website::factory()->create([
+        'source' => 'package',
+        'package_interval' => '5m',
+        'uptime_check' => false,
+        'current_status' => 'danger',
+        'status_summary' => 'No heartbeat received in 5m.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
+test('command skips snooze_expired alert if uptime_check was toggled off between fresh-fetch and delivery', function () {
+    Mail::fake();
+
+    // Operator disables uptime_check in the small window between the
+    // command's fresh() probe and the helper's authoritative re-read.
+    // The helper must observe the toggle and skip the alert; status would
+    // be frozen from before the toggle so paging is misleading.
+    $website = Website::factory()->create([
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $retrievals = 0;
+    \Illuminate\Support\Facades\Event::listen(
+        'eloquent.retrieved: '.Website::class,
+        function (Website $retrieved) use (&$retrievals, $website): void {
+            $retrievals++;
+
+            if ($retrievals === 2 && $retrieved->id === $website->id) {
+                Website::query()
+                    ->whereKey($website->id)
+                    ->update(['uptime_check' => false]);
+            }
+        }
+    );
+
+    try {
+        $this->artisan('app:process-expired-snoozes')->assertSuccessful();
+    } finally {
+        \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: '.Website::class);
+    }
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+    Mail::assertNothingSent();
+});
+
+test('command skips snooze_expired alert if an api monitor was disabled between fresh-fetch and delivery', function () {
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    $retrievals = 0;
+    \Illuminate\Support\Facades\Event::listen(
+        'eloquent.retrieved: '.MonitorApis::class,
+        function (MonitorApis $retrieved) use (&$retrievals, $monitor): void {
+            $retrievals++;
+
+            if ($retrievals === 2 && $retrieved->id === $monitor->id) {
+                MonitorApis::query()
+                    ->whereKey($monitor->id)
+                    ->update(['is_enabled' => false]);
+            }
+        }
+    );
+
+    try {
+        $this->artisan('app:process-expired-snoozes')->assertSuccessful();
+    } finally {
+        \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: '.MonitorApis::class);
+    }
+
+    expect($monitor->refresh()->silenced_until)->toBeNull();
+    Mail::assertNothingSent();
+});
+
 test('command skips snooze_expired alert when the monitor recovered concurrently before delivery', function () {
     Mail::fake();
 

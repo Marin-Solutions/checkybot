@@ -33,16 +33,20 @@ use Throwable;
  *   Together these guard against a user re-snoozing the monitor between
  *   our SELECT snapshot and the per-row work — without this we would fire
  *   a stale alert and clobber the operator's fresh snooze with `null`.
- * - Status is re-validated immediately before delivery. A concurrent
- *   uptime check can flip `current_status` to healthy in the millisecond
- *   window between our fresh fetch and the notify call; without this
- *   final probe the operator would receive a stale "still unhealthy"
- *   page about a monitor that has already recovered.
- * - Disabled API monitors and websites with `uptime_check` off are
- *   skipped — `current_status` is only updated by the uptime pipeline
- *   (LogUptimeSslJob short-circuits when uptime_check is false), so any
- *   stored danger value is frozen from before the toggle change. SSL and
- *   outbound checks don't keep `current_status` fresh on their own. The
+ * - The full row is re-read immediately before delivery and every alert
+ *   precondition (status, active-monitoring guard, existence) is re-
+ *   evaluated. This catches concurrent uptime-check recoveries AND
+ *   concurrent toggle-offs (operator pausing the monitor between our
+ *   fresh fetch and the notify call), both of which would otherwise
+ *   produce a stale page.
+ * - Disabled monitors are skipped: API monitors with `is_enabled = false`,
+ *   and websites whose `current_status` is no longer maintained by any
+ *   pipeline. Status is updated by `LogUptimeSslJob` when `uptime_check`
+ *   is on, and by `MarkStalePackageChecks` for `source = 'package'` rows
+ *   with a `package_interval` (this matters because package SSL checks
+ *   are created with `uptime_check = false` but still receive status
+ *   updates). Standard websites with only SSL/outbound on don't qualify —
+ *   their stored status is frozen from before the toggle change. The
  *   snooze marker is still cleared so the UI doesn't keep showing an
  *   expired window.
  * - Healthy monitors get their snooze cleared with no alert.
@@ -75,14 +79,15 @@ class ProcessExpiredSnoozes extends Command
                 }
 
                 if ($this->shouldAlert($fresh->current_status, $this->isWebsiteActivelyMonitored($fresh))) {
-                    $delivered = $this->deliverIfStillUnhealthy(
+                    $delivered = $this->deliverIfStillAlertable(
                         Website::class,
                         $fresh->id,
-                        fn (string $status, ?string $summary) => $notificationService->notifyWebsite(
-                            $fresh,
+                        fn (Website $latest): bool => $this->isWebsiteActivelyMonitored($latest),
+                        fn (Website $latest) => $notificationService->notifyWebsite(
+                            $latest,
                             'snooze_expired',
-                            $status,
-                            $this->summaryFor($summary, $status),
+                            $latest->current_status,
+                            $this->summaryFor($latest->status_summary, $latest->current_status),
                         ),
                         ['website_id' => $fresh->id],
                     );
@@ -110,14 +115,15 @@ class ProcessExpiredSnoozes extends Command
                 }
 
                 if ($this->shouldAlert($fresh->current_status, (bool) $fresh->is_enabled)) {
-                    $delivered = $this->deliverIfStillUnhealthy(
+                    $delivered = $this->deliverIfStillAlertable(
                         MonitorApis::class,
                         $fresh->id,
-                        fn (string $status, ?string $summary) => $notificationService->notifyApi(
-                            $fresh,
+                        fn (MonitorApis $latest): bool => (bool) $latest->is_enabled,
+                        fn (MonitorApis $latest) => $notificationService->notifyApi(
+                            $latest,
                             'snooze_expired',
-                            $status,
-                            $this->summaryFor($summary, $status),
+                            $latest->current_status,
+                            $this->summaryFor($latest->status_summary, $latest->current_status),
                         ),
                         ['monitor_api_id' => $fresh->id],
                     );
@@ -132,29 +138,41 @@ class ProcessExpiredSnoozes extends Command
     }
 
     /**
-     * Re-read current_status + status_summary right before delivery, then
-     * dispatch only if the monitor is still unhealthy. Returns:
+     * Re-read the full row right before delivery and re-evaluate every
+     * condition the alert depends on — current status, the active-
+     * monitoring guard (uptime_check / is_enabled / package fallbacks),
+     * and implicitly that the row still exists. This is the authoritative
+     * decision point: it catches concurrent recoveries (status flipped to
+     * healthy) AND concurrent toggles (operator paused the monitor while
+     * we were preparing to alert), both of which can land in the gap
+     * between fresh-fetch and notify call. Returns:
      *
      * - true  → delivered (or partially delivered; no retry needed)
      * - false → delivery failed entirely; caller must preserve silenced_until
-     * - null  → recovered concurrently; skip alert but proceed to clear
+     * - null  → not alertable on the latest read (recovered, paused, or
+     *           gone); caller proceeds to clear silenced_until
      *
      * @param  class-string<Website|MonitorApis>  $modelClass
      * @param  array<string, mixed>  $logContext
      */
-    private function deliverIfStillUnhealthy(string $modelClass, int $id, \Closure $delivery, array $logContext): ?bool
+    private function deliverIfStillAlertable(string $modelClass, int $id, \Closure $isStillActive, \Closure $delivery, array $logContext): ?bool
     {
-        $latest = $modelClass::query()
-            ->whereKey($id)
-            ->select(['current_status', 'status_summary'])
-            ->first();
+        $latest = $modelClass::find($id);
 
-        if (! in_array($latest?->current_status, ['warning', 'danger'], true)) {
+        if ($latest === null) {
+            return null;
+        }
+
+        if (! $isStillActive($latest)) {
+            return null;
+        }
+
+        if (! in_array($latest->current_status, ['warning', 'danger'], true)) {
             return null;
         }
 
         return $this->safelyDeliver(
-            fn () => $delivery($latest->current_status, $latest->status_summary),
+            fn () => $delivery($latest),
             $logContext,
         );
     }
@@ -200,17 +218,28 @@ class ProcessExpiredSnoozes extends Command
     }
 
     /**
-     * `current_status` is updated only by `LogUptimeSslJob`, which short-
-     * circuits when `uptime_check` is false. SSL-cert and outbound-link
-     * checks live on their own pipelines and do not refresh the uptime-
-     * derived status, so the value is frozen the moment uptime is paused.
-     * Re-firing a snooze-expired alert from that frozen status would
-     * surface a stale outage for an intentionally idle pipeline — gate
-     * this strictly on the uptime toggle.
+     * `current_status` for a website is written by two pipelines:
+     *
+     * 1. `LogUptimeSslJob` — gated on `uptime_check`; short-circuits at
+     *    line 39 when the toggle is off.
+     * 2. `MarkStalePackageChecks` — runs for every `source = 'package'`
+     *    row that has a `package_interval`, regardless of `uptime_check`.
+     *    Package-managed SSL checks are created with `uptime_check = false`
+     *    by `CheckSyncService::syncSslChecks()`, but they still get their
+     *    `current_status` flipped to `danger` when stale.
+     *
+     * A monitor is "actively monitored" — i.e. its stored status is fresh
+     * enough to alert on — when *any* of those two pipelines applies. SSL-
+     * cert and outbound-link checks on standard websites do not write to
+     * `current_status` and therefore do not qualify.
      */
     private function isWebsiteActivelyMonitored(Website $website): bool
     {
-        return (bool) $website->uptime_check;
+        if ($website->uptime_check) {
+            return true;
+        }
+
+        return $website->source === 'package' && $website->package_interval !== null;
     }
 
     /**
