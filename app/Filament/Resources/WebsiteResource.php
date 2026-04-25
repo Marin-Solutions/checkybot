@@ -557,6 +557,7 @@ class WebsiteResource extends Resource
                             if ($until === null) {
                                 Notification::make()
                                     ->title('Snooze time must be in the future')
+                                    ->body('Pick a future moment, or use Unsnooze to clear the silence.')
                                     ->danger()
                                     ->send();
 
