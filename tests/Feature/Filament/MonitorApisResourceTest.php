@@ -7,6 +7,7 @@ use App\Filament\Resources\MonitorApisResource\Pages\ViewMonitorApis;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\ResultsRelationManager;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -348,6 +349,119 @@ test('api monitor view shows evidence rich latest run overview', function () {
         ->assertSee('trace-123');
 });
 
+test('super admin can bulk disable api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('disable', $monitors);
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeFalse();
+    }
+});
+
+test('super admin can bulk enable api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->disabled()->count(3)->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('enable', $monitors);
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeTrue();
+    }
+});
+
+test('super admin can bulk change the interval of api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'package_interval' => '5m',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('changeInterval', $monitors, data: [
+            'interval' => '15m',
+        ]);
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->package_interval)->toBe('15m');
+    }
+});
+
+test('bulk change interval on monitors already at the target interval notifies that nothing changed', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'package_interval' => '15m',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('changeInterval', $monitors, data: [
+            'interval' => '15m',
+        ])
+        ->assertNotified('Nothing to update');
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->package_interval)->toBe('15m');
+    }
+});
+
+test('bulk disable on already disabled api monitors notifies that nothing changed', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->disabled()->count(2)->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('disable', $monitors)
+        ->assertNotified('Nothing to disable');
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeFalse();
+    }
+});
+
+test('bulk enable on already enabled api monitors notifies that nothing changed', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('enable', $monitors)
+        ->assertNotified('Nothing to enable');
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeTrue();
+    }
+});
+
 test('api monitor results list exposes drill down action with evidence summary', function () {
     $this->createResourcePermissions('MonitorApis');
 
@@ -386,4 +500,76 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('API heartbeat is degraded with HTTP status 404.')
         ->assertSee('View Evidence')
         ->assertSee('1');
+});
+
+test('user without Update:MonitorApis permission cannot see API monitor bulk actions', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:MonitorApis');
+    $this->actingAs($user);
+
+    MonitorApis::factory()->count(2)->create(['created_by' => $user->id]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable')
+        ->assertTableBulkActionHidden('changeInterval');
+});
+
+test('soft-deleted API monitors are not counted in bulk disable notification', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $active = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    $trashed = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('disable', $selection)
+        ->assertNotified('2 API monitors disabled');
+
+    foreach ($active as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeFalse();
+    }
+
+    expect(MonitorApis::withTrashed()->find($trashed->id)->is_enabled)->toBeTrue();
+});
+
+test('soft-deleted API monitors are not counted in bulk enable notification', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $active = MonitorApis::factory()->disabled()->count(2)->create([
+        'created_by' => $user->id,
+    ]);
+
+    $trashed = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('enable', $selection)
+        ->assertNotified('2 API monitors enabled');
+
+    foreach ($active as $monitor) {
+        expect($monitor->refresh()->is_enabled)->toBeTrue();
+    }
+
+    expect(MonitorApis::withTrashed()->find($trashed->id)->is_enabled)->toBeFalse();
 });

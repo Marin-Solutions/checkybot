@@ -446,6 +446,142 @@ test('regular user cannot access website resource', function () {
         ->assertForbidden();
 });
 
+test('super admin can bulk disable uptime checks on websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('disableUptimeCheck', $websites);
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeFalse();
+    }
+});
+
+test('super admin can bulk enable uptime checks on websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(3)->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('enableUptimeCheck', $websites);
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeTrue();
+    }
+});
+
+test('bulk disable on already disabled websites notifies that nothing changed', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('disableUptimeCheck', $websites)
+        ->assertNotified('Nothing to disable');
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeFalse();
+    }
+});
+
+test('bulk enable on already enabled websites notifies that nothing changed', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('enableUptimeCheck', $websites)
+        ->assertNotified('Nothing to enable');
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_check)->toBeTrue();
+    }
+});
+
+test('user without Update:Website permission cannot see website bulk actions', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:Website');
+    $this->actingAs($user);
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableBulkActionHidden('enableUptimeCheck')
+        ->assertTableBulkActionHidden('disableUptimeCheck');
+});
+
+test('soft-deleted websites are not counted in bulk uptime disable notification', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $active = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('disableUptimeCheck', $selection)
+        ->assertNotified('2 websites disabled');
+
+    foreach ($active as $website) {
+        expect($website->refresh()->uptime_check)->toBeFalse();
+    }
+
+    expect(Website::withTrashed()->find($trashed->id)->uptime_check)->toBeTrue();
+});
+
+test('soft-deleted websites are not counted in bulk uptime enable notification', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $active = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('enableUptimeCheck', $selection)
+        ->assertNotified('2 websites enabled');
+
+    foreach ($active as $website) {
+        expect($website->refresh()->uptime_check)->toBeTrue();
+    }
+
+    expect(Website::withTrashed()->find($trashed->id)->uptime_check)->toBeFalse();
+});
+
 test('super admin can render view page with infolist sections', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
