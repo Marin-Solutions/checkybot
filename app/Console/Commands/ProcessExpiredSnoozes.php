@@ -28,6 +28,11 @@ use Throwable;
  *   timestamp once delivery succeeds. A transport failure (mail bounce,
  *   webhook timeout) leaves `silenced_until` set so the next run retries
  *   instead of silently losing the alert.
+ * - Each row is re-fetched before processing and cleared via a conditional
+ *   UPDATE that only fires when `silenced_until` is still in the past.
+ *   Together these guard against a user re-snoozing the monitor between
+ *   our SELECT snapshot and the per-row work — without this we would fire
+ *   a stale alert and clobber the operator's fresh snooze with `null`.
  * - Disabled API monitors and websites with every check toggled off are
  *   skipped — their `current_status` is frozen and re-firing a stale alert
  *   would mislead the operator. The snooze marker is still cleared so the
@@ -55,17 +60,23 @@ class ProcessExpiredSnoozes extends Command
             ->where('silenced_until', '<=', now())
             ->get()
             ->each(function (Website $website) use ($notificationService): void {
-                $status = $website->current_status;
+                $fresh = $website->fresh();
 
-                if ($this->shouldAlert($status, $this->isWebsiteActivelyMonitored($website))) {
+                if (! $this->isStillExpired($fresh)) {
+                    return;
+                }
+
+                $status = $fresh->current_status;
+
+                if ($this->shouldAlert($status, $this->isWebsiteActivelyMonitored($fresh))) {
                     $delivered = $this->safelyDeliver(
                         fn () => $notificationService->notifyWebsite(
-                            $website,
+                            $fresh,
                             'snooze_expired',
                             $status,
-                            $this->summaryFor($website->status_summary, $status),
+                            $this->summaryFor($fresh->status_summary, $status),
                         ),
-                        ['website_id' => $website->id],
+                        ['website_id' => $fresh->id],
                     );
 
                     if (! $delivered) {
@@ -73,7 +84,7 @@ class ProcessExpiredSnoozes extends Command
                     }
                 }
 
-                $website->update(['silenced_until' => null]);
+                $this->clearIfStillExpired(Website::class, $fresh->id);
             });
     }
 
@@ -84,17 +95,23 @@ class ProcessExpiredSnoozes extends Command
             ->where('silenced_until', '<=', now())
             ->get()
             ->each(function (MonitorApis $monitorApi) use ($notificationService): void {
-                $status = $monitorApi->current_status;
+                $fresh = $monitorApi->fresh();
 
-                if ($this->shouldAlert($status, (bool) $monitorApi->is_enabled)) {
+                if (! $this->isStillExpired($fresh)) {
+                    return;
+                }
+
+                $status = $fresh->current_status;
+
+                if ($this->shouldAlert($status, (bool) $fresh->is_enabled)) {
                     $delivered = $this->safelyDeliver(
                         fn () => $notificationService->notifyApi(
-                            $monitorApi,
+                            $fresh,
                             'snooze_expired',
                             $status,
-                            $this->summaryFor($monitorApi->status_summary, $status),
+                            $this->summaryFor($fresh->status_summary, $status),
                         ),
-                        ['monitor_api_id' => $monitorApi->id],
+                        ['monitor_api_id' => $fresh->id],
                     );
 
                     if (! $delivered) {
@@ -102,8 +119,43 @@ class ProcessExpiredSnoozes extends Command
                     }
                 }
 
-                $monitorApi->update(['silenced_until' => null]);
+                $this->clearIfStillExpired(MonitorApis::class, $fresh->id);
             });
+    }
+
+    /**
+     * True iff the row is still in the "snooze just expired" state — i.e.
+     * `silenced_until` is non-null and not in the future. A user re-snoozing
+     * between our outer SELECT and this re-fetch would push the timestamp
+     * back into the future, in which case we bail out without delivering or
+     * clearing.
+     */
+    private function isStillExpired(Website|MonitorApis|null $monitor): bool
+    {
+        if ($monitor === null || $monitor->silenced_until === null) {
+            return false;
+        }
+
+        return ! $monitor->silenced_until->isFuture();
+    }
+
+    /**
+     * Clear `silenced_until` only if the row is still expired in the database.
+     *
+     * The conditional `where('silenced_until', '<=', now())` is the atomic
+     * defence against a re-snooze that lands between our delivery and clear:
+     * if the operator pushed the timestamp back into the future, this UPDATE
+     * matches zero rows and the fresh snooze is preserved.
+     *
+     * @param  class-string<Website|MonitorApis>  $modelClass
+     */
+    private function clearIfStillExpired(string $modelClass, int $id): void
+    {
+        $modelClass::query()
+            ->whereKey($id)
+            ->whereNotNull('silenced_until')
+            ->where('silenced_until', '<=', now())
+            ->update(['silenced_until' => null]);
     }
 
     private function shouldAlert(?string $status, bool $isActivelyMonitored): bool

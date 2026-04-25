@@ -225,3 +225,31 @@ test('command skips websites with every check toggled off but still clears their
 
     Mail::assertNothingSent();
 });
+
+test('command does not clobber a re-snooze that lands between selection and the per-row clear', function () {
+    $website = Website::factory()->create([
+        'current_status' => 'danger',
+        'status_summary' => 'Returned HTTP 500.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    $newSnoozeUntil = now()->addHour();
+
+    $this->mock(HealthEventNotificationService::class, function ($mock) use ($website, $newSnoozeUntil): void {
+        $mock->shouldReceive('notifyWebsite')->once()->andReturnUsing(
+            function () use ($website, $newSnoozeUntil): void {
+                Website::query()
+                    ->whereKey($website->id)
+                    ->update(['silenced_until' => $newSnoozeUntil]);
+            }
+        );
+    });
+
+    $this->artisan('app:process-expired-snoozes')->assertSuccessful();
+
+    $fresh = $website->fresh();
+
+    expect($fresh->silenced_until)->not->toBeNull()
+        ->and($fresh->silenced_until->isFuture())->toBeTrue()
+        ->and(now()->diffInMinutes($fresh->silenced_until))->toBeGreaterThan(50);
+});
