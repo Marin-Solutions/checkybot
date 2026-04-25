@@ -16,15 +16,23 @@ trait NotificationChannels
 
             if ($code < 200 || $code >= 300) {
                 $responseFail = true;
+                // testWebhook() reuses the `code` key for two namespaces:
+                // real HTTP status codes (100–599) on a completed request,
+                // and curl errnos (e.g. 60 for SSL) when a RequestException
+                // is caught. Label them differently so the operator can tell
+                // a 502 apart from a TLS handshake failure.
                 if ($code == 60) {
                     $title = 'URL website, problem with certificate';
                     $body = $callback['body'];
                 } elseif ($callback['body'] == 1) {
                     $title = 'URL Website Response error';
                     $body = 'The website response is not 2xx!';
+                } elseif ($code >= 100 && $code < 600) {
+                    $title = 'Webhook returned an error status';
+                    $body = $callback['body'].' (HTTP '.$code.')';
                 } else {
                     $title = 'URL website a unknown error. try other url';
-                    $body = $callback['body'].' code errno:'.$code;
+                    $body = $callback['body'].' (curl errno '.$code.')';
                 }
             } else {
                 $responseFail = false;
