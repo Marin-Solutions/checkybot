@@ -394,7 +394,7 @@ test('command skips snooze_expired alert when the monitor recovered concurrently
     Mail::fake();
 
     // The status is unhealthy at fresh-fetch time but flips to healthy
-    // before deliverIfStillUnhealthy issues its second probe — simulating
+    // before deliverIfStillAlertable issues its second probe — simulating
     // a concurrent LogUptimeSslJob landing in the millisecond window. The
     // command must not page about a now-healthy monitor.
     $website = Website::factory()->create([
@@ -412,7 +412,7 @@ test('command skips snooze_expired alert when the monitor recovered concurrently
 
     // Mutate the DB on the SECOND retrieval (the fresh() call inside the
     // command) so the helper's third retrieval observes the recovery.
-    // This forces the test to exercise deliverIfStillUnhealthy specifically
+    // This forces the test to exercise deliverIfStillAlertable specifically
     // rather than short-circuiting at the fresh-fetch shouldAlert check.
     $retrievals = 0;
     \Illuminate\Support\Facades\Event::listen(
@@ -439,7 +439,50 @@ test('command skips snooze_expired alert when the monitor recovered concurrently
     Mail::assertNothingSent();
 });
 
+test('command skips snooze_expired alert when the api monitor recovered concurrently before delivery', function () {
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    $retrievals = 0;
+    \Illuminate\Support\Facades\Event::listen(
+        'eloquent.retrieved: '.MonitorApis::class,
+        function (MonitorApis $retrieved) use (&$retrievals, $monitor): void {
+            $retrievals++;
+
+            if ($retrievals === 2 && $retrieved->id === $monitor->id) {
+                MonitorApis::query()
+                    ->whereKey($monitor->id)
+                    ->update(['current_status' => 'healthy']);
+            }
+        }
+    );
+
+    try {
+        $this->artisan('app:process-expired-snoozes')->assertSuccessful();
+    } finally {
+        \Illuminate\Support\Facades\Event::forget('eloquent.retrieved: '.MonitorApis::class);
+    }
+
+    expect($monitor->refresh()->silenced_until)->toBeNull();
+    Mail::assertNothingSent();
+});
+
 test('command does not clobber a re-snooze that lands between selection and the per-row clear', function () {
+    Mail::fake();
+
     $website = Website::factory()->create([
         'current_status' => 'danger',
         'status_summary' => 'Returned HTTP 500.',
@@ -461,6 +504,37 @@ test('command does not clobber a re-snooze that lands between selection and the 
     $this->artisan('app:process-expired-snoozes')->assertSuccessful();
 
     $fresh = $website->fresh();
+
+    expect($fresh->silenced_until)->not->toBeNull()
+        ->and($fresh->silenced_until->isFuture())->toBeTrue()
+        ->and(now()->diffInMinutes($fresh->silenced_until))->toBeGreaterThan(50);
+});
+
+test('command does not clobber an api monitor re-snooze that lands between selection and the per-row clear', function () {
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Returned HTTP 500.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    $newSnoozeUntil = now()->addHour();
+
+    $this->mock(HealthEventNotificationService::class, function ($mock) use ($monitor, $newSnoozeUntil): void {
+        $mock->shouldReceive('notifyApi')->once()->andReturnUsing(
+            function () use ($monitor, $newSnoozeUntil): void {
+                MonitorApis::query()
+                    ->whereKey($monitor->id)
+                    ->update(['silenced_until' => $newSnoozeUntil]);
+            }
+        );
+    });
+
+    $this->artisan('app:process-expired-snoozes')->assertSuccessful();
+
+    $fresh = $monitor->fresh();
 
     expect($fresh->silenced_until)->not->toBeNull()
         ->and($fresh->silenced_until->isFuture())->toBeTrue()

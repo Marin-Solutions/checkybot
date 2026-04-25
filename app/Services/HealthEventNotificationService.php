@@ -231,11 +231,11 @@ class HealthEventNotificationService
             return false;
         }
 
-        $silencedUntil = $persistedSilencedUntil instanceof \DateTimeInterface
-            ? \Illuminate\Support\Carbon::instance($persistedSilencedUntil)
-            : \Illuminate\Support\Carbon::parse($persistedSilencedUntil);
-
-        return $silencedUntil->isFuture();
+        // The query builder's value() returns the raw column value (string for
+        // a timestamp). Carbon::parse handles both strings and DateTime
+        // instances, so a single call covers any future shape change without
+        // a dead defensive branch.
+        return \Illuminate\Support\Carbon::parse($persistedSilencedUntil)->isFuture();
     }
 
     private function eventLabel(string $event, string $status): string
