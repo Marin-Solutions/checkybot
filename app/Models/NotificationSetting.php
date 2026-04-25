@@ -6,11 +6,13 @@ use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
 use App\Mail\EmailReminderSsl;
+use App\Mail\HealthStatusAlert;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 class NotificationSetting extends Model
 {
@@ -117,5 +119,125 @@ class NotificationSetting extends Model
     public function channel(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(NotificationChannels::class, 'notification_channel_id');
+    }
+
+    /**
+     * Dispatch a sample notification through this setting so the operator can
+     * verify the address or webhook is reachable before relying on it for a
+     * real incident.
+     *
+     * @return array{ok: bool, title: string, body: string}
+     */
+    public function sendTestNotification(): array
+    {
+        $channelType = $this->resolveChannelType();
+
+        return match ($channelType) {
+            NotificationChannelTypesEnum::MAIL => $this->sendTestEmail(),
+            NotificationChannelTypesEnum::WEBHOOK => $this->sendTestWebhook(),
+            default => [
+                'ok' => false,
+                'title' => 'Unknown channel type',
+                'body' => 'This notification setting does not have a recognised channel type.',
+            ],
+        };
+    }
+
+    private function resolveChannelType(): ?NotificationChannelTypesEnum
+    {
+        $value = $this->channel_type;
+
+        if ($value instanceof NotificationChannelTypesEnum) {
+            return $value;
+        }
+
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return NotificationChannelTypesEnum::tryFrom((string) $value);
+    }
+
+    /**
+     * @return array{ok: bool, title: string, body: string}
+     */
+    private function sendTestEmail(): array
+    {
+        if (empty($this->address)) {
+            return [
+                'ok' => false,
+                'title' => 'Test email not sent',
+                'body' => 'This notification setting does not have a recipient email address configured.',
+            ];
+        }
+
+        try {
+            Mail::to($this->address)->send(new HealthStatusAlert(
+                name: config('app.name').' test alert',
+                event: 'test_notification',
+                eventLabel: 'Test Notification',
+                status: 'ok',
+                summary: 'This is a sample alert sent from Checkybot to verify your notification setting. No action is required.',
+                url: url('/'),
+            ));
+        } catch (Throwable $exception) {
+            Log::error('Test notification email failed to send', [
+                'notification_setting_id' => $this->id,
+                'address' => $this->address,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'title' => 'Test email failed',
+                'body' => 'Could not send the test email: '.$exception->getMessage(),
+            ];
+        }
+
+        return [
+            'ok' => true,
+            'title' => 'Test email sent',
+            'body' => 'A sample alert has been sent to '.$this->address.'. Please check the inbox (and spam folder) to confirm delivery.',
+        ];
+    }
+
+    /**
+     * @return array{ok: bool, title: string, body: string}
+     */
+    private function sendTestWebhook(): array
+    {
+        $channel = $this->channel;
+
+        if (! $channel) {
+            return [
+                'ok' => false,
+                'title' => 'Test webhook not sent',
+                'body' => 'This notification setting is not linked to a webhook channel anymore. Edit the setting and pick an active channel.',
+            ];
+        }
+
+        $response = $channel->sendWebhookNotification([
+            'message' => 'Checkybot test notification',
+            'description' => 'This is a sample payload sent from Checkybot to verify the "'.$channel->title.'" webhook channel. No action is required.',
+        ]);
+
+        $code = (int) ($response['code'] ?? 0);
+
+        if ($code === 200) {
+            return [
+                'ok' => true,
+                'title' => 'Test webhook delivered',
+                'body' => 'The "'.$channel->title.'" webhook responded with HTTP 200. Confirm the message arrived in the destination channel.',
+            ];
+        }
+
+        $body = $response['body'] ?? null;
+        $detail = is_string($body) ? $body : json_encode($body);
+
+        return [
+            'ok' => false,
+            'title' => 'Test webhook failed',
+            'body' => 'The "'.$channel->title.'" webhook did not respond with HTTP 200. Status code: '.$code.($detail ? ' — '.$detail : ''),
+        ];
     }
 }
