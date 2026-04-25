@@ -403,7 +403,8 @@ test('command sends recovery notifications when a manual api monitor returns to 
     Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
         return $mail->event === 'recovered'
             && $mail->eventLabel === 'recovered'
-            && $mail->status === 'healthy';
+            && $mail->status === 'healthy'
+            && $mail->summary === 'API heartbeat succeeded with HTTP status 200.';
     });
 });
 
