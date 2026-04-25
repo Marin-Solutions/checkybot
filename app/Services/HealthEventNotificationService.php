@@ -11,10 +11,20 @@ use App\Models\Website;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 class HealthEventNotificationService
 {
-    public function notifyWebsite(Website $website, string $event, string $status, string $summary): void
+    /**
+     * Deliver a health-event alert across the website's configured channels.
+     *
+     * Returns true when the alert was either intentionally suppressed (the
+     * monitor is currently snoozed), required no work (no channels), or
+     * reached at least one channel — i.e. callers do not need to retry.
+     * Returns false only when every attempted channel failed; callers that
+     * support retry semantics use this to schedule another attempt.
+     */
+    public function notifyWebsite(Website $website, string $event, string $status, string $summary): bool
     {
         if ($website->isSilenced()) {
             Log::info('Skipping website health notification while monitor is snoozed', [
@@ -24,7 +34,7 @@ class HealthEventNotificationService
                 'status' => $status,
             ]);
 
-            return;
+            return true;
         }
 
         $settings = NotificationSetting::query()
@@ -44,7 +54,7 @@ class HealthEventNotificationService
             ])
             ->get();
 
-        $this->deliver(
+        return $this->deliver(
             $settings,
             name: $website->name,
             event: $event,
@@ -54,7 +64,10 @@ class HealthEventNotificationService
         );
     }
 
-    public function notifyApi(MonitorApis $monitorApi, string $event, string $status, string $summary): void
+    /**
+     * @see notifyWebsite() for the boolean return-value contract.
+     */
+    public function notifyApi(MonitorApis $monitorApi, string $event, string $status, string $summary): bool
     {
         if ($monitorApi->isSilenced()) {
             Log::info('Skipping API monitor health notification while monitor is snoozed', [
@@ -64,7 +77,7 @@ class HealthEventNotificationService
                 'status' => $status,
             ]);
 
-            return;
+            return true;
         }
 
         $settings = NotificationSetting::query()
@@ -77,7 +90,7 @@ class HealthEventNotificationService
             ])
             ->get();
 
-        $this->deliver(
+        return $this->deliver(
             $settings,
             name: $monitorApi->title,
             event: $event,
@@ -87,22 +100,57 @@ class HealthEventNotificationService
         );
     }
 
-    private function deliver(EloquentCollection $settings, string $name, string $event, string $status, string $summary, string $url): void
+    /**
+     * Deliver across every configured channel, isolating per-channel failures.
+     *
+     * A bad transport on one channel (mail bounce, webhook timeout) used to
+     * abort the whole delivery and leave the remaining channels unattempted.
+     * Each channel is now wrapped in its own try/catch: failures are logged
+     * with the setting id and we keep going. The return value tells the
+     * caller whether retrying makes sense — true when nothing was attempted
+     * or at least one channel got through, false only when every attempted
+     * channel failed (treat that as a signal to retry later).
+     */
+    private function deliver(EloquentCollection $settings, string $name, string $event, string $status, string $summary, string $url): bool
     {
         $eventLabel = $this->eventLabel($event, $status);
         $message = $this->webhookMessage($name, $event, $status);
 
-        $settings->each(function (NotificationSetting $setting) use ($event, $eventLabel, $message, $name, $status, $summary, $url): void {
+        $attempts = 0;
+        $failures = 0;
 
+        $settings->each(function (NotificationSetting $setting) use (
+            $event,
+            $eventLabel,
+            $message,
+            $name,
+            $status,
+            $summary,
+            $url,
+            &$attempts,
+            &$failures,
+        ): void {
             if ($setting->channel_type === NotificationChannelTypesEnum::MAIL) {
-                Mail::to($setting->address)->send(new HealthStatusAlert(
-                    name: $name,
-                    event: $event,
-                    eventLabel: $eventLabel,
-                    status: $status,
-                    summary: $summary,
-                    url: $url,
-                ));
+                $attempts++;
+
+                try {
+                    Mail::to($setting->address)->send(new HealthStatusAlert(
+                        name: $name,
+                        event: $event,
+                        eventLabel: $eventLabel,
+                        status: $status,
+                        summary: $summary,
+                        url: $url,
+                    ));
+                } catch (Throwable $exception) {
+                    $failures++;
+                    Log::error('Failed to deliver health notification mail; continuing with other channels', [
+                        'setting_id' => $setting->id,
+                        'event' => $event,
+                        'status' => $status,
+                        'exception' => $exception->getMessage(),
+                    ]);
+                }
 
                 return;
             }
@@ -118,12 +166,35 @@ class HealthEventNotificationService
                     return;
                 }
 
-                $channel->sendWebhookNotification([
-                    'message' => $message,
-                    'description' => $summary,
-                ]);
+                $attempts++;
+
+                try {
+                    $channel->sendWebhookNotification([
+                        'message' => $message,
+                        'description' => $summary,
+                    ]);
+                } catch (Throwable $exception) {
+                    $failures++;
+                    Log::error('Failed to deliver health notification webhook; continuing with other channels', [
+                        'setting_id' => $setting->id,
+                        'event' => $event,
+                        'status' => $status,
+                        'exception' => $exception->getMessage(),
+                    ]);
+                }
             }
         });
+
+        // No transports were attempted (no settings, or only orphaned webhook
+        // rows). Nothing to retry — the caller should treat this as success.
+        if ($attempts === 0) {
+            return true;
+        }
+
+        // Partial success counts as success: callers MUST NOT retry, otherwise
+        // every successful channel would receive a duplicate alert each minute
+        // until the failing transport recovers.
+        return $failures < $attempts;
     }
 
     private function eventLabel(string $event, string $status): string

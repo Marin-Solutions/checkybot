@@ -171,18 +171,21 @@ class ProcessExpiredSnoozes extends Command
     /**
      * Run the delivery callback and return whether it completed successfully.
      *
-     * On failure we leave `silenced_until` intact so the next reconciliation
-     * retries — preferable to silently dropping an alert when a transport is
-     * temporarily down.
+     * Two failure modes leave `silenced_until` intact for the next run:
+     *   - the closure throws (catastrophic / non-channel exception)
+     *   - the closure returns `false`, which the notification service uses
+     *     to signal that every attempted channel failed
+     *
+     * Partial channel failures inside the service do *not* return false —
+     * they are logged but considered successful here so we don't re-fire
+     * to channels that already received the alert.
      *
      * @param  array<string, mixed>  $logContext
      */
     private function safelyDeliver(\Closure $deliver, array $logContext): bool
     {
         try {
-            $deliver();
-
-            return true;
+            $delivered = $deliver();
         } catch (Throwable $exception) {
             Log::error('Failed to deliver snooze-expired alert; retaining silenced_until for retry', [
                 ...$logContext,
@@ -191,6 +194,14 @@ class ProcessExpiredSnoozes extends Command
 
             return false;
         }
+
+        if ($delivered === false) {
+            Log::warning('Snooze-expired alert had no successful channel deliveries; retaining silenced_until for retry', $logContext);
+
+            return false;
+        }
+
+        return true;
     }
 
     private function summaryFor(?string $existingSummary, ?string $status): string

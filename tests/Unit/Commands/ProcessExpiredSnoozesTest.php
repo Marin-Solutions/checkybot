@@ -174,6 +174,51 @@ test('command preserves silenced_until when delivery throws so the next run retr
     Log::shouldHaveReceived('error')->once();
 });
 
+test('command preserves silenced_until when every channel fails so the next run retries', function () {
+    Log::spy();
+
+    $website = Website::factory()->create([
+        'current_status' => 'danger',
+        'status_summary' => 'Returned HTTP 500.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    // Service swallows per-channel exceptions and returns false when every
+    // attempted channel failed; the command must treat that as a retry signal.
+    $this->mock(HealthEventNotificationService::class, function ($mock): void {
+        $mock->shouldReceive('notifyWebsite')->once()->andReturn(false);
+    });
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->not->toBeNull();
+
+    Log::shouldHaveReceived('warning')->once();
+});
+
+test('command clears silenced_until when at least one channel delivered (partial success is success)', function () {
+    Log::spy();
+
+    $website = Website::factory()->create([
+        'current_status' => 'danger',
+        'status_summary' => 'Returned HTTP 500.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    // Service returns true when at least one channel delivered — even if
+    // others failed inside. The command MUST clear so we don't re-fire the
+    // alert to channels that already received it.
+    $this->mock(HealthEventNotificationService::class, function ($mock): void {
+        $mock->shouldReceive('notifyWebsite')->once()->andReturn(true);
+    });
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+});
+
 test('command skips disabled api monitors but still clears their expired snooze', function () {
     Mail::fake();
 
