@@ -140,7 +140,7 @@ class Website extends Model
             return null;
         }
 
-        if (self::isOpaqueUri($url)) {
+        if (filter_var($url, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) === false && self::isOpaqueUri($url)) {
             return null;
         }
 

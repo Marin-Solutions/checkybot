@@ -111,6 +111,10 @@ test('extractHost rejects opaque uris', function () {
     expect(Website::extractHost('mailto:ops@example.com'))->toBeNull();
 });
 
+test('extractHost accepts bare ipv6 hosts that begin with letters', function () {
+    expect(Website::extractHost('fe80::1'))->toBe('fe80::1');
+});
+
 test('extractPort returns an explicit port from a full url', function () {
     expect(Website::extractPort('https://example.com:8443/health?foo=bar'))->toBe(8443);
 });
