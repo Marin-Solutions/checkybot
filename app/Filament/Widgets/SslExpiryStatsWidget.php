@@ -1,0 +1,71 @@
+<?php
+
+namespace App\Filament\Widgets;
+
+use App\Models\Website;
+use Filament\Widgets\StatsOverviewWidget as BaseWidget;
+use Filament\Widgets\StatsOverviewWidget\Stat;
+
+class SslExpiryStatsWidget extends BaseWidget
+{
+    protected static ?int $sort = 5;
+
+    protected ?string $pollingInterval = '60s';
+
+    protected function getStats(): array
+    {
+        $userId = auth()->id();
+        $today = now()->toDateString();
+        $in7Days = now()->addDays(7)->toDateString();
+        $in14Days = now()->addDays(14)->toDateString();
+        $in30Days = now()->addDays(30)->toDateString();
+
+        $aggregates = Website::query()
+            ->where('created_by', $userId)
+            ->where('ssl_check', true)
+            ->whereNotNull('ssl_expiry_date')
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date < ? THEN 1 ELSE 0 END) as expired_count', [$today])
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_7_count', [$today, $in7Days])
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_14_count', [$today, $in14Days])
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_30_count', [$today, $in30Days])
+            ->first();
+
+        // MySQL returns NULL sums when no rows match the WHERE filters; use that
+        // as the empty-state guard so we only round-trip to the database once.
+        if ($aggregates === null || $aggregates->expired_count === null) {
+            return [
+                Stat::make('SSL Monitoring', 0)
+                    ->description('No websites with SSL monitoring enabled')
+                    ->descriptionIcon('heroicon-m-shield-check')
+                    ->color('gray'),
+            ];
+        }
+
+        $expiredCount = (int) $aggregates->expired_count;
+        $within7DaysCount = (int) $aggregates->within_7_count;
+        $within14DaysCount = (int) $aggregates->within_14_count;
+        $within30DaysCount = (int) $aggregates->within_30_count;
+
+        return [
+            Stat::make('SSL Expired', $expiredCount)
+                ->description($expiredCount > 0 ? 'Renew immediately' : 'No expired certificates')
+                ->descriptionIcon($expiredCount > 0 ? 'heroicon-m-x-circle' : 'heroicon-m-check-circle')
+                ->color($expiredCount > 0 ? 'danger' : 'success'),
+
+            Stat::make('Expiring Within 7 Days', $within7DaysCount)
+                ->description($within7DaysCount > 0 ? 'Action required' : 'Nothing expiring this week')
+                ->descriptionIcon('heroicon-m-exclamation-triangle')
+                ->color($within7DaysCount > 0 ? 'danger' : 'success'),
+
+            Stat::make('Expiring Within 14 Days', $within14DaysCount)
+                ->description($within14DaysCount > 0 ? 'Includes certs expiring sooner' : 'All clear for the next 14 days')
+                ->descriptionIcon('heroicon-m-clock')
+                ->color($within14DaysCount > 0 ? 'warning' : 'success'),
+
+            Stat::make('Expiring Within 30 Days', $within30DaysCount)
+                ->description($within30DaysCount > 0 ? 'Plan renewals for this month' : 'All clear for the next 30 days')
+                ->descriptionIcon('heroicon-m-calendar-days')
+                ->color($within30DaysCount > 0 ? 'warning' : 'success'),
+        ];
+    }
+}
