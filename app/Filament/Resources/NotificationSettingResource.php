@@ -123,7 +123,7 @@ class NotificationSettingResource extends Resource
                 ]),
             ])
             ->emptyStateHeading('No global notification rules yet')
-            ->emptyStateDescription('Create a rule to be alerted by email or webhook when any of your monitors changes state. Rules added here apply across every website that opts into the matching monitor.')
+            ->emptyStateDescription('Create a rule to be alerted by email or webhook when any of your monitors changes state. Rules added here apply automatically to every website with the matching monitor enabled.')
             ->emptyStateIcon('heroicon-o-bell-alert')
             ->emptyStateActions([
                 \Filament\Actions\CreateAction::make()
