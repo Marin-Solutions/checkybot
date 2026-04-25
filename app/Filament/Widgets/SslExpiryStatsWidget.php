@@ -15,13 +15,24 @@ class SslExpiryStatsWidget extends BaseWidget
     protected function getStats(): array
     {
         $userId = auth()->id();
+        $today = now()->toDateString();
+        $in7Days = now()->addDays(7)->toDateString();
+        $in14Days = now()->addDays(14)->toDateString();
+        $in30Days = now()->addDays(30)->toDateString();
 
-        $websiteScope = Website::query()
+        $aggregates = Website::query()
             ->where('created_by', $userId)
             ->where('ssl_check', true)
-            ->whereNotNull('ssl_expiry_date');
+            ->whereNotNull('ssl_expiry_date')
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date < ? THEN 1 ELSE 0 END) as expired_count', [$today])
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_7_count', [$today, $in7Days])
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_14_count', [$today, $in14Days])
+            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_30_count', [$today, $in30Days])
+            ->first();
 
-        if ((clone $websiteScope)->doesntExist()) {
+        // MySQL returns NULL sums when no rows match the WHERE filters; use that
+        // as the empty-state guard so we only round-trip to the database once.
+        if ($aggregates === null || $aggregates->expired_count === null) {
             return [
                 Stat::make('SSL monitoring', 0)
                     ->description('No websites with SSL monitoring enabled')
@@ -30,22 +41,10 @@ class SslExpiryStatsWidget extends BaseWidget
             ];
         }
 
-        $today = now()->toDateString();
-        $in7Days = now()->addDays(7)->toDateString();
-        $in14Days = now()->addDays(14)->toDateString();
-        $in30Days = now()->addDays(30)->toDateString();
-
-        $aggregates = (clone $websiteScope)
-            ->selectRaw('SUM(CASE WHEN ssl_expiry_date < ? THEN 1 ELSE 0 END) as expired_count', [$today])
-            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_7_count', [$today, $in7Days])
-            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_14_count', [$today, $in14Days])
-            ->selectRaw('SUM(CASE WHEN ssl_expiry_date >= ? AND ssl_expiry_date <= ? THEN 1 ELSE 0 END) as within_30_count', [$today, $in30Days])
-            ->first();
-
-        $expiredCount = (int) ($aggregates?->expired_count ?? 0);
-        $within7DaysCount = (int) ($aggregates?->within_7_count ?? 0);
-        $within14DaysCount = (int) ($aggregates?->within_14_count ?? 0);
-        $within30DaysCount = (int) ($aggregates?->within_30_count ?? 0);
+        $expiredCount = (int) $aggregates->expired_count;
+        $within7DaysCount = (int) $aggregates->within_7_count;
+        $within14DaysCount = (int) $aggregates->within_14_count;
+        $within30DaysCount = (int) $aggregates->within_30_count;
 
         return [
             Stat::make('SSL expired', $expiredCount)
@@ -59,12 +58,12 @@ class SslExpiryStatsWidget extends BaseWidget
                 ->color($within7DaysCount > 0 ? 'danger' : 'success'),
 
             Stat::make('Expiring within 14 days', $within14DaysCount)
-                ->description('Includes the 7-day window')
+                ->description($within14DaysCount > 0 ? 'Includes the 7-day window' : 'All clear for the next 14 days')
                 ->descriptionIcon('heroicon-m-clock')
                 ->color($within14DaysCount > 0 ? 'warning' : 'success'),
 
             Stat::make('Expiring within 30 days', $within30DaysCount)
-                ->description('Plan renewals for this month')
+                ->description($within30DaysCount > 0 ? 'Plan renewals for this month' : 'All clear for the next 30 days')
                 ->descriptionIcon('heroicon-m-calendar-days')
                 ->color($within30DaysCount > 0 ? 'warning' : 'success'),
         ];

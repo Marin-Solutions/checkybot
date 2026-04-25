@@ -49,7 +49,7 @@ describe('SslExpiryStatsWidget', function () {
             'ssl_expiry_date' => now()->addDays(60)->toDateString(),
         ]);
 
-        $stats = collect(getStats(new SslExpiryStatsWidget));
+        $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
         expect(sslStat($stats, 'SSL expired')->getValue())->toBe(2)
             ->and(sslStat($stats, 'SSL expired')->getDescription())->toBe('Renew immediately');
@@ -68,7 +68,7 @@ describe('SslExpiryStatsWidget', function () {
             'ssl_expiry_date' => now()->addDays(20)->toDateString(),
         ]);
 
-        $stats = collect(getStats(new SslExpiryStatsWidget));
+        $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
         expect(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
             ->and(sslStat($stats, 'Expiring within 14 days')->getValue())->toBe(1)
@@ -97,7 +97,7 @@ describe('SslExpiryStatsWidget', function () {
             'ssl_expiry_date' => now()->addDays(120)->toDateString(),
         ]);
 
-        $stats = collect(getStats(new SslExpiryStatsWidget));
+        $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
         expect(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
             ->and(sslStat($stats, 'Expiring within 14 days')->getValue())->toBe(2)
@@ -111,7 +111,7 @@ describe('SslExpiryStatsWidget', function () {
             'ssl_expiry_date' => now()->toDateString(),
         ]);
 
-        $stats = collect(getStats(new SslExpiryStatsWidget));
+        $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
         expect(sslStat($stats, 'SSL expired')->getValue())->toBe(0)
             ->and(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
@@ -136,7 +136,7 @@ describe('SslExpiryStatsWidget', function () {
             'ssl_expiry_date' => now()->addDays(30)->toDateString(),
         ]);
 
-        $stats = collect(getStats(new SslExpiryStatsWidget));
+        $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
         expect(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1)
             ->and(sslStat($stats, 'Expiring within 14 days')->getValue())->toBe(2)
@@ -150,7 +150,7 @@ describe('SslExpiryStatsWidget', function () {
             'ssl_expiry_date' => now()->subDay()->toDateString(),
         ]);
 
-        $stats = collect(getStats(new SslExpiryStatsWidget));
+        $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
         expect(sslStat($stats, 'SSL expired')->getValue())->toBe(1)
             ->and(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(0);
@@ -198,7 +198,7 @@ describe('SslExpiryStatsWidget', function () {
             'ssl_expiry_date' => now()->addDays(5)->toDateString(),
         ]);
 
-        $stats = collect(getStats(new SslExpiryStatsWidget));
+        $stats = collect(getSslExpiryStats(new SslExpiryStatsWidget));
 
         expect(sslStat($stats, 'SSL expired')->getValue())->toBe(0)
             ->and(sslStat($stats, 'Expiring within 7 days')->getValue())->toBe(1);
@@ -223,7 +223,7 @@ describe('SslExpiryStatsWidget', function () {
  *
  * @return array<int, \Filament\Widgets\StatsOverviewWidget\Stat>
  */
-function getStats(SslExpiryStatsWidget $widget): array
+function getSslExpiryStats(SslExpiryStatsWidget $widget): array
 {
     return (fn () => $this->getStats())->call($widget);
 }
