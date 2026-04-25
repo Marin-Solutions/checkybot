@@ -139,8 +139,8 @@ class ResultsRelationManager extends RelationManager
                                     ->columnSpanFull(),
                                 TextEntry::make('expected')
                                     ->label('Expected')
-                                    ->icon('heroicon-o-check-circle')
-                                    ->iconColor('success')
+                                    ->icon('heroicon-o-arrow-right-circle')
+                                    ->iconColor('gray')
                                     ->copyable(),
                                 TextEntry::make('actual')
                                     ->label('Actual')

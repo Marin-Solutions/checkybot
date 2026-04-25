@@ -100,7 +100,9 @@ class MonitorApiResult extends Model
      * `failed_assertions`. Scalars and short strings pass through unchanged
      * so downstream consumers can keep relying on the original type. Oversized
      * strings and non-scalar payloads are JSON-stringified and truncated so a
-     * single rogue assertion can't bloat the JSON column.
+     * single rogue assertion can't bloat the JSON column. Truncation is
+     * performed with multibyte-safe helpers so a UTF-8 codepoint is never
+     * split mid-byte, which would otherwise corrupt the JSON column.
      */
     private static function capPersistedAssertionValue(mixed $value): mixed
     {
@@ -111,11 +113,7 @@ class MonitorApiResult extends Model
         }
 
         if (is_string($value)) {
-            if (strlen($value) <= $maxLength) {
-                return $value;
-            }
-
-            return substr($value, 0, $maxLength).'… (truncated)';
+            return static::truncateUtf8($value, $maxLength);
         }
 
         $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
@@ -124,11 +122,16 @@ class MonitorApiResult extends Model
             return '[unserializable value]';
         }
 
-        if (strlen($encoded) <= $maxLength) {
-            return $encoded;
+        return static::truncateUtf8($encoded, $maxLength);
+    }
+
+    private static function truncateUtf8(string $value, int $maxLength): string
+    {
+        if (mb_strlen($value, 'UTF-8') <= $maxLength) {
+            return $value;
         }
 
-        return substr($encoded, 0, $maxLength).'… (truncated)';
+        return mb_substr($value, 0, $maxLength, 'UTF-8').'… (truncated)';
     }
 
     private static function prepareSavedResponseBody(MonitorApis $api, bool $isSuccess, array $testResult): ?array

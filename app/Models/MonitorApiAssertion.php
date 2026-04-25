@@ -35,7 +35,7 @@ class MonitorApiAssertion extends Model
     /**
      * @return array{passed: bool, message: string, actual: mixed, expected: mixed}
      */
-    public function validateResponse($value, bool $exists = true): array
+    public function validateResponse(mixed $value, bool $exists = true): array
     {
         $result = [
             'passed' => false,
@@ -109,7 +109,7 @@ class MonitorApiAssertion extends Model
         return $result;
     }
 
-    private function getValueType($value): string
+    private function getValueType(mixed $value): string
     {
         if (is_bool($value)) {
             return 'boolean';
@@ -139,7 +139,7 @@ class MonitorApiAssertion extends Model
     /**
      * @return array{passed: bool, message: string, actual: mixed, expected: string}
      */
-    private function compareValue($value): array
+    private function compareValue(mixed $value): array
     {
         $result = ['passed' => false, 'message' => '', 'actual' => $value, 'expected' => "{$this->comparison_operator} {$this->expected_value}"];
 
@@ -181,7 +181,7 @@ class MonitorApiAssertion extends Model
         return $result;
     }
 
-    private function castExpectedValue($actualValue): mixed
+    private function castExpectedValue(mixed $actualValue): mixed
     {
         if (is_bool($actualValue)) {
             return filter_var($this->expected_value, FILTER_VALIDATE_BOOLEAN);

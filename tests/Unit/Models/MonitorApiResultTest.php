@@ -264,6 +264,39 @@ test('record result truncates oversized actual payloads to keep failed_assertion
         ->and($result->failed_assertions[0]['expected'])->toBe('= small');
 });
 
+test('record result truncates oversized multibyte string actuals without splitting codepoints', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    // Three-byte UTF-8 codepoint repeated past the 1000-character cap. If
+    // truncation falls back to byte-based substr it can leave a half-encoded
+    // codepoint that breaks JSON encoding; mb_substr keeps the result valid.
+    $multibytePayload = str_repeat('日', 1500);
+
+    $testResult = [
+        'code' => 200,
+        'body' => null,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'message',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed',
+                'actual' => $multibytePayload,
+                'expected' => '= 日',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+    $persistedActual = $result->failed_assertions[0]['actual'];
+
+    expect($persistedActual)->toBeString()
+        ->and(mb_check_encoding($persistedActual, 'UTF-8'))->toBeTrue()
+        ->and(mb_strlen($persistedActual, 'UTF-8'))->toBeLessThanOrEqual(1100)
+        ->and($persistedActual)->toEndWith('… (truncated)');
+});
+
 test('record result preserves scalar actual values without stringifying them', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);

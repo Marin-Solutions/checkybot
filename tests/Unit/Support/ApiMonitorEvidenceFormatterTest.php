@@ -61,6 +61,34 @@ test('normalize assertions surfaces actual and expected values', function () {
     ]);
 });
 
+test('normalize assertions renders genuine null actual as null string not em dash', function () {
+    $normalized = ApiMonitorEvidenceFormatter::normalizeAssertions([
+        [
+            'path' => 'status',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed',
+            'actual' => null,
+            'expected' => '= active',
+        ],
+    ]);
+
+    expect($normalized[0]['actual'])->toBe('null')
+        ->and($normalized[0]['expected'])->toBe('= active');
+});
+
+test('normalize assertions falls back to em dash when actual key is absent', function () {
+    $normalized = ApiMonitorEvidenceFormatter::normalizeAssertions([
+        [
+            'path' => 'status',
+            'type' => 'exists',
+            'message' => 'Legacy record without actual key',
+        ],
+    ]);
+
+    expect($normalized[0]['actual'])->toBe('—')
+        ->and($normalized[0]['expected'])->toBe('—');
+});
+
 test('normalize assertions stringifies non scalar actual and expected values', function () {
     $normalized = ApiMonitorEvidenceFormatter::normalizeAssertions([
         [
@@ -72,8 +100,11 @@ test('normalize assertions stringifies non scalar actual and expected values', f
         ],
     ]);
 
+    // `expected` is present with a null value → renders as the literal
+    // string "null" so operators can tell it apart from a legacy record
+    // where the key was absent (which renders as "—").
     expect($normalized[0]['actual'])->toBe('{"feature_a":true}')
-        ->and($normalized[0]['expected'])->toBe('—');
+        ->and($normalized[0]['expected'])->toBe('null');
 });
 
 test('stringify assertion value handles scalars and complex types', function () {

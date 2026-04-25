@@ -70,8 +70,13 @@ class ApiMonitorEvidenceFormatter
 
         return collect($assertions)
             ->map(function (array $assertion): array {
-                $hasActual = array_key_exists('actual', $assertion) && $assertion['actual'] !== null;
-                $hasExpected = array_key_exists('expected', $assertion) && $assertion['expected'] !== null;
+                // Distinguish *legacy records written before the actual/expected
+                // columns existed* (key absent → em-dash) from *new records
+                // where the path resolved to genuine JSON null* (key present
+                // with null value → "null"). `array_key_exists` is the only
+                // check that draws that line correctly.
+                $hasActual = array_key_exists('actual', $assertion);
+                $hasExpected = array_key_exists('expected', $assertion);
 
                 return [
                     'path' => (string) ($assertion['path'] ?? 'Unknown path'),
