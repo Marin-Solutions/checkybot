@@ -62,17 +62,26 @@ class MonitorApiResult extends Model
             foreach ($testResult['assertions'] as $assertion) {
                 if (! $assertion['passed']) {
                     $isSuccess = false;
-                    $failedAssertions[] = [
+                    $persisted = [
                         'path' => $assertion['path'] ?? null,
                         'type' => $assertion['type'] ?? null,
                         'message' => $assertion['message'] ?? 'Assertion failed',
-                        'actual' => static::capPersistedAssertionValue(
-                            array_key_exists('actual', $assertion) ? $assertion['actual'] : null
-                        ),
-                        'expected' => static::capPersistedAssertionValue(
-                            array_key_exists('expected', $assertion) ? $assertion['expected'] : null
-                        ),
                     ];
+
+                    // Only persist `actual` / `expected` when the source
+                    // assertion actually supplied them. Fabricating a null
+                    // key here would make the formatter render "null"
+                    // instead of "—" for assertions that have no comparison
+                    // semantics at all.
+                    if (array_key_exists('actual', $assertion)) {
+                        $persisted['actual'] = static::capPersistedAssertionValue($assertion['actual']);
+                    }
+
+                    if (array_key_exists('expected', $assertion)) {
+                        $persisted['expected'] = static::capPersistedAssertionValue($assertion['expected']);
+                    }
+
+                    $failedAssertions[] = $persisted;
                 }
             }
         }

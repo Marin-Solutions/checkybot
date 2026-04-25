@@ -322,7 +322,7 @@ test('record result preserves scalar actual values without stringifying them', f
         ->and($result->failed_assertions[0]['expected'])->toBe(200);
 });
 
-test('record result defaults missing actual and expected to null', function () {
+test('record result omits actual and expected keys when source assertion did not provide them', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);
 
@@ -341,11 +341,38 @@ test('record result defaults missing actual and expected to null', function () {
 
     $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
 
+    // Keys must be absent (not null) so the evidence formatter renders
+    // "—" rather than the literal string "null" for assertions that
+    // never had comparison semantics in the first place.
     expect($result->failed_assertions)->toHaveCount(1)
-        ->and($result->failed_assertions[0])->toHaveKey('actual')
-        ->and($result->failed_assertions[0])->toHaveKey('expected')
+        ->and($result->failed_assertions[0])->not->toHaveKey('actual')
+        ->and($result->failed_assertions[0])->not->toHaveKey('expected');
+});
+
+test('record result preserves a genuine null actual when the source assertion provided one', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 200,
+        'body' => ['status' => null],
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'status',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed: expected = active',
+                'actual' => null,
+                'expected' => '= active',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->failed_assertions[0])->toHaveKey('actual')
         ->and($result->failed_assertions[0]['actual'])->toBeNull()
-        ->and($result->failed_assertions[0]['expected'])->toBeNull();
+        ->and($result->failed_assertions[0]['expected'])->toBe('= active');
 });
 
 test('record result treats healthy expected 404 status as success when status is provided', function () {
