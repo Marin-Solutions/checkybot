@@ -154,12 +154,13 @@ class MonitorApisResource extends Resource
                         abort_unless(auth()->user()?->can('Update:MonitorApis') ?? false, 403);
                     })
                     ->afterStateUpdated(function (MonitorApis $record, bool $state): void {
-                        Notification::make()
+                        $notification = Notification::make()
                             ->title($state ? "{$record->title} enabled" : "{$record->title} disabled")
                             ->body($state
                                 ? 'Scheduled checks will resume on the next run.'
-                                : 'Scheduled checks are paused. Configuration and history are preserved.')
-                            ->color($state ? 'success' : 'warning')
+                                : 'Scheduled checks are paused. Configuration and history are preserved.');
+
+                        ($state ? $notification->success() : $notification->warning())
                             ->send();
                     }),
                 Tables\Columns\TextColumn::make('data_path')

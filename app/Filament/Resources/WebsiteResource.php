@@ -239,14 +239,15 @@ class WebsiteResource extends Resource
                     Tables\Columns\ToggleColumn::make('uptime_check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
-                            Notification::make()
+                            $notification = Notification::make()
                                 ->title($state
                                     ? "Uptime checks enabled for {$record->name}"
                                     : "Uptime checks disabled for {$record->name}")
                                 ->body($state
                                     ? 'Scheduled uptime checks will resume on their next run.'
-                                    : 'Uptime checks are paused. SSL and outbound checks are not affected.')
-                                ->color($state ? 'success' : 'warning')
+                                    : 'Uptime checks are paused. SSL and outbound checks are not affected.');
+
+                            ($state ? $notification->success() : $notification->warning())
                                 ->send();
                         })
                         ->sortable(),
@@ -271,14 +272,15 @@ class WebsiteResource extends Resource
                         ->label('SSL check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
-                            Notification::make()
+                            $notification = Notification::make()
                                 ->title($state
                                     ? "SSL checks enabled for {$record->name}"
                                     : "SSL checks disabled for {$record->name}")
                                 ->body($state
                                     ? 'SSL expiry monitoring will resume on the next scheduled run.'
-                                    : 'SSL expiry monitoring is paused for this website.')
-                                ->color($state ? 'success' : 'warning')
+                                    : 'SSL expiry monitoring is paused for this website.');
+
+                            ($state ? $notification->success() : $notification->warning())
                                 ->send();
                         })
                         ->sortable(),
@@ -294,14 +296,15 @@ class WebsiteResource extends Resource
                         ->label('Outbound check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
-                            Notification::make()
+                            $notification = Notification::make()
                                 ->title($state
                                     ? "Outbound checks enabled for {$record->name}"
                                     : "Outbound checks disabled for {$record->name}")
                                 ->body($state
                                     ? 'Outbound link monitoring will resume on the next scheduled run.'
-                                    : 'Outbound link monitoring is paused for this website.')
-                                ->color($state ? 'success' : 'warning')
+                                    : 'Outbound link monitoring is paused for this website.');
+
+                            ($state ? $notification->success() : $notification->warning())
                                 ->send();
                         })
                         ->sortable(),

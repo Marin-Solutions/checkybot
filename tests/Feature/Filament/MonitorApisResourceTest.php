@@ -166,10 +166,12 @@ test('user without Update:MonitorApis permission cannot toggle is_enabled inline
         'is_enabled' => true,
     ]);
 
-    // The inline toggle is gated server-side via the disabled() callback, which
-    // short-circuits Filament's updateTableColumnState before any state is
-    // written. Assert both that the column reports itself as disabled for this
-    // user, and that an attempted Livewire toggle leaves the value unchanged.
+    // The inline toggle is gated server-side via the disabled() callback,
+    // which short-circuits Filament's updateTableColumnState (returns null)
+    // before beforeStateUpdated runs — so the Livewire response is 200, not
+    // 403, and assertForbidden() would actually fail here. Instead we assert
+    // the column reports isDisabled() === true for this user (the real gate)
+    // and that an attempted Livewire toggle leaves the value unchanged.
     Livewire::test(ListMonitorApis::class)
         ->assertTableColumnExists(
             'is_enabled',

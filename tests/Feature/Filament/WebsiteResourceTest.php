@@ -637,8 +637,11 @@ test('user without Update:Website permission cannot toggle website columns inlin
     ]);
 
     // Each toggle column should report itself as disabled for this user, and
-    // any attempted Livewire toggle should be a no-op (Filament's
-    // updateTableColumnState short-circuits when the column is disabled).
+    // any attempted Livewire toggle should be a no-op. We deliberately do not
+    // call assertForbidden() here: Filament's updateTableColumnState
+    // short-circuits to null when the column is disabled, before
+    // beforeStateUpdated ever runs, so the Livewire response is 200, not 403.
+    // disabled() is the real gate; assertForbidden() would actually fail.
     $page = Livewire::test(ListWebsites::class);
 
     foreach (['uptime_check', 'ssl_check', 'outbound_check'] as $column) {
