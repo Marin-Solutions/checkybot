@@ -229,9 +229,16 @@ function getSslExpiryStats(SslExpiryStatsWidget $widget): array
 }
 
 /**
- * Find a Stat in the collection by its label.
+ * Find a Stat in the collection by its label. Throws if the label is missing
+ * so a typo'd assertion surfaces a clear error instead of a null dereference.
  */
 function sslStat(\Illuminate\Support\Collection $stats, string $label): \Filament\Widgets\StatsOverviewWidget\Stat
 {
-    return $stats->first(fn ($stat) => $stat->getLabel() === $label);
+    $stat = $stats->first(fn ($candidate) => $candidate->getLabel() === $label);
+
+    if ($stat === null) {
+        throw new \RuntimeException("No SSL stat found with label '{$label}'.");
+    }
+
+    return $stat;
 }
