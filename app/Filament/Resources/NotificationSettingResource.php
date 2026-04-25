@@ -96,11 +96,7 @@ class NotificationSettingResource extends Resource
                     ->requiresConfirmation()
                     ->modalHeading('Send a test notification?')
                     ->modalDescription(function (NotificationSetting $record): string {
-                        $rawType = $record->channel_type instanceof NotificationChannelTypesEnum
-                            ? $record->channel_type->value
-                            : (string) $record->channel_type;
-
-                        if ($rawType === NotificationChannelTypesEnum::MAIL->value) {
+                        if ($record->channel_type === NotificationChannelTypesEnum::MAIL) {
                             return 'A sample alert email will be delivered to '.($record->address ?? 'the configured address').'.';
                         }
 

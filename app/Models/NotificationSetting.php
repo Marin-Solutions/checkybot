@@ -222,10 +222,24 @@ class NotificationSetting extends Model
             ];
         }
 
-        $response = $channel->sendWebhookNotification([
-            'message' => 'Checkybot test notification',
-            'description' => 'This is a sample payload sent from Checkybot to verify the "'.$channel->title.'" webhook channel. No action is required.',
-        ]);
+        try {
+            $response = $channel->sendWebhookNotification([
+                'message' => 'Checkybot test notification',
+                'description' => 'This is a sample payload sent from Checkybot to verify the "'.$channel->title.'" webhook channel. No action is required.',
+            ]);
+        } catch (Throwable $exception) {
+            Log::error('Test webhook notification failed with unexpected error', [
+                'notification_setting_id' => $this->id,
+                'channel_id' => $channel->id,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return [
+                'ok' => false,
+                'title' => 'Test webhook failed',
+                'body' => 'The test could not be completed due to an unexpected error. Check the application logs for details.',
+            ];
+        }
 
         $code = (int) ($response['code'] ?? 0);
 

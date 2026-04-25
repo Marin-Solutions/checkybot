@@ -125,6 +125,29 @@ test('send test notification reports failure when webhook channel was deleted', 
     expect($result['body'])->toContain('not linked');
 });
 
+test('send test notification surfaces a graceful failure when the webhook helper throws', function () {
+    $setting = NotificationSetting::factory()->webhook()->create();
+
+    $stubChannel = new class extends NotificationChannels
+    {
+        public function sendWebhookNotification(array $data): array
+        {
+            throw new \RuntimeException('Boom — non-Guzzle error from inside the helper');
+        }
+    };
+    $stubChannel->title = 'Flaky endpoint';
+
+    $setting->setRelation('channel', $stubChannel);
+
+    $result = $setting->sendTestNotification();
+
+    expect($result['ok'])->toBeFalse();
+    expect($result['title'])->toBe('Test webhook failed');
+    expect($result['body'])
+        ->toContain('unexpected')
+        ->not->toContain('Boom');
+});
+
 test('send test notification labels curl-style errnos as network errors, not HTTP statuses', function () {
     $channel = NotificationChannels::factory()->create([
         'method' => 'POST',
