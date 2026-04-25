@@ -113,5 +113,6 @@ test('global notification list shows empty state with create CTA when no rules e
     Livewire::test(ListNotificationSettings::class)
         ->assertSee('No global notification rules yet')
         ->assertSee('Create a rule to be alerted by email or webhook when any of your monitors changes state.')
+        ->assertSee('Rules added here apply automatically to every website with the matching monitor enabled.')
         ->assertSee('Add notification rule');
 });
