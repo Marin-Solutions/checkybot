@@ -131,6 +131,58 @@ test('api monitor list shows enabled state', function () {
         ->assertTableColumnExists('is_enabled');
 });
 
+test('super admin can toggle is_enabled inline from the api monitors table', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false)
+        ->assertNotified();
+
+    expect($monitor->refresh()->is_enabled)->toBeFalse();
+
+    Livewire::test(ListMonitorApis::class)
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), true)
+        ->assertNotified();
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue();
+});
+
+test('user without Update:MonitorApis permission cannot toggle is_enabled inline', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:MonitorApis', 'View:MonitorApis']);
+    $this->actingAs($user);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    // The inline toggle is gated server-side via the disabled() callback,
+    // which short-circuits Filament's updateTableColumnState (returns null)
+    // before beforeStateUpdated runs — so the Livewire response is 200, not
+    // 403, and assertForbidden() would actually fail here. Instead we assert
+    // the column reports isDisabled() === true for this user (the real gate)
+    // and that an attempted Livewire toggle leaves the value unchanged.
+    Livewire::test(ListMonitorApis::class)
+        ->assertTableColumnExists(
+            'is_enabled',
+            fn (\Filament\Tables\Columns\ToggleColumn $column): bool => $column->isDisabled(),
+            $monitor,
+        )
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false);
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue();
+});
+
 test('list test action uses stored execution settings', function () {
     $this->createResourcePermissions('MonitorApis');
 
