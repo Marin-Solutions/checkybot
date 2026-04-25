@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
+use App\Filament\Support\HealthStatusFilter;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
 use App\Tables\Columns\SparklineColumn;
@@ -364,6 +365,10 @@ class WebsiteResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
+                HealthStatusFilter::make(),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('uptime_check', true),
+                ),
                 Tables\Filters\TrashedFilter::make(),
             ])
             ->actions([

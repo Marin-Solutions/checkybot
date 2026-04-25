@@ -312,6 +312,183 @@ test('application record shows package-managed external checks including archive
         ->toContain(PackageManagedApisRelationManager::class);
 });
 
+test('super admin can filter applications by current status', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthyProject = Project::factory()->create(['name' => 'Healthy App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $healthyProject->id,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    $warningProject = Project::factory()->create(['name' => 'Warning App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $warningProject->id,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+
+    $dangerProject = Project::factory()->create(['name' => 'Danger App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $dangerProject->id,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $dangerProject->id,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    $unknownProject = Project::factory()->create(['name' => 'Unknown App', 'created_by' => $user->id]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('application_status', 'danger')
+        ->assertCanSeeTableRecords([$dangerProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $unknownProject]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('application_status', 'warning')
+        ->assertCanSeeTableRecords([$warningProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $unknownProject]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('application_status', 'healthy')
+        ->assertCanSeeTableRecords([$healthyProject])
+        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $unknownProject]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('application_status', 'unknown')
+        ->assertCanSeeTableRecords([$unknownProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject]);
+});
+
+test('super admin can filter applications to only failing', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthyProject = Project::factory()->create(['name' => 'Healthy App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $healthyProject->id,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    $warningProject = Project::factory()->create(['name' => 'Warning App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $warningProject->id,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+
+    $dangerProject = Project::factory()->create(['name' => 'Danger App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $dangerProject->id,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    $unknownProject = Project::factory()->create(['name' => 'Unknown App', 'created_by' => $user->id]);
+
+    $archivedFailingProject = Project::factory()->create(['name' => 'Archived Failing App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $archivedFailingProject->id,
+        'current_status' => 'danger',
+        'is_archived' => true,
+        'archived_at' => now()->subHour(),
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('only_failing', true)
+        ->assertCanSeeTableRecords([$warningProject, $dangerProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $unknownProject, $archivedFailingProject]);
+});
+
+test('super admin can filter application components by current status', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $healthy = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    $warning = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    $danger = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('current_status', 'danger')
+        ->assertCanSeeTableRecords([$danger])
+        ->assertCanNotSeeTableRecords([$healthy, $warning]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('current_status', 'warning')
+        ->assertCanSeeTableRecords([$warning])
+        ->assertCanNotSeeTableRecords([$healthy, $danger]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('current_status', 'healthy')
+        ->assertCanSeeTableRecords([$healthy])
+        ->assertCanNotSeeTableRecords([$warning, $danger]);
+});
+
+test('super admin can filter application components to only failing', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $healthy = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    $warning = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    $danger = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    $archivedWarning = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    $archivedDanger = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('only_failing', true)
+        ->assertCanSeeTableRecords([$warning, $danger])
+        ->assertCanNotSeeTableRecords([$healthy, $archivedWarning, $archivedDanger]);
+});
+
 test('super admin can bulk disable project components', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
