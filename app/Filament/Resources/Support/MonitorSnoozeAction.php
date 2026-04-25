@@ -39,7 +39,6 @@ class MonitorSnoozeAction
             Forms\Components\DateTimePicker::make('until')
                 ->label('Snooze until')
                 ->seconds(false)
-                ->minDate(now())
                 ->visible(fn (Get $get): bool => $get('duration') === 'custom')
                 ->required(fn (Get $get): bool => $get('duration') === 'custom')
                 ->helperText('Server timezone: '.config('app.timezone').'. Notifications resume automatically after this time.'),

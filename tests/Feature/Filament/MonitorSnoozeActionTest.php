@@ -183,7 +183,8 @@ test('snooze action rejects a custom datetime in the past', function () {
         ->callTableAction('snooze', $website, data: [
             'duration' => 'custom',
             'until' => now()->subHour()->toDateTimeString(),
-        ]);
+        ])
+        ->assertNotified('Snooze time must be in the future');
 
     expect($website->refresh()->silenced_until)->toBeNull();
 });
