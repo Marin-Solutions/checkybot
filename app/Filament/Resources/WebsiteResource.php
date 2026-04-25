@@ -8,7 +8,6 @@ use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Filament\Support\HealthStatusFilter;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
-use App\Support\UserTimezone;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -339,13 +338,11 @@ class WebsiteResource extends Resource
 
                         // Custom formatter (rather than ->sinceInUserZone()) is
                         // needed because of the "Never" fallback when there is
-                        // no related SEO check. We still apply the viewer's
-                        // timezone preference so the "x ago" anchor matches the
-                        // rest of the table.
-                        return $latestCheck->started_at
-                            ->copy()
-                            ->setTimezone(UserTimezone::currentOrAppDefault())
-                            ->diffForHumans();
+                        // no related SEO check. The viewer's timezone is not
+                        // applied here because diffForHumans() returns a
+                        // relative string ("5 minutes ago") that is
+                        // timezone-independent by definition.
+                        return $latestCheck->started_at->diffForHumans();
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('latest_seo_check.total_urls_crawled')
