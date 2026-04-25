@@ -19,14 +19,15 @@ class OutboundLinksRelationManager extends RelationManager
 
     public function table(Table $table): Table
     {
+        $safeUrl = fn (?string $state): ?string => $state && preg_match('#^https?://#i', $state) ? $state : null;
+
         return $table
-            ->recordTitleAttribute('outgoing_url')
             ->columns([
                 TextColumn::make('found_on')
                     ->label('Found On')
                     ->limit(60)
                     ->tooltip(fn (?string $state): ?string => $state)
-                    ->url(fn (?string $state): ?string => $state)
+                    ->url($safeUrl)
                     ->openUrlInNewTab()
                     ->searchable()
                     ->wrap(),
@@ -34,7 +35,7 @@ class OutboundLinksRelationManager extends RelationManager
                     ->label('Outgoing URL')
                     ->limit(60)
                     ->tooltip(fn (?string $state): ?string => $state)
-                    ->url(fn (?string $state): ?string => $state)
+                    ->url($safeUrl)
                     ->openUrlInNewTab()
                     ->searchable()
                     ->wrap(),
@@ -49,7 +50,7 @@ class OutboundLinksRelationManager extends RelationManager
                         $state >= 200 => 'success',
                         default => 'gray',
                     })
-                    ->formatStateUsing(fn (?int $state): string => $state ? (string) $state : '—')
+                    ->formatStateUsing(fn (?int $state): string => $state !== null ? (string) $state : '—')
                     ->sortable(),
                 TextColumn::make('last_checked_at')
                     ->label('Last Checked')

@@ -791,6 +791,30 @@ test('outbound links relation manager filters by exact status code', function ()
         ->assertCanNotSeeTableRecords([$serverError]);
 });
 
+test('outbound links relation manager filters to rows with no response recorded', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $missingResponse = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/no-response',
+        'http_status_code' => null,
+    ]);
+    $healthy = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/ok',
+        'http_status_code' => 200,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', 'unknown')
+        ->assertCanSeeTableRecords([$missingResponse])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
 test('notification relation manager renders on view page and is website scoped', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
