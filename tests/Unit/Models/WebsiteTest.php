@@ -107,6 +107,10 @@ test('extractHost returns null for malformed urls with paths', function () {
     expect(Website::extractHost('not-a-url/path'))->toBeNull();
 });
 
+test('extractHost rejects opaque uris', function () {
+    expect(Website::extractHost('mailto:ops@example.com'))->toBeNull();
+});
+
 test('extractPort returns an explicit port from a full url', function () {
     expect(Website::extractPort('https://example.com:8443/health?foo=bar'))->toBe(8443);
 });
@@ -117,4 +121,8 @@ test('extractPort returns an explicit port from a schemeless url with path', fun
 
 test('extractPort falls back to 443 when no port is present', function () {
     expect(Website::extractPort('https://example.com/health'))->toBe(443);
+});
+
+test('extractPort preserves default port for bare ipv6 hosts', function () {
+    expect(Website::extractPort('2001:db8::1'))->toBe(443);
 });

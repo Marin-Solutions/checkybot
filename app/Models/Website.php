@@ -140,6 +140,10 @@ class Website extends Model
             return null;
         }
 
+        if (self::isOpaqueUri($url)) {
+            return null;
+        }
+
         if (preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) !== 1) {
             $schemedHost = parse_url('https://'.$url, PHP_URL_HOST);
 
@@ -179,9 +183,26 @@ class Website extends Model
             return $default;
         }
 
+        if (filter_var($url, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false || self::isOpaqueUri($url)) {
+            return $default;
+        }
+
         $schemedPort = parse_url('https://'.$url, PHP_URL_PORT);
 
         return is_int($schemedPort) ? $schemedPort : $default;
+    }
+
+    protected static function isOpaqueUri(string $value): bool
+    {
+        if (preg_match('/^(?<scheme>[a-z][a-z0-9+.-]*):(?<rest>.*)$/i', $value, $matches) !== 1) {
+            return false;
+        }
+
+        if (str_starts_with($matches['rest'], '//')) {
+            return false;
+        }
+
+        return preg_match('/^\d+(?:[\/?#]|$)/', $matches['rest']) !== 1;
     }
 
     protected static function isValidHost(string $host): bool
