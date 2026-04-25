@@ -324,17 +324,17 @@ class WebsiteResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
                     ->translateLabel()
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('updated_at')
                     ->translateLabel()
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('last_outbound_checked_at')
                     ->translateLabel()
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('latest_seo_check.status')
@@ -375,12 +375,18 @@ class WebsiteResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('latest_seo_check.started_at')
                     ->label('Last SEO Crawl')
-                    ->formatStateUsing(function ($state, $record) {
+                    ->formatStateUsing(function ($state, $record): string {
                         $latestCheck = $record->latestSeoCheck;
                         if (! $latestCheck || ! $latestCheck->started_at) {
                             return 'Never';
                         }
 
+                        // Custom formatter (rather than ->sinceInUserZone()) is
+                        // needed because of the "Never" fallback when there is
+                        // no related SEO check. The viewer's timezone is not
+                        // applied here because diffForHumans() returns a
+                        // relative string ("5 minutes ago") that is
+                        // timezone-independent by definition.
                         return $latestCheck->started_at->diffForHumans();
                     })
                     ->sortable(),
@@ -405,7 +411,7 @@ class WebsiteResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('deleted_at')
                     ->translateLabel()
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])

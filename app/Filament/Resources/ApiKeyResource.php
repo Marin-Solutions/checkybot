@@ -72,10 +72,10 @@ class ApiKeyResource extends Resource
                         : 'Legacy key hidden')
                     ->description('Masked preview. Full key shown once on creation.'),
                 Tables\Columns\TextColumn::make('last_used_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('expires_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
                 Tables\Columns\ToggleColumn::make('is_active'),
             ])

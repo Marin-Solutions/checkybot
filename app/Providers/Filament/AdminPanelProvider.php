@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\MyProfile\PersonalInfoWithTimezone;
 use BezhanSalleh\FilamentShield\FilamentShieldPlugin;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -35,6 +36,9 @@ class AdminPanelProvider extends PanelProvider
                     ->myProfile(
                         hasAvatars: true
                     )
+                    ->myProfileComponents([
+                        'personal_info' => PersonalInfoWithTimezone::class,
+                    ])
                     ->enableTwoFactorAuthentication(),
                 FilamentShieldPlugin::make(),
             ])

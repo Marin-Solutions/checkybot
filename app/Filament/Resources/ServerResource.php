@@ -220,15 +220,15 @@ class ServerResource extends Resource
                         };
                     }),
                 Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('deleted_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])

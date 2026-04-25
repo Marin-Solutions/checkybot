@@ -54,7 +54,7 @@ class OutboundLinksRelationManager extends RelationManager
                     ->sortable(),
                 TextColumn::make('last_checked_at')
                     ->label('Last Checked')
-                    ->since()
+                    ->sinceInUserZone()
                     ->tooltip(fn (?OutboundLink $record): ?string => $record?->last_checked_at?->toDayDateTimeString())
                     ->sortable(),
             ])

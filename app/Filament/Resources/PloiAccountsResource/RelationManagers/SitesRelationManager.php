@@ -43,7 +43,7 @@ class SitesRelationManager extends RelationManager
                     ->badge()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('site_created_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(),
                 Tables\Columns\IconColumn::make('checkybot_website_exists')->exists('checkybotWebsite')
