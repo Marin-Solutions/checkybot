@@ -33,8 +33,60 @@ test('normalize assertions falls back to unknown path', function () {
             'path' => 'Unknown path',
             'type' => 'exists',
             'message' => 'Missing value',
+            'actual' => '—',
+            'expected' => '—',
+            'has_comparison' => false,
         ],
     ]);
+});
+
+test('normalize assertions surfaces actual and expected values', function () {
+    $normalized = ApiMonitorEvidenceFormatter::normalizeAssertions([
+        [
+            'path' => 'status',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed: expected = active',
+            'actual' => 'pending',
+            'expected' => '= active',
+        ],
+    ]);
+
+    expect($normalized)->toBe([
+        [
+            'path' => 'status',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed: expected = active',
+            'actual' => 'pending',
+            'expected' => '= active',
+            'has_comparison' => true,
+        ],
+    ]);
+});
+
+test('normalize assertions stringifies non scalar actual and expected values', function () {
+    $normalized = ApiMonitorEvidenceFormatter::normalizeAssertions([
+        [
+            'path' => 'flags',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed',
+            'actual' => ['feature_a' => true],
+            'expected' => null,
+        ],
+    ]);
+
+    expect($normalized[0]['actual'])->toBe('{"feature_a":true}')
+        ->and($normalized[0]['expected'])->toBe('—')
+        ->and($normalized[0]['has_comparison'])->toBeTrue();
+});
+
+test('stringify assertion value handles scalars and complex types', function () {
+    expect(ApiMonitorEvidenceFormatter::stringifyAssertionValue(null))->toBe('null')
+        ->and(ApiMonitorEvidenceFormatter::stringifyAssertionValue(true))->toBe('true')
+        ->and(ApiMonitorEvidenceFormatter::stringifyAssertionValue(false))->toBe('false')
+        ->and(ApiMonitorEvidenceFormatter::stringifyAssertionValue(42))->toBe('42')
+        ->and(ApiMonitorEvidenceFormatter::stringifyAssertionValue(3.14))->toBe('3.14')
+        ->and(ApiMonitorEvidenceFormatter::stringifyAssertionValue('text'))->toBe('text')
+        ->and(ApiMonitorEvidenceFormatter::stringifyAssertionValue([1, 2]))->toBe('[1,2]');
 });
 
 test('status and http code colors follow monitor severity rules', function () {

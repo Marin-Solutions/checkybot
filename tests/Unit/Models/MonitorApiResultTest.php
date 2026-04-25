@@ -207,6 +207,59 @@ test('record result calculates response time', function () {
     expect($result->response_time_ms)->toBeLessThan(200);
 });
 
+test('record result persists actual and expected values for failed assertions', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 200,
+        'body' => ['status' => 'pending'],
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'status',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed: expected = active',
+                'actual' => 'pending',
+                'expected' => '= active',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->failed_assertions)->toHaveCount(1)
+        ->and($result->failed_assertions[0]['actual'])->toBe('pending')
+        ->and($result->failed_assertions[0]['expected'])->toBe('= active')
+        ->and($result->failed_assertions[0]['message'])->toBe('Value comparison failed: expected = active');
+});
+
+test('record result defaults missing actual and expected to null', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 500,
+        'body' => null,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'status',
+                'type' => 'exists',
+                'message' => 'Value does not exist at path',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->failed_assertions)->toHaveCount(1)
+        ->and($result->failed_assertions[0])->toHaveKey('actual')
+        ->and($result->failed_assertions[0])->toHaveKey('expected')
+        ->and($result->failed_assertions[0]['actual'])->toBeNull()
+        ->and($result->failed_assertions[0]['expected'])->toBeNull();
+});
+
 test('record result treats healthy expected 404 status as success when status is provided', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);

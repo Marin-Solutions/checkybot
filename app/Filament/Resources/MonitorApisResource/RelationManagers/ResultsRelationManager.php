@@ -137,6 +137,18 @@ class ResultsRelationManager extends RelationManager
                                     ->color('gray'),
                                 TextEntry::make('message')
                                     ->columnSpanFull(),
+                                TextEntry::make('expected')
+                                    ->label('Expected')
+                                    ->icon('heroicon-o-check-circle')
+                                    ->iconColor('success')
+                                    ->copyable()
+                                    ->default('—'),
+                                TextEntry::make('actual')
+                                    ->label('Actual')
+                                    ->icon('heroicon-o-x-circle')
+                                    ->iconColor('danger')
+                                    ->copyable()
+                                    ->default('—'),
                             ])
                             ->contained(false)
                             ->columns(2),

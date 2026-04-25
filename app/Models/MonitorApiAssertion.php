@@ -32,11 +32,16 @@ class MonitorApiAssertion extends Model
         return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
     }
 
+    /**
+     * @return array{passed: bool, message: string, actual?: mixed, expected?: mixed}
+     */
     public function validateResponse($value, bool $exists = true): array
     {
         $result = [
             'passed' => false,
             'message' => '',
+            'actual' => null,
+            'expected' => null,
         ];
 
         switch ($this->assertion_type) {
@@ -46,6 +51,8 @@ class MonitorApiAssertion extends Model
                 $result['message'] = $result['passed']
                     ? "Value is of type {$this->expected_type}"
                     : "Expected type {$this->expected_type}, got {$actualType}";
+                $result['actual'] = $actualType;
+                $result['expected'] = $this->expected_type;
                 break;
 
             case 'value_compare':
@@ -57,6 +64,8 @@ class MonitorApiAssertion extends Model
                 $result['message'] = $result['passed']
                     ? 'Value exists at path'
                     : 'Value does not exist at path';
+                $result['actual'] = $exists ? 'exists' : 'missing';
+                $result['expected'] = 'exists';
                 break;
 
             case 'not_exists':
@@ -64,26 +73,36 @@ class MonitorApiAssertion extends Model
                 $result['message'] = $result['passed']
                     ? 'Value does not exist at path'
                     : 'Value exists at path but should not';
+                $result['actual'] = $exists ? 'exists' : 'missing';
+                $result['expected'] = 'missing';
                 break;
 
             case 'array_length':
                 if (! is_array($value)) {
                     $result['message'] = 'Value is not an array';
+                    $result['actual'] = $this->getValueType($value);
+                    $result['expected'] = "array (length {$this->comparison_operator} {$this->expected_value})";
                     break;
                 }
                 $length = count($value);
                 $result = $this->compareValue($length);
+                $result['actual'] = $length;
+                $result['expected'] = "{$this->comparison_operator} {$this->expected_value}";
                 break;
 
             case 'regex_match':
                 if (! is_string($value)) {
                     $result['message'] = 'Value is not a string';
+                    $result['actual'] = $this->getValueType($value);
+                    $result['expected'] = "string matching {$this->regex_pattern}";
                     break;
                 }
                 $result['passed'] = (bool) preg_match($this->regex_pattern, $value);
                 $result['message'] = $result['passed']
                     ? 'Value matches pattern'
                     : 'Value does not match pattern';
+                $result['actual'] = $value;
+                $result['expected'] = $this->regex_pattern;
                 break;
         }
 
@@ -117,9 +136,12 @@ class MonitorApiAssertion extends Model
         return 'unknown';
     }
 
+    /**
+     * @return array{passed: bool, message: string, actual: mixed, expected: string}
+     */
     private function compareValue($value): array
     {
-        $result = ['passed' => false, 'message' => ''];
+        $result = ['passed' => false, 'message' => '', 'actual' => $value, 'expected' => "{$this->comparison_operator} {$this->expected_value}"];
 
         // Convert expected value to appropriate type if needed
         $typedExpectedValue = $this->castExpectedValue($value);

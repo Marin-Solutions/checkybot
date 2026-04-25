@@ -142,11 +142,13 @@ test('command treats matching expected 404 with invalid json as warning', functi
     expect($monitor->current_status)->toBe('warning')
         ->and($result?->is_success)->toBeFalse()
         ->and($result?->status)->toBe('warning')
-        ->and($result?->failed_assertions)->toContain([
-            'path' => '_response_body',
-            'type' => 'json_valid',
-            'message' => 'Invalid JSON response: Syntax error',
-        ]);
+        ->and(collect($result?->failed_assertions)->contains(
+            fn (array $assertion): bool => ($assertion['path'] ?? null) === '_response_body'
+                && ($assertion['type'] ?? null) === 'json_valid'
+                && ($assertion['message'] ?? null) === 'Invalid JSON response: Syntax error'
+                && ($assertion['expected'] ?? null) === 'valid JSON'
+                && ($assertion['actual'] ?? null) === 'Syntax error'
+        ))->toBeTrue();
 });
 
 test('command treats matching expected 404 with literal null json body as warning', function () {

@@ -169,12 +169,14 @@ test('test api preserves final http error status after retries', function () {
     ]);
 
     expect($result['code'])->toBe(403)
-        ->and($result['assertions'])->toContain([
-            'path' => '_http_status',
-            'type' => 'status_code',
-            'passed' => false,
-            'message' => 'Expected HTTP status 200, got 403.',
-        ]);
+        ->and(collect($result['assertions'])->contains(
+            fn (array $assertion): bool => ($assertion['path'] ?? null) === '_http_status'
+                && ($assertion['type'] ?? null) === 'status_code'
+                && ($assertion['passed'] ?? null) === false
+                && ($assertion['message'] ?? null) === 'Expected HTTP status 200, got 403.'
+                && ($assertion['actual'] ?? null) === 403
+                && ($assertion['expected'] ?? null) === 200
+        ))->toBeTrue();
 });
 
 test('test api treats null json values as existing data paths', function () {
@@ -223,11 +225,13 @@ test('test api still evaluates assertions for expected 404 json responses', func
     ]);
 
     expect($result['code'])->toBe(404)
-        ->and($result['assertions'])->toContain([
-            'path' => 'data.status',
-            'passed' => false,
-            'message' => 'Value does not exist at path',
-        ]);
+        ->and(collect($result['assertions'])->contains(
+            fn (array $assertion): bool => ($assertion['path'] ?? null) === 'data.status'
+                && ($assertion['passed'] ?? null) === false
+                && ($assertion['message'] ?? null) === 'Value does not exist at path'
+                && ($assertion['actual'] ?? null) === 'missing'
+                && ($assertion['expected'] ?? null) === 'exists'
+        ))->toBeTrue();
 });
 
 test('test api flags invalid json for expected 404 responses that require assertions', function () {
@@ -244,12 +248,14 @@ test('test api flags invalid json for expected 404 responses that require assert
 
     expect($result['code'])->toBe(404)
         ->and($result['error'])->toStartWith('Invalid JSON response:')
-        ->and($result['assertions'])->toContain([
-            'path' => '_response_body',
-            'type' => 'json_valid',
-            'passed' => false,
-            'message' => $result['error'],
-        ]);
+        ->and(collect($result['assertions'])->contains(
+            fn (array $assertion): bool => ($assertion['path'] ?? null) === '_response_body'
+                && ($assertion['type'] ?? null) === 'json_valid'
+                && ($assertion['passed'] ?? null) === false
+                && ($assertion['message'] ?? null) === $result['error']
+                && ($assertion['expected'] ?? null) === 'valid JSON'
+                && ($assertion['actual'] ?? null) === 'Syntax error'
+        ))->toBeTrue();
 });
 
 test('test api still evaluates assertions when json body is literal null', function () {
@@ -266,9 +272,11 @@ test('test api still evaluates assertions when json body is literal null', funct
 
     expect($result['code'])->toBe(404)
         ->and($result['error'])->toBeNull()
-        ->and($result['assertions'])->toContain([
-            'path' => 'data.status',
-            'passed' => false,
-            'message' => 'Value does not exist at path',
-        ]);
+        ->and(collect($result['assertions'])->contains(
+            fn (array $assertion): bool => ($assertion['path'] ?? null) === 'data.status'
+                && ($assertion['passed'] ?? null) === false
+                && ($assertion['message'] ?? null) === 'Value does not exist at path'
+                && ($assertion['actual'] ?? null) === 'missing'
+                && ($assertion['expected'] ?? null) === 'exists'
+        ))->toBeTrue();
 });

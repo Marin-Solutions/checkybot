@@ -66,6 +66,8 @@ class MonitorApiResult extends Model
                         'path' => $assertion['path'] ?? null,
                         'type' => $assertion['type'] ?? null,
                         'message' => $assertion['message'] ?? 'Assertion failed',
+                        'actual' => array_key_exists('actual', $assertion) ? $assertion['actual'] : null,
+                        'expected' => array_key_exists('expected', $assertion) ? $assertion['expected'] : null,
                     ];
                 }
             }
