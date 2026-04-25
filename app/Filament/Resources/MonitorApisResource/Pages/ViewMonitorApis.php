@@ -8,6 +8,7 @@ use App\Services\ApiMonitorExecutionService;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Support\Facades\Log;
 
 class ViewMonitorApis extends ViewRecord
 {
@@ -25,14 +26,21 @@ class ViewMonitorApis extends ViewRecord
                 ->modalHeading('Run API monitor now')
                 ->modalDescription('Checkybot will execute a real heartbeat against this endpoint immediately and append the result to its run history. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
                 ->modalSubmitActionLabel('Run now')
+                ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                ->visible(fn (): bool => (bool) $this->record->is_enabled)
                 ->action(function (): void {
                     try {
                         /** @var array{result: MonitorApiResult, status: string, summary: string, previous_status: string|null} $outcome */
                         $outcome = app(ApiMonitorExecutionService::class)->execute($this->record);
                     } catch (\Throwable $e) {
+                        Log::error('Run Now API monitor check failed', [
+                            'monitor_api_id' => $this->record->id,
+                            'exception' => $e,
+                        ]);
+
                         Notification::make()
                             ->title('Run failed')
-                            ->body('Checkybot could not complete the on-demand check: '.$e->getMessage())
+                            ->body('Checkybot could not complete the on-demand check. Check the application logs for details.')
                             ->danger()
                             ->send();
 
@@ -92,7 +100,7 @@ class ViewMonitorApis extends ViewRecord
         $body = implode('<br>', array_map(fn (string $line): string => e($line), $lines));
 
         $notification = Notification::make()
-            ->title(__($title))
+            ->title($title)
             ->body($body);
 
         match ($status) {

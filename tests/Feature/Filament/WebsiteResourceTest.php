@@ -667,6 +667,46 @@ test('view page hides run now action when uptime check is disabled', function ()
         ->assertActionHidden('run_now');
 });
 
+test('view page hides run now action for users without update permission', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Website', 'View:Website']);
+    $this->actingAs($user);
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page run now action does not fire user-facing health alerts', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+    ]);
+
+    Http::fake([
+        'https://broken.example' => Http::response('boom', 500),
+    ]);
+
+    $notificationService = Mockery::mock(\App\Services\HealthEventNotificationService::class);
+    $notificationService->shouldNotReceive('notifyWebsite');
+    $this->app->instance(\App\Services\HealthEventNotificationService::class, $notificationService);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check failed');
+
+    expect($website->refresh()->current_status)->toBe('danger');
+});
+
 test('view page renders recent failures when non-healthy logs exist', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);

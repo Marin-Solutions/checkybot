@@ -358,6 +358,35 @@ test('view page run now action surfaces failure evidence and persists the failed
         ->and($monitor->current_status)->toBe('danger');
 });
 
+test('view page hides run now action when api monitor is disabled', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page hides run now action for users without update permission', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:MonitorApis', 'View:MonitorApis']);
+    $this->actingAs($user);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertActionHidden('run_now');
+});
+
 test('api monitor view shows evidence rich latest run overview', function () {
     $this->createResourcePermissions('MonitorApis');
 

@@ -176,6 +176,38 @@ test('job sends recovery notifications when a warning website returns to healthy
     });
 });
 
+test('job does not notify when suppressNotifications is set, even on status change', function () {
+    Http::fake([
+        '*' => Http::response('', 500),
+    ]);
+
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'source' => 'manual',
+        'current_status' => 'healthy',
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $job = new LogUptimeSslJob($website, suppressNotifications: true);
+    $job->handle();
+
+    $website->refresh();
+
+    expect($website->current_status)->toBe('danger');
+
+    Mail::assertNothingSent();
+});
+
 test('job sends notifications for failed manual website heartbeats', function () {
     Http::fake([
         '*' => Http::response('', 500),

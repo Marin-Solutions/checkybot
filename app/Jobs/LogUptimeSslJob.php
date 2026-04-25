@@ -17,8 +17,10 @@ class LogUptimeSslJob implements ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Website $website)
-    {
+    public function __construct(
+        public Website $website,
+        public bool $suppressNotifications = false,
+    ) {
         //
     }
 
@@ -92,17 +94,19 @@ class LogUptimeSslJob implements ShouldQueue
                 'status_summary' => $summary,
             ])->save();
 
-            if (
-                in_array($status, ['warning', 'danger'], true)
-                && $previousStatus !== $status
-            ) {
-                $notificationService->notifyWebsite($this->website, 'heartbeat', $status, $summary);
-            } elseif (
-                $this->website->source === 'package'
-                && $status === 'healthy'
-                && in_array($previousStatus, ['warning', 'danger'], true)
-            ) {
-                $notificationService->notifyWebsite($this->website, 'recovered', $status, $summary);
+            if (! $this->suppressNotifications) {
+                if (
+                    in_array($status, ['warning', 'danger'], true)
+                    && $previousStatus !== $status
+                ) {
+                    $notificationService->notifyWebsite($this->website, 'heartbeat', $status, $summary);
+                } elseif (
+                    $this->website->source === 'package'
+                    && $status === 'healthy'
+                    && in_array($previousStatus, ['warning', 'danger'], true)
+                ) {
+                    $notificationService->notifyWebsite($this->website, 'recovered', $status, $summary);
+                }
             }
 
             // Log successful completion

@@ -8,6 +8,7 @@ use App\Models\WebsiteLogHistory;
 use Filament\Actions;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Support\Facades\Log;
 
 class ViewWebsite extends ViewRecord
 {
@@ -23,16 +24,22 @@ class ViewWebsite extends ViewRecord
                 ->requiresConfirmation()
                 ->modalIcon('heroicon-o-bolt')
                 ->modalHeading('Run uptime + SSL check now')
-                ->modalDescription('Checkybot will run the same heartbeat job that runs on the schedule against this website right now and append the result to its log history. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
+                ->modalDescription('Checkybot will run the same heartbeat job that runs on the schedule against this website right now and append the result to its log history. Subscribers will not be alerted by this manual run. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
                 ->modalSubmitActionLabel('Run now')
+                ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->uptime_check)
                 ->action(function (): void {
                     try {
-                        LogUptimeSslJob::dispatchSync($this->record);
+                        LogUptimeSslJob::dispatchSync($this->record, suppressNotifications: true);
                     } catch (\Throwable $e) {
+                        Log::error('Run Now uptime/SSL check failed', [
+                            'website_id' => $this->record->id,
+                            'exception' => $e,
+                        ]);
+
                         Notification::make()
                             ->title('Run failed')
-                            ->body('Checkybot could not complete the on-demand check: '.$e->getMessage())
+                            ->body('Checkybot could not complete the on-demand check. Check the application logs for details.')
                             ->danger()
                             ->send();
 
@@ -43,6 +50,7 @@ class ViewWebsite extends ViewRecord
 
                     $latestLog = $this->record->logHistory()
                         ->latest('created_at')
+                        ->latest('id')
                         ->first();
 
                     static::sendRunNowNotification($this->record->current_status, $latestLog);
@@ -76,7 +84,7 @@ class ViewWebsite extends ViewRecord
         $body = implode('<br>', array_map(fn (string $line): string => e($line), $lines));
 
         $notification = Notification::make()
-            ->title(__($title))
+            ->title($title)
             ->body($body);
 
         match ($status) {
