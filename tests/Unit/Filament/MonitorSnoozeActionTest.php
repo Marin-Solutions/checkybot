@@ -63,3 +63,32 @@ test('rejects an empty payload by returning null', function () {
 
     expect($until)->toBeNull();
 });
+
+test('rejects a malformed custom timestamp string by returning null instead of throwing', function () {
+    $until = MonitorSnoozeAction::resolveUntil([
+        'duration' => 'custom',
+        'until' => 'not-a-real-datetime',
+    ]);
+
+    expect($until)->toBeNull();
+});
+
+test('rejects a non-string custom timestamp value by returning null', function () {
+    $until = MonitorSnoozeAction::resolveUntil([
+        'duration' => 'custom',
+        'until' => ['nested' => 'array'],
+    ]);
+
+    expect($until)->toBeNull();
+});
+
+test('uses fixed 24-hour arithmetic on the 24h preset to avoid DST drift', function () {
+    // addHours(24) returns a moment exactly 86400 real seconds in the
+    // future regardless of DST transitions; addDay() would yield 23 or 25
+    // hours of wall time when crossing a DST boundary, breaking the
+    // snooze duration the operator selected in the UI.
+    $until = MonitorSnoozeAction::resolveUntil(['duration' => '24h']);
+
+    expect($until)->not->toBeNull()
+        ->and(now()->diffInSeconds($until))->toEqualWithDelta(86400, 5);
+});

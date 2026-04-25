@@ -49,17 +49,23 @@ class MonitorSnoozeAction
      * Resolve the snooze duration form data into a future Carbon instance.
      *
      * Returns null when the form data is malformed, the duration preset is
-     * unknown, or the chosen target lies in the past — callers treat null
-     * as a validation failure and surface an error instead of silently
-     * writing a stale or unintended value.
+     * unknown, the custom timestamp can't be parsed, or the chosen target
+     * lies in the past — callers treat null as a validation failure and
+     * surface an error instead of silently writing a stale or unintended
+     * value (or worse, raising a 500 from a tampered payload).
+     *
+     * Each preset uses fixed-hour arithmetic (`addHours()`) rather than
+     * calendar-aware (`addDay()`) so the duration the user sees in the UI
+     * matches the elapsed wall time even across a DST transition: a "24
+     * hours" snooze is always 24 real hours, never 23 or 25.
      */
     public static function resolveUntil(array $data): ?Carbon
     {
         $until = match ($data['duration'] ?? null) {
-            '1h' => now()->addHour(),
+            '1h' => now()->addHours(1),
             '4h' => now()->addHours(4),
-            '24h' => now()->addDay(),
-            'custom' => isset($data['until']) ? Carbon::parse($data['until']) : null,
+            '24h' => now()->addHours(24),
+            'custom' => self::parseCustomTimestamp($data['until'] ?? null),
             default => null,
         };
 
@@ -68,5 +74,25 @@ class MonitorSnoozeAction
         }
 
         return $until;
+    }
+
+    /**
+     * Parse the custom-datetime field, returning null on any malformed
+     * input. `Carbon::parse` throws InvalidFormatException when given junk
+     * (e.g. a tampered Livewire payload), and that propagates to a 500
+     * response — swallowing it here lets `resolveUntil()` honour its
+     * documented null-on-validation-failure contract instead.
+     */
+    private static function parseCustomTimestamp(mixed $value): ?Carbon
+    {
+        if (! is_string($value) && ! $value instanceof \DateTimeInterface) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($value);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }
