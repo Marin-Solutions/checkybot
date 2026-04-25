@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Projects\Pages;
 
 use App\Filament\Resources\ApiKeyResource;
 use App\Filament\Resources\Projects\ProjectResource;
+use App\Filament\Resources\Projects\Widgets\ProjectHealthOverviewWidget;
+use App\Filament\Resources\Projects\Widgets\ProjectIncidentFeedWidget;
 use App\Models\ApiKey;
 use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
@@ -56,6 +58,14 @@ class ViewProject extends ViewRecord
     {
         return [
             EditAction::make(),
+        ];
+    }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            ProjectHealthOverviewWidget::make(['record' => $this->record]),
+            ProjectIncidentFeedWidget::make(['record' => $this->record]),
         ];
     }
 }
