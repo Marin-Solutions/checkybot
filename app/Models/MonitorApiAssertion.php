@@ -84,10 +84,9 @@ class MonitorApiAssertion extends Model
                     $result['expected'] = "array (length {$this->comparison_operator} {$this->expected_value})";
                     break;
                 }
-                $length = count($value);
-                $result = $this->compareValue($length);
-                $result['actual'] = $length;
-                $result['expected'] = "{$this->comparison_operator} {$this->expected_value}";
+                // compareValue() already sets actual = $length and expected = "{op} {val}",
+                // which is exactly the count and operator string we want to surface here.
+                $result = $this->compareValue(count($value));
                 break;
 
             case 'regex_match':
