@@ -4,6 +4,7 @@ use App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSet
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
+use Filament\Notifications\Livewire\Notifications;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Livewire\Livewire;
@@ -93,6 +94,15 @@ test('send test action surfaces webhook failures with status code', function () 
     ]);
 
     Livewire::test(ListNotificationSettings::class)
-        ->callTableAction('sendTest', $setting)
-        ->assertNotified('Test webhook failed');
+        ->callTableAction('sendTest', $setting);
+
+    // assertNotified() consumes the session-flashed notification, so read the
+    // body first via the same path Filament's own assertNotified() uses.
+    $component = new Notifications;
+    $component->mount();
+    $notification = $component->notifications->last();
+
+    expect($notification)->not->toBeNull();
+    expect($notification->getTitle())->toBe('Test webhook failed');
+    expect($notification->getBody())->toContain('HTTP 502');
 });

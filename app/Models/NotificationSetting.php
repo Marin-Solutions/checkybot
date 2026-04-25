@@ -144,6 +144,11 @@ class NotificationSetting extends Model
         };
     }
 
+    /**
+     * Hydrated models return an enum instance via the cast; the raw-string
+     * fallback exists for unhydrated data sources (factories using setRawAttributes,
+     * legacy serialised payloads) where the cast would not have been applied.
+     */
     private function resolveChannelType(): ?NotificationChannelTypesEnum
     {
         $value = $this->channel_type;
@@ -234,7 +239,19 @@ class NotificationSetting extends Model
 
         $body = $response['body'] ?? null;
         $detail = is_string($body) ? $body : (json_encode($body) ?: '');
-        $codeLabel = $code > 0 ? 'HTTP '.$code : 'no response (network or transport error)';
+
+        // sendWebhookNotification() reuses the `code` key for two different
+        // namespaces: real HTTP status codes (100–599) on a completed request,
+        // and curl errnos (e.g. 60 for SSL, 6 for DNS) when a RequestException
+        // is caught. Label them differently so operators can tell apart a 502
+        // from a TLS handshake failure.
+        if ($code >= 100 && $code < 600) {
+            $codeLabel = 'HTTP '.$code;
+        } elseif ($code > 0) {
+            $codeLabel = 'network error (curl errno '.$code.')';
+        } else {
+            $codeLabel = 'no response (network or transport error)';
+        }
 
         return [
             'ok' => false,

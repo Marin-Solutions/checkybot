@@ -124,3 +124,40 @@ test('send test notification reports failure when webhook channel was deleted', 
     expect($result['ok'])->toBeFalse();
     expect($result['body'])->toContain('not linked');
 });
+
+test('send test notification labels curl-style errnos as network errors, not HTTP statuses', function () {
+    $channel = NotificationChannels::factory()->create([
+        'method' => 'POST',
+        'url' => 'https://example.com/webhook',
+    ]);
+
+    $setting = NotificationSetting::factory()->webhook()->create([
+        'notification_channel_id' => $channel->id,
+    ]);
+
+    /**
+     * sendWebhookNotification() reuses the `code` key for curl errnos when a
+     * RequestException is caught (e.g. errno 60 = SSL handshake). Simulate that
+     * path by stubbing the channel relation with a model whose
+     * sendWebhookNotification returns the errno-shaped response.
+     */
+    $stubChannel = new class extends NotificationChannels
+    {
+        public string $title = 'TLS-broken endpoint';
+
+        public function sendWebhookNotification(array $data): array
+        {
+            return ['url' => 'https://example.com/webhook', 'code' => 60, 'body' => 'SSL certificate problem'];
+        }
+    };
+    $stubChannel->title = 'TLS-broken endpoint';
+
+    $setting->setRelation('channel', $stubChannel);
+
+    $result = $setting->sendTestNotification();
+
+    expect($result['ok'])->toBeFalse();
+    expect($result['body'])
+        ->toContain('curl errno 60')
+        ->not->toContain('HTTP 60');
+});
