@@ -56,8 +56,7 @@ class CheckApiMonitors extends Command
                         ) {
                             $notificationService->notifyApi($monitor, 'heartbeat', $status, $summary);
                         } elseif (
-                            $monitor->source === 'package'
-                            && $status === 'healthy'
+                            $status === 'healthy'
                             && in_array($previousStatus, ['warning', 'danger'], true)
                         ) {
                             $notificationService->notifyApi($monitor, 'recovered', $status, $summary);

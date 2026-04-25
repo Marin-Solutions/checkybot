@@ -98,8 +98,7 @@ class LogUptimeSslJob implements ShouldQueue
             ) {
                 $notificationService->notifyWebsite($this->website, 'heartbeat', $status, $summary);
             } elseif (
-                $this->website->source === 'package'
-                && $status === 'healthy'
+                $status === 'healthy'
                 && in_array($previousStatus, ['warning', 'danger'], true)
             ) {
                 $notificationService->notifyWebsite($this->website, 'recovered', $status, $summary);

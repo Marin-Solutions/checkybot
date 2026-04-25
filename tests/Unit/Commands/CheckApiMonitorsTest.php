@@ -363,6 +363,50 @@ test('command sends notifications for failed manual api monitor regressions', fu
     Mail::assertSent(HealthStatusAlert::class, 1);
 });
 
+test('command sends recovery notifications when a manual api monitor returns to healthy', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'manual-health',
+        'url' => 'https://api.example.com/health',
+        'source' => 'manual',
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('healthy')
+        ->and($monitor->stale_at)->toBeNull();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->eventLabel === 'recovered'
+            && $mail->status === 'healthy';
+    });
+});
+
 test('command does not notify when a manual api monitor remains in the same failing status', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),
