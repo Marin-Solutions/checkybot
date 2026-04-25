@@ -603,6 +603,70 @@ test('super admin can render view page with infolist sections', function () {
         ->assertSee('Danger');
 });
 
+test('view page run now action persists a real heartbeat and surfaces evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'current_status' => null,
+        'status_summary' => null,
+    ]);
+
+    Http::fake([
+        'https://example.com' => Http::response('OK', 200),
+    ]);
+
+    expect($website->logHistory()->count())->toBe(0);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check succeeded');
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(1)
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at)->not->toBeNull();
+});
+
+test('view page run now action surfaces failure when target returns server error', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+    ]);
+
+    Http::fake([
+        'https://broken.example' => Http::response('boom', 500),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check failed');
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(1)
+        ->and($website->logHistory()->first()->http_status_code)->toBe(500)
+        ->and($website->current_status)->toBe('danger');
+});
+
+test('view page hides run now action when uptime check is disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionHidden('run_now');
+});
+
 test('view page renders recent failures when non-healthy logs exist', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);

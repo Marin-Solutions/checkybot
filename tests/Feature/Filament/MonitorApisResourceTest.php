@@ -293,6 +293,71 @@ test('check api action uses degraded title for expected status mismatches withou
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/created-health');
 });
 
+test('view page run now action persists a real run and surfaces evidence', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Run Now API',
+        'url' => 'https://example.com/run-now',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'data_path' => 'data.status',
+        'current_status' => null,
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+    ]);
+
+    expect($monitor->results)->toHaveCount(0);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand run succeeded');
+
+    Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/run-now');
+
+    $monitor->refresh();
+
+    expect($monitor->results()->count())->toBe(1)
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->last_heartbeat_at)->not->toBeNull();
+});
+
+test('view page run now action surfaces failure evidence and persists the failed run', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['error' => 'boom'], 500),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Broken Run Now API',
+        'url' => 'https://example.com/broken-run',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'current_status' => 'healthy',
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand run failed');
+
+    $monitor->refresh();
+
+    expect($monitor->results()->count())->toBe(1)
+        ->and($monitor->results()->first()->http_code)->toBe(500)
+        ->and($monitor->current_status)->toBe('danger');
+});
+
 test('api monitor view shows evidence rich latest run overview', function () {
     $this->createResourcePermissions('MonitorApis');
 
