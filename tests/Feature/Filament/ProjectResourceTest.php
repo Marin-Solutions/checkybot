@@ -870,3 +870,15 @@ test('project component navigation badge is scoped to the current user', functio
     expect(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadge())->toBe('1')
         ->and(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadgeColor())->toBeNull();
 });
+
+test('project component list shows empty state with create CTA when no components exist', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertSee('No application components yet')
+        ->assertSee('Add a component (cron job, queue worker, or background process) and point its heartbeat at Checkybot to detect stalls and missed runs.')
+        ->assertSee('Add component');
+});

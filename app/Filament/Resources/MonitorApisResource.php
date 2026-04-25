@@ -155,9 +155,25 @@ class MonitorApisResource extends Resource
                         : null)
                     ->placeholder('—')
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\IconColumn::make('is_enabled')
+                Tables\Columns\ToggleColumn::make('is_enabled')
                     ->label('Enabled')
-                    ->boolean(),
+                    ->tooltip(fn (): string => auth()->user()?->can('Update:MonitorApis')
+                        ? 'Pause or resume scheduled checks for this monitor.'
+                        : 'You need the Update:MonitorApis permission to change this.')
+                    ->disabled(fn (): bool => ! (auth()->user()?->can('Update:MonitorApis') ?? false))
+                    ->beforeStateUpdated(function (): void {
+                        abort_unless(auth()->user()?->can('Update:MonitorApis') ?? false, 403);
+                    })
+                    ->afterStateUpdated(function (MonitorApis $record, bool $state): void {
+                        $notification = Notification::make()
+                            ->title($state ? "{$record->title} enabled" : "{$record->title} disabled")
+                            ->body($state
+                                ? 'Scheduled checks will resume on the next run.'
+                                : 'Scheduled checks are paused. Configuration and history are preserved.');
+
+                        ($state ? $notification->success() : $notification->warning())
+                            ->send();
+                    }),
                 Tables\Columns\TextColumn::make('data_path')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('avg_response_time')
@@ -424,7 +440,14 @@ class MonitorApisResource extends Resource
                     \Filament\Actions\DeleteBulkAction::make(),
                 ]),
             ])
-            ->emptyStateHeading('No APIs');
+            ->emptyStateHeading('No API monitors yet')
+            ->emptyStateDescription('Add your first API monitor to start tracking response time, status codes, and assertions on a schedule.')
+            ->emptyStateIcon('heroicon-o-rectangle-stack')
+            ->emptyStateActions([
+                \Filament\Actions\CreateAction::make()
+                    ->label('Add API monitor')
+                    ->icon('heroicon-o-plus'),
+            ]);
     }
 
     public static function infolist(Schema $schema): Schema

@@ -106,3 +106,13 @@ test('send test action surfaces webhook failures with status code', function () 
     expect($notification->getTitle())->toBe('Test webhook failed');
     expect($notification->getBody())->toContain('HTTP 502');
 });
+
+test('global notification list shows empty state with create CTA when no rules exist', function () {
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(ListNotificationSettings::class)
+        ->assertSee('No global notification rules yet')
+        ->assertSee('Create a rule to be alerted by email or webhook when any of your monitors changes state.')
+        ->assertSee('Rules added here apply automatically to every website with the matching monitor enabled.')
+        ->assertSee('Add notification rule');
+});
