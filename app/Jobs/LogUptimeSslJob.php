@@ -27,9 +27,7 @@ class LogUptimeSslJob implements ShouldQueue
     public function __construct(
         public Website $website,
         public bool $onDemand = false,
-    ) {
-        //
-    }
+    ) {}
 
     /**
      * Execute the job.
