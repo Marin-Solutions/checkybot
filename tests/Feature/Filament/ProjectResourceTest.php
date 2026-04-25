@@ -470,6 +470,230 @@ test('super admin can filter application components to only failing', function (
         ->assertCanNotSeeTableRecords([$healthy]);
 });
 
+test('super admin can bulk disable project components', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->count(3)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('disable', $components);
+
+    foreach ($components as $component) {
+        $component->refresh();
+        expect($component->is_archived)->toBeTrue()
+            ->and($component->archived_at)->not->toBeNull();
+    }
+});
+
+test('super admin can bulk enable project components', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->archived()->count(3)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('enable', $components);
+
+    foreach ($components as $component) {
+        $component->refresh();
+        expect($component->is_archived)->toBeFalse()
+            ->and($component->archived_at)->toBeNull();
+    }
+});
+
+test('super admin can bulk pause monitoring across selected applications', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]));
+
+    expect($website->refresh()->uptime_check)->toBeFalse()
+        ->and($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($component->refresh()->is_archived)->toBeTrue();
+});
+
+test('super admin can bulk resume monitoring across selected applications', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    $monitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    $component = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($website->refresh()->uptime_check)->toBeTrue()
+        ->and($monitor->refresh()->is_enabled)->toBeTrue()
+        ->and($component->refresh()->is_archived)->toBeFalse();
+});
+
+test('bulk disable on already disabled components notifies that nothing changed', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->archived()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('disable', $components)
+        ->assertNotified('Nothing to disable');
+
+    foreach ($components as $component) {
+        expect($component->refresh()->is_archived)->toBeTrue();
+    }
+});
+
+test('bulk enable on already active components notifies that nothing changed', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $components = ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->callTableBulkAction('enable', $components)
+        ->assertNotified('Nothing to enable');
+
+    foreach ($components as $component) {
+        expect($component->refresh()->is_archived)->toBeFalse();
+    }
+});
+
+test('bulk disable on applications with nothing to pause reports no changes', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $monitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    $component = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]))
+        ->assertNotified('Nothing to disable');
+
+    expect($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($website->refresh()->uptime_check)->toBeFalse()
+        ->and($component->refresh()->is_archived)->toBeTrue();
+});
+
+test('bulk enable on applications with nothing to resume reports no changes', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]))
+        ->assertNotified('Nothing to enable');
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue()
+        ->and($website->refresh()->uptime_check)->toBeTrue()
+        ->and($component->refresh()->is_archived)->toBeFalse();
+});
+
 test('regular users only see their own applications and components', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
@@ -510,4 +734,61 @@ test('regular users only see their own applications and components', function ()
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$ownComponent])
         ->assertCanNotSeeTableRecords([$otherComponent]);
+});
+
+test('admin without Update:Project permission cannot see project bulk actions', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:Project');
+    $this->actingAs($user);
+
+    Project::factory()->count(2)->create(['created_by' => $user->id]);
+
+    Livewire::test(ListProjects::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable');
+});
+
+test('admin with Update:Project but missing child update permissions cannot see cascade actions', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+    // Website permissions are already created in TestCase::setUp().
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo([
+        'ViewAny:Project',
+        'Update:Project',
+        // Deliberately missing Update:Website, Update:MonitorApis, Update:ProjectComponent.
+    ]);
+    $this->actingAs($user);
+
+    Project::factory()->count(2)->create(['created_by' => $user->id]);
+
+    Livewire::test(ListProjects::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable');
+});
+
+test('admin without Update:ProjectComponent permission cannot see component bulk actions', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo('ViewAny:ProjectComponent');
+    $this->actingAs($user);
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable');
 });
