@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\ProjectComponents\Tables;
 
+use App\Filament\Support\HealthStatusFilter;
 use App\Models\ProjectComponent;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -11,6 +12,7 @@ use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 
 class ProjectComponentsTable
@@ -26,6 +28,7 @@ class ProjectComponentsTable
                     ->searchable(),
                 TextColumn::make('current_status')
                     ->badge()
+                    ->formatStateUsing(fn (string $state): string => ucfirst($state))
                     ->color(fn (?string $state): string => match ($state) {
                         'healthy' => 'success',
                         'warning' => 'warning',
@@ -43,7 +46,10 @@ class ProjectComponentsTable
                     ->since(),
             ])
             ->filters([
-                //
+                HealthStatusFilter::makeForNonNullableColumn(),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('is_archived', false),
+                ),
             ])
             ->recordActions([
                 ViewAction::make(),

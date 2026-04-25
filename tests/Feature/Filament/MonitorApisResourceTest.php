@@ -502,6 +502,64 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('1');
 });
 
+test('super admin can filter api monitors by current status', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknownNull = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    // PackageSyncService::disableMissingApiChecks and CheckybotControlService::disableCheck
+    // persist the literal string 'unknown', so the filter must surface that representation too.
+    $unknownLiteral = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'unknown']);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'danger')
+        ->assertCanSeeTableRecords([$danger])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'warning')
+        ->assertCanSeeTableRecords([$warning])
+        ->assertCanNotSeeTableRecords([$healthy, $danger, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'healthy')
+        ->assertCanSeeTableRecords([$healthy])
+        ->assertCanNotSeeTableRecords([$warning, $danger, $unknownNull, $unknownLiteral]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('current_status', 'unknown')
+        ->assertCanSeeTableRecords([$unknownNull, $unknownLiteral])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $danger]);
+});
+
+test('super admin can filter api monitors to only failing', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'healthy']);
+    $warning = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
+    $danger = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
+    $unknown = MonitorApis::factory()->create(['created_by' => $user->id, 'current_status' => null]);
+    $disabledWarning = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    $disabledDanger = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('only_failing', true)
+        ->assertCanSeeTableRecords([$warning, $danger])
+        ->assertCanNotSeeTableRecords([$healthy, $unknown, $disabledWarning, $disabledDanger]);
+});
+
 test('user without Update:MonitorApis permission cannot see API monitor bulk actions', function () {
     $this->createResourcePermissions('MonitorApis');
 
