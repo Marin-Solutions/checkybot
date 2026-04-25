@@ -6,6 +6,7 @@ use App\Filament\Support\HealthStatusFilter;
 use App\Models\ProjectComponent;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
@@ -117,6 +118,14 @@ class ProjectComponentsTable
                         ->deselectRecordsAfterCompletion(),
                     DeleteBulkAction::make(),
                 ]),
+            ])
+            ->emptyStateHeading('No application components yet')
+            ->emptyStateDescription('Add a component (cron job, queue worker, or background process) and point its heartbeat at Checkybot to detect stalls and missed runs.')
+            ->emptyStateIcon('heroicon-o-rectangle-stack')
+            ->emptyStateActions([
+                CreateAction::make()
+                    ->label('Add component')
+                    ->icon('heroicon-o-plus'),
             ]);
     }
 }

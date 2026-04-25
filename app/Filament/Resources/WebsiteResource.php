@@ -482,6 +482,14 @@ class WebsiteResource extends Resource
                     \Filament\Actions\ForceDeleteBulkAction::make(),
                     \Filament\Actions\RestoreBulkAction::make(),
                 ]),
+            ])
+            ->emptyStateHeading('No websites monitored yet')
+            ->emptyStateDescription('Add your first website to start tracking uptime, SSL expiry, outbound links, and SEO health.')
+            ->emptyStateIcon('heroicon-o-globe-alt')
+            ->emptyStateActions([
+                \Filament\Actions\CreateAction::make()
+                    ->label('Add website')
+                    ->icon('heroicon-o-plus'),
             ]);
     }
 

@@ -1316,3 +1316,12 @@ test('website list failing tab excludes soft-deleted websites', function () {
         ->assertCanSeeTableRecords([$visible])
         ->assertCanNotSeeTableRecords([$trashed]);
 });
+
+test('website list shows empty state with create CTA when no websites exist', function () {
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(ListWebsites::class)
+        ->assertSee('No websites monitored yet')
+        ->assertSee('Add your first website to start tracking uptime, SSL expiry, outbound links, and SEO health.')
+        ->assertSee('Add website');
+});
