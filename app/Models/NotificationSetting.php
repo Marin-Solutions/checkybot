@@ -98,10 +98,11 @@ class NotificationSetting extends Model
                     'description' => $descriptionText,
                 ]);
 
-                if ($response['code'] === 200) {
+                $code = (int) ($response['code'] ?? 0);
+                if ($code >= 200 && $code < 300) {
                     Log::info('Webhook Notification successfully sent to '.$response['url']);
                 } else {
-                    Log::error('Webhook Notification failed sent', ['url' => $response['url']]);
+                    Log::error('Webhook Notification failed sent', ['url' => $response['url'], 'code' => $code]);
                 }
 
                 break;
@@ -190,7 +191,7 @@ class NotificationSetting extends Model
             return [
                 'ok' => false,
                 'title' => 'Test email failed',
-                'body' => 'Could not send the test email: '.$exception->getMessage(),
+                'body' => 'The test email could not be sent. Check the application logs for the mail transport error and verify your mail configuration.',
             ];
         }
 
@@ -223,21 +224,22 @@ class NotificationSetting extends Model
 
         $code = (int) ($response['code'] ?? 0);
 
-        if ($code === 200) {
+        if ($code >= 200 && $code < 300) {
             return [
                 'ok' => true,
                 'title' => 'Test webhook delivered',
-                'body' => 'The "'.$channel->title.'" webhook responded with HTTP 200. Confirm the message arrived in the destination channel.',
+                'body' => 'The "'.$channel->title.'" webhook responded with HTTP '.$code.'. Confirm the message arrived in the destination channel.',
             ];
         }
 
         $body = $response['body'] ?? null;
-        $detail = is_string($body) ? $body : json_encode($body);
+        $detail = is_string($body) ? $body : (json_encode($body) ?: '');
+        $codeLabel = $code > 0 ? 'HTTP '.$code : 'no response (network or transport error)';
 
         return [
             'ok' => false,
             'title' => 'Test webhook failed',
-            'body' => 'The "'.$channel->title.'" webhook did not respond with HTTP 200. Status code: '.$code.($detail ? ' — '.$detail : ''),
+            'body' => 'The "'.$channel->title.'" webhook did not respond with a 2xx status. Received: '.$codeLabel.($detail !== '' ? ' — '.$detail : ''),
         ];
     }
 }

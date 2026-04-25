@@ -73,9 +73,9 @@ test('send test notification triggers webhook with sample payload', function () 
     });
 });
 
-test('send test notification reports failure when webhook returns non-200', function () {
+test('send test notification reports failure with the real upstream status code', function () {
     Http::fake([
-        '*' => Http::response(['error' => 'nope'], 500),
+        '*' => Http::response(['error' => 'nope'], 502),
     ]);
 
     $channel = NotificationChannels::factory()->create([
@@ -91,6 +91,27 @@ test('send test notification reports failure when webhook returns non-200', func
 
     expect($result['ok'])->toBeFalse();
     expect($result['title'])->toContain('failed');
+    expect($result['body'])->toContain('HTTP 502');
+});
+
+test('send test notification reports a 2xx response (e.g. 204) as success', function () {
+    Http::fake([
+        '*' => Http::response('', 204),
+    ]);
+
+    $channel = NotificationChannels::factory()->create([
+        'method' => 'POST',
+        'url' => 'https://example.com/webhook',
+    ]);
+
+    $setting = NotificationSetting::factory()->webhook()->create([
+        'notification_channel_id' => $channel->id,
+    ]);
+
+    $result = $setting->sendTestNotification();
+
+    expect($result['ok'])->toBeTrue();
+    expect($result['body'])->toContain('HTTP 204');
 });
 
 test('send test notification reports failure when webhook channel was deleted', function () {

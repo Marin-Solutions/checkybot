@@ -12,18 +12,19 @@ trait NotificationChannels
         $validatedData = $form->getState();
         if ($form->validate()) {
             $callback = \App\Models\NotificationChannels::testWebhook($validatedData);
+            $code = (int) ($callback['code'] ?? 0);
 
-            if ($callback['code'] != 200) {
+            if ($code < 200 || $code >= 300) {
                 $responseFail = true;
-                if ($callback['code'] == 60) {
+                if ($code == 60) {
                     $title = 'URL website, problem with certificate';
                     $body = $callback['body'];
                 } elseif ($callback['body'] == 1) {
                     $title = 'URL Website Response error';
-                    $body = 'The website response is not 200!';
+                    $body = 'The website response is not 2xx!';
                 } else {
                     $title = 'URL website a unknown error. try other url';
-                    $body = $callback['body'].' code errno:'.$callback['code'];
+                    $body = $callback['body'].' code errno:'.$code;
                 }
             } else {
                 $responseFail = false;
