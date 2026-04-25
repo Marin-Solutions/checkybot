@@ -13,8 +13,16 @@ class SslCertificateService
         return Website::extractHost($url);
     }
 
-    public function getExpirationDateForHost(string $host): CarbonInterface
+    public function extractPort(?string $url, int $default = 443): int
     {
-        return SslCertificate::createForHostName($host)->expirationDate();
+        return Website::extractPort($url, $default);
+    }
+
+    public function getExpirationDateForHost(string $host, int $port = 443): CarbonInterface
+    {
+        return SslCertificate::download()
+            ->usingPort($port)
+            ->forHost($host)
+            ->expirationDate();
     }
 }

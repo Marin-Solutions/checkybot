@@ -140,13 +140,55 @@ class Website extends Model
             return null;
         }
 
-        if (filter_var($url, FILTER_VALIDATE_IP) !== false || strtolower($url) === 'localhost') {
-            return $url;
+        if (preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) !== 1) {
+            $schemedHost = parse_url('https://'.$url, PHP_URL_HOST);
+
+            if (
+                is_string($schemedHost)
+                && self::isValidHost($schemedHost)
+                && (
+                    str_contains($schemedHost, '.')
+                    || filter_var($schemedHost, FILTER_VALIDATE_IP) !== false
+                    || strtolower($schemedHost) === 'localhost'
+                )
+            ) {
+                return $schemedHost;
+            }
         }
 
-        return preg_match('/^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$/i', $url) === 1
+        return self::isValidHost($url)
             ? $url
             : null;
+    }
+
+    public static function extractPort(?string $url, int $default = 443): int
+    {
+        if (blank($url)) {
+            return $default;
+        }
+
+        $port = parse_url($url, PHP_URL_PORT);
+
+        if (is_int($port)) {
+            return $port;
+        }
+
+        $url = trim($url);
+
+        if ($url === '' || preg_match('/^[a-z][a-z0-9+.-]*:\/\//i', $url) === 1) {
+            return $default;
+        }
+
+        $schemedPort = parse_url('https://'.$url, PHP_URL_PORT);
+
+        return is_int($schemedPort) ? $schemedPort : $default;
+    }
+
+    protected static function isValidHost(string $host): bool
+    {
+        return filter_var($host, FILTER_VALIDATE_IP) !== false
+            || strtolower($host) === 'localhost'
+            || preg_match('/^(?=.{1,253}$)(?!-)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)*[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])$/i', $host) === 1;
     }
 
     public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo

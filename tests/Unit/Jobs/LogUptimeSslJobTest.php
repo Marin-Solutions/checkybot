@@ -131,7 +131,7 @@ test('job sends recovery notifications when a package-managed website returns to
         ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $website->refresh();
 
@@ -171,7 +171,7 @@ test('job sends recovery notifications when a warning website returns to healthy
         ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     Mail::assertSent(\App\Mail\HealthStatusAlert::class, function (\App\Mail\HealthStatusAlert $mail): bool {
         return $mail->event === 'recovered'
@@ -205,7 +205,7 @@ test('on-demand runs do not notify and leave the live status fields untouched', 
         ]);
 
     $job = new LogUptimeSslJob($website, onDemand: true);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
     $website->refresh();
@@ -241,7 +241,7 @@ test('job sends notifications for failed manual website heartbeats', function ()
         ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $website->refresh();
 
@@ -274,7 +274,7 @@ test('job sends recovery notifications when a manual website returns to healthy'
         ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $website->refresh();
 
@@ -312,7 +312,7 @@ test('job does not notify when a manual website remains in the same failing stat
         ]);
 
     $job = new LogUptimeSslJob($website);
-    $job->handle();
+    $job->handle(app(SslCertificateService::class));
 
     $website->refresh();
 
@@ -355,7 +355,7 @@ test('job tolerates pre-deploy payloads where onDemand was never initialized', f
     $job = $reflection->newInstanceWithoutConstructor();
     $reflection->getProperty('website')->setValue($job, $website);
 
-    expect(fn () => $job->handle())->not->toThrow(\Throwable::class);
+    expect(fn () => $job->handle(app(SslCertificateService::class)))->not->toThrow(\Throwable::class);
 
     $website->refresh();
 
@@ -389,9 +389,14 @@ test('job resolves the host before looking up the ssl certificate', function () 
             ->with('https://example.com/health?foo=bar')
             ->andReturn('example.com');
 
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com/health?foo=bar')
+            ->andReturn(443);
+
         $mock->shouldReceive('getExpirationDateForHost')
             ->once()
-            ->with('example.com')
+            ->with('example.com', 443)
             ->andReturn(now()->addDays(30));
     });
 
@@ -422,6 +427,11 @@ test('job logs a warning and continues when ssl host cannot be determined', func
             ->with('not-a-url/path')
             ->andReturn(null);
 
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('not-a-url/path')
+            ->andReturn(443);
+
         $mock->shouldNotReceive('getExpirationDateForHost');
     });
 
@@ -442,4 +452,40 @@ test('job logs a warning and continues when ssl host cannot be determined', func
     expect($log)->not->toBeNull();
     expect($log?->ssl_expiry_date)->toBeNull();
     expect($log?->http_status_code)->toBe(200);
+});
+
+test('job preserves custom tls ports during ssl certificate lookup', function () {
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('example.com:8443/health')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('example.com:8443/health')
+            ->andReturn(8443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 8443)
+            ->andReturn(now()->addDays(30));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'example.com:8443/health',
+        'uptime_check' => true,
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+
+    expect($log?->ssl_expiry_date)->not->toBeNull();
+    expect(Carbon::parse($log?->ssl_expiry_date)->isFuture())->toBeTrue();
 });

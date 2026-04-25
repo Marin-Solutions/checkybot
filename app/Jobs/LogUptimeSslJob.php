@@ -47,6 +47,7 @@ class LogUptimeSslJob implements ShouldQueue
         $http_status_code = null;
         $speed = null;
         $host = $sslCertificateService->extractHost($this->website->url);
+        $port = $sslCertificateService->extractPort($this->website->url);
 
         try {
             // Get SSL expiry date (with error handling)
@@ -54,7 +55,7 @@ class LogUptimeSslJob implements ShouldQueue
                 Log::warning('Could not determine SSL host for '.$this->website->url);
             } else {
                 try {
-                    $ssl_expiry_date = $sslCertificateService->getExpirationDateForHost($host);
+                    $ssl_expiry_date = $sslCertificateService->getExpirationDateForHost($host, $port);
                 } catch (\Exception $sslException) {
                     Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
                     // Continue without SSL info rather than failing completely

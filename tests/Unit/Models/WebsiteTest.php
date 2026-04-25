@@ -99,6 +99,22 @@ test('extractHost accepts a bare hostname', function () {
     expect(Website::extractHost('example.com'))->toBe('example.com');
 });
 
+test('extractHost accepts a schemeless hostname with path', function () {
+    expect(Website::extractHost('example.com/health'))->toBe('example.com');
+});
+
 test('extractHost returns null for malformed urls with paths', function () {
     expect(Website::extractHost('not-a-url/path'))->toBeNull();
+});
+
+test('extractPort returns an explicit port from a full url', function () {
+    expect(Website::extractPort('https://example.com:8443/health?foo=bar'))->toBe(8443);
+});
+
+test('extractPort returns an explicit port from a schemeless url with path', function () {
+    expect(Website::extractPort('example.com:8443/health'))->toBe(8443);
+});
+
+test('extractPort falls back to 443 when no port is present', function () {
+    expect(Website::extractPort('https://example.com/health'))->toBe(443);
 });

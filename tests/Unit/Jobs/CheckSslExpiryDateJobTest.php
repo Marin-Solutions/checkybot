@@ -86,9 +86,14 @@ test('job resolves the host before checking ssl expiry', function () {
             ->with('https://example.com/status?from=checkybot')
             ->andReturn('example.com');
 
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com/status?from=checkybot')
+            ->andReturn(443);
+
         $mock->shouldReceive('getExpirationDateForHost')
             ->once()
-            ->with('example.com')
+            ->with('example.com', 443)
             ->andReturn(now()->addDays(30));
     });
 
@@ -116,6 +121,11 @@ test('job returns early when ssl host cannot be determined', function () {
             ->with('not-a-url/path')
             ->andReturn(null);
 
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('not-a-url/path')
+            ->andReturn(443);
+
         $mock->shouldNotReceive('getExpirationDateForHost');
     });
 
@@ -133,4 +143,34 @@ test('job returns early when ssl host cannot be determined', function () {
         ->with('Could not determine SSL host for website not-a-url/path');
 
     expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isSameDay(now()->addDays(10)))->toBeTrue();
+});
+
+test('job preserves custom tls ports during ssl expiry lookup', function () {
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('example.com:8443/status')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('example.com:8443/status')
+            ->andReturn(8443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 8443)
+            ->andReturn(now()->addDays(30));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'example.com:8443/status',
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->subDay(),
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isFuture())->toBeTrue();
 });
