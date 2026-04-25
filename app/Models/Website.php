@@ -180,6 +180,11 @@ class Website extends Model
         return $this->hasMany(WebsiteLogHistory::class);
     }
 
+    public function outboundLinks(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(OutboundLink::class);
+    }
+
     public function latestLogHistory(): HasOne
     {
         return $this->hasOne(WebsiteLogHistory::class)->latestOfMany();

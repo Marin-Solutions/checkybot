@@ -9,8 +9,10 @@ use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
 use App\Filament\Resources\WebsiteResource\Pages\ViewWebsite;
 use App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
+use App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelationManager;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
+use App\Models\OutboundLink;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -704,6 +706,89 @@ test('log history relation manager renders on view page', function () {
     ])
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$log]);
+});
+
+test('outbound links relation manager is registered on website resource', function () {
+    expect(\App\Filament\Resources\WebsiteResource::getRelations())
+        ->toContain(OutboundLinksRelationManager::class);
+});
+
+test('outbound links relation manager only shows links for the current website', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $otherWebsite = Website::factory()->create(['created_by' => $user->id]);
+
+    $visibleLink = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/visible',
+        'http_status_code' => 200,
+    ]);
+    $hiddenLink = OutboundLink::factory()->create([
+        'website_id' => $otherWebsite->id,
+        'outgoing_url' => 'https://partner.example/hidden',
+        'http_status_code' => 200,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleLink])
+        ->assertCanNotSeeTableRecords([$hiddenLink]);
+});
+
+test('outbound links relation manager filters broken links by status code range', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $healthy = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/ok',
+        'http_status_code' => 200,
+    ]);
+    $notFound = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/missing',
+        'http_status_code' => 404,
+    ]);
+    $serverError = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/down',
+        'http_status_code' => 503,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', 'broken')
+        ->assertCanSeeTableRecords([$notFound, $serverError])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+test('outbound links relation manager filters by exact status code', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $notFound = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/missing',
+        'http_status_code' => 404,
+    ]);
+    $serverError = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/down',
+        'http_status_code' => 500,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', '404')
+        ->assertCanSeeTableRecords([$notFound])
+        ->assertCanNotSeeTableRecords([$serverError]);
 });
 
 test('notification relation manager renders on view page and is website scoped', function () {

@@ -18,4 +18,17 @@ class OutboundLink extends Model
         'http_status_code',
         'last_checked_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'http_status_code' => 'integer',
+            'last_checked_at' => 'datetime',
+        ];
+    }
+
+    public function website(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Website::class);
+    }
 }

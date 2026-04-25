@@ -490,6 +490,7 @@ class WebsiteResource extends Resource
         return [
             \App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager::class,
             \App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager::class,
+            \App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelationManager::class,
         ];
     }
 
