@@ -239,3 +239,81 @@ test('assertion can be inactive', function () {
 
     expect($assertion->is_active)->toBeFalse();
 });
+
+test('value comparison failure captures actual and expected values', function () {
+    $assertion = MonitorApiAssertion::factory()->create([
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    $result = $assertion->validateResponse('pending');
+
+    expect($result['passed'])->toBeFalse()
+        ->and($result['actual'])->toBe('pending')
+        ->and($result['expected'])->toBe('= active');
+});
+
+test('type check failure captures actual and expected types', function () {
+    $assertion = MonitorApiAssertion::factory()->create([
+        'assertion_type' => 'type_check',
+        'expected_type' => 'string',
+    ]);
+
+    $result = $assertion->validateResponse(42);
+
+    expect($result['passed'])->toBeFalse()
+        ->and($result['actual'])->toBe('integer')
+        ->and($result['expected'])->toBe('string');
+});
+
+test('exists failure captures missing actual and exists expected', function () {
+    $assertion = MonitorApiAssertion::factory()->create([
+        'assertion_type' => 'exists',
+    ]);
+
+    $result = $assertion->validateResponse(null, false);
+
+    expect($result['passed'])->toBeFalse()
+        ->and($result['actual'])->toBe('missing')
+        ->and($result['expected'])->toBe('exists');
+});
+
+test('not exists failure captures exists actual and missing expected', function () {
+    $assertion = MonitorApiAssertion::factory()->create([
+        'assertion_type' => 'not_exists',
+    ]);
+
+    $result = $assertion->validateResponse('value', true);
+
+    expect($result['passed'])->toBeFalse()
+        ->and($result['actual'])->toBe('exists')
+        ->and($result['expected'])->toBe('missing');
+});
+
+test('array length failure captures count actual and operator expected', function () {
+    $assertion = MonitorApiAssertion::factory()->create([
+        'assertion_type' => 'array_length',
+        'comparison_operator' => '=',
+        'expected_value' => '3',
+    ]);
+
+    $result = $assertion->validateResponse([1, 2]);
+
+    expect($result['passed'])->toBeFalse()
+        ->and($result['actual'])->toBe(2)
+        ->and($result['expected'])->toBe('= 3');
+});
+
+test('regex failure captures actual value and pattern', function () {
+    $assertion = MonitorApiAssertion::factory()->create([
+        'assertion_type' => 'regex_match',
+        'regex_pattern' => '/^[a-z]+$/',
+    ]);
+
+    $result = $assertion->validateResponse('Hello123');
+
+    expect($result['passed'])->toBeFalse()
+        ->and($result['actual'])->toBe('Hello123')
+        ->and($result['expected'])->toBe('/^[a-z]+$/');
+});

@@ -60,7 +60,7 @@ class ApiMonitorEvidenceFormatter
 
     /**
      * @param  array<int, array<string, mixed>>|null  $assertions
-     * @return array<int, array{path: string, type: string, message: string}>
+     * @return array<int, array{path: string, type: string, message: string, actual: string, expected: string}>
      */
     public static function normalizeAssertions(?array $assertions): array
     {
@@ -69,13 +69,53 @@ class ApiMonitorEvidenceFormatter
         }
 
         return collect($assertions)
-            ->map(fn (array $assertion): array => [
-                'path' => (string) ($assertion['path'] ?? 'Unknown path'),
-                'type' => (string) ($assertion['type'] ?? 'assertion'),
-                'message' => (string) ($assertion['message'] ?? 'Assertion failed'),
-            ])
+            ->map(function (array $assertion): array {
+                // Distinguish *legacy records written before the actual/expected
+                // columns existed* (key absent → em-dash) from *new records
+                // where the path resolved to genuine JSON null* (key present
+                // with null value → "null"). `array_key_exists` is the only
+                // check that draws that line correctly.
+                $hasActual = array_key_exists('actual', $assertion);
+                $hasExpected = array_key_exists('expected', $assertion);
+
+                return [
+                    'path' => (string) ($assertion['path'] ?? 'Unknown path'),
+                    'type' => (string) ($assertion['type'] ?? 'assertion'),
+                    'message' => (string) ($assertion['message'] ?? 'Assertion failed'),
+                    'actual' => $hasActual ? self::stringifyAssertionValue($assertion['actual']) : '—',
+                    'expected' => $hasExpected ? self::stringifyAssertionValue($assertion['expected']) : '—',
+                ];
+            })
             ->values()
             ->all();
+    }
+
+    /**
+     * Convert any assertion value (scalar, null, array, object) into a
+     * human-readable single-string representation suitable for display in
+     * a TextEntry next to its expected counterpart.
+     */
+    public static function stringifyAssertionValue(mixed $value): string
+    {
+        if ($value === null) {
+            return 'null';
+        }
+
+        if (is_bool($value)) {
+            return $value ? 'true' : 'false';
+        }
+
+        if (is_string($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (string) $value;
+        }
+
+        $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        return $encoded === false ? '[unserializable value]' : $encoded;
     }
 
     public static function statusColor(?string $state): string

@@ -309,12 +309,15 @@ class MonitorApis extends Model
             $parsedBody = json_decode($responseData['body'], true);
 
             if (json_last_error() !== JSON_ERROR_NONE) {
-                $responseData['error'] = 'Invalid JSON response: '.json_last_error_msg();
+                $jsonErrorMessage = json_last_error_msg();
+                $responseData['error'] = 'Invalid JSON response: '.$jsonErrorMessage;
                 $responseData['assertions'][] = [
                     'path' => '_response_body',
                     'type' => 'json_valid',
                     'passed' => false,
                     'message' => $responseData['error'],
+                    'actual' => $jsonErrorMessage,
+                    'expected' => 'valid JSON',
                 ];
                 $responseData['body'] = null;
             } else {
@@ -383,6 +386,8 @@ class MonitorApis extends Model
             'type' => 'status_code',
             'passed' => false,
             'message' => "Expected HTTP status {$expectedStatus}, got {$responseData['code']}.",
+            'actual' => $responseData['code'] ?? null,
+            'expected' => $expectedStatus,
         ];
 
         return $responseData;
@@ -432,6 +437,8 @@ class MonitorApis extends Model
             'message' => $exists
                 ? 'Value exists at path'
                 : 'Value does not exist at path',
+            'actual' => $exists ? 'exists' : 'missing',
+            'expected' => 'exists',
         ];
 
         return $responseData;
@@ -460,6 +467,8 @@ class MonitorApis extends Model
                 'type' => $assertion->assertion_type,
                 'passed' => $validationResult['passed'],
                 'message' => $validationResult['message'],
+                'actual' => $validationResult['actual'] ?? null,
+                'expected' => $validationResult['expected'] ?? null,
             ];
         }
 

@@ -207,6 +207,174 @@ test('record result calculates response time', function () {
     expect($result->response_time_ms)->toBeLessThan(200);
 });
 
+test('record result persists actual and expected values for failed assertions', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 200,
+        'body' => ['status' => 'pending'],
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'status',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed: expected = active',
+                'actual' => 'pending',
+                'expected' => '= active',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->failed_assertions)->toHaveCount(1)
+        ->and($result->failed_assertions[0]['actual'])->toBe('pending')
+        ->and($result->failed_assertions[0]['expected'])->toBe('= active')
+        ->and($result->failed_assertions[0]['message'])->toBe('Value comparison failed: expected = active');
+});
+
+test('record result truncates oversized actual payloads to keep failed_assertions bounded', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $largePayload = ['blob' => str_repeat('x', 5000)];
+
+    $testResult = [
+        'code' => 200,
+        'body' => $largePayload,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'blob',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed',
+                'actual' => $largePayload,
+                'expected' => '= small',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+    $persistedActual = $result->failed_assertions[0]['actual'];
+
+    expect($persistedActual)->toBeString()
+        ->and(strlen($persistedActual))->toBeLessThanOrEqual(1100)
+        ->and($persistedActual)->toEndWith('… (truncated)')
+        ->and($result->failed_assertions[0]['expected'])->toBe('= small');
+});
+
+test('record result truncates oversized multibyte string actuals without splitting codepoints', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    // Three-byte UTF-8 codepoint repeated past the 1000-character cap. If
+    // truncation falls back to byte-based substr it can leave a half-encoded
+    // codepoint that breaks JSON encoding; mb_substr keeps the result valid.
+    $multibytePayload = str_repeat('日', 1500);
+
+    $testResult = [
+        'code' => 200,
+        'body' => null,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'message',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed',
+                'actual' => $multibytePayload,
+                'expected' => '= 日',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+    $persistedActual = $result->failed_assertions[0]['actual'];
+
+    expect($persistedActual)->toBeString()
+        ->and(mb_check_encoding($persistedActual, 'UTF-8'))->toBeTrue()
+        ->and(mb_strlen($persistedActual, 'UTF-8'))->toBeLessThanOrEqual(1100)
+        ->and($persistedActual)->toEndWith('… (truncated)');
+});
+
+test('record result preserves scalar actual values without stringifying them', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 500,
+        'body' => null,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => '_http_status',
+                'type' => 'status_code',
+                'message' => 'Expected HTTP status 200, got 500.',
+                'actual' => 500,
+                'expected' => 200,
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->failed_assertions[0]['actual'])->toBe(500)
+        ->and($result->failed_assertions[0]['expected'])->toBe(200);
+});
+
+test('record result omits actual and expected keys when source assertion did not provide them', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 500,
+        'body' => null,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'status',
+                'type' => 'exists',
+                'message' => 'Value does not exist at path',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    // Keys must be absent (not null) so the evidence formatter renders
+    // "—" rather than the literal string "null" for assertions that
+    // never had comparison semantics in the first place.
+    expect($result->failed_assertions)->toHaveCount(1)
+        ->and($result->failed_assertions[0])->not->toHaveKey('actual')
+        ->and($result->failed_assertions[0])->not->toHaveKey('expected');
+});
+
+test('record result preserves a genuine null actual when the source assertion provided one', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 200,
+        'body' => ['status' => null],
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'status',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed: expected = active',
+                'actual' => null,
+                'expected' => '= active',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->failed_assertions[0])->toHaveKey('actual')
+        ->and($result->failed_assertions[0]['actual'])->toBeNull()
+        ->and($result->failed_assertions[0]['expected'])->toBe('= active');
+});
+
 test('record result treats healthy expected 404 status as success when status is provided', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);

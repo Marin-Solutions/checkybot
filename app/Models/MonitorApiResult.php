@@ -62,11 +62,26 @@ class MonitorApiResult extends Model
             foreach ($testResult['assertions'] as $assertion) {
                 if (! $assertion['passed']) {
                     $isSuccess = false;
-                    $failedAssertions[] = [
+                    $persisted = [
                         'path' => $assertion['path'] ?? null,
                         'type' => $assertion['type'] ?? null,
                         'message' => $assertion['message'] ?? 'Assertion failed',
                     ];
+
+                    // Only persist `actual` / `expected` when the source
+                    // assertion actually supplied them. Fabricating a null
+                    // key here would make the formatter render "null"
+                    // instead of "—" for assertions that have no comparison
+                    // semantics at all.
+                    if (array_key_exists('actual', $assertion)) {
+                        $persisted['actual'] = static::capPersistedAssertionValue($assertion['actual']);
+                    }
+
+                    if (array_key_exists('expected', $assertion)) {
+                        $persisted['expected'] = static::capPersistedAssertionValue($assertion['expected']);
+                    }
+
+                    $failedAssertions[] = $persisted;
                 }
             }
         }
@@ -87,6 +102,45 @@ class MonitorApiResult extends Model
             'request_headers' => $testResult['request_headers'] ?? null,
             'response_headers' => $testResult['response_headers'] ?? null,
         ]);
+    }
+
+    /**
+     * Cap an actual/expected value before persisting it on
+     * `failed_assertions`. Scalars and short strings pass through unchanged
+     * so downstream consumers can keep relying on the original type. Oversized
+     * strings and non-scalar payloads are JSON-stringified and truncated so a
+     * single rogue assertion can't bloat the JSON column. Truncation is
+     * performed with multibyte-safe helpers so a UTF-8 codepoint is never
+     * split mid-byte, which would otherwise corrupt the JSON column.
+     */
+    private static function capPersistedAssertionValue(mixed $value): mixed
+    {
+        $maxLength = 1000;
+
+        if ($value === null || is_bool($value) || is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            return static::truncateUtf8($value, $maxLength);
+        }
+
+        $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        if ($encoded === false) {
+            return '[unserializable value]';
+        }
+
+        return static::truncateUtf8($encoded, $maxLength);
+    }
+
+    private static function truncateUtf8(string $value, int $maxLength): string
+    {
+        if (mb_strlen($value, 'UTF-8') <= $maxLength) {
+            return $value;
+        }
+
+        return mb_substr($value, 0, $maxLength, 'UTF-8').'… (truncated)';
     }
 
     private static function prepareSavedResponseBody(MonitorApis $api, bool $isSuccess, array $testResult): ?array

@@ -657,6 +657,42 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('1');
 });
 
+test('api monitor evidence infolist mounts cleanly for failed assertions with actual and expected', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $result = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'danger',
+        'summary' => 'API heartbeat failed with HTTP status 200.',
+        'http_code' => 200,
+        'failed_assertions' => [[
+            'path' => 'data.status',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed: expected = active',
+            'actual' => 'pending',
+            'expected' => '= active',
+        ]],
+    ]);
+
+    Livewire::test(ResultsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => ViewMonitorApis::class,
+    ])
+        ->mountTableAction('view', $result)
+        ->assertHasNoTableActionErrors();
+
+    $normalized = \App\Support\ApiMonitorEvidenceFormatter::normalizeAssertions($result->failed_assertions);
+
+    expect($normalized[0]['actual'])->toBe('pending')
+        ->and($normalized[0]['expected'])->toBe('= active');
+});
+
 test('super admin can filter api monitors by current status', function () {
     $this->createResourcePermissions('MonitorApis');
 
