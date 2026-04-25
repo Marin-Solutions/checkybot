@@ -942,3 +942,97 @@ test('website list all tab shows every visible website regardless of health', fu
         ->set('activeTab', 'all')
         ->assertCanSeeTableRecords([$healthy, $warning, $disabled]);
 });
+
+test('website list tab badges report accurate per-tab counts', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'uptime_check' => false,
+    ]);
+
+    $recovered = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $recovered->id,
+        'status' => 'danger',
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $page = Livewire::test(ListWebsites::class)->instance();
+
+    expect(invade($page)->resolveTabCounts())->toMatchArray([
+        'failing' => 3,
+        'disabled' => 2,
+        'recently_recovered' => 1,
+    ]);
+});
+
+test('website list tab badges scope counts to the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    Website::factory()->count(5)->create([
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    $page = Livewire::test(ListWebsites::class)->instance();
+
+    expect(invade($page)->resolveTabCounts()['failing'])->toBe(2);
+});
+
+test('website list tab badges exclude soft-deleted websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    $page = Livewire::test(ListWebsites::class)->instance();
+
+    expect(invade($page)->resolveTabCounts()['failing'])->toBe(2);
+});
+
+test('website list failing tab excludes soft-deleted websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $visible = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    Livewire::test(ListWebsites::class)
+        ->set('activeTab', 'failing')
+        ->assertCanSeeTableRecords([$visible])
+        ->assertCanNotSeeTableRecords([$trashed]);
+});
