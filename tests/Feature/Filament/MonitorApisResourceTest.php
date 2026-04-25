@@ -698,3 +698,238 @@ test('api monitor navigation badge excludes soft-deleted records', function () {
     expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('1')
         ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBeNull();
 });
+
+test('api monitor list shows all four health status tabs', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertSee('All')
+        ->assertSee('Failing')
+        ->assertSee('Disabled')
+        ->assertSee('Recently Recovered');
+});
+
+test('api monitor list failing tab only shows warning and danger monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    $warning = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    $danger = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->set('activeTab', 'failing')
+        ->assertCanSeeTableRecords([$warning, $danger])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+test('api monitor list disabled tab only shows monitors with is_enabled false', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $enabled = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+    $disabled = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => false,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->set('activeTab', 'disabled')
+        ->assertCanSeeTableRecords([$disabled])
+        ->assertCanNotSeeTableRecords([$enabled]);
+});
+
+test('api monitor list recently recovered tab requires healthy status with prior failure in window', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $recovered = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $recovered->id,
+        'status' => 'danger',
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $stillHealthy = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $stillHealthy->id,
+        'status' => 'healthy',
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $stillFailing = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $stillFailing->id,
+        'status' => 'danger',
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    $oldRecovery = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $oldRecovery->id,
+        'status' => 'danger',
+        'created_at' => now()->subDays(3),
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->set('activeTab', 'recently_recovered')
+        ->assertCanSeeTableRecords([$recovered])
+        ->assertCanNotSeeTableRecords([$stillHealthy, $stillFailing, $oldRecovery]);
+});
+
+test('api monitor list all tab shows every visible monitor regardless of health', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $healthy = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'is_enabled' => true,
+    ]);
+    $warning = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+        'is_enabled' => true,
+    ]);
+    $disabled = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'is_enabled' => false,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->set('activeTab', 'all')
+        ->assertCanSeeTableRecords([$healthy, $warning, $disabled]);
+});
+
+test('api monitor list tab badges report accurate per-tab counts', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+    ]);
+    MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'is_enabled' => false,
+    ]);
+
+    $recovered = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'is_enabled' => true,
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $recovered->id,
+        'status' => 'danger',
+        'created_at' => now()->subHours(2),
+    ]);
+
+    $page = Livewire::test(ListMonitorApis::class)->instance();
+
+    expect(invade($page)->resolveTabCounts())->toMatchArray([
+        'failing' => 3,
+        'disabled' => 2,
+        'recently_recovered' => 1,
+    ]);
+});
+
+test('api monitor list tab badges scope counts to the current user', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    MonitorApis::factory()->count(5)->create([
+        'created_by' => $otherUser->id,
+        'current_status' => 'danger',
+    ]);
+
+    $page = Livewire::test(ListMonitorApis::class)->instance();
+
+    expect(invade($page)->resolveTabCounts()['failing'])->toBe(2);
+});
+
+test('api monitor list tab badges exclude soft-deleted monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    $trashed = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    $page = Livewire::test(ListMonitorApis::class)->instance();
+
+    expect(invade($page)->resolveTabCounts()['failing'])->toBe(2);
+});
+
+test('api monitor list failing tab excludes soft-deleted monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $visible = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    $trashed = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+    $trashed->delete();
+
+    Livewire::test(ListMonitorApis::class)
+        ->set('activeTab', 'failing')
+        ->assertCanSeeTableRecords([$visible])
+        ->assertCanNotSeeTableRecords([$trashed]);
+});
