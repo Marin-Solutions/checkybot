@@ -33,7 +33,7 @@ class MonitorApiAssertion extends Model
     }
 
     /**
-     * @return array{passed: bool, message: string, actual?: mixed, expected?: mixed}
+     * @return array{passed: bool, message: string, actual: mixed, expected: mixed}
      */
     public function validateResponse($value, bool $exists = true): array
     {

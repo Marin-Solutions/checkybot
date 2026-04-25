@@ -141,14 +141,12 @@ class ResultsRelationManager extends RelationManager
                                     ->label('Expected')
                                     ->icon('heroicon-o-check-circle')
                                     ->iconColor('success')
-                                    ->copyable()
-                                    ->default('—'),
+                                    ->copyable(),
                                 TextEntry::make('actual')
                                     ->label('Actual')
                                     ->icon('heroicon-o-x-circle')
                                     ->iconColor('danger')
-                                    ->copyable()
-                                    ->default('—'),
+                                    ->copyable(),
                             ])
                             ->contained(false)
                             ->columns(2),

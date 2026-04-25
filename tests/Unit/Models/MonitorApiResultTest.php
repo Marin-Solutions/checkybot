@@ -234,6 +234,61 @@ test('record result persists actual and expected values for failed assertions', 
         ->and($result->failed_assertions[0]['message'])->toBe('Value comparison failed: expected = active');
 });
 
+test('record result truncates oversized actual payloads to keep failed_assertions bounded', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $largePayload = ['blob' => str_repeat('x', 5000)];
+
+    $testResult = [
+        'code' => 200,
+        'body' => $largePayload,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => 'blob',
+                'type' => 'value_compare',
+                'message' => 'Value comparison failed',
+                'actual' => $largePayload,
+                'expected' => '= small',
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+    $persistedActual = $result->failed_assertions[0]['actual'];
+
+    expect($persistedActual)->toBeString()
+        ->and(strlen($persistedActual))->toBeLessThanOrEqual(1100)
+        ->and($persistedActual)->toEndWith('… (truncated)')
+        ->and($result->failed_assertions[0]['expected'])->toBe('= small');
+});
+
+test('record result preserves scalar actual values without stringifying them', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 500,
+        'body' => null,
+        'assertions' => [
+            [
+                'passed' => false,
+                'path' => '_http_status',
+                'type' => 'status_code',
+                'message' => 'Expected HTTP status 200, got 500.',
+                'actual' => 500,
+                'expected' => 200,
+            ],
+        ],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->failed_assertions[0]['actual'])->toBe(500)
+        ->and($result->failed_assertions[0]['expected'])->toBe(200);
+});
+
 test('record result defaults missing actual and expected to null', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);

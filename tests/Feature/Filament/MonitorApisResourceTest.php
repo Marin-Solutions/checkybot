@@ -638,8 +638,7 @@ test('api monitor evidence infolist mounts cleanly for failed assertions with ac
     $normalized = \App\Support\ApiMonitorEvidenceFormatter::normalizeAssertions($result->failed_assertions);
 
     expect($normalized[0]['actual'])->toBe('pending')
-        ->and($normalized[0]['expected'])->toBe('= active')
-        ->and($normalized[0]['has_comparison'])->toBeTrue();
+        ->and($normalized[0]['expected'])->toBe('= active');
 });
 
 test('super admin can filter api monitors by current status', function () {

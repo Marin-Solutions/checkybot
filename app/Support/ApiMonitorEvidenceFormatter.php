@@ -60,7 +60,7 @@ class ApiMonitorEvidenceFormatter
 
     /**
      * @param  array<int, array<string, mixed>>|null  $assertions
-     * @return array<int, array{path: string, type: string, message: string, actual: string, expected: string, has_comparison: bool}>
+     * @return array<int, array{path: string, type: string, message: string, actual: string, expected: string}>
      */
     public static function normalizeAssertions(?array $assertions): array
     {
@@ -79,7 +79,6 @@ class ApiMonitorEvidenceFormatter
                     'message' => (string) ($assertion['message'] ?? 'Assertion failed'),
                     'actual' => $hasActual ? self::stringifyAssertionValue($assertion['actual']) : '—',
                     'expected' => $hasExpected ? self::stringifyAssertionValue($assertion['expected']) : '—',
-                    'has_comparison' => $hasActual || $hasExpected,
                 ];
             })
             ->values()

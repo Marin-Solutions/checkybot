@@ -66,8 +66,12 @@ class MonitorApiResult extends Model
                         'path' => $assertion['path'] ?? null,
                         'type' => $assertion['type'] ?? null,
                         'message' => $assertion['message'] ?? 'Assertion failed',
-                        'actual' => array_key_exists('actual', $assertion) ? $assertion['actual'] : null,
-                        'expected' => array_key_exists('expected', $assertion) ? $assertion['expected'] : null,
+                        'actual' => static::capPersistedAssertionValue(
+                            array_key_exists('actual', $assertion) ? $assertion['actual'] : null
+                        ),
+                        'expected' => static::capPersistedAssertionValue(
+                            array_key_exists('expected', $assertion) ? $assertion['expected'] : null
+                        ),
                     ];
                 }
             }
@@ -89,6 +93,42 @@ class MonitorApiResult extends Model
             'request_headers' => $testResult['request_headers'] ?? null,
             'response_headers' => $testResult['response_headers'] ?? null,
         ]);
+    }
+
+    /**
+     * Cap an actual/expected value before persisting it on
+     * `failed_assertions`. Scalars and short strings pass through unchanged
+     * so downstream consumers can keep relying on the original type. Oversized
+     * strings and non-scalar payloads are JSON-stringified and truncated so a
+     * single rogue assertion can't bloat the JSON column.
+     */
+    private static function capPersistedAssertionValue(mixed $value): mixed
+    {
+        $maxLength = 1000;
+
+        if ($value === null || is_bool($value) || is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            if (strlen($value) <= $maxLength) {
+                return $value;
+            }
+
+            return substr($value, 0, $maxLength).'… (truncated)';
+        }
+
+        $encoded = json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        if ($encoded === false) {
+            return '[unserializable value]';
+        }
+
+        if (strlen($encoded) <= $maxLength) {
+            return $encoded;
+        }
+
+        return substr($encoded, 0, $maxLength).'… (truncated)';
     }
 
     private static function prepareSavedResponseBody(MonitorApis $api, bool $isSuccess, array $testResult): ?array
