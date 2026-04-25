@@ -13,6 +13,15 @@ use Illuminate\Support\Facades\Auth;
 class UserTimezone
 {
     /**
+     * Memoized lookup table of known PHP timezone identifiers keyed by the
+     * identifier itself, so validation runs in O(1) without rebuilding the
+     * ~600-entry list on every call.
+     *
+     * @var array<string, true>|null
+     */
+    protected static ?array $identifierLookup = null;
+
+    /**
      * Get the timezone identifier for the currently authenticated user.
      *
      * Returns null so callers can pass it straight into Filament APIs that
@@ -44,18 +53,50 @@ class UserTimezone
      */
     public static function isValid(string $timezone): bool
     {
-        return in_array($timezone, \DateTimeZone::listIdentifiers(), true);
+        return isset(static::identifierLookup()[$timezone]);
     }
 
     /**
      * The list of timezone identifiers offered to users in the profile page.
      *
+     * Each label includes the current UTC offset (e.g. "Europe/Berlin
+     * (UTC+02:00)") so users can pick the right zone without referencing
+     * an external table.
+     *
      * @return array<string, string>
      */
     public static function options(): array
     {
+        $reference = new \DateTimeImmutable('now', new \DateTimeZone('UTC'));
+
         return collect(\DateTimeZone::listIdentifiers())
-            ->mapWithKeys(fn (string $tz): array => [$tz => $tz])
+            ->mapWithKeys(static function (string $tz) use ($reference): array {
+                $offsetSeconds = (new \DateTimeZone($tz))->getOffset($reference);
+                $sign = $offsetSeconds >= 0 ? '+' : '-';
+                $hours = intdiv(abs($offsetSeconds), 3600);
+                $minutes = intdiv(abs($offsetSeconds) % 3600, 60);
+
+                return [
+                    $tz => sprintf('%s (UTC%s%02d:%02d)', $tz, $sign, $hours, $minutes),
+                ];
+            })
             ->all();
+    }
+
+    /**
+     * Reset the memoized identifier lookup. Intended for use in tests that
+     * exercise different PHP timezone databases.
+     */
+    public static function flushIdentifierCache(): void
+    {
+        static::$identifierLookup = null;
+    }
+
+    /**
+     * @return array<string, true>
+     */
+    protected static function identifierLookup(): array
+    {
+        return static::$identifierLookup ??= array_fill_keys(\DateTimeZone::listIdentifiers(), true);
     }
 }

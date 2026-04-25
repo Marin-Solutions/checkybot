@@ -4,6 +4,7 @@ use App\Filament\MyProfile\PersonalInfoWithTimezone;
 use App\Models\ApiKey;
 use App\Models\User;
 use App\Support\UserTimezone;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Tables\Columns\TextColumn;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
@@ -55,13 +56,20 @@ test('UserTimezone helper rejects invalid timezone identifiers', function () {
     expect(UserTimezone::current())->toBeNull();
 });
 
-test('UserTimezone exposes a list of selectable identifiers', function () {
+test('UserTimezone exposes a list of selectable identifiers with UTC offsets', function () {
     $options = UserTimezone::options();
 
     expect($options)->toBeArray()
         ->and($options)->toHaveKey('UTC')
-        ->and($options['UTC'])->toBe('UTC')
-        ->and($options)->toHaveKey('Europe/Berlin');
+        ->and($options['UTC'])->toBe('UTC (UTC+00:00)')
+        ->and($options)->toHaveKey('Europe/Berlin')
+        ->and($options['Europe/Berlin'])->toMatch('/^Europe\/Berlin \(UTC[+-]\d{2}:\d{2}\)$/');
+});
+
+test('UserFactory inTimezone state sets the timezone preference', function () {
+    $user = User::factory()->inTimezone('Europe/Berlin')->create();
+
+    expect($user->fresh()->timezone)->toBe('Europe/Berlin');
 });
 
 test('TextColumn dateTimeInUserZone macro renders the timestamp in the user timezone', function () {
@@ -98,6 +106,67 @@ test('TextColumn sinceInUserZone macro produces a relative timestamp', function 
     $column = TextColumn::make('created_at')->sinceInUserZone();
 
     $rendered = $column->formatState(\Carbon\Carbon::now()->subMinutes(5));
+
+    expect($rendered)->toContain('minute');
+});
+
+/**
+ * Build a TextEntry with a real Schema container so closure-based formatters
+ * (which need $component->getContainer() during evaluation) can run outside
+ * of a real Filament page.
+ */
+function buildContainedTextEntry(callable $factory): TextEntry
+{
+    $entry = $factory();
+
+    $schema = \Filament\Schemas\Schema::make()
+        ->components([$entry]);
+
+    $entry->container($schema);
+
+    return $entry;
+}
+
+test('TextEntry dateTimeInUserZone macro renders the timestamp in the user timezone', function () {
+    $user = User::factory()->inTimezone('Asia/Tokyo')->create();
+    Auth::login($user);
+
+    $timestamp = \Carbon\Carbon::parse('2026-04-25 12:00:00', 'UTC');
+    $expected = $timestamp->copy()->setTimezone('Asia/Tokyo')->translatedFormat('M j, Y H:i:s');
+
+    $entry = buildContainedTextEntry(
+        fn (): TextEntry => TextEntry::make('created_at')->dateTimeInUserZone('M j, Y H:i:s'),
+    );
+
+    $rendered = $entry->formatState($timestamp);
+
+    expect($rendered)->toBe($expected);
+});
+
+test('TextEntry dateTimeInUserZone macro falls back to app timezone when guest', function () {
+    Auth::logout();
+
+    $timestamp = \Carbon\Carbon::parse('2026-04-25 12:00:00', 'UTC');
+    $expected = $timestamp->copy()->setTimezone(config('app.timezone', 'UTC'))->translatedFormat('M j, Y H:i:s');
+
+    $entry = buildContainedTextEntry(
+        fn (): TextEntry => TextEntry::make('created_at')->dateTimeInUserZone('M j, Y H:i:s'),
+    );
+
+    $rendered = $entry->formatState($timestamp);
+
+    expect($rendered)->toBe($expected);
+});
+
+test('TextEntry sinceInUserZone macro produces a relative timestamp', function () {
+    $user = User::factory()->inTimezone('Asia/Tokyo')->create();
+    Auth::login($user);
+
+    $entry = buildContainedTextEntry(
+        fn (): TextEntry => TextEntry::make('created_at')->sinceInUserZone(),
+    );
+
+    $rendered = $entry->formatState(\Carbon\Carbon::now()->subMinutes(5));
 
     expect($rendered)->toContain('minute');
 });
