@@ -577,12 +577,14 @@ test('super admin can toggle uptime_check inline from the websites table', funct
     ]);
 
     Livewire::test(ListWebsites::class)
-        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false);
+        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false)
+        ->assertNotified();
 
     expect($website->refresh()->uptime_check)->toBeFalse();
 
     Livewire::test(ListWebsites::class)
-        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), true);
+        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), true)
+        ->assertNotified();
 
     expect($website->refresh()->uptime_check)->toBeTrue();
 });
@@ -596,14 +598,29 @@ test('super admin can toggle ssl_check and outbound_check inline from the websit
         'outbound_check' => true,
     ]);
 
+    // Disable both
     Livewire::test(ListWebsites::class)
-        ->call('updateTableColumnState', 'ssl_check', $website->getKey(), false);
+        ->call('updateTableColumnState', 'ssl_check', $website->getKey(), false)
+        ->assertNotified();
     Livewire::test(ListWebsites::class)
-        ->call('updateTableColumnState', 'outbound_check', $website->getKey(), false);
+        ->call('updateTableColumnState', 'outbound_check', $website->getKey(), false)
+        ->assertNotified();
 
     $website->refresh();
     expect($website->ssl_check)->toBeFalse()
         ->and($website->outbound_check)->toBeFalse();
+
+    // Re-enable both
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'ssl_check', $website->getKey(), true)
+        ->assertNotified();
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'outbound_check', $website->getKey(), true)
+        ->assertNotified();
+
+    $website->refresh();
+    expect($website->ssl_check)->toBeTrue()
+        ->and($website->outbound_check)->toBeTrue();
 });
 
 test('user without Update:Website permission cannot toggle website columns inline', function () {
@@ -618,6 +635,19 @@ test('user without Update:Website permission cannot toggle website columns inlin
         'ssl_check' => true,
         'outbound_check' => true,
     ]);
+
+    // Each toggle column should report itself as disabled for this user, and
+    // any attempted Livewire toggle should be a no-op (Filament's
+    // updateTableColumnState short-circuits when the column is disabled).
+    $page = Livewire::test(ListWebsites::class);
+
+    foreach (['uptime_check', 'ssl_check', 'outbound_check'] as $column) {
+        $page->assertTableColumnExists(
+            $column,
+            fn (\Filament\Tables\Columns\ToggleColumn $col): bool => $col->isDisabled(),
+            $website,
+        );
+    }
 
     Livewire::test(ListWebsites::class)
         ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false);

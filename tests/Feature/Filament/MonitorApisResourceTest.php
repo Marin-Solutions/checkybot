@@ -141,12 +141,14 @@ test('super admin can toggle is_enabled inline from the api monitors table', fun
     ]);
 
     Livewire::test(ListMonitorApis::class)
-        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false);
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false)
+        ->assertNotified();
 
     expect($monitor->refresh()->is_enabled)->toBeFalse();
 
     Livewire::test(ListMonitorApis::class)
-        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), true);
+        ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), true)
+        ->assertNotified();
 
     expect($monitor->refresh()->is_enabled)->toBeTrue();
 });
@@ -164,7 +166,16 @@ test('user without Update:MonitorApis permission cannot toggle is_enabled inline
         'is_enabled' => true,
     ]);
 
+    // The inline toggle is gated server-side via the disabled() callback, which
+    // short-circuits Filament's updateTableColumnState before any state is
+    // written. Assert both that the column reports itself as disabled for this
+    // user, and that an attempted Livewire toggle leaves the value unchanged.
     Livewire::test(ListMonitorApis::class)
+        ->assertTableColumnExists(
+            'is_enabled',
+            fn (\Filament\Tables\Columns\ToggleColumn $column): bool => $column->isDisabled(),
+            $monitor,
+        )
         ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false);
 
     expect($monitor->refresh()->is_enabled)->toBeTrue();
