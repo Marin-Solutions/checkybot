@@ -293,6 +293,109 @@ test('check api action uses degraded title for expected status mismatches withou
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/created-health');
 });
 
+test('view page run now action persists a real run and surfaces evidence', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Run Now API',
+        'url' => 'https://example.com/run-now',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'data_path' => 'data.status',
+        'current_status' => null,
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+    ]);
+
+    expect($monitor->results)->toHaveCount(0);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand run succeeded');
+
+    Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/run-now');
+
+    $monitor->refresh();
+
+    expect($monitor->results()->count())->toBe(1)
+        ->and($monitor->results()->latest('id')->first()->status)->toBe('healthy')
+        ->and($monitor->current_status)->toBeNull()
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->status_summary)->toBeNull();
+});
+
+test('view page run now action surfaces failure evidence and persists the failed run', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['error' => 'boom'], 500),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Broken Run Now API',
+        'url' => 'https://example.com/broken-run',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'status_summary' => 'API responded as expected.',
+    ]);
+
+    $heartbeatBefore = $monitor->last_heartbeat_at;
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand run failed');
+
+    $monitor->refresh();
+
+    expect($monitor->results()->count())->toBe(1)
+        ->and($monitor->results()->first()->http_code)->toBe(500)
+        ->and($monitor->results()->first()->status)->toBe('danger')
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($monitor->status_summary)->toBe('API responded as expected.');
+});
+
+test('view page hides run now action when api monitor is disabled', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->disabled()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page hides run now action for users without update permission', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:MonitorApis', 'View:MonitorApis']);
+    $this->actingAs($user);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertActionHidden('run_now');
+});
+
 test('api monitor view shows evidence rich latest run overview', function () {
     $this->createResourcePermissions('MonitorApis');
 

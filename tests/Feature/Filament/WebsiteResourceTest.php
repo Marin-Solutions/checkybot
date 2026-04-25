@@ -659,6 +659,123 @@ test('super admin can render view page with infolist sections', function () {
         ->assertSee('Danger');
 });
 
+test('view page run now action persists a real heartbeat and surfaces evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'current_status' => null,
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+    ]);
+
+    Http::fake([
+        'https://example.com' => Http::response('OK', 200),
+    ]);
+
+    expect($website->logHistory()->count())->toBe(0);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check succeeded');
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(1)
+        ->and($website->logHistory()->first()->status)->toBe('healthy')
+        ->and($website->current_status)->toBeNull()
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->status_summary)->toBeNull();
+});
+
+test('view page run now action surfaces failure when target returns server error', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+        'status_summary' => 'Heartbeat received successfully.',
+    ]);
+
+    Http::fake([
+        'https://broken.example' => Http::response('boom', 500),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check failed');
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(1)
+        ->and($website->logHistory()->first()->http_status_code)->toBe(500)
+        ->and($website->logHistory()->first()->status)->toBe('danger')
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->status_summary)->toBe('Heartbeat received successfully.');
+});
+
+test('view page hides run now action when uptime check is disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page hides run now action for users without update permission', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Website', 'View:Website']);
+    $this->actingAs($user);
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page run now action does not fire user-facing health alerts and preserves the live status baseline', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $heartbeatBefore = $website->last_heartbeat_at;
+
+    Http::fake([
+        'https://broken.example' => Http::response('boom', 500),
+    ]);
+
+    $notificationService = Mockery::mock(\App\Services\HealthEventNotificationService::class);
+    $notificationService->shouldNotReceive('notifyWebsite');
+    $this->app->instance(\App\Services\HealthEventNotificationService::class, $notificationService);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->callAction('run_now')
+        ->assertNotified('On-demand check failed');
+
+    $website->refresh();
+
+    expect($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->logHistory()->latest('id')->first()->status)->toBe('danger');
+});
+
 test('view page renders recent failures when non-healthy logs exist', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
