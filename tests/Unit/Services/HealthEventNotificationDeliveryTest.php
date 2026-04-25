@@ -1,6 +1,8 @@
 <?php
 
+use App\Enums\WebsiteServicesEnum;
 use App\Mail\HealthStatusAlert;
+use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
@@ -70,6 +72,65 @@ test('notifyWebsite isolates a single channel failure, logs it, and returns fals
     Log::shouldHaveReceived('error')
         ->once()
         ->withArgs(fn (string $message): bool => str_contains($message, 'Failed to deliver health notification mail'));
+});
+
+test('notifyWebsite re-reads silenced_until and skips delivery when the monitor was snoozed concurrently', function () {
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'silenced_until' => null,
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    // Simulate the operator snoozing the monitor AFTER the in-memory model
+    // was loaded by the caller — the local instance is still stale (null),
+    // but the persisted state now carries an active future snooze.
+    Website::query()
+        ->whereKey($website->id)
+        ->update(['silenced_until' => now()->addHour()]);
+
+    expect($website->silenced_until)->toBeNull();
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyWebsite($website, 'heartbeat', 'danger', 'Returned HTTP 500.');
+
+    expect($result)->toBeTrue();
+    Mail::assertNothingSent();
+});
+
+test('notifyApi re-reads silenced_until and skips delivery when the monitor was snoozed concurrently', function () {
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'silenced_until' => null,
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApis::query()
+        ->whereKey($monitor->id)
+        ->update(['silenced_until' => now()->addHour()]);
+
+    expect($monitor->silenced_until)->toBeNull();
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyApi($monitor, 'heartbeat', 'danger', 'Latency exceeded threshold.');
+
+    expect($result)->toBeTrue();
+    Mail::assertNothingSent();
 });
 
 test('notifyWebsite returns true when at least one channel delivers despite another failing', function () {

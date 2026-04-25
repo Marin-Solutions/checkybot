@@ -26,7 +26,7 @@ class HealthEventNotificationService
      */
     public function notifyWebsite(Website $website, string $event, string $status, string $summary): bool
     {
-        if ($website->isSilenced()) {
+        if ($this->isSilencedNow($website)) {
             Log::info('Skipping website health notification while monitor is snoozed', [
                 'website_id' => $website->id,
                 'silenced_until' => optional($website->silenced_until)->toIso8601String(),
@@ -69,7 +69,7 @@ class HealthEventNotificationService
      */
     public function notifyApi(MonitorApis $monitorApi, string $event, string $status, string $summary): bool
     {
-        if ($monitorApi->isSilenced()) {
+        if ($this->isSilencedNow($monitorApi)) {
             Log::info('Skipping API monitor health notification while monitor is snoozed', [
                 'monitor_api_id' => $monitorApi->id,
                 'silenced_until' => optional($monitorApi->silenced_until)->toIso8601String(),
@@ -195,6 +195,39 @@ class HealthEventNotificationService
         // every successful channel would receive a duplicate alert each minute
         // until the failing transport recovers.
         return $failures < $attempts;
+    }
+
+    /**
+     * Re-read the persisted silenced_until before deciding whether to
+     * deliver. Callers like CheckApiMonitors::handle and LogUptimeSslJob
+     * load the model at the start of a check cycle and pass it here at
+     * the end — if an operator snoozes during that window, the in-memory
+     * instance still carries the old (null/past) value and we would page
+     * them through their maintenance window. A targeted PK lookup on
+     * `silenced_until` keeps the cost trivial while honouring the latest
+     * intent every time. Local mutations to the in-memory model are
+     * preferred over the persisted value so test scenarios that set the
+     * timestamp without persisting still behave consistently.
+     */
+    private function isSilencedNow(Website|MonitorApis $monitor): bool
+    {
+        if ($monitor->isSilenced()) {
+            return true;
+        }
+
+        $persistedSilencedUntil = $monitor::query()
+            ->whereKey($monitor->getKey())
+            ->value('silenced_until');
+
+        if ($persistedSilencedUntil === null) {
+            return false;
+        }
+
+        $silencedUntil = $persistedSilencedUntil instanceof \DateTimeInterface
+            ? \Illuminate\Support\Carbon::instance($persistedSilencedUntil)
+            : \Illuminate\Support\Carbon::parse($persistedSilencedUntil);
+
+        return $silencedUntil->isFuture();
     }
 
     private function eventLabel(string $event, string $status): string
