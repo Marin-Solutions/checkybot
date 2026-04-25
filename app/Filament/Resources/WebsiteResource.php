@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\Concerns\HasUnhealthyNavigationBadge;
+use App\Filament\Resources\Concerns\MonitorSnoozeAction;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Models\Website;
@@ -213,7 +214,7 @@ class WebsiteResource extends Resource
                         ? 'Until '.$record->silenced_until->format('M j, H:i')
                         : null)
                     ->placeholder('—')
-                    ->toggleable(),
+                    ->toggleable(isToggledHiddenByDefault: true),
                 SparklineColumn::make('response_times')
                     ->label('Response Time (24h)')
                     ->translateLabel()
@@ -391,47 +392,21 @@ class WebsiteResource extends Resource
                         'duration' => $record->isSilenced() ? 'custom' : '1h',
                         'until' => $record->silenced_until,
                     ])
-                    ->schema([
-                        \Filament\Forms\Components\Select::make('duration')
-                            ->label('Snooze for')
-                            ->options([
-                                '1h' => '1 hour',
-                                '4h' => '4 hours',
-                                '24h' => '24 hours',
-                                'custom' => 'Custom time…',
-                            ])
-                            ->default('1h')
-                            ->required()
-                            ->live()
-                            ->native(false),
-                        \Filament\Forms\Components\DateTimePicker::make('until')
-                            ->label('Snooze until')
-                            ->seconds(false)
-                            ->minDate(now())
-                            ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom')
-                            ->required(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom')
-                            ->helperText('Notifications will resume automatically after this time.'),
-                    ])
+                    ->schema(MonitorSnoozeAction::formSchema())
                     ->action(function (Website $record, array $data): void {
-                        $until = match ($data['duration']) {
-                            '1h' => now()->addHour(),
-                            '4h' => now()->addHours(4),
-                            '24h' => now()->addDay(),
-                            'custom' => \Illuminate\Support\Carbon::parse($data['until']),
-                            default => now()->addHour(),
-                        };
+                        $until = MonitorSnoozeAction::resolveUntil($data);
 
-                        if ($until->isPast()) {
+                        if ($until === null) {
                             Notification::make()
                                 ->title('Snooze time must be in the future')
-                                ->body('Pick a future moment, or use Unsnooze now to clear the silence.')
+                                ->body('Pick a future moment, or use Unsnooze to clear the silence.')
                                 ->danger()
                                 ->send();
 
                             return;
                         }
 
-                        $record->forceFill(['silenced_until' => $until])->save();
+                        $record->update(['silenced_until' => $until]);
 
                         Notification::make()
                             ->title('Notifications snoozed')
@@ -450,7 +425,7 @@ class WebsiteResource extends Resource
                     ->modalDescription('Notifications for this website will fire again on the next status change.')
                     ->modalSubmitActionLabel('Unsnooze')
                     ->action(function (Website $record): void {
-                        $record->forceFill(['silenced_until' => null])->save();
+                        $record->update(['silenced_until' => null]);
 
                         Notification::make()
                             ->title('Notifications resumed')
@@ -570,36 +545,11 @@ class WebsiteResource extends Resource
                         ->modalHeading('Snooze notifications for selected websites')
                         ->modalDescription('Suppress alert delivery during a maintenance window. Checks keep running, but no emails or webhooks fire while snoozed.')
                         ->modalSubmitActionLabel('Snooze')
-                        ->schema([
-                            \Filament\Forms\Components\Select::make('duration')
-                                ->label('Snooze for')
-                                ->options([
-                                    '1h' => '1 hour',
-                                    '4h' => '4 hours',
-                                    '24h' => '24 hours',
-                                    'custom' => 'Custom time…',
-                                ])
-                                ->default('1h')
-                                ->required()
-                                ->live()
-                                ->native(false),
-                            \Filament\Forms\Components\DateTimePicker::make('until')
-                                ->label('Snooze until')
-                                ->seconds(false)
-                                ->minDate(now())
-                                ->visible(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom')
-                                ->required(fn (\Filament\Schemas\Components\Utilities\Get $get): bool => $get('duration') === 'custom'),
-                        ])
+                        ->schema(MonitorSnoozeAction::formSchema())
                         ->action(function (Collection $records, array $data): void {
-                            $until = match ($data['duration']) {
-                                '1h' => now()->addHour(),
-                                '4h' => now()->addHours(4),
-                                '24h' => now()->addDay(),
-                                'custom' => \Illuminate\Support\Carbon::parse($data['until']),
-                                default => now()->addHour(),
-                            };
+                            $until = MonitorSnoozeAction::resolveUntil($data);
 
-                            if ($until->isPast()) {
+                            if ($until === null) {
                                 Notification::make()
                                     ->title('Snooze time must be in the future')
                                     ->danger()

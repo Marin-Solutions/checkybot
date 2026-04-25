@@ -152,3 +152,38 @@ test('bulk unsnooze clears silenced_until on selected api monitors', function ()
         expect($monitor->refresh()->silenced_until)->toBeNull();
     }
 });
+
+test('bulk snooze paused notifications for selected api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'silenced_until' => null,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('snooze', $monitors, data: ['duration' => '4h']);
+
+    foreach ($monitors as $monitor) {
+        $monitor->refresh();
+        expect($monitor->silenced_until)->not->toBeNull()
+            ->and($monitor->silenced_until->isFuture())->toBeTrue();
+    }
+});
+
+test('snooze action rejects a custom datetime in the past', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'silenced_until' => null,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableAction('snooze', $website, data: [
+            'duration' => 'custom',
+            'until' => now()->subHour()->toDateTimeString(),
+        ]);
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+});
