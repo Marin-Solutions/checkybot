@@ -120,10 +120,10 @@ class ViewSeoCheck extends ViewRecord
                                     ->label('URLs Crawled'),
                                 \Filament\Infolists\Components\TextEntry::make('started_at')
                                     ->label('Started At')
-                                    ->dateTime(),
+                                    ->dateTimeInUserZone(),
                                 \Filament\Infolists\Components\TextEntry::make('finished_at')
                                     ->label('Finished At')
-                                    ->dateTime(),
+                                    ->dateTimeInUserZone(),
                                 \Filament\Infolists\Components\TextEntry::make('started_at')
                                     ->label('Duration')
                                     ->formatStateUsing(function ($record) {

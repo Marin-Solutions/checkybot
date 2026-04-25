@@ -155,15 +155,15 @@ class MonitorApisResource extends Resource
                     ->formatStateUsing(fn ($state) => $state === '-' ? '-' : round($state))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('updated_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('deleted_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])

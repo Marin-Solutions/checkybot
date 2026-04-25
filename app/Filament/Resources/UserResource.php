@@ -106,7 +106,7 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('roles.name'),
 
                 Tables\Columns\TextColumn::make('created_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
             ])
             ->filters([

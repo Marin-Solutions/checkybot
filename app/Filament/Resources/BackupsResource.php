@@ -82,7 +82,7 @@ class BackupsResource extends Resource
                     ->description(fn (Backup $record) => $record->server->ip),
                 Tables\Columns\TextColumn::make('remoteStorage.label')
                     ->description(fn (Backup $record) => $record->remoteStorage->host),
-                Tables\Columns\TextColumn::make('first_run_at')->dateTime(),
+                Tables\Columns\TextColumn::make('first_run_at')->dateTimeInUserZone(),
             ])
             ->filters([
                 //

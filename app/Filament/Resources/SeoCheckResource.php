@@ -77,11 +77,11 @@ class SeoCheckResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('started_at')
                     ->label('Started')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('finished_at')
                     ->label('Finished')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
             ])
             ->filters([

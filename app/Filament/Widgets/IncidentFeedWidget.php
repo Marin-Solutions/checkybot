@@ -36,7 +36,7 @@ class IncidentFeedWidget extends BaseWidget
             ->columns([
                 TextColumn::make('occurred_at')
                     ->label('When')
-                    ->since()
+                    ->sinceInUserZone()
                     ->tooltip(fn (Incident $record): string => $record->occurred_at?->toDayDateTimeString() ?? '')
                     ->sortable(),
                 TextColumn::make('status')

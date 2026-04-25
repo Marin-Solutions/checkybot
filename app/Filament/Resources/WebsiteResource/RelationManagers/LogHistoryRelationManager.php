@@ -34,7 +34,7 @@ class LogHistoryRelationManager extends RelationManager
                     ->limit(80)
                     ->wrap(),
                 TextColumn::make('created_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
             ])
             ->filters([

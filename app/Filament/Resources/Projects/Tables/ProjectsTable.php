@@ -47,7 +47,7 @@ class ProjectsTable
                     ->label('Components')
                     ->state(fn (Project $record): int => $record->components_count ?? $record->components()->count()),
                 TextColumn::make('created_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])

@@ -73,7 +73,7 @@ class ResultsRelationManager extends RelationManager
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Timestamp')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
             ])
             ->defaultSort('created_at', 'desc')
@@ -119,7 +119,7 @@ class ResultsRelationManager extends RelationManager
                             ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
                         TextEntry::make('created_at')
                             ->label('Captured At')
-                            ->dateTime(),
+                            ->dateTimeInUserZone(),
                     ])
                     ->columns(3),
                 Section::make('Failed Assertions')

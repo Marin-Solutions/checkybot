@@ -39,7 +39,7 @@ class ComponentsRelationManager extends RelationManager
                     ->wrap()
                     ->limit(80),
                 Tables\Columns\TextColumn::make('last_heartbeat_at')
-                    ->since(),
+                    ->sinceInUserZone(),
             ])
             ->recordActions([
                 Tables\Actions\ViewAction::make(),

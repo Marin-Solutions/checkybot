@@ -117,7 +117,7 @@ class WebsiteSeoCheckResource extends Resource
                     }),
                 Tables\Columns\TextColumn::make('latestSeoCheck.finished_at')
                     ->label('Last Check')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable(),
                 Tables\Columns\TextColumn::make('seo_checks_count')
                     ->label('Total Checks')

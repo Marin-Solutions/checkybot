@@ -41,7 +41,7 @@ class HeartbeatsRelationManager extends RelationManager
                     ->limit(120)
                     ->tooltip(fn (ProjectComponentHeartbeat $record): string => MetricsPayloadFormatter::format($record->metrics)),
                 Tables\Columns\TextColumn::make('observed_at')
-                    ->dateTime()
+                    ->dateTimeInUserZone()
                     ->sortable()
                     ->description(fn ($record): ?string => $record->observed_at?->diffForHumans()),
             ])

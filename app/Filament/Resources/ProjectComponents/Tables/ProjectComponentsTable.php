@@ -43,7 +43,7 @@ class ProjectComponentsTable
                 TextColumn::make('declared_interval')
                     ->label('Interval'),
                 TextColumn::make('last_heartbeat_at')
-                    ->since(),
+                    ->sinceInUserZone(),
             ])
             ->filters([
                 HealthStatusFilter::makeForNonNullableColumn(),
