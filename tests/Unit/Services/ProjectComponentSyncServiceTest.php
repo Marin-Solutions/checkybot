@@ -1,9 +1,12 @@
 <?php
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\WebsiteServicesEnum;
 use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Services\ProjectComponentSyncService;
+use Illuminate\Mail\PendingMail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -91,7 +94,7 @@ test('project component sync sends recovery notifications when a component retur
         ->email()
         ->create([
             'user_id' => $project->created_by,
-            'inspection' => \App\Enums\WebsiteServicesEnum::APPLICATION_HEALTH,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
         ]);
 
     app(ProjectComponentSyncService::class)->sync($project, [
@@ -143,7 +146,7 @@ test('project component sync sends recovery notifications when a stale-only comp
         ->email()
         ->create([
             'user_id' => $project->created_by,
-            'inspection' => \App\Enums\WebsiteServicesEnum::APPLICATION_HEALTH,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
         ]);
 
     app(ProjectComponentSyncService::class)->sync($project, [
@@ -192,13 +195,13 @@ test('project component sync continues after a mail notification channel fails',
         ->count(2)
         ->create([
             'user_id' => $project->created_by,
-            'inspection' => \App\Enums\WebsiteServicesEnum::APPLICATION_HEALTH,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
         ]);
 
-    $failingMail = Mockery::mock(\Illuminate\Mail\PendingMail::class);
+    $failingMail = Mockery::mock(PendingMail::class);
     $failingMail->shouldReceive('send')->once()->andThrow(new RuntimeException('SMTP down'));
 
-    $successfulMail = Mockery::mock(\Illuminate\Mail\PendingMail::class);
+    $successfulMail = Mockery::mock(PendingMail::class);
     $successfulMail->shouldReceive('send')->once();
 
     Mail::shouldReceive('to')
@@ -235,4 +238,60 @@ test('project component sync continues after a mail notification channel fails',
     Log::shouldHaveReceived('error')
         ->once()
         ->withArgs(fn (string $message): bool => str_contains($message, 'Failed to deliver project component notification mail'));
+});
+
+test('project component sync logs and continues when webhook notification channel is missing', function () {
+    Log::spy();
+
+    $project = Project::factory()->create();
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'worker-d',
+        'source' => 'package',
+        'created_by' => $project->created_by,
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK,
+            'notification_channel_id' => null,
+            'address' => null,
+        ]);
+
+    app(ProjectComponentSyncService::class)->sync($project, [
+        'declared_components' => [
+            ['name' => 'worker-d', 'interval' => '5m'],
+        ],
+        'components' => [
+            [
+                'name' => 'worker-d',
+                'status' => 'danger',
+                'summary' => 'Queue worker heartbeat failed.',
+                'interval' => '5m',
+                'observed_at' => now()->toDateTimeString(),
+                'metrics' => ['latency' => 2500],
+            ],
+        ],
+    ]);
+
+    $component->refresh();
+
+    expect($component->current_status)->toBe('danger')
+        ->and($component->last_reported_status)->toBe('danger');
+
+    assertDatabaseHas('project_component_heartbeats', [
+        'project_component_id' => $component->id,
+        'status' => 'danger',
+        'event' => 'heartbeat',
+    ]);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message): bool => str_contains($message, 'No channel found for project component notification setting'));
 });

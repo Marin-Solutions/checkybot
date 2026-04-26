@@ -60,10 +60,14 @@ class ProjectComponentNotificationService
                         'project_component_id' => $component->id,
                         'event' => $event,
                         'status' => $status,
-                        'exception' => $exception->getMessage(),
+                        'exception' => $exception,
                     ]);
                 }
 
+                continue;
+            }
+
+            if ($setting->channel_type !== NotificationChannelTypesEnum::MAIL) {
                 continue;
             }
 
@@ -75,7 +79,7 @@ class ProjectComponentNotificationService
                     'project_component_id' => $component->id,
                     'event' => $event,
                     'status' => $status,
-                    'exception' => $exception->getMessage(),
+                    'exception' => $exception,
                 ]);
             }
         }
