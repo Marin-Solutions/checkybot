@@ -506,3 +506,35 @@ test('preview assertion treats raw_body as user payload data when response has o
         ->and($preview['passed'])->toBeTrue()
         ->and($preview['actual'])->toBe('active');
 });
+
+test('preview assertion treats internal raw body sentinel as user payload data when response has other fields', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            MonitorApiResult::RAW_BODY_KEY => 'this is user data, not an internal wrapper',
+            'status' => 'active',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('active');
+});

@@ -5,6 +5,11 @@ namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Support\ApiMonitorEvidenceFormatter;
+use Filament\Actions\BulkActionGroup;
+use Filament\Actions\CreateAction;
+use Filament\Actions\DeleteAction;
+use Filament\Actions\DeleteBulkAction;
+use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Forms;
 use Filament\Infolists\Components\TextEntry;
@@ -136,7 +141,7 @@ class AssertionsRelationManager extends RelationManager
             ->defaultSort('sort_order')
             ->reorderable('sort_order')
             ->headerActions([
-                \Filament\Actions\CreateAction::make()
+                CreateAction::make()
                     ->label('Add Assertion'),
             ])
             ->actions([
@@ -144,6 +149,9 @@ class AssertionsRelationManager extends RelationManager
                     ->label('Preview')
                     ->icon('heroicon-o-beaker')
                     ->color('info')
+                    ->beforeFormFilled(function (): void {
+                        $this->assertionPreviews = [];
+                    })
                     ->modalHeading(fn (MonitorApiAssertion $record): string => "Preview {$record->data_path}")
                     ->modalDescription('Evaluates this assertion against the latest saved response body, or runs a fresh API test when no saved response is available.')
                     ->modalWidth('3xl')
@@ -208,12 +216,12 @@ class AssertionsRelationManager extends RelationManager
                             ])
                             ->columns(2),
                     ]),
-                \Filament\Actions\EditAction::make(),
-                \Filament\Actions\DeleteAction::make(),
+                EditAction::make(),
+                DeleteAction::make(),
             ])
             ->bulkActions([
-                \Filament\Actions\BulkActionGroup::make([
-                    \Filament\Actions\DeleteBulkAction::make(),
+                BulkActionGroup::make([
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }

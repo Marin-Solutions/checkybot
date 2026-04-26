@@ -99,6 +99,8 @@ class MonitorApis extends Model
      * Preview one assertion against the latest saved response body when
      * available. If no response body was saved for the latest run, execute a
      * fresh API test and evaluate the assertion against that transient result.
+     * Disabled assertions are intentionally previewable so users can test a
+     * draft assertion before re-enabling it.
      *
      * @return array{
      *     path: string,
@@ -628,7 +630,7 @@ class MonitorApis extends Model
     private static function hasRawBodyWrapper(array $savedBody): bool
     {
         if (array_key_exists(MonitorApiResult::RAW_BODY_KEY, $savedBody)) {
-            return true;
+            return array_diff(array_keys($savedBody), [MonitorApiResult::RAW_BODY_KEY, 'error']) === [];
         }
 
         if (! array_key_exists(MonitorApiResult::LEGACY_RAW_BODY_KEY, $savedBody)) {
