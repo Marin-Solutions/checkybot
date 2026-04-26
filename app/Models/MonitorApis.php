@@ -95,6 +95,56 @@ class MonitorApis extends Model
         return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->latestOfMany();
     }
 
+    /**
+     * Preview one assertion against the latest saved response body when
+     * available. If no response body was saved for the latest run, execute a
+     * fresh API test and evaluate the assertion against that transient result.
+     *
+     * @return array{
+     *     path: string,
+     *     type: string,
+     *     passed: bool,
+     *     message: string,
+     *     actual: mixed,
+     *     expected: mixed,
+     *     source: string,
+     *     source_label: string,
+     *     http_code: int|null,
+     *     response_time_ms: int|null,
+     *     error: string|null
+     * }
+     */
+    public function previewAssertion(MonitorApiAssertion $assertion): array
+    {
+        $latestResult = $this->latestResult()->first();
+        $savedBody = $latestResult?->response_body;
+
+        if (! blank($savedBody)) {
+            return $this->previewAssertionAgainstSavedBody($assertion, $savedBody, $latestResult);
+        }
+
+        $testResult = self::testApi([
+            'id' => $this->id,
+            'title' => $this->title,
+            'url' => $this->url,
+            'http_method' => $this->http_method,
+            'expected_status' => $this->expected_status,
+            'timeout_seconds' => $this->timeout_seconds,
+            'headers' => $this->headers,
+            'data_path' => $this->data_path,
+        ]);
+
+        $preview = self::evaluateAssertionAgainstBody($assertion, $testResult['body'] ?? null);
+
+        return array_merge($preview, [
+            'source' => 'fresh_test',
+            'source_label' => 'Fresh test response',
+            'http_code' => $testResult['code'] ?? null,
+            'response_time_ms' => $testResult['response_time_ms'] ?? null,
+            'error' => $testResult['error'] ?? null,
+        ]);
+    }
+
     public static function testApi(array $data): array
     {
         $url = $data['url'];
@@ -461,21 +511,78 @@ class MonitorApis extends Model
                 continue;
             }
 
-            $missing = new \stdClass;
-            $value = Arr::get($responseData['body'], $assertion->data_path, $missing);
-            $exists = $value !== $missing;
-            $validationResult = $assertion->validateResponse($exists ? $value : null, $exists);
-
-            $responseData['assertions'][] = [
-                'path' => $assertion->data_path,
-                'type' => $assertion->assertion_type,
-                'passed' => $validationResult['passed'],
-                'message' => $validationResult['message'],
-                'actual' => $validationResult['actual'] ?? null,
-                'expected' => $validationResult['expected'] ?? null,
-            ];
+            $responseData['assertions'][] = self::evaluateAssertionAgainstBody($assertion, $responseData['body']);
         }
 
         return $responseData;
+    }
+
+    /**
+     * @return array{path: string, type: string, passed: bool, message: string, actual: mixed, expected: mixed}
+     */
+    private static function evaluateAssertionAgainstBody(MonitorApiAssertion $assertion, mixed $body): array
+    {
+        $missing = new \stdClass;
+        $value = Arr::get($body, $assertion->data_path, $missing);
+        $exists = $value !== $missing;
+        $validationResult = $assertion->validateResponse($exists ? $value : null, $exists);
+
+        return [
+            'path' => $assertion->data_path,
+            'type' => $assertion->assertion_type,
+            'passed' => $validationResult['passed'],
+            'message' => $validationResult['message'],
+            'actual' => $validationResult['actual'] ?? null,
+            'expected' => $validationResult['expected'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     path: string,
+     *     type: string,
+     *     passed: bool,
+     *     message: string,
+     *     actual: mixed,
+     *     expected: mixed,
+     *     source: string,
+     *     source_label: string,
+     *     http_code: int|null,
+     *     response_time_ms: int|null,
+     *     error: string|null
+     * }
+     */
+    private function previewAssertionAgainstSavedBody(MonitorApiAssertion $assertion, mixed $savedBody, MonitorApiResult $latestResult): array
+    {
+        $body = $savedBody;
+        $error = null;
+
+        if (is_array($savedBody) && array_key_exists('raw_body', $savedBody)) {
+            $decoded = json_decode((string) $savedBody['raw_body'], true);
+
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $body = $decoded;
+            } else {
+                $error = 'Saved response body is not valid JSON: '.json_last_error_msg();
+                $body = null;
+            }
+        }
+
+        $preview = self::evaluateAssertionAgainstBody($assertion, $body);
+
+        if ($error !== null) {
+            $preview['passed'] = false;
+            $preview['message'] = $error;
+            $preview['actual'] = json_last_error_msg();
+            $preview['expected'] = 'valid JSON';
+        }
+
+        return array_merge($preview, [
+            'source' => 'saved_response',
+            'source_label' => 'Latest saved response',
+            'http_code' => $latestResult->http_code,
+            'response_time_ms' => $latestResult->response_time_ms,
+            'error' => $error,
+        ]);
     }
 }

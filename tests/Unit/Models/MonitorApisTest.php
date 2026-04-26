@@ -280,3 +280,74 @@ test('test api still evaluates assertions when json body is literal null', funct
                 && ($assertion['expected'] ?? null) === 'exists'
         ))->toBeTrue();
 });
+
+test('preview assertion uses latest saved response body when available', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'http_code' => 200,
+        'response_time_ms' => 123,
+        'response_body' => ['data' => ['status' => 'pending']],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['source_label'])->toBe('Latest saved response')
+        ->and($preview['http_code'])->toBe(200)
+        ->and($preview['response_time_ms'])->toBe(123)
+        ->and($preview['passed'])->toBeFalse()
+        ->and($preview['actual'])->toBe('pending')
+        ->and($preview['expected'])->toBe('= active');
+});
+
+test('preview assertion runs fresh test when no saved response body exists', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['data' => ['status' => 'active']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+        'http_method' => 'POST',
+        'expected_status' => 200,
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => null,
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://api.example.test/orders');
+
+    expect($preview['source'])->toBe('fresh_test')
+        ->and($preview['source_label'])->toBe('Fresh test response')
+        ->and($preview['http_code'])->toBe(200)
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('active')
+        ->and($preview['expected'])->toBe('= active');
+});
