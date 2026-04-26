@@ -176,7 +176,7 @@ class WebsiteInfolist
                                 TextEntry::make('transport_error')
                                     ->label('Transport Error')
                                     ->badge()
-                                    ->color(fn (mixed $state): string => UptimeTransportError::color(is_string($state) ? $state : null))
+                                    ->color(fn (?string $state): string => UptimeTransportError::color($state))
                                     ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
                                     ->default('-'),
                                 TextEntry::make('created_at')

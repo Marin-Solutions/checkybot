@@ -77,3 +77,20 @@ test('website log history records transport errors', function () {
         ->and($log->transport_error_message)->toContain('SSL certificate problem')
         ->and($log->transport_error_code)->toBe(60);
 });
+
+test('website log history transport error factory keeps evidence consistent with type', function (
+    string $type,
+    int $code,
+    string $message,
+) {
+    $log = WebsiteLogHistory::factory()->transportError($type)->create();
+
+    expect($log->transport_error_type)->toBe($type)
+        ->and($log->transport_error_code)->toBe($code)
+        ->and($log->transport_error_message)->toContain($message);
+})->with([
+    'dns' => ['dns', 6, 'Could not resolve host'],
+    'timeout' => ['timeout', 28, 'Operation timed out'],
+    'tls' => ['tls', 60, 'SSL certificate problem'],
+    'connection' => ['connection', 7, 'Failed to connect'],
+]);

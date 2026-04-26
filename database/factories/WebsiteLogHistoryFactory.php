@@ -41,13 +41,31 @@ class WebsiteLogHistoryFactory extends Factory
 
     public function transportError(string $type = 'connection'): static
     {
+        $defaults = match ($type) {
+            'dns' => [
+                'transport_error_message' => 'cURL error 6: Could not resolve host: example.invalid',
+                'transport_error_code' => 6,
+            ],
+            'timeout' => [
+                'transport_error_message' => 'cURL error 28: Operation timed out after 10001 milliseconds',
+                'transport_error_code' => 28,
+            ],
+            'tls' => [
+                'transport_error_message' => 'cURL error 60: SSL certificate problem.',
+                'transport_error_code' => 60,
+            ],
+            default => [
+                'transport_error_message' => 'cURL error 7: Failed to connect to example.com port 443.',
+                'transport_error_code' => 7,
+            ],
+        };
+
         return $this->state(fn (array $attributes) => [
             'http_status_code' => 0,
             'status' => 'danger',
             'summary' => UptimeTransportError::summary($type),
             'transport_error_type' => $type,
-            'transport_error_message' => 'cURL error 7: Failed to connect to example.com port 443.',
-            'transport_error_code' => 7,
+            ...$defaults,
         ]);
     }
 }
