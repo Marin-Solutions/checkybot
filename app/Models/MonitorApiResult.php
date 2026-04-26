@@ -13,8 +13,6 @@ class MonitorApiResult extends Model
 
     public const RAW_BODY_KEY = '__checky_raw_body__';
 
-    public const LEGACY_RAW_BODY_KEY = 'raw_body';
-
     public const ERROR_METADATA_KEY = '__checky_error__';
 
     protected $fillable = [

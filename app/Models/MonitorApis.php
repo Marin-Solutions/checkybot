@@ -597,7 +597,7 @@ class MonitorApis extends Model
         $jsonError = null;
 
         if (is_array($savedBody) && self::hasRawBodyWrapper($savedBody)) {
-            $rawBody = (string) ($savedBody[MonitorApiResult::RAW_BODY_KEY] ?? $savedBody[MonitorApiResult::LEGACY_RAW_BODY_KEY]);
+            $rawBody = (string) $savedBody[MonitorApiResult::RAW_BODY_KEY];
             $decoded = json_decode($rawBody, true);
 
             if (json_last_error() === JSON_ERROR_NONE) {
@@ -686,10 +686,6 @@ class MonitorApis extends Model
             return array_diff(array_keys($savedBody), [MonitorApiResult::RAW_BODY_KEY, 'error']) === [];
         }
 
-        if (! array_key_exists(MonitorApiResult::LEGACY_RAW_BODY_KEY, $savedBody)) {
-            return false;
-        }
-
-        return array_diff(array_keys($savedBody), [MonitorApiResult::LEGACY_RAW_BODY_KEY, 'error']) === [];
+        return false;
     }
 }
