@@ -182,6 +182,25 @@ test('record result preserves raw failure payloads when json parsing fails', fun
     ]);
 });
 
+test('record result uses internal metadata key for error-only failures', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $failedResult = [
+        'code' => 0,
+        'body' => null,
+        'raw_body' => null,
+        'assertions' => [],
+        'error' => 'Connection timeout: cURL error 28',
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API request failed.');
+
+    expect($result->response_body)->toBe([
+        MonitorApiResult::ERROR_METADATA_KEY => 'Connection timeout: cURL error 28',
+    ]);
+});
+
 test('response body attribute preserves invalid utf8 payload data instead of dropping it', function () {
     $result = MonitorApiResult::factory()->create([
         'response_body' => ['raw_body' => "bad\xB1value"],

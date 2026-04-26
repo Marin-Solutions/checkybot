@@ -156,6 +156,16 @@ class MonitorApis extends Model
             'data_path' => $this->data_path,
         ]);
 
+        if (filled($testResult['error'] ?? null) && blank($testResult['body'] ?? null)) {
+            return array_merge($this->previewAssertionError($assertion, (string) $testResult['error']), [
+                'source' => 'fresh_test',
+                'source_label' => 'Fresh test response',
+                'http_code' => $testResult['code'] ?? null,
+                'response_time_ms' => $testResult['response_time_ms'] ?? null,
+                'error' => $testResult['error'],
+            ]);
+        }
+
         $preview = self::evaluateAssertionAgainstBody($assertion, $testResult['body'] ?? null);
 
         return array_merge($preview, [
@@ -611,6 +621,21 @@ class MonitorApis extends Model
         ]);
     }
 
+    /**
+     * @return array{path: string, type: string, passed: bool, message: string, actual: mixed, expected: mixed}
+     */
+    private function previewAssertionError(MonitorApiAssertion $assertion, string $message): array
+    {
+        return [
+            'path' => $assertion->data_path,
+            'type' => $assertion->assertion_type,
+            'passed' => false,
+            'message' => $message,
+            'actual' => $message,
+            'expected' => 'response body without transport or JSON errors',
+        ];
+    }
+
     private static function hasPreviewableSavedBody(mixed $savedBody): bool
     {
         if (blank($savedBody)) {
@@ -621,7 +646,7 @@ class MonitorApis extends Model
             return true;
         }
 
-        return array_keys($savedBody) !== ['error'];
+        return array_keys($savedBody) !== [MonitorApiResult::ERROR_METADATA_KEY];
     }
 
     /**

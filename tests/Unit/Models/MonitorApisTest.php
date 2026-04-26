@@ -399,7 +399,9 @@ test('preview assertion falls back to fresh test when latest saved body only con
 
     MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
-        'response_body' => ['error' => 'Connection timeout: cURL error 28'],
+        'response_body' => [
+            MonitorApiResult::ERROR_METADATA_KEY => 'Connection timeout: cURL error 28',
+        ],
     ]);
 
     $preview = $monitor->previewAssertion($assertion);
@@ -409,6 +411,85 @@ test('preview assertion falls back to fresh test when latest saved body only con
     expect($preview['source'])->toBe('fresh_test')
         ->and($preview['passed'])->toBeTrue()
         ->and($preview['actual'])->toBe('active');
+});
+
+test('preview assertion uses legitimate saved error payloads instead of forcing a fresh test', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'error',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'invalid_token',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            'error' => 'invalid_token',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('invalid_token');
+});
+
+test('preview assertion fails when fresh test has a transport error even if assertion would pass against null', function () {
+    Http::fake(function (): never {
+        throw new \Illuminate\Http\Client\ConnectionException('timeout');
+    });
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'not_exists',
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    expect($preview['source'])->toBe('fresh_test')
+        ->and($preview['passed'])->toBeFalse()
+        ->and($preview['message'])->toStartWith('Connection timeout:')
+        ->and($preview['actual'])->toStartWith('Connection timeout:')
+        ->and($preview['expected'])->toBe('response body without transport or JSON errors');
+});
+
+test('preview assertion fails when fresh test has invalid json even if assertion would pass against null', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('not-json', 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'not_exists',
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    expect($preview['source'])->toBe('fresh_test')
+        ->and($preview['passed'])->toBeFalse()
+        ->and($preview['message'])->toBe('Invalid JSON response: Syntax error')
+        ->and($preview['actual'])->toBe('Invalid JSON response: Syntax error')
+        ->and($preview['expected'])->toBe('response body without transport or JSON errors');
 });
 
 test('preview assertion parses saved raw body wrapper', function () {
