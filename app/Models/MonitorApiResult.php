@@ -11,6 +11,10 @@ class MonitorApiResult extends Model
 {
     use HasFactory;
 
+    public const RAW_BODY_KEY = '__checky_raw_body__';
+
+    public const ERROR_METADATA_KEY = '__checky_error__';
+
     protected $fillable = [
         'monitor_api_id',
         'is_success',
@@ -154,13 +158,19 @@ class MonitorApiResult extends Model
         if (is_array($testResult['body'] ?? null)) {
             $payload = $testResult['body'];
         } elseif (filled($testResult['raw_body'] ?? null)) {
-            $payload['raw_body'] = (string) $testResult['raw_body'];
+            $payload[self::RAW_BODY_KEY] = (string) $testResult['raw_body'];
         } elseif (filled($testResult['body'] ?? null)) {
-            $payload['raw_body'] = (string) $testResult['body'];
+            $payload[self::RAW_BODY_KEY] = (string) $testResult['body'];
         }
 
         if (filled($testResult['error'] ?? null)) {
-            $payload['error'] = (string) $testResult['error'];
+            $error = (string) $testResult['error'];
+
+            if ($payload === []) {
+                $payload[self::ERROR_METADATA_KEY] = $error;
+            } else {
+                $payload['error'] = $error;
+            }
         }
 
         return $payload === [] ? null : $payload;

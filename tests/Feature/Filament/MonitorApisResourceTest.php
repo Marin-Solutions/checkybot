@@ -4,7 +4,9 @@ use App\Filament\Resources\MonitorApisResource\Pages\CreateMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ListMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ViewMonitorApis;
+use App\Filament\Resources\MonitorApisResource\RelationManagers\AssertionsRelationManager;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\ResultsRelationManager;
+use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
@@ -147,7 +149,26 @@ test('api monitor list shows effective polling interval', function () {
         ->assertCanSeeTableRecords([$monitor])
         ->assertTableColumnExists('package_interval')
         ->assertSee('15m')
-        ->assertSee('Next check');
+        ->assertSee('Expected heartbeat every 15m');
+});
+
+test('api monitor list shows scheduler-rounded cadence for second-based intervals', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Second cadence API',
+        'package_interval' => '90s',
+        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertCanSeeTableRecords([$monitor])
+        ->assertTableColumnExists('package_interval')
+        ->assertSee('2m')
+        ->assertSee('Expected heartbeat every 2m');
 });
 
 test('api monitor list shows default cadence when polling interval is invalid', function () {
@@ -728,6 +749,46 @@ test('api monitor evidence infolist mounts cleanly for failed assertions with ac
 
     expect($normalized[0]['actual'])->toBe('pending')
         ->and($normalized[0]['expected'])->toBe('= active');
+});
+
+test('api assertion preview action shows actual versus expected from saved response', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'http_code' => 200,
+        'response_time_ms' => 98,
+        'response_body' => ['data' => ['status' => 'pending']],
+    ]);
+
+    Livewire::test(AssertionsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => ViewMonitorApis::class,
+    ])
+        ->assertTableActionExists('preview', null, $assertion)
+        ->assertTableActionHasLabel('preview', 'Preview', $assertion)
+        ->mountTableAction('preview', $assertion)
+        ->assertHasNoTableActionErrors()
+        ->assertSchemaStateSet([
+            'preview_source' => 'Latest saved response',
+            'preview_result' => 'Failed',
+            'preview_actual' => 'pending',
+            'preview_expected' => '= active',
+        ]);
 });
 
 test('super admin can filter api monitors by current status', function () {

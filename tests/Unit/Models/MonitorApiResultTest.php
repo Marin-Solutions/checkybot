@@ -177,8 +177,27 @@ test('record result preserves raw failure payloads when json parsing fails', fun
     $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
 
     expect($result->response_body)->toBe([
-        'raw_body' => '<html>upstream exploded</html>',
+        MonitorApiResult::RAW_BODY_KEY => '<html>upstream exploded</html>',
         'error' => 'Invalid JSON response: Syntax error',
+    ]);
+});
+
+test('record result uses internal metadata key for error-only failures', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $failedResult = [
+        'code' => 0,
+        'body' => null,
+        'raw_body' => null,
+        'assertions' => [],
+        'error' => 'Connection timeout: cURL error 28',
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API request failed.');
+
+    expect($result->response_body)->toBe([
+        MonitorApiResult::ERROR_METADATA_KEY => 'Connection timeout: cURL error 28',
     ]);
 });
 

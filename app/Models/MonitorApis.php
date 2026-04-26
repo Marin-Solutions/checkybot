@@ -25,6 +25,8 @@ class MonitorApis extends Model
     use HasSnooze;
     use SoftDeletes;
 
+    private const LEGACY_RAW_BODY_KEY = 'raw_body';
+
     protected $fillable = [
         'title',
         'url',
@@ -93,6 +95,95 @@ class MonitorApis extends Model
     public function latestResult(): HasOne
     {
         return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->latestOfMany();
+    }
+
+    /**
+     * Preview one assertion against the latest saved response body when
+     * available. If no response body was saved for the latest run, execute a
+     * fresh API test and evaluate the assertion against that transient result.
+     * Disabled assertions are intentionally previewable so users can test a
+     * draft assertion before re-enabling it.
+     *
+     * @return array{
+     *     path: string,
+     *     type: string,
+     *     passed: bool,
+     *     message: string,
+     *     actual: mixed,
+     *     expected: mixed,
+     *     source: string,
+     *     source_label: string,
+     *     http_code: int|null,
+     *     response_time_ms: int|null,
+     *     error: string|null
+     * }
+     */
+    public function previewAssertion(MonitorApiAssertion $assertion): array
+    {
+        $latestResult = $this->latestResult()->first();
+        $savedBody = $latestResult?->response_body;
+
+        if ($latestResult && self::hasPreviewableSavedBody($savedBody)) {
+            return $this->previewAssertionAgainstSavedBody($assertion, $savedBody, $latestResult);
+        }
+
+        return $this->previewAssertionAgainstFreshTest($assertion);
+    }
+
+    /**
+     * @return array{
+     *     path: string,
+     *     type: string,
+     *     passed: bool,
+     *     message: string,
+     *     actual: mixed,
+     *     expected: mixed,
+     *     source: string,
+     *     source_label: string,
+     *     http_code: int|null,
+     *     response_time_ms: int|null,
+     *     error: string|null
+     * }
+     */
+    private function previewAssertionAgainstFreshTest(MonitorApiAssertion $assertion): array
+    {
+        // Keep this whitelist aligned with API monitor fields that affect execution.
+        $testResult = self::testApi([
+            'id' => $this->id,
+            'title' => $this->title,
+            'url' => $this->url,
+            'http_method' => $this->http_method,
+            'expected_status' => $this->expected_status,
+            'timeout_seconds' => $this->timeout_seconds,
+            'headers' => $this->headers,
+            'data_path' => $this->data_path,
+        ]);
+
+        if (
+            filled($testResult['error'] ?? null)
+            && (
+                blank($testResult['body'] ?? null)
+                || ($testResult['code'] ?? null) === 0
+            )
+        ) {
+            return array_merge($this->previewAssertionError($assertion, (string) $testResult['error']), [
+                'source' => 'fresh_test',
+                'source_label' => 'Fresh test response',
+                'http_code' => $testResult['code'] ?? null,
+                'response_time_ms' => $testResult['response_time_ms'] ?? null,
+                'error' => $testResult['error'],
+            ]);
+        }
+
+        $preview = self::evaluateAssertionAgainstBody($assertion, $testResult['body'] ?? null);
+
+        return array_merge($preview, [
+            'source' => 'fresh_test',
+            'source_label' => 'Fresh test response',
+            'http_code' => $testResult['code'] ?? null,
+            'response_time_ms' => $testResult['response_time_ms'] ?? null,
+            'error' => $testResult['error'] ?? null,
+        ]);
     }
 
     public static function testApi(array $data): array
@@ -461,21 +552,155 @@ class MonitorApis extends Model
                 continue;
             }
 
-            $missing = new \stdClass;
-            $value = Arr::get($responseData['body'], $assertion->data_path, $missing);
-            $exists = $value !== $missing;
-            $validationResult = $assertion->validateResponse($exists ? $value : null, $exists);
-
-            $responseData['assertions'][] = [
-                'path' => $assertion->data_path,
-                'type' => $assertion->assertion_type,
-                'passed' => $validationResult['passed'],
-                'message' => $validationResult['message'],
-                'actual' => $validationResult['actual'] ?? null,
-                'expected' => $validationResult['expected'] ?? null,
-            ];
+            $responseData['assertions'][] = self::evaluateAssertionAgainstBody($assertion, $responseData['body']);
         }
 
         return $responseData;
+    }
+
+    /**
+     * @return array{path: string, type: string, passed: bool, message: string, actual: mixed, expected: mixed}
+     */
+    private static function evaluateAssertionAgainstBody(MonitorApiAssertion $assertion, mixed $body): array
+    {
+        $missing = new \stdClass;
+        $value = Arr::get($body, $assertion->data_path, $missing);
+        $exists = $value !== $missing;
+        $validationResult = $assertion->validateResponse($exists ? $value : null, $exists);
+
+        return [
+            'path' => $assertion->data_path,
+            'type' => $assertion->assertion_type,
+            'passed' => $validationResult['passed'],
+            'message' => $validationResult['message'],
+            'actual' => $validationResult['actual'] ?? null,
+            'expected' => $validationResult['expected'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     path: string,
+     *     type: string,
+     *     passed: bool,
+     *     message: string,
+     *     actual: mixed,
+     *     expected: mixed,
+     *     source: string,
+     *     source_label: string,
+     *     http_code: int|null,
+     *     response_time_ms: int|null,
+     *     error: string|null
+     * }
+     */
+    private function previewAssertionAgainstSavedBody(MonitorApiAssertion $assertion, mixed $savedBody, MonitorApiResult $latestResult): array
+    {
+        $body = $savedBody;
+        $error = null;
+        $jsonError = null;
+
+        if (is_array($savedBody) && self::hasRawBodyWrapper($savedBody)) {
+            $rawBody = (string) ($savedBody[MonitorApiResult::RAW_BODY_KEY] ?? $savedBody[self::LEGACY_RAW_BODY_KEY]);
+            $decoded = json_decode($rawBody, true);
+
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $body = $decoded;
+            } else {
+                $jsonError = json_last_error_msg();
+                $error = 'Saved response body is not valid JSON: '.$jsonError;
+                $body = null;
+            }
+        }
+
+        $preview = self::evaluateAssertionAgainstBody($assertion, $body);
+
+        if ($error !== null) {
+            $preview['passed'] = false;
+            $preview['message'] = $error;
+            $preview['actual'] = $jsonError;
+            $preview['expected'] = 'valid JSON';
+        }
+
+        return array_merge($preview, [
+            'source' => 'saved_response',
+            'source_label' => 'Latest saved response',
+            'http_code' => $latestResult->http_code,
+            'response_time_ms' => $latestResult->response_time_ms,
+            'error' => $error,
+        ]);
+    }
+
+    /**
+     * @return array{path: string, type: string, passed: bool, message: string, actual: mixed, expected: mixed}
+     */
+    private function previewAssertionError(MonitorApiAssertion $assertion, string $message): array
+    {
+        return [
+            'path' => $assertion->data_path,
+            'type' => $assertion->assertion_type,
+            'passed' => false,
+            'message' => $message,
+            'actual' => $message,
+            'expected' => 'response body without transport or JSON errors',
+        ];
+    }
+
+    private static function hasPreviewableSavedBody(mixed $savedBody): bool
+    {
+        if (blank($savedBody)) {
+            return false;
+        }
+
+        if (! is_array($savedBody)) {
+            return true;
+        }
+
+        return array_keys($savedBody) !== [MonitorApiResult::ERROR_METADATA_KEY]
+            && ! self::isLegacyErrorMetadataPayload($savedBody);
+    }
+
+    /**
+     * @param  array<string, mixed>  $savedBody
+     */
+    private static function isLegacyErrorMetadataPayload(array $savedBody): bool
+    {
+        if (array_keys($savedBody) !== ['error']) {
+            return false;
+        }
+
+        if (! is_string($savedBody['error'])) {
+            return false;
+        }
+
+        return self::isLegacyGeneratedError($savedBody['error']);
+    }
+
+    private static function isLegacyGeneratedError(string $error): bool
+    {
+        return str_starts_with($error, 'Connection timeout:')
+            || str_starts_with($error, 'Unexpected error:')
+            || str_starts_with($error, 'Invalid JSON response:')
+            || str_starts_with($error, 'HTTP request returned status code ');
+    }
+
+    /**
+     * @param  array<string, mixed>  $savedBody
+     */
+    private static function hasRawBodyWrapper(array $savedBody): bool
+    {
+        if (array_key_exists(MonitorApiResult::RAW_BODY_KEY, $savedBody)) {
+            return array_diff(array_keys($savedBody), [MonitorApiResult::RAW_BODY_KEY, 'error']) === [];
+        }
+
+        if (! array_key_exists(self::LEGACY_RAW_BODY_KEY, $savedBody)) {
+            return false;
+        }
+
+        if (array_diff(array_keys($savedBody), [self::LEGACY_RAW_BODY_KEY, 'error']) !== []) {
+            return false;
+        }
+
+        return is_string($savedBody['error'] ?? null)
+            && self::isLegacyGeneratedError($savedBody['error']);
     }
 }
