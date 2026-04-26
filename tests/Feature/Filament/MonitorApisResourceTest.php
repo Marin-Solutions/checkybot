@@ -149,7 +149,7 @@ test('api monitor list shows effective polling interval', function () {
         ->assertCanSeeTableRecords([$monitor])
         ->assertTableColumnExists('package_interval')
         ->assertSee('15m')
-        ->assertSee('Next check');
+        ->assertSee('Expected heartbeat every 15m');
 });
 
 test('api monitor list shows default cadence when polling interval is invalid', function () {

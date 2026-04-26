@@ -472,24 +472,13 @@ class MonitorApisResource extends Resource
             return 'Runs every minute';
         }
 
-        if ($record->last_heartbeat_at === null) {
-            return 'Runs on next scheduler pass';
-        }
-
         try {
-            $nextRunAt = $record->last_heartbeat_at
-                ->copy()
-                ->startOfMinute()
-                ->addMinutes(IntervalParser::toMinutes($record->package_interval));
+            $interval = IntervalParser::normalize($record->package_interval);
         } catch (\InvalidArgumentException) {
             return 'Runs every minute';
         }
 
-        if ($nextRunAt->lte(now()->startOfMinute())) {
-            return 'Due now';
-        }
-
-        return 'Next check '.$nextRunAt->diffForHumans();
+        return "Expected heartbeat every {$interval}; scheduler still runs every minute";
     }
 
     public static function getRelations(): array
