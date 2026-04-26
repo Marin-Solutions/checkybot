@@ -147,6 +147,7 @@ class MonitorApis extends Model
      */
     private function previewAssertionAgainstFreshTest(MonitorApiAssertion $assertion): array
     {
+        // Keep this whitelist aligned with API monitor fields that affect execution.
         $testResult = self::testApi([
             'id' => $this->id,
             'title' => $this->title,
