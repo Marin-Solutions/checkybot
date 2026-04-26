@@ -267,10 +267,24 @@ test('application detail shows package sync status metadata', function () {
         ->assertSee('checkout-app')
         ->assertSee('https://checkout.example.com')
         ->assertSee('marin-solutions/checkout')
-        ->assertSee('Synced Checks')
-        ->assertSee('3')
-        ->assertSee('Synced Components')
-        ->assertSee('2');
+        ->assertSeeInOrder(['Synced Checks', '3'])
+        ->assertSeeInOrder(['Synced Components', '2']);
+});
+
+test('application detail hides package sync status for manual applications', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Manual App',
+        'created_by' => $user->id,
+        'package_key' => null,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertDontSee('Package Sync Status')
+        ->assertDontSee('Latest package sync metadata for diagnosing stale or incomplete application integrations.');
 });
 
 test('application record shows package-managed external checks including archived ones', function () {
