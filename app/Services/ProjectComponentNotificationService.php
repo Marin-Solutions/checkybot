@@ -7,7 +7,9 @@ use App\Enums\WebsiteServicesEnum;
 use App\Mail\ProjectComponentAlertMail;
 use App\Models\NotificationSetting;
 use App\Models\ProjectComponent;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Throwable;
 
 class ProjectComponentNotificationService
 {
@@ -34,15 +36,52 @@ class ProjectComponentNotificationService
 
         foreach ($settings as $setting) {
             if ($setting->channel_type === NotificationChannelTypesEnum::WEBHOOK) {
-                $setting->channel?->sendWebhookNotification([
-                    'message' => $payload['message'],
-                    'description' => $payload['details'],
-                ]);
+                $channel = $setting->channel;
+
+                if (! $channel) {
+                    Log::warning('No channel found for project component notification setting', [
+                        'setting_id' => $setting->id,
+                        'project_component_id' => $component->id,
+                        'event' => $event,
+                        'status' => $status,
+                    ]);
+
+                    continue;
+                }
+
+                try {
+                    $channel->sendWebhookNotification([
+                        'message' => $payload['message'],
+                        'description' => $payload['details'],
+                    ]);
+                } catch (Throwable $exception) {
+                    Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
+                        'setting_id' => $setting->id,
+                        'project_component_id' => $component->id,
+                        'event' => $event,
+                        'status' => $status,
+                        'exception' => $exception,
+                    ]);
+                }
 
                 continue;
             }
 
-            Mail::to($setting->address)->send(new ProjectComponentAlertMail($payload));
+            if ($setting->channel_type !== NotificationChannelTypesEnum::MAIL) {
+                continue;
+            }
+
+            try {
+                Mail::to($setting->address)->send(new ProjectComponentAlertMail($payload));
+            } catch (Throwable $exception) {
+                Log::error('Failed to deliver project component notification mail; continuing with other channels', [
+                    'setting_id' => $setting->id,
+                    'project_component_id' => $component->id,
+                    'event' => $event,
+                    'status' => $status,
+                    'exception' => $exception,
+                ]);
+            }
         }
     }
 

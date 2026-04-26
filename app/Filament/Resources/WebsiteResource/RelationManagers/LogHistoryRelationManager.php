@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\WebsiteResource\RelationManagers;
 
+use App\Support\UptimeTransportError;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
@@ -27,6 +28,18 @@ class LogHistoryRelationManager extends RelationManager
                     }),
                 TextColumn::make('http_status_code')
                     ->label('HTTP'),
+                TextColumn::make('transport_error_type')
+                    ->label('Transport Error')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                    ->color(fn (?string $state): string => UptimeTransportError::color($state))
+                    ->placeholder('-'),
+                TextColumn::make('transport_error_message')
+                    ->label('Transport Evidence')
+                    ->limit(80)
+                    ->wrap()
+                    ->tooltip(fn (?string $state): ?string => $state)
+                    ->placeholder('-'),
                 TextColumn::make('speed')
                     ->label('Response Time')
                     ->formatStateUsing(fn (?int $state): string => $state ? "{$state}ms" : '-'),

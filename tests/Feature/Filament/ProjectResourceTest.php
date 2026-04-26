@@ -200,6 +200,110 @@ test('application list and detail show the worst active component status', funct
         ->assertSee('danger');
 });
 
+test('application detail shows package sync status metadata', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $syncedAt = now()->subMinutes(12);
+    $project = Project::factory()->create([
+        'name' => 'Checkout App',
+        'created_by' => $user->id,
+        'package_key' => 'checkout-app',
+        'base_url' => 'https://checkout.example.com',
+        'repository' => 'marin-solutions/checkout',
+        'last_synced_at' => $syncedAt,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'created_by' => $user->id,
+    ]);
+
+    $archivedPackageWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'legacy-homepage',
+        'created_by' => $user->id,
+    ]);
+    $archivedPackageWebsite->delete();
+
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'manual',
+        'created_by' => $user->id,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'health',
+        'created_by' => $user->id,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'manual',
+        'created_by' => $user->id,
+    ]);
+
+    ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'created_by' => $user->id,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'manual',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Package Sync Status')
+        ->assertSee($syncedAt->toDayDateTimeString())
+        ->assertSee('checkout-app')
+        ->assertSee('https://checkout.example.com')
+        ->assertSee('marin-solutions/checkout')
+        ->assertSeeInOrder(['Synced Checks', '3'])
+        ->assertSeeInOrder(['Synced Components', '2']);
+});
+
+test('application detail hides package sync status for manual applications', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Manual App',
+        'created_by' => $user->id,
+        'package_key' => null,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertDontSee('Package Sync Status')
+        ->assertDontSee('Latest package sync metadata for diagnosing stale or incomplete application integrations.');
+});
+
+test('application detail shows unsynced package applications as never synced', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Unsynced Package App',
+        'created_by' => $user->id,
+        'package_key' => 'unsynced-package-app',
+        'last_synced_at' => null,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Package Sync Status')
+        ->assertSeeInOrder(['Last Synced', 'Never']);
+});
+
 test('application record shows package-managed external checks including archived ones', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('MonitorApis');

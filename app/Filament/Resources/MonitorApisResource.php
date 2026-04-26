@@ -339,12 +339,12 @@ class MonitorApisResource extends Resource
                         })
                         ->deselectRecordsAfterCompletion(),
                     \Filament\Actions\BulkAction::make('changeInterval')
-                        ->label('Change expected interval')
+                        ->label('Change check interval')
                         ->icon('heroicon-o-clock')
                         ->color('gray')
                         ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
-                        ->modalHeading('Change expected check interval')
-                        ->modalDescription('Set the expected cadence between heartbeats for the selected API monitors. This is used to flag a monitor as stale when heartbeats stop arriving and drives the cadence displayed on the dashboard. The scheduler itself always runs every minute, so this does not throttle polling.')
+                        ->modalHeading('Change API monitor interval')
+                        ->modalDescription('Set how often the selected API monitors should be polled. The scheduler wakes up every minute, but each monitor only runs when its own interval is due.')
                         ->modalSubmitActionLabel('Apply')
                         ->schema([
                             Forms\Components\Select::make('interval')
@@ -380,7 +380,7 @@ class MonitorApisResource extends Resource
                                     : ($count === 1 ? '1 API monitor updated' : "{$count} API monitors updated"))
                                 ->body($count === 0
                                     ? "All selected API monitors already run every {$interval}."
-                                    : "New check interval: {$interval}.")
+                                    : "New polling interval: {$interval}.")
                                 ->success()
                                 ->send();
                         })

@@ -6,6 +6,7 @@ use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -67,6 +68,51 @@ test('job handles failed requests', function () {
         'website_id' => $website->id,
         'http_status_code' => 500,
     ]);
+});
+
+test('job records structured transport error evidence for connection exceptions', function () {
+    Http::fake(function () {
+        throw new ConnectionException('cURL error 6: Could not resolve host: missing.example');
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://missing.example',
+        'uptime_check' => true,
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+    $website->refresh();
+
+    expect($log?->http_status_code)->toBe(0)
+        ->and($log?->status)->toBe('danger')
+        ->and($log?->summary)->toBe('Website heartbeat failed before an HTTP response: DNS lookup failed.')
+        ->and($log?->transport_error_type)->toBe('dns')
+        ->and($log?->transport_error_message)->toContain('Could not resolve host')
+        ->and($log?->transport_error_code)->toBe(6)
+        ->and($website->status_summary)->toBe('Website heartbeat failed before an HTTP response: DNS lookup failed.');
+});
+
+test('job classifies request timeouts separately from other transport failures', function () {
+    Http::fake(function () {
+        throw new ConnectionException('cURL error 28: Operation timed out after 10001 milliseconds');
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://slow.example',
+        'uptime_check' => true,
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $log = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+
+    expect($log?->transport_error_type)->toBe('timeout')
+        ->and($log?->transport_error_code)->toBe(28)
+        ->and($log?->summary)->toBe('Website heartbeat failed before an HTTP response: the request timed out.');
 });
 
 test('job records danger status history and sends notifications for failed package-managed heartbeats', function () {

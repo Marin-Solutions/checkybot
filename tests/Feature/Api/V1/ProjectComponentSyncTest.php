@@ -4,8 +4,10 @@ use App\Enums\WebsiteServicesEnum;
 use App\Models\ApiKey;
 use App\Models\NotificationSetting;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -194,6 +196,63 @@ test('warning and danger component events use existing notification settings', f
     )->assertOk();
 
     Http::assertSentCount(1);
+});
+
+test('component sync persists heartbeat state when webhook notification fails', function () {
+    Log::spy();
+
+    Http::fake(function () {
+        throw new RuntimeException('Webhook transport unavailable');
+    });
+
+    NotificationSetting::factory()->webhook()->create([
+        'user_id' => $this->user->id,
+        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'danger',
+                    'summary' => 'Queue workers are not processing jobs',
+                    'metrics' => [
+                        'pending_jobs' => 544,
+                    ],
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    $component = ProjectComponent::query()
+        ->where('project_id', $this->project->id)
+        ->where('name', 'queue')
+        ->firstOrFail();
+
+    expect($component->current_status)->toBe('danger');
+
+    $this->assertDatabaseHas('project_component_heartbeats', [
+        'project_component_id' => $component->id,
+        'status' => 'danger',
+        'event' => 'heartbeat',
+    ]);
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->withArgs(fn (string $message): bool => str_contains($message, 'Failed to deliver project component notification webhook'));
 });
 
 test('component sync rejects zero intervals at the request boundary', function () {
