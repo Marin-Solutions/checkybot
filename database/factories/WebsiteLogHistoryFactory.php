@@ -54,6 +54,10 @@ class WebsiteLogHistoryFactory extends Factory
                 'transport_error_message' => 'cURL error 60: SSL certificate problem.',
                 'transport_error_code' => 60,
             ],
+            'unknown' => [
+                'transport_error_message' => null,
+                'transport_error_code' => null,
+            ],
             default => [
                 'transport_error_message' => 'cURL error 7: Failed to connect to example.com port 443.',
                 'transport_error_code' => 7,
