@@ -224,6 +224,8 @@ class NotificationChannels extends Model
             return $text;
         }
 
+        // Exception messages commonly include the exact URL or a space-encoded
+        // variant; structured URL fields still receive full component redaction.
         return str_replace(
             [$url, str_replace(' ', '%20', $url)],
             self::redactWebhookUrlForLogs($url),
@@ -233,14 +235,25 @@ class NotificationChannels extends Model
 
     private static function redactQueryStringForLogs(string $query): string
     {
-        $parameters = [];
-        parse_str($query, $parameters);
+        $segments = array_filter(explode('&', $query), fn (string $segment): bool => $segment !== '');
 
-        if ($parameters === []) {
+        if ($segments === []) {
             return self::REDACTED_LOG_VALUE;
         }
 
-        return urldecode(http_build_query(self::redactPayloadForLogs($parameters)));
+        return implode('&', array_map(function (string $segment): string {
+            if (! str_contains($segment, '=')) {
+                return self::REDACTED_LOG_VALUE;
+            }
+
+            [$key] = explode('=', $segment, 2);
+
+            if ($key === '') {
+                return self::REDACTED_LOG_VALUE;
+            }
+
+            return urldecode($key).'='.self::REDACTED_LOG_VALUE;
+        }, $segments));
     }
 
     private static function redactPayloadForLogs(mixed $payload): mixed

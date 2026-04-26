@@ -353,3 +353,22 @@ test('send webhook notification keeps bare slack services path stable in logs', 
         ->withArgs(fn (string $message, array $context): bool => $message === 'Sending webhook request'
             && $context['final_url'] === 'https://hooks.slack.com/services');
 });
+
+test('send webhook notification redacts value-less query tokens in logs', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+    Log::spy();
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/webhook/value-less-query-secret?abc123secret',
+        'method' => 'GET',
+        'request_body' => [],
+    ]);
+
+    $channel->sendWebhookNotification([]);
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://example.com/webhook/value-less-query-secret?abc123secret');
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn (string $message, array $context): bool => $message === 'Sending webhook request'
+            && $context['final_url'] === 'https://example.com/webhook/[redacted]?[redacted]');
+});
