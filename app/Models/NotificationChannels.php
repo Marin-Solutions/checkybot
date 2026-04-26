@@ -13,6 +13,8 @@ class NotificationChannels extends Model
 {
     use HasFactory;
 
+    private const REDACTED_LOG_VALUE = '[redacted]';
+
     protected $fillable = [
         'title',
         'method',
@@ -84,9 +86,9 @@ class NotificationChannels extends Model
         try {
             Log::info('Preparing webhook notification', [
                 'channel_id' => $this->id,
-                'original_url' => $url,
+                'original_url' => self::redactWebhookUrlForLogs($url),
                 'method' => $method,
-                'original_body' => $requestBody,
+                'original_body' => self::redactPayloadForLogs($requestBody),
             ]);
 
             if (str_contains($url, '{message}')) {
@@ -108,8 +110,8 @@ class NotificationChannels extends Model
             }
 
             Log::info('Sending webhook request', [
-                'final_url' => $url,
-                'final_body' => $requestBody,
+                'final_url' => self::redactWebhookUrlForLogs($url),
+                'final_body' => self::redactPayloadForLogs($requestBody),
             ]);
 
             $webhookCallback = match ($method) {
@@ -128,10 +130,10 @@ class NotificationChannels extends Model
             return $responseData;
         } catch (RequestException $exception) {
             Log::error('Webhook request failed', [
-                'error_message' => $exception->getMessage(),
-                'url' => $url,
+                'error_message' => self::redactWebhookUrlTextForLogs($exception->getMessage(), $url),
+                'url' => self::redactWebhookUrlForLogs($url),
                 'method' => $method,
-                'request_body' => $requestBody,
+                'request_body' => self::redactPayloadForLogs($requestBody),
             ]);
 
             $handlerContext = $exception->getHandlerContext();
@@ -140,5 +142,130 @@ class NotificationChannels extends Model
 
             return $responseData;
         }
+    }
+
+    private static function redactWebhookUrlForLogs(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if ($parts === false || ! isset($parts['host'])) {
+            return self::REDACTED_LOG_VALUE;
+        }
+
+        $redactedUrl = '';
+
+        if (isset($parts['scheme'])) {
+            $redactedUrl .= $parts['scheme'].'://';
+        }
+
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            $redactedUrl .= self::REDACTED_LOG_VALUE.'@';
+        }
+
+        $redactedUrl .= $parts['host'];
+
+        if (isset($parts['port'])) {
+            $redactedUrl .= ':'.$parts['port'];
+        }
+
+        $redactedUrl .= self::redactWebhookPathForLogs($parts['path'] ?? '', $parts['host']);
+
+        if (isset($parts['query'])) {
+            $redactedUrl .= '?'.self::redactQueryStringForLogs($parts['query']);
+        }
+
+        if (isset($parts['fragment'])) {
+            $redactedUrl .= '#'.self::REDACTED_LOG_VALUE;
+        }
+
+        return $redactedUrl;
+    }
+
+    private static function redactWebhookPathForLogs(string $path, string $host): string
+    {
+        if ($path === '') {
+            return '';
+        }
+
+        $segments = explode('/', ltrim($path, '/'));
+        $normalizedHost = strtolower($host);
+
+        if ($normalizedHost === 'hooks.slack.com' && ($segments[0] ?? null) === 'services') {
+            $redactedSegments = array_fill(0, max(count($segments) - 1, 0), self::REDACTED_LOG_VALUE);
+
+            if ($redactedSegments === []) {
+                return '/services';
+            }
+
+            return '/services/'.implode('/', $redactedSegments);
+        }
+
+        $webhookIndex = array_search('webhooks', $segments, true);
+        if ($webhookIndex === false) {
+            $webhookIndex = array_search('webhook', $segments, true);
+        }
+
+        if ($webhookIndex !== false) {
+            foreach ($segments as $index => $segment) {
+                if ($index > $webhookIndex && $segment !== '') {
+                    $segments[$index] = self::REDACTED_LOG_VALUE;
+                }
+            }
+        }
+
+        // Keep unknown non-webhook path shapes for diagnostics; userinfo, query
+        // values, fragments, and known webhook credential paths are still redacted.
+        return '/'.implode('/', $segments);
+    }
+
+    private static function redactWebhookUrlTextForLogs(string $text, string $url): string
+    {
+        if ($url === '') {
+            return $text;
+        }
+
+        // Exception messages commonly include the exact URL or a space-encoded
+        // variant; structured URL fields still receive full component redaction.
+        return str_replace(
+            [$url, str_replace(' ', '%20', $url)],
+            self::redactWebhookUrlForLogs($url),
+            $text,
+        );
+    }
+
+    private static function redactQueryStringForLogs(string $query): string
+    {
+        $segments = array_filter(explode('&', $query), fn (string $segment): bool => $segment !== '');
+
+        if ($segments === []) {
+            return self::REDACTED_LOG_VALUE;
+        }
+
+        return implode('&', array_map(function (string $segment): string {
+            if (! str_contains($segment, '=')) {
+                return self::REDACTED_LOG_VALUE;
+            }
+
+            [$key] = explode('=', $segment, 2);
+
+            if ($key === '') {
+                return self::REDACTED_LOG_VALUE;
+            }
+
+            return urldecode($key).'='.self::REDACTED_LOG_VALUE;
+        }, $segments));
+    }
+
+    private static function redactPayloadForLogs(mixed $payload): mixed
+    {
+        if (is_array($payload)) {
+            return array_map(fn (mixed $value): mixed => self::redactPayloadForLogs($value), $payload);
+        }
+
+        if ($payload === null) {
+            return null;
+        }
+
+        return self::REDACTED_LOG_VALUE;
     }
 }

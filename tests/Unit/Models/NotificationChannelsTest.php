@@ -1,7 +1,10 @@
 <?php
 
 use App\Models\NotificationChannels;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Psr7\Request as GuzzleRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 test('notification channel has fillable attributes', function () {
     $channel = NotificationChannels::factory()->create([
@@ -178,4 +181,194 @@ test('send webhook notification preserves a 4xx status code so operators can deb
     ]);
 
     expect($result['code'])->toBe(401);
+});
+
+test('send webhook notification redacts webhook secrets from request logs without changing delivery', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+    Log::spy();
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://operator:password@hooks.slack.com/services/T00000000/B00000000/slack-secret-token?token=query-secret&text={message}',
+        'method' => 'POST',
+        'request_body' => [
+            'text' => '{message}',
+            'credentials' => [
+                'password' => 'body-secret',
+            ],
+        ],
+    ]);
+
+    $channel->sendWebhookNotification([
+        'message' => 'Database password reset required',
+        'description' => 'Webhook log redaction check',
+    ]);
+
+    Http::assertSent(function ($request) {
+        return str_contains($request->url(), 'slack-secret-token')
+            && str_contains($request->url(), 'query-secret')
+            && str_contains($request->url(), 'Database%20password%20reset%20required')
+            && ($request->data()['text'] ?? null) === 'Database password reset required'
+            && ($request->data()['credentials']['password'] ?? null) === 'body-secret';
+    });
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(function (string $message, array $context): bool {
+            if ($message !== 'Preparing webhook notification') {
+                return false;
+            }
+
+            $encodedContext = json_encode($context);
+
+            return $context['original_url'] === 'https://[redacted]@hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=[redacted]&text=[redacted]'
+                && $context['original_body'] === [
+                    'text' => '[redacted]',
+                    'credentials' => [
+                        'password' => '[redacted]',
+                    ],
+                ]
+                && ! str_contains($encodedContext, 'operator')
+                && ! str_contains($encodedContext, 'slack-secret-token')
+                && ! str_contains($encodedContext, 'query-secret')
+                && ! str_contains($encodedContext, 'body-secret');
+        });
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(function (string $message, array $context): bool {
+            if ($message !== 'Sending webhook request') {
+                return false;
+            }
+
+            $encodedContext = json_encode($context);
+
+            return $context['final_url'] === 'https://[redacted]@hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=[redacted]&text=[redacted]'
+                && $context['final_body'] === [
+                    'text' => '[redacted]',
+                    'credentials' => [
+                        'password' => '[redacted]',
+                    ],
+                ]
+                && ! str_contains($encodedContext, 'Database password reset required')
+                && ! str_contains($encodedContext, 'slack-secret-token')
+                && ! str_contains($encodedContext, 'query-secret')
+                && ! str_contains($encodedContext, 'body-secret');
+        });
+});
+
+test('send webhook notification redacts webhook secrets from error logs', function () {
+    // Http::fake wraps thrown Guzzle exceptions before this model's existing
+    // RequestException catch can handle them, so mock the facade call directly.
+    Http::shouldReceive('POST')->once()->andThrow(new RequestException(
+        'Webhook transport failed for https://hooks.slack.com/services/T00000000/B00000000/slack-secret-token?token=query-secret&text=Sensitive%20incident%20summary',
+        new GuzzleRequest('POST', 'https://hooks.slack.com/services/T00000000/B00000000/slack-secret-token'),
+        null,
+        null,
+        ['errno' => 60, 'error' => 'SSL certificate problem'],
+    ));
+    Log::spy();
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://hooks.slack.com/services/T00000000/B00000000/slack-secret-token?token=query-secret&text={message}',
+        'method' => 'POST',
+        'request_body' => [
+            'text' => '{message}',
+            'secret' => 'body-secret',
+        ],
+    ]);
+
+    $result = $channel->sendWebhookNotification([
+        'message' => 'Sensitive incident summary',
+    ]);
+
+    expect($result['code'])->toBe(60);
+    expect($result['body'])->toBe('SSL certificate problem');
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->withArgs(function (string $message, array $context): bool {
+            if ($message !== 'Webhook request failed') {
+                return false;
+            }
+
+            $encodedContext = json_encode($context);
+
+            return $context['url'] === 'https://hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=[redacted]&text=[redacted]'
+                && $context['error_message'] === 'Webhook transport failed for https://hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=[redacted]&text=[redacted]'
+                && $context['request_body'] === [
+                    'text' => '[redacted]',
+                    'secret' => '[redacted]',
+                ]
+                && ! str_contains($encodedContext, 'slack-secret-token')
+                && ! str_contains($encodedContext, 'query-secret')
+                && ! str_contains($encodedContext, 'body-secret')
+                && ! str_contains($encodedContext, 'Sensitive incident summary');
+        });
+});
+
+test('send webhook notification redacts discord webhook path segments in logs without changing delivery', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+    Log::spy();
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://discord.com/api/webhooks/1234567890/discord-secret-token',
+        'method' => 'POST',
+        'request_body' => [
+            'content' => '{message}',
+        ],
+    ]);
+
+    $channel->sendWebhookNotification([
+        'message' => 'Discord incident summary',
+    ]);
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://discord.com/api/webhooks/1234567890/discord-secret-token');
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(function (string $message, array $context): bool {
+            if ($message !== 'Sending webhook request') {
+                return false;
+            }
+
+            $encodedContext = json_encode($context);
+
+            return $context['final_url'] === 'https://discord.com/api/webhooks/[redacted]/[redacted]'
+                && ! str_contains($encodedContext, '1234567890')
+                && ! str_contains($encodedContext, 'discord-secret-token')
+                && ! str_contains($encodedContext, 'Discord incident summary');
+        });
+});
+
+test('send webhook notification keeps bare slack services path stable in logs', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+    Log::spy();
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://hooks.slack.com/services',
+        'method' => 'POST',
+        'request_body' => [],
+    ]);
+
+    $channel->sendWebhookNotification([]);
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn (string $message, array $context): bool => $message === 'Sending webhook request'
+            && $context['final_url'] === 'https://hooks.slack.com/services');
+});
+
+test('send webhook notification redacts value-less query tokens in logs', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+    Log::spy();
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/webhook/value-less-query-secret?abc123secret',
+        'method' => 'GET',
+        'request_body' => [],
+    ]);
+
+    $channel->sendWebhookNotification([]);
+
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://example.com/webhook/value-less-query-secret?abc123secret');
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(fn (string $message, array $context): bool => $message === 'Sending webhook request'
+            && $context['final_url'] === 'https://example.com/webhook/[redacted]?[redacted]');
 });
