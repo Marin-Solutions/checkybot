@@ -18,5 +18,18 @@ class WebsiteLogHistory extends Model
         'speed',
         'status',
         'summary',
+        'transport_error_type',
+        'transport_error_message',
+        'transport_error_code',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'ssl_expiry_date' => 'datetime',
+            'http_status_code' => 'integer',
+            'speed' => 'integer',
+            'transport_error_code' => 'integer',
+        ];
+    }
 }

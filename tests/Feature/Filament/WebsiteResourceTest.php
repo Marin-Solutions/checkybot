@@ -893,6 +893,26 @@ test('view page renders recent failures when non-healthy logs exist', function (
         ->assertSee('503');
 });
 
+test('view page surfaces transport error evidence for failed uptime logs', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    WebsiteLogHistory::factory()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'summary' => 'Website heartbeat failed before an HTTP response: DNS lookup failed.',
+        'transport_error_message' => 'cURL error 6: Could not resolve host: missing.example',
+        'transport_error_code' => 6,
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Last Transport Error')
+        ->assertSee('DNS failure')
+        ->assertSee('code 6')
+        ->assertSee('Could not resolve host');
+});
+
 test('view page hides recent failures when no failing logs exist', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
@@ -974,6 +994,26 @@ test('log history relation manager renders on view page', function () {
     ])
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$log]);
+});
+
+test('log history relation manager renders transport error evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $log = WebsiteLogHistory::factory()->transportError('tls')->create([
+        'website_id' => $website->id,
+        'transport_error_message' => 'cURL error 60: SSL certificate problem.',
+        'transport_error_code' => 60,
+    ]);
+
+    Livewire::test(LogHistoryRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$log])
+        ->assertSee('TLS/SSL failure')
+        ->assertSee('SSL certificate problem');
 });
 
 test('outbound links relation manager is registered on website resource', function () {

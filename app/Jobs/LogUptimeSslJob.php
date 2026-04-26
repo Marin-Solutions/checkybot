@@ -7,6 +7,7 @@ use App\Models\WebsiteLogHistory;
 use App\Services\HealthEventNotificationService;
 use App\Services\PackageHealthStatusService;
 use App\Services\SslCertificateService;
+use App\Support\UptimeTransportError;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
@@ -44,11 +45,11 @@ class LogUptimeSslJob implements ShouldQueue
         $ssl_expiry_date = null;
         $http_status_code = null;
         $speed = null;
+        $transportError = null;
         $host = $sslCertificateService->extractHost($this->website->url);
         $port = $sslCertificateService->extractPort($this->website->url);
 
         try {
-            // Get SSL expiry date (with error handling)
             if (blank($host)) {
                 Log::warning('Could not determine SSL host for '.$this->website->url);
             } else {
@@ -56,36 +57,37 @@ class LogUptimeSslJob implements ShouldQueue
                     $ssl_expiry_date = $sslCertificateService->getExpirationDateForHost($host, $port);
                 } catch (\Exception $sslException) {
                     Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
-                    // Continue without SSL info rather than failing completely
                 }
             }
 
-            // Get status code and speed with timeout and retry configuration
             $responseTimeStart = microtime(true);
 
             try {
-                $response = Http::timeout(10) // Set timeout to 10 seconds
-                    ->retry(2, 1000, throw: false) // Retry 2 times with 1 second delay, don't throw on failure
-                    ->connectTimeout(5) // Connection timeout of 5 seconds
-                    ->withoutVerifying() // Don't verify SSL certificates to avoid failures
+                $response = Http::timeout(10)
+                    ->retry(2, 1000, throw: false)
+                    ->connectTimeout(5)
+                    ->withoutVerifying()
                     ->get($this->website->url);
 
                 $responseTimeEnd = microtime(true);
                 $http_status_code = $response->status();
                 $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
             } catch (ConnectionException $e) {
-                // Handle connection timeout specifically
-                Log::warning('Connection timeout for website '.$this->website->url.': '.$e->getMessage());
+                $transportError = UptimeTransportError::fromThrowable($e);
+                Log::warning('Transport error for website '.$this->website->url.': '.$e->getMessage(), [
+                    'transport_error_type' => $transportError['type']->value,
+                    'transport_error_code' => $transportError['code'],
+                ]);
                 $responseTimeEnd = microtime(true);
 
-                // Record as timeout (status code 0 typically indicates connection failure)
                 $http_status_code = 0;
                 $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
             }
 
-            // Create and save the log even if some checks failed
             $status = $statusService->websiteStatusFromHttpCode($http_status_code);
-            $summary = $statusService->summaryForWebsite($http_status_code);
+            $summary = $transportError
+                ? UptimeTransportError::summary($transportError['type'])
+                : $statusService->summaryForWebsite($http_status_code);
             $previousStatus = $this->website->current_status;
 
             WebsiteLogHistory::create([
@@ -95,11 +97,12 @@ class LogUptimeSslJob implements ShouldQueue
                 'speed' => $speed,
                 'status' => $status,
                 'summary' => $summary,
+                'transport_error_type' => $transportError ? $transportError['type']->value : null,
+                'transport_error_message' => $transportError['message'] ?? null,
+                'transport_error_code' => $transportError['code'] ?? null,
             ]);
 
-            // On-demand runs are diagnostic only: persist the history row, but leave the live
-            // status fields and notification firing to the scheduler so the alert-transition
-            // baseline stays accurate.
+            // On-demand runs keep scheduler-owned live status and notification state unchanged.
             if (! ($this->onDemand ?? false)) {
                 $this->website->forceFill([
                     'current_status' => $status,
@@ -121,7 +124,6 @@ class LogUptimeSslJob implements ShouldQueue
                 }
             }
 
-            // Log successful completion
             Log::info('Successfully logged uptime/SSL for website '.$this->website->url);
 
         } catch (\Exception $e) {
