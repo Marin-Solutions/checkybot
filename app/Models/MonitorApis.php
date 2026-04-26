@@ -25,6 +25,8 @@ class MonitorApis extends Model
     use HasSnooze;
     use SoftDeletes;
 
+    private const LEGACY_RAW_BODY_KEY = 'raw_body';
+
     protected $fillable = [
         'title',
         'url',
@@ -597,7 +599,7 @@ class MonitorApis extends Model
         $jsonError = null;
 
         if (is_array($savedBody) && self::hasRawBodyWrapper($savedBody)) {
-            $rawBody = (string) $savedBody[MonitorApiResult::RAW_BODY_KEY];
+            $rawBody = (string) ($savedBody[MonitorApiResult::RAW_BODY_KEY] ?? $savedBody[self::LEGACY_RAW_BODY_KEY]);
             $decoded = json_decode($rawBody, true);
 
             if (json_last_error() === JSON_ERROR_NONE) {
@@ -669,8 +671,11 @@ class MonitorApis extends Model
             return false;
         }
 
-        $error = $savedBody['error'];
+        return self::isLegacyGeneratedError($savedBody['error']);
+    }
 
+    private static function isLegacyGeneratedError(string $error): bool
+    {
         return str_starts_with($error, 'Connection timeout:')
             || str_starts_with($error, 'Unexpected error:')
             || str_starts_with($error, 'Invalid JSON response:')
@@ -686,6 +691,15 @@ class MonitorApis extends Model
             return array_diff(array_keys($savedBody), [MonitorApiResult::RAW_BODY_KEY, 'error']) === [];
         }
 
-        return false;
+        if (! array_key_exists(self::LEGACY_RAW_BODY_KEY, $savedBody)) {
+            return false;
+        }
+
+        if (array_diff(array_keys($savedBody), [self::LEGACY_RAW_BODY_KEY, 'error']) !== []) {
+            return false;
+        }
+
+        return is_string($savedBody['error'] ?? null)
+            && self::isLegacyGeneratedError($savedBody['error']);
     }
 }

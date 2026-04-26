@@ -686,6 +686,39 @@ test('preview assertion treats single raw_body key as user payload data', functi
         ->and($preview['actual'])->toBe('this is user data, not an internal wrapper');
 });
 
+test('preview assertion parses legacy raw body wrapper when error metadata identifies it', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            'raw_body' => '{"data":{"status":"pending"}}',
+            'error' => 'Invalid JSON response: Syntax error',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeFalse()
+        ->and($preview['actual'])->toBe('pending')
+        ->and($preview['expected'])->toBe('= active');
+});
+
 test('preview assertion treats internal raw body sentinel as user payload data when response has other fields', function () {
     Http::fake();
 
