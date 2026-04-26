@@ -14,16 +14,7 @@ use Illuminate\Support\Carbon;
 
 class WebsiteInfolist
 {
-    /**
-     * Per-object cache of recent failure evidence keyed by the website instance
-     * itself, so the `Recent Failures` section's visibility check and repeater
-     * state share a single query. Using a `WeakMap` ties the cached rows to
-     * the live object reference and lets PHP auto-evict entries when the
-     * record is garbage-collected, avoiding stale hits from reused object ids
-     * across requests or test cases.
-     *
-     * @var \WeakMap<Website, array<int, array<string, mixed>>>|null
-     */
+    /** @var \WeakMap<Website, array<int, array<string, mixed>>>|null */
     private static ?\WeakMap $recentFailureCache = null;
 
     public static function configure(Schema $schema): Schema

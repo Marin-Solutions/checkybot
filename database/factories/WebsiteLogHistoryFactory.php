@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Support\UptimeTransportError;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 class WebsiteLogHistoryFactory extends Factory
@@ -43,7 +44,7 @@ class WebsiteLogHistoryFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'http_status_code' => 0,
             'status' => 'danger',
-            'summary' => 'Website heartbeat failed before an HTTP response.',
+            'summary' => UptimeTransportError::summary($type),
             'transport_error_type' => $type,
             'transport_error_message' => 'cURL error 7: Failed to connect to example.com port 443.',
             'transport_error_code' => 7,
