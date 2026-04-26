@@ -462,7 +462,7 @@ class MonitorApisResource extends Resource
         return MonitorApiInfolist::configure($schema);
     }
 
-    public static function scheduledIntervalDescription(MonitorApis $record): string
+    protected static function scheduledIntervalDescription(MonitorApis $record): string
     {
         if (! $record->is_enabled) {
             return 'Paused';
@@ -477,12 +477,15 @@ class MonitorApisResource extends Resource
         }
 
         try {
-            $nextRunAt = $record->last_heartbeat_at->copy()->addMinutes(IntervalParser::toMinutes($record->package_interval));
+            $nextRunAt = $record->last_heartbeat_at
+                ->copy()
+                ->startOfMinute()
+                ->addMinutes(IntervalParser::toMinutes($record->package_interval));
         } catch (\InvalidArgumentException) {
-            return 'Interval cannot be evaluated';
+            return 'Runs every minute';
         }
 
-        if ($nextRunAt->lte(now())) {
+        if ($nextRunAt->lte(now()->startOfMinute())) {
             return 'Due now';
         }
 

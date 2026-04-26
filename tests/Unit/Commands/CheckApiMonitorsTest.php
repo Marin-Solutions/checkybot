@@ -6,6 +6,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 test('command checks all active api monitors', function () {
@@ -129,6 +130,59 @@ test('command honors package-style api monitor intervals', function () {
     ]);
 
     Http::assertNothingSent();
+});
+
+test('command falls back to default cadence when package_interval is invalid', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    Log::spy();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/invalid-interval-health',
+        'package_interval' => 'bad_value',
+        'last_heartbeat_at' => now()->subSeconds(30),
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 1 API monitors.')
+        ->assertSuccessful();
+
+    assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->with(
+            'API monitor has an invalid polling interval; running on the default cadence.',
+            \Mockery::on(fn (array $context): bool => ($context['package_interval'] ?? null) === 'bad_value')
+        );
+});
+
+test('command treats monitor intervals as minute-granular scheduler buckets', function () {
+    $this->travelTo(\Illuminate\Support\Carbon::parse('2026-04-26 12:01:00'));
+
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/minute-boundary-health',
+        'package_interval' => '1m',
+        'last_heartbeat_at' => \Illuminate\Support\Carbon::parse('2026-04-26 12:00:20'),
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 1 API monitors.')
+        ->assertSuccessful();
+
+    assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+
+    $this->travelBack();
 });
 
 test('command records failed checks', function () {

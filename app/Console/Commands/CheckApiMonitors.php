@@ -100,6 +100,10 @@ class CheckApiMonitors extends Command
             return true;
         }
 
-        return $monitor->last_heartbeat_at->copy()->addMinutes($intervalMinutes)->lte(now());
+        return $monitor->last_heartbeat_at
+            ->copy()
+            ->startOfMinute()
+            ->addMinutes($intervalMinutes)
+            ->lte(now()->startOfMinute());
     }
 }
