@@ -46,6 +46,32 @@ class ProjectInfolist
                             ->columnSpanFull()
                             ->default('-'),
                     ])->columns(2),
+                Section::make('Package Sync Status')
+                    ->description('Latest package sync metadata for diagnosing stale or incomplete application integrations.')
+                    ->schema([
+                        TextEntry::make('last_synced_at')
+                            ->label('Last Synced')
+                            ->state(fn (Project $record): ?string => $record->last_synced_at?->toDayDateTimeString())
+                            ->default('Never')
+                            ->hint(fn (Project $record): ?string => $record->last_synced_at?->diffForHumans()),
+                        TextEntry::make('package_key')
+                            ->label('Package Key')
+                            ->default('-')
+                            ->copyable(),
+                        TextEntry::make('base_url')
+                            ->label('Base URL')
+                            ->default('-')
+                            ->copyable(),
+                        TextEntry::make('repository')
+                            ->default('-')
+                            ->copyable(),
+                        TextEntry::make('synced_checks_count')
+                            ->label('Synced Checks')
+                            ->state(fn (Project $record): int => static::syncedChecksCount($record)),
+                        TextEntry::make('synced_components_count')
+                            ->label('Synced Components')
+                            ->state(fn (Project $record): int => static::syncedComponentsCount($record)),
+                    ])->columns(2),
                 Section::make('Guided Laravel Setup')
                     ->key('guided_setup')
                     ->description('Create an account API key here and copy a ready-to-run install snippet without leaving the application page.')
@@ -98,5 +124,18 @@ class ProjectInfolist
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    private static function syncedChecksCount(Project $record): int
+    {
+        return $record->packageManagedWebsites()->withTrashed()->count()
+            + $record->packageManagedApis()->withTrashed()->count();
+    }
+
+    private static function syncedComponentsCount(Project $record): int
+    {
+        return $record->components()
+            ->where('source', 'package')
+            ->count();
     }
 }
