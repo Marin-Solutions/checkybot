@@ -11,6 +11,7 @@ use App\Filament\Support\HealthStatusFilter;
 use App\Models\MonitorApis;
 use App\Services\IntervalParser;
 use App\Support\ApiMonitorTestNotification;
+use App\Support\PackageCheckTableEvidence;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -145,6 +146,12 @@ class MonitorApisResource extends Resource
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('package_interval')
+                    ->label('Interval')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => PackageCheckTableEvidence::displayInterval($state) ?? 'Every minute')
+                    ->description(fn (MonitorApis $record): string => static::scheduledIntervalDescription($record))
+                    ->color('gray'),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
@@ -453,6 +460,36 @@ class MonitorApisResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return MonitorApiInfolist::configure($schema);
+    }
+
+    protected static function scheduledIntervalDescription(MonitorApis $record): string
+    {
+        if (! $record->is_enabled) {
+            return 'Paused';
+        }
+
+        if (blank($record->package_interval)) {
+            return 'Runs every minute';
+        }
+
+        if ($record->last_heartbeat_at === null) {
+            return 'Runs on next scheduler pass';
+        }
+
+        try {
+            $nextRunAt = $record->last_heartbeat_at
+                ->copy()
+                ->startOfMinute()
+                ->addMinutes(IntervalParser::toMinutes($record->package_interval));
+        } catch (\InvalidArgumentException) {
+            return 'Runs every minute';
+        }
+
+        if ($nextRunAt->lte(now()->startOfMinute())) {
+            return 'Due now';
+        }
+
+        return 'Next check '.$nextRunAt->diffForHumans();
     }
 
     public static function getRelations(): array
