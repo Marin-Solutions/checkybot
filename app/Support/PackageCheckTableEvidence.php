@@ -97,7 +97,7 @@ class PackageCheckTableEvidence
         }
 
         try {
-            return IntervalParser::normalize($interval);
+            return IntervalParser::fromMinutes(IntervalParser::toMinutes($interval));
         } catch (\InvalidArgumentException) {
             return $interval;
         }

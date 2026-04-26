@@ -42,6 +42,12 @@ test('freshness evidence marks unparsable intervals without stale_at as schedule
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Package interval every friday cannot be evaluated.');
 });
 
+test('display interval uses scheduler rounded minutes for second based intervals', function () {
+    expect(PackageCheckTableEvidence::displayInterval('30s'))->toBe('1m')
+        ->and(PackageCheckTableEvidence::displayInterval('90s'))->toBe('2m')
+        ->and(PackageCheckTableEvidence::displayInterval('every_30_seconds'))->toBe('1m');
+});
+
 test('freshness evidence marks blank intervals as schedule unknown', function () {
     $record = (object) [
         'package_interval' => null,

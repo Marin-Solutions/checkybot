@@ -473,7 +473,7 @@ class MonitorApisResource extends Resource
         }
 
         try {
-            $interval = IntervalParser::normalize($record->package_interval);
+            $interval = IntervalParser::fromMinutes(IntervalParser::toMinutes($record->package_interval));
         } catch (\InvalidArgumentException) {
             return 'Runs every minute';
         }

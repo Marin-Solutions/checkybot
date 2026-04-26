@@ -152,6 +152,25 @@ test('api monitor list shows effective polling interval', function () {
         ->assertSee('Expected heartbeat every 15m');
 });
 
+test('api monitor list shows scheduler-rounded cadence for second-based intervals', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Second cadence API',
+        'package_interval' => '90s',
+        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertCanSeeTableRecords([$monitor])
+        ->assertTableColumnExists('package_interval')
+        ->assertSee('2m')
+        ->assertSee('Expected heartbeat every 2m');
+});
+
 test('api monitor list shows default cadence when polling interval is invalid', function () {
     $this->createResourcePermissions('MonitorApis');
 
