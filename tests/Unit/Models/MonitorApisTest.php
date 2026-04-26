@@ -444,6 +444,40 @@ test('preview assertion uses legitimate saved error payloads instead of forcing 
         ->and($preview['actual'])->toBe('invalid_token');
 });
 
+test('preview assertion falls back to fresh test for legacy error-only metadata payloads', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['data' => ['status' => 'active']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+        'expected_status' => 200,
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            'error' => 'Connection timeout: cURL error 28',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://api.example.test/orders');
+
+    expect($preview['source'])->toBe('fresh_test')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('active');
+});
+
 test('preview assertion fails when fresh test has a transport error even if assertion would pass against null', function () {
     Http::fake(function (): never {
         throw new \Illuminate\Http\Client\ConnectionException('timeout');

@@ -156,7 +156,13 @@ class MonitorApis extends Model
             'data_path' => $this->data_path,
         ]);
 
-        if (filled($testResult['error'] ?? null) && blank($testResult['body'] ?? null)) {
+        if (
+            filled($testResult['error'] ?? null)
+            && (
+                blank($testResult['body'] ?? null)
+                || ($testResult['code'] ?? null) === 0
+            )
+        ) {
             return array_merge($this->previewAssertionError($assertion, (string) $testResult['error']), [
                 'source' => 'fresh_test',
                 'source_label' => 'Fresh test response',
@@ -646,7 +652,25 @@ class MonitorApis extends Model
             return true;
         }
 
-        return array_keys($savedBody) !== [MonitorApiResult::ERROR_METADATA_KEY];
+        return array_keys($savedBody) !== [MonitorApiResult::ERROR_METADATA_KEY]
+            && ! self::isLegacyErrorMetadataPayload($savedBody);
+    }
+
+    /**
+     * @param  array<string, mixed>  $savedBody
+     */
+    private static function isLegacyErrorMetadataPayload(array $savedBody): bool
+    {
+        if (array_keys($savedBody) !== ['error']) {
+            return false;
+        }
+
+        $error = (string) $savedBody['error'];
+
+        return str_starts_with($error, 'Connection timeout:')
+            || str_starts_with($error, 'Unexpected error:')
+            || str_starts_with($error, 'Invalid JSON response:')
+            || str_starts_with($error, 'HTTP request returned status code ');
     }
 
     /**
