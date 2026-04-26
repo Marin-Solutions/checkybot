@@ -287,6 +287,23 @@ test('application detail hides package sync status for manual applications', fun
         ->assertDontSee('Latest package sync metadata for diagnosing stale or incomplete application integrations.');
 });
 
+test('application detail shows unsynced package applications as never synced', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Unsynced Package App',
+        'created_by' => $user->id,
+        'package_key' => 'unsynced-package-app',
+        'last_synced_at' => null,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Package Sync Status')
+        ->assertSeeInOrder(['Last Synced', 'Never']);
+});
+
 test('application record shows package-managed external checks including archived ones', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('MonitorApis');
