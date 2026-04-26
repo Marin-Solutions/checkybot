@@ -119,10 +119,30 @@ class MonitorApis extends Model
         $latestResult = $this->latestResult()->first();
         $savedBody = $latestResult?->response_body;
 
-        if (! blank($savedBody)) {
+        if ($latestResult && self::hasPreviewableSavedBody($savedBody)) {
             return $this->previewAssertionAgainstSavedBody($assertion, $savedBody, $latestResult);
         }
 
+        return $this->previewAssertionAgainstFreshTest($assertion);
+    }
+
+    /**
+     * @return array{
+     *     path: string,
+     *     type: string,
+     *     passed: bool,
+     *     message: string,
+     *     actual: mixed,
+     *     expected: mixed,
+     *     source: string,
+     *     source_label: string,
+     *     http_code: int|null,
+     *     response_time_ms: int|null,
+     *     error: string|null
+     * }
+     */
+    private function previewAssertionAgainstFreshTest(MonitorApiAssertion $assertion): array
+    {
         $testResult = self::testApi([
             'id' => $this->id,
             'title' => $this->title,
@@ -556,14 +576,17 @@ class MonitorApis extends Model
     {
         $body = $savedBody;
         $error = null;
+        $jsonError = null;
 
-        if (is_array($savedBody) && array_key_exists('raw_body', $savedBody)) {
-            $decoded = json_decode((string) $savedBody['raw_body'], true);
+        if (is_array($savedBody) && self::hasRawBodyWrapper($savedBody)) {
+            $rawBody = (string) ($savedBody[MonitorApiResult::RAW_BODY_KEY] ?? $savedBody[MonitorApiResult::LEGACY_RAW_BODY_KEY]);
+            $decoded = json_decode($rawBody, true);
 
             if (json_last_error() === JSON_ERROR_NONE) {
                 $body = $decoded;
             } else {
-                $error = 'Saved response body is not valid JSON: '.json_last_error_msg();
+                $jsonError = json_last_error_msg();
+                $error = 'Saved response body is not valid JSON: '.$jsonError;
                 $body = null;
             }
         }
@@ -573,7 +596,7 @@ class MonitorApis extends Model
         if ($error !== null) {
             $preview['passed'] = false;
             $preview['message'] = $error;
-            $preview['actual'] = json_last_error_msg();
+            $preview['actual'] = $jsonError;
             $preview['expected'] = 'valid JSON';
         }
 
@@ -584,5 +607,34 @@ class MonitorApis extends Model
             'response_time_ms' => $latestResult->response_time_ms,
             'error' => $error,
         ]);
+    }
+
+    private static function hasPreviewableSavedBody(mixed $savedBody): bool
+    {
+        if (blank($savedBody)) {
+            return false;
+        }
+
+        if (! is_array($savedBody)) {
+            return true;
+        }
+
+        return array_keys($savedBody) !== ['error'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $savedBody
+     */
+    private static function hasRawBodyWrapper(array $savedBody): bool
+    {
+        if (array_key_exists(MonitorApiResult::RAW_BODY_KEY, $savedBody)) {
+            return true;
+        }
+
+        if (! array_key_exists(MonitorApiResult::LEGACY_RAW_BODY_KEY, $savedBody)) {
+            return false;
+        }
+
+        return array_diff(array_keys($savedBody), [MonitorApiResult::LEGACY_RAW_BODY_KEY, 'error']) === [];
     }
 }

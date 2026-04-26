@@ -351,3 +351,158 @@ test('preview assertion runs fresh test when no saved response body exists', fun
         ->and($preview['actual'])->toBe('active')
         ->and($preview['expected'])->toBe('= active');
 });
+
+test('preview assertion runs fresh test when monitor has no prior result', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['data' => ['status' => 'active']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+        'expected_status' => 200,
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://api.example.test/orders');
+
+    expect($preview['source'])->toBe('fresh_test')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('active');
+});
+
+test('preview assertion falls back to fresh test when latest saved body only contains error metadata', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['data' => ['status' => 'active']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+        'expected_status' => 200,
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => ['error' => 'Connection timeout: cURL error 28'],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertSent(fn ($request) => $request->url() === 'https://api.example.test/orders');
+
+    expect($preview['source'])->toBe('fresh_test')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('active');
+});
+
+test('preview assertion parses saved raw body wrapper', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            MonitorApiResult::RAW_BODY_KEY => '{"data":{"status":"pending"}}',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeFalse()
+        ->and($preview['actual'])->toBe('pending')
+        ->and($preview['expected'])->toBe('= active');
+});
+
+test('preview assertion marks saved raw body wrapper invalid when it is malformed json', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'exists',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            MonitorApiResult::RAW_BODY_KEY => 'not-json{{{',
+            'error' => 'Invalid JSON response: Syntax error',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeFalse()
+        ->and($preview['message'])->toBe('Saved response body is not valid JSON: Syntax error')
+        ->and($preview['actual'])->toBe('Syntax error')
+        ->and($preview['expected'])->toBe('valid JSON');
+});
+
+test('preview assertion treats raw_body as user payload data when response has other fields', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            'raw_body' => 'this is user data, not an internal wrapper',
+            'status' => 'active',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('active');
+});

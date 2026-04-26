@@ -25,7 +25,7 @@ class AssertionsRelationManager extends RelationManager
     protected static ?string $inverseRelationship = 'monitorApi';
 
     /**
-     * @var array<int, array<string, mixed>>
+     * @var array<int|string, array<string, mixed>>
      */
     protected array $assertionPreviews = [];
 
@@ -168,9 +168,11 @@ class AssertionsRelationManager extends RelationManager
                                     ->placeholder('-'),
                                 TextEntry::make('preview_response_time')
                                     ->label('Response Time')
-                                    ->state(fn (MonitorApiAssertion $record): ?string => isset($this->previewFor($record)['response_time_ms'])
-                                        ? $this->previewFor($record)['response_time_ms'].'ms'
-                                        : null)
+                                    ->state(function (MonitorApiAssertion $record): ?string {
+                                        $responseTime = $this->previewFor($record)['response_time_ms'] ?? null;
+
+                                        return $responseTime !== null ? "{$responseTime}ms" : null;
+                                    })
                                     ->placeholder('-'),
                                 TextEntry::make('preview_path')
                                     ->label('JSON Path')
