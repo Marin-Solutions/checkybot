@@ -4,6 +4,7 @@ namespace App\Filament\Resources\WebsiteResource\Schemas;
 
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Support\UptimeTransportError;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -128,6 +129,13 @@ class WebsiteInfolist
                             ->state(fn (Website $record): ?string => $record->latestLogHistory?->summary)
                             ->default('-')
                             ->columnSpanFull(),
+                        TextEntry::make('latest_log_transport_error')
+                            ->label('Last Transport Error')
+                            ->state(fn (Website $record): ?string => static::transportErrorEvidence($record->latestLogHistory))
+                            ->default('-')
+                            ->badge()
+                            ->color(fn (Website $record): string => UptimeTransportError::color($record->latestLogHistory?->transport_error_type))
+                            ->columnSpanFull(),
                     ])
                     ->columns(2),
                 Section::make('SSL Certificate')
@@ -174,15 +182,25 @@ class WebsiteInfolist
                                     ->default('-'),
                                 TextEntry::make('speed')
                                     ->label('Response Time'),
+                                TextEntry::make('transport_error')
+                                    ->label('Transport Error')
+                                    ->badge()
+                                    ->color(fn (mixed $state): string => UptimeTransportError::color(is_string($state) ? $state : null))
+                                    ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                                    ->default('-'),
                                 TextEntry::make('created_at')
                                     ->label('Observed At')
+                                    ->default('-'),
+                                TextEntry::make('transport_evidence')
+                                    ->label('Transport Evidence')
+                                    ->columnSpanFull()
                                     ->default('-'),
                                 TextEntry::make('summary')
                                     ->columnSpanFull()
                                     ->default('-'),
                             ])
                             ->contained(false)
-                            ->columns(4)
+                            ->columns(5)
                             ->columnSpanFull(),
                     ]),
             ]);
@@ -205,10 +223,25 @@ class WebsiteInfolist
                 'status' => $log->status,
                 'http_status_code' => $log->http_status_code,
                 'speed' => $log->speed !== null ? "{$log->speed}ms" : '-',
+                'transport_error' => $log->transport_error_type,
+                'transport_evidence' => static::transportErrorEvidence($log) ?? '-',
                 'summary' => $log->summary ?: '-',
                 'created_at' => $log->created_at?->toDayDateTimeString(),
             ])
             ->all();
+    }
+
+    private static function transportErrorEvidence(?WebsiteLogHistory $log): ?string
+    {
+        if (! $log?->transport_error_type) {
+            return null;
+        }
+
+        $label = UptimeTransportError::label($log->transport_error_type);
+        $code = $log->transport_error_code !== null ? " (code {$log->transport_error_code})" : '';
+        $message = filled($log->transport_error_message) ? ': '.$log->transport_error_message : '';
+
+        return "{$label}{$code}{$message}";
     }
 
     private static function statusColor(?string $state): string
