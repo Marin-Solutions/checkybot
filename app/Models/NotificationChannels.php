@@ -188,10 +188,16 @@ class NotificationChannels extends Model
         }
 
         $segments = explode('/', ltrim($path, '/'));
-        $host = strtolower($host);
+        $normalizedHost = strtolower($host);
 
-        if ($host === 'hooks.slack.com' && ($segments[0] ?? null) === 'services') {
-            return '/services/'.implode('/', array_fill(0, max(count($segments) - 1, 0), self::REDACTED_LOG_VALUE));
+        if ($normalizedHost === 'hooks.slack.com' && ($segments[0] ?? null) === 'services') {
+            $redactedSegments = array_fill(0, max(count($segments) - 1, 0), self::REDACTED_LOG_VALUE);
+
+            if ($redactedSegments === []) {
+                return '/services';
+            }
+
+            return '/services/'.implode('/', $redactedSegments);
         }
 
         $webhookIndex = array_search('webhooks', $segments, true);
@@ -219,7 +225,7 @@ class NotificationChannels extends Model
             return self::REDACTED_LOG_VALUE;
         }
 
-        return http_build_query(self::redactPayloadForLogs($parameters));
+        return urldecode(http_build_query(self::redactPayloadForLogs($parameters)));
     }
 
     private static function redactPayloadForLogs(mixed $payload): mixed
