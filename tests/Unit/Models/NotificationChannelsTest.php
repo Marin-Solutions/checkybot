@@ -255,8 +255,10 @@ test('send webhook notification redacts webhook secrets from request logs withou
 });
 
 test('send webhook notification redacts webhook secrets from error logs', function () {
+    // Http::fake wraps thrown Guzzle exceptions before this model's existing
+    // RequestException catch can handle them, so mock the facade call directly.
     Http::shouldReceive('POST')->once()->andThrow(new RequestException(
-        'Webhook transport failed',
+        'Webhook transport failed for https://hooks.slack.com/services/T00000000/B00000000/slack-secret-token?token=query-secret&text=Sensitive%20incident%20summary',
         new GuzzleRequest('POST', 'https://hooks.slack.com/services/T00000000/B00000000/slack-secret-token'),
         null,
         null,
@@ -290,6 +292,7 @@ test('send webhook notification redacts webhook secrets from error logs', functi
             $encodedContext = json_encode($context);
 
             return $context['url'] === 'https://hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=[redacted]&text=[redacted]'
+                && $context['error_message'] === 'Webhook transport failed for https://hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=[redacted]&text=[redacted]'
                 && $context['request_body'] === [
                     'text' => '[redacted]',
                     'secret' => '[redacted]',

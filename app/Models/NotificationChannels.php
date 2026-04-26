@@ -130,7 +130,7 @@ class NotificationChannels extends Model
             return $responseData;
         } catch (RequestException $exception) {
             Log::error('Webhook request failed', [
-                'error_message' => $exception->getMessage(),
+                'error_message' => self::redactWebhookUrlTextForLogs($exception->getMessage(), $url),
                 'url' => self::redactWebhookUrlForLogs($url),
                 'method' => $method,
                 'request_body' => self::redactPayloadForLogs($requestBody),
@@ -213,7 +213,22 @@ class NotificationChannels extends Model
             }
         }
 
+        // Keep unknown non-webhook path shapes for diagnostics; userinfo, query
+        // values, fragments, and known webhook credential paths are still redacted.
         return '/'.implode('/', $segments);
+    }
+
+    private static function redactWebhookUrlTextForLogs(string $text, string $url): string
+    {
+        if ($url === '') {
+            return $text;
+        }
+
+        return str_replace(
+            [$url, str_replace(' ', '%20', $url)],
+            self::redactWebhookUrlForLogs($url),
+            $text,
+        );
     }
 
     private static function redactQueryStringForLogs(string $query): string
