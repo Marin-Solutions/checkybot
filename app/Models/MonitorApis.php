@@ -665,7 +665,11 @@ class MonitorApis extends Model
             return false;
         }
 
-        $error = (string) $savedBody['error'];
+        if (! is_string($savedBody['error'])) {
+            return false;
+        }
+
+        $error = $savedBody['error'];
 
         return str_starts_with($error, 'Connection timeout:')
             || str_starts_with($error, 'Unexpected error:')

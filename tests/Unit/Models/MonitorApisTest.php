@@ -444,6 +444,39 @@ test('preview assertion uses legitimate saved error payloads instead of forcing 
         ->and($preview['actual'])->toBe('invalid_token');
 });
 
+test('preview assertion uses non-string saved error payloads instead of treating them as metadata', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'error.code',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'invalid_token',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            'error' => [
+                'code' => 'invalid_token',
+            ],
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('invalid_token');
+});
+
 test('preview assertion falls back to fresh test for legacy error-only metadata payloads', function () {
     Http::fake([
         'https://api.example.test/*' => Http::response(['data' => ['status' => 'active']], 200),
