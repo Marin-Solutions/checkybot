@@ -6,6 +6,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Services\ApiMonitorExecutionService;
 use App\Services\HealthEventNotificationService;
+use App\Services\IntervalParser;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Sentry\Laravel\Facade as Sentry;
@@ -28,6 +29,10 @@ class CheckApiMonitors extends Command
             ->chunkById(100, function ($monitors) use (&$count, $executionService, $notificationService): void {
                 foreach ($monitors as $monitor) {
                     try {
+                        if (! $this->isDue($monitor)) {
+                            continue;
+                        }
+
                         $execution = $executionService->execute($monitor);
                         /** @var MonitorApiResult $result */
                         $result = $execution['result'];
@@ -74,5 +79,31 @@ class CheckApiMonitors extends Command
         $this->info("Completed checking {$count} API monitors.");
 
         return Command::SUCCESS;
+    }
+
+    private function isDue(MonitorApis $monitor): bool
+    {
+        if (blank($monitor->package_interval) || $monitor->last_heartbeat_at === null) {
+            return true;
+        }
+
+        try {
+            $intervalMinutes = IntervalParser::toMinutes($monitor->package_interval);
+        } catch (\InvalidArgumentException $exception) {
+            Log::warning('API monitor has an invalid polling interval; running on the default cadence.', [
+                'monitor_id' => $monitor->id,
+                'monitor_title' => $monitor->title,
+                'package_interval' => $monitor->package_interval,
+                'error' => $exception->getMessage(),
+            ]);
+
+            return true;
+        }
+
+        return $monitor->last_heartbeat_at
+            ->copy()
+            ->startOfMinute()
+            ->addMinutes($intervalMinutes)
+            ->lte(now()->startOfMinute());
     }
 }
