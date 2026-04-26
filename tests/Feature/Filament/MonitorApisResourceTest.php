@@ -727,10 +727,12 @@ test('api assertion preview action shows actual versus expected from saved respo
         ->assertTableActionHasLabel('preview', 'Preview', $assertion)
         ->mountTableAction('preview', $assertion)
         ->assertHasNoTableActionErrors()
-        ->assertSee('Latest saved response')
-        ->assertSee('Failed')
-        ->assertSee('pending')
-        ->assertSee('= active');
+        ->assertSchemaStateSet([
+            'preview_source' => 'Latest saved response',
+            'preview_result' => 'Failed',
+            'preview_actual' => 'pending',
+            'preview_expected' => '= active',
+        ]);
 });
 
 test('super admin can filter api monitors by current status', function () {
