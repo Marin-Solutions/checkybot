@@ -131,6 +131,25 @@ test('api monitor list shows enabled state', function () {
         ->assertTableColumnExists('is_enabled');
 });
 
+test('api monitor list shows effective polling interval', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Cadenced API',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(10),
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertCanSeeTableRecords([$monitor])
+        ->assertTableColumnExists('package_interval')
+        ->assertSee('15m')
+        ->assertSee('Next check');
+});
+
 test('super admin can toggle is_enabled inline from the api monitors table', function () {
     $this->createResourcePermissions('MonitorApis');
 

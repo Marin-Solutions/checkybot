@@ -58,6 +58,79 @@ test('command skips disabled api monitors', function () {
     expect($monitor->last_heartbeat_at)->toBeNull();
 });
 
+test('command only checks api monitors when their polling interval is due', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $dueMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/due-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(16),
+    ]);
+
+    $skippedMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/skipped-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 1 API monitors.')
+        ->assertSuccessful();
+
+    assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $dueMonitor->id,
+    ]);
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $skippedMonitor->id,
+    ]);
+
+    Http::assertSentCount(1);
+});
+
+test('command checks interval monitors without a prior heartbeat immediately', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/first-health',
+        'package_interval' => '1h',
+        'last_heartbeat_at' => null,
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+});
+
+test('command honors package-style api monitor intervals', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/package-style-health',
+        'package_interval' => 'every_5_minutes',
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 0 API monitors.')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+
+    Http::assertNothingSent();
+});
+
 test('command records failed checks', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 500),
@@ -211,6 +284,7 @@ test('command records warning status history and notifies for package-managed as
         'source' => 'package',
         'package_name' => 'package-health',
         'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(6),
     ]);
 
     NotificationSetting::factory()
@@ -254,6 +328,7 @@ test('command sends recovery notifications when a package-managed api monitor re
         'package_name' => 'package-health',
         'package_interval' => '5m',
         'current_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(6),
         'stale_at' => now()->subMinute(),
     ]);
 
@@ -301,6 +376,7 @@ test('command sends recovery notifications when a warning api monitor returns to
         'package_name' => 'package-health',
         'package_interval' => '5m',
         'current_status' => 'warning',
+        'last_heartbeat_at' => now()->subMinutes(6),
     ]);
 
     NotificationSetting::factory()
