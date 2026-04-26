@@ -2,6 +2,7 @@
 
 use App\Models\NotificationChannels;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 test('notification channel has fillable attributes', function () {
     $channel = NotificationChannels::factory()->create([
@@ -178,4 +179,75 @@ test('send webhook notification preserves a 4xx status code so operators can deb
     ]);
 
     expect($result['code'])->toBe(401);
+});
+
+test('send webhook notification redacts webhook secrets from request logs without changing delivery', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+    Log::spy();
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://operator:password@hooks.slack.com/services/T00000000/B00000000/slack-secret-token?token=query-secret&text={message}',
+        'method' => 'POST',
+        'request_body' => [
+            'text' => '{message}',
+            'credentials' => [
+                'password' => 'body-secret',
+            ],
+        ],
+    ]);
+
+    $channel->sendWebhookNotification([
+        'message' => 'Database password reset required',
+        'description' => 'Webhook log redaction check',
+    ]);
+
+    Http::assertSent(function ($request) {
+        return str_contains($request->url(), 'slack-secret-token')
+            && str_contains($request->url(), 'query-secret')
+            && str_contains($request->url(), 'Database%20password%20reset%20required')
+            && ($request->data()['text'] ?? null) === 'Database password reset required'
+            && ($request->data()['credentials']['password'] ?? null) === 'body-secret';
+    });
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(function (string $message, array $context): bool {
+            if ($message !== 'Preparing webhook notification') {
+                return false;
+            }
+
+            $encodedContext = json_encode($context);
+
+            return $context['original_url'] === 'https://[redacted]@hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=%5Bredacted%5D&text=%5Bredacted%5D'
+                && $context['original_body'] === [
+                    'text' => '[redacted]',
+                    'credentials' => [
+                        'password' => '[redacted]',
+                    ],
+                ]
+                && ! str_contains($encodedContext, 'operator')
+                && ! str_contains($encodedContext, 'slack-secret-token')
+                && ! str_contains($encodedContext, 'query-secret')
+                && ! str_contains($encodedContext, 'body-secret');
+        });
+
+    Log::shouldHaveReceived('info')
+        ->withArgs(function (string $message, array $context): bool {
+            if ($message !== 'Sending webhook request') {
+                return false;
+            }
+
+            $encodedContext = json_encode($context);
+
+            return $context['final_url'] === 'https://[redacted]@hooks.slack.com/services/[redacted]/[redacted]/[redacted]?token=%5Bredacted%5D&text=%5Bredacted%5D'
+                && $context['final_body'] === [
+                    'text' => '[redacted]',
+                    'credentials' => [
+                        'password' => '[redacted]',
+                    ],
+                ]
+                && ! str_contains($encodedContext, 'Database password reset required')
+                && ! str_contains($encodedContext, 'slack-secret-token')
+                && ! str_contains($encodedContext, 'query-secret')
+                && ! str_contains($encodedContext, 'body-secret');
+        });
 });
