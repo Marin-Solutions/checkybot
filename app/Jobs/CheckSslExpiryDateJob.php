@@ -126,6 +126,6 @@ class CheckSslExpiryDateJob implements ShouldQueue
             return false;
         }
 
-        return Carbon::parse($this->website->ssl_expiry_reminder_sent_at)->gt(now()->subDay());
+        return $this->website->ssl_expiry_reminder_sent_at->gt(now()->subDay());
     }
 }
