@@ -408,8 +408,24 @@ class MonitorApis extends Model
         }
 
         return json_encode([
-            'encrypted' => Crypt::encryptString(is_string($value) ? $value : json_encode($value)),
+            'encrypted' => Crypt::encryptString(is_string($value) ? $value : json_encode($this->preserveEmptyJsonObjects($value))),
         ]);
+    }
+
+    private function preserveEmptyJsonObjects(mixed $value, bool $isRoot = true): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($value === []) {
+            return $isRoot ? [] : new \stdClass;
+        }
+
+        return array_map(
+            fn (mixed $item): mixed => $this->preserveEmptyJsonObjects($item, false),
+            $value,
+        );
     }
 
     private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest

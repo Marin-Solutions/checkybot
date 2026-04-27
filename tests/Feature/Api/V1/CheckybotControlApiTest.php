@@ -100,6 +100,7 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         'request_body' => [
             'email' => 'monitor@example.com',
             'password' => 'body-secret',
+            'filters' => [],
         ],
         'expected_status' => 200,
         'timeout_seconds' => 15,
@@ -148,6 +149,9 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
     $rawRequestBody = DB::table('monitor_apis')
         ->where('package_name', 'google-maps-search')
         ->value('request_body');
+    $storedRequestBody = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->value('request_body');
 
     expect($rawHeaders)->toContain('encrypted')
         ->and($rawHeaders)->not->toContain('package-secret')
@@ -155,7 +159,8 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
     expect($storedInterval)->toBe('5m')
         ->and($storedSchedule)->toBe('every_5_minutes')
         ->and($rawRequestBody)->toContain('encrypted')
-        ->and($rawRequestBody)->not->toContain('body-secret');
+        ->and($rawRequestBody)->not->toContain('body-secret')
+        ->and($storedRequestBody)->toBe('{"email":"monitor@example.com","password":"body-secret","filters":{}}');
 });
 
 test('control api disables checks without deleting data', function () {
