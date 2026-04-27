@@ -193,6 +193,23 @@ test('super admin cannot create json api monitor with a whitespace only request 
         ->assertHasFormErrors(['request_body']);
 });
 
+test('super admin cannot create raw api monitor with an oversized whitespace request body', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Oversized Raw API',
+            'url' => 'https://example.com/raw',
+            'http_method' => 'POST',
+            'request_body_type' => 'raw',
+            'request_body' => str_repeat(' ', 65536),
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['request_body']);
+});
+
 test('super admin can filter to archived api monitors and keep their history visible', function () {
     $this->createResourcePermissions('MonitorApis');
 
