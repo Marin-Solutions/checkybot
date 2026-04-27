@@ -140,6 +140,31 @@ test('monitor api preserves nested empty json object request bodies', function (
         ->and($monitor->request_body)->toBe('{"filters":{},"ids":[1,2]}');
 });
 
+test('monitor api preserves nested empty json array request bodies', function () {
+    $monitor = MonitorApis::factory()->create([
+        'request_body_type' => 'json',
+        'request_body' => [
+            'filters' => [
+                [],
+            ],
+        ],
+    ]);
+
+    $rawBody = $monitor->getRawOriginal('request_body');
+
+    expect($rawBody)->toContain('encrypted')
+        ->and($monitor->request_body)->toBe('{"filters":[[]]}');
+});
+
+test('monitor api reports whitespace request bodies as present', function () {
+    $monitor = MonitorApis::factory()->create([
+        'request_body_type' => 'raw',
+        'request_body' => '   ',
+    ]);
+
+    expect($monitor->hasRequestBody())->toBeTrue();
+});
+
 test('monitor api returns empty headers when encrypted payload cannot be decrypted', function () {
     $monitor = MonitorApis::factory()->create([
         'headers' => [
@@ -364,6 +389,35 @@ test('test api preserves nested empty json objects from stored array request bod
     Http::assertSent(fn ($request) => $request->method() === 'POST'
         && $request->url() === 'https://api.example.test/search'
         && $request->body() === '{"filters":{},"ids":[1,2]}');
+});
+
+test('test api preserves nested empty json arrays from stored array request bodies', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/search',
+        'http_method' => 'POST',
+        'request_body_type' => 'json',
+        'request_body' => [
+            'filters' => [
+                [],
+            ],
+        ],
+        'expected_status' => 200,
+    ]);
+
+    MonitorApis::testApi([
+        'id' => $monitor->id,
+        'url' => 'https://api.example.test/search',
+        'http_method' => 'POST',
+        'expected_status' => 200,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://api.example.test/search'
+        && $request->body() === '{"filters":[[]]}');
 });
 
 test('test api sends configured form request bodies', function () {

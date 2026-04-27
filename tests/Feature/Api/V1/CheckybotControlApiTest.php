@@ -58,6 +58,8 @@ test('control api lists projects and package managed checks with compact status'
             'Accept' => 'application/json',
             'Authorization' => 'Bearer secret-token',
         ],
+        'request_body_type' => 'raw',
+        'request_body' => '   ',
         'current_status' => 'danger',
         'status_summary' => 'API heartbeat failed with HTTP status 500.',
     ]);
@@ -80,7 +82,8 @@ test('control api lists projects and package managed checks with compact status'
         ->assertJsonPath('data.0.key', 'search-health')
         ->assertJsonPath('data.0.status', 'danger')
         ->assertJsonPath('data.0.headers.Accept', 'application/json')
-        ->assertJsonPath('data.0.headers.Authorization', '[redacted]');
+        ->assertJsonPath('data.0.headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.0.has_request_body', true);
 
     expect(json_encode($response->json()))->not->toContain('secret-token');
 });

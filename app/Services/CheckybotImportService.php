@@ -284,7 +284,7 @@ class CheckybotImportService
             'stale_at' => $check->stale_at?->toISOString(),
             'headers' => $this->redactHeaders($check->headers),
             'request_body_type' => $check->request_body_type,
-            'has_request_body' => filled($check->request_body),
+            'has_request_body' => $check->hasRequestBody(),
             'assertions' => $this->assertionsPayload($check->assertions),
             'latest_result' => $latestResult instanceof MonitorApiResult ? $this->apiResultPayload($latestResult) : null,
             'raw' => [

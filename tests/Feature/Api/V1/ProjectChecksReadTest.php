@@ -230,6 +230,8 @@ test('checks read endpoint returns uptime ssl and api checks with current result
             'Proxy-Authorization' => 'Basic proxy-secret',
             'X-Api-Key' => 'secret-api-key',
         ],
+        'request_body_type' => 'raw',
+        'request_body' => '   ',
         'package_interval' => '5m',
         'is_enabled' => true,
         'current_status' => 'danger',
@@ -264,6 +266,7 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->assertJsonPath('data.0.headers.Cookie', '[redacted]')
         ->assertJsonPath('data.0.headers.Proxy-Authorization', '[redacted]')
         ->assertJsonPath('data.0.headers.X-Api-Key', '[redacted]')
+        ->assertJsonPath('data.0.has_request_body', true)
         ->assertJsonPath('data.0.assertions.0.data_path', 'status')
         ->assertJsonPath('data.0.latest_result.status', 'danger')
         ->assertJsonPath('data.1.id', "ssl:{$ssl->id}")

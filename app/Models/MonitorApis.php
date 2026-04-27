@@ -81,6 +81,11 @@ class MonitorApis extends Model
         );
     }
 
+    public function hasRequestBody(): bool
+    {
+        return $this->request_body !== null && $this->request_body !== '';
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
@@ -412,18 +417,20 @@ class MonitorApis extends Model
         ]);
     }
 
-    private function preserveEmptyJsonObjects(mixed $value, bool $isRoot = true): mixed
+    private function preserveEmptyJsonObjects(mixed $value, bool $isRoot = true, bool $parentIsList = false): mixed
     {
         if (! is_array($value)) {
             return $value;
         }
 
         if ($value === []) {
-            return $isRoot ? [] : new \stdClass;
+            return $isRoot || $parentIsList ? [] : new \stdClass;
         }
 
+        $isList = array_is_list($value);
+
         return array_map(
-            fn (mixed $item): mixed => $this->preserveEmptyJsonObjects($item, false),
+            fn (mixed $item): mixed => $this->preserveEmptyJsonObjects($item, false, $isList),
             $value,
         );
     }
