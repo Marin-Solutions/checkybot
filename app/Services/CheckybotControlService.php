@@ -410,17 +410,7 @@ class CheckybotControlService
         $summary = $execution['summary'];
         $previousStatus = $execution['previous_status'];
 
-        if (
-            in_array($status, ['warning', 'danger'], true)
-            && $previousStatus !== $status
-        ) {
-            $this->notificationService->notifyApi($check, 'heartbeat', $status, $summary);
-        } elseif (
-            $status === 'healthy'
-            && in_array($previousStatus, ['warning', 'danger'], true)
-        ) {
-            $this->notificationService->notifyApi($check, 'recovered', $status, $summary);
-        }
+        $this->notificationService->notifyApiIfTransitioned($check, $previousStatus, $status, $summary);
 
         return [
             'check' => [

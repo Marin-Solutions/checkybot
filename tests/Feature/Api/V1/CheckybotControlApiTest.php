@@ -434,6 +434,58 @@ test('control api triggers all enabled project checks synchronously', function (
         ->assertJsonPath('data.results.0.result.status', 'healthy');
 });
 
+test('control api project run sends notifications for check status transitions', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'error']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+        'url' => 'https://api.scrappa.test/health',
+        'data_path' => 'data.status',
+        'current_status' => 'danger',
+        'is_enabled' => true,
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/runs')
+        ->assertOk()
+        ->assertJsonPath('data.status', 'completed')
+        ->assertJsonPath('data.checks_run', 1)
+        ->assertJsonPath('data.results.0.result.status', 'warning');
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('warning');
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'heartbeat'
+            && $mail->eventLabel === 'warning'
+            && $mail->status === 'warning'
+            && $mail->summary === 'API heartbeat is degraded with HTTP status 200.';
+    });
+});
+
 test('control api trigger runs respect stored method and expected status', function () {
     Http::fake(function (HttpRequest $request) {
         expect($request->method())->toBe('POST');
