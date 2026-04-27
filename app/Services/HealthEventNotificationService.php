@@ -101,6 +101,31 @@ class HealthEventNotificationService
     }
 
     /**
+     * Apply the API monitor transition alert rules used by scheduled and
+     * control-triggered runs.
+     *
+     * @see notifyWebsite() for the boolean return-value contract.
+     */
+    public function notifyApiIfTransitioned(MonitorApis $monitorApi, ?string $previousStatus, string $status, string $summary): bool
+    {
+        if (
+            in_array($status, ['warning', 'danger'], true)
+            && $previousStatus !== $status
+        ) {
+            return $this->notifyApi($monitorApi, 'heartbeat', $status, $summary);
+        }
+
+        if (
+            $status === 'healthy'
+            && in_array($previousStatus, ['warning', 'danger'], true)
+        ) {
+            return $this->notifyApi($monitorApi, 'recovered', $status, $summary);
+        }
+
+        return true;
+    }
+
+    /**
      * Deliver across every configured channel, isolating per-channel failures.
      *
      * A bad transport on one channel (mail bounce, webhook timeout) used to

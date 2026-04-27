@@ -1,13 +1,17 @@
 <?php
 
+use App\Mail\HealthStatusAlert;
 use App\Models\ApiKey;
+use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -210,6 +214,100 @@ test('control api triggers a check run and lists recent failures', function () {
         ->assertJsonPath('data.0.status', 'danger');
 });
 
+test('control api sends failure notifications for check run status transitions', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'error']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+        'url' => 'https://api.scrappa.test/health',
+        'data_path' => 'data.status',
+        'current_status' => 'healthy',
+        'is_enabled' => true,
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/search-health/runs')
+        ->assertOk()
+        ->assertJsonPath('data.result.status', 'warning');
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('warning');
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'heartbeat'
+            && $mail->eventLabel === 'warning'
+            && $mail->status === 'warning'
+            && $mail->summary === 'API heartbeat is degraded with HTTP status 200.';
+    });
+});
+
+test('control api sends recovery notifications for check run status transitions', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+        'url' => 'https://api.scrappa.test/health',
+        'data_path' => 'data.status',
+        'current_status' => 'danger',
+        'is_enabled' => true,
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/search-health/runs')
+        ->assertOk()
+        ->assertJsonPath('data.result.status', 'healthy');
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('healthy');
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->eventLabel === 'recovered'
+            && $mail->status === 'healthy'
+            && $mail->summary === 'API heartbeat succeeded with HTTP status 200.';
+    });
+});
+
 test('control api returns project detail and recent runs', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -334,6 +432,58 @@ test('control api triggers all enabled project checks synchronously', function (
         ->assertJsonPath('data.checks_run', 1)
         ->assertJsonPath('data.results.0.check.key', 'search-health')
         ->assertJsonPath('data.results.0.result.status', 'healthy');
+});
+
+test('control api project run sends notifications for check status transitions', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'error']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+        'url' => 'https://api.scrappa.test/health',
+        'data_path' => 'data.status',
+        'current_status' => 'danger',
+        'is_enabled' => true,
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/runs')
+        ->assertOk()
+        ->assertJsonPath('data.status', 'completed')
+        ->assertJsonPath('data.checks_run', 1)
+        ->assertJsonPath('data.results.0.result.status', 'warning');
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('warning');
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'heartbeat'
+            && $mail->eventLabel === 'warning'
+            && $mail->status === 'warning'
+            && $mail->summary === 'API heartbeat is degraded with HTTP status 200.';
+    });
 });
 
 test('control api trigger runs respect stored method and expected status', function () {
