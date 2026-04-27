@@ -468,6 +468,43 @@ test('package sync ignores unsupported check schedules instead of validating the
     ]);
 });
 
+test('package sync ignores unsupported check request bodies instead of validating them', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'certificate',
+                    'type' => 'ssl',
+                    'name' => 'Certificate',
+                    'method' => null,
+                    'url' => 'https://api.scrappa.co',
+                    'request_body' => ['probe' => true],
+                ],
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => 'json',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ]));
+
+    $response->assertCreated()
+        ->assertJsonPath('data.summary.created', 1)
+        ->assertJsonPath('data.summary.unsupported', 1);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'certificate',
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'package_name' => 'google-maps-search',
+    ]);
+});
+
 test('package sync can claim an existing project by identity endpoint fallback', function () {
     $project = Project::factory()->create([
         'created_by' => $this->user->id,
