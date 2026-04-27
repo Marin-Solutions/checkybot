@@ -116,6 +116,31 @@ test('package registration updates the stored sdk version on reconnect', functio
     ]);
 });
 
+test('package registration without sdk version keeps the stored version', function () {
+    $project = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Checkout App',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+    ]);
+
+    $payload = registrationPayload();
+    unset($payload['package_version']);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/register', $payload);
+
+    $response->assertOk()
+        ->assertJsonPath('data.project_id', $project->id)
+        ->assertJsonPath('data.created', false);
+
+    $this->assertDatabaseHas('projects', [
+        'id' => $project->id,
+        'package_version' => '1.2.3',
+    ]);
+});
+
 test('application identity is unique per owner and environment', function () {
     Project::factory()->create([
         'created_by' => $this->user->id,
