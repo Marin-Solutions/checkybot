@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ProjectComponents\Schemas;
 
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
+use App\Services\ProjectComponentStaleService;
 use App\Support\MetricsPayloadFormatter;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -128,7 +129,7 @@ class ProjectComponentInfolist
             return null;
         }
 
-        return $record->last_heartbeat_at->copy()->addMinutes($record->interval_minutes);
+        return app(ProjectComponentStaleService::class)->staleThresholdAt($record);
     }
 
     private static function staleThresholdHint(ProjectComponent $record): ?string
@@ -139,8 +140,16 @@ class ProjectComponentInfolist
             return null;
         }
 
-        return $thresholdAt->lte(now())
+        $thresholdHint = $thresholdAt->lte(now())
             ? 'Expired '.$thresholdAt->diffForHumans()
             : 'Expires '.$thresholdAt->diffForHumans();
+
+        $graceMinutes = app(ProjectComponentStaleService::class)->staleGraceMinutes();
+
+        if ($graceMinutes <= 0) {
+            return $thresholdHint;
+        }
+
+        return "Includes {$graceMinutes}-minute grace. {$thresholdHint}";
     }
 }

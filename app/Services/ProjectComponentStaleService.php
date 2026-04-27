@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ProjectComponent;
+use Illuminate\Support\Carbon;
 
 class ProjectComponentStaleService
 {
@@ -52,6 +53,22 @@ class ProjectComponentStaleService
 
     private function isOverdue(ProjectComponent $component): bool
     {
-        return $component->last_heartbeat_at->lte(now()->subMinutes($component->interval_minutes));
+        return $this->staleThresholdAt($component)?->lte(now()) ?? false;
+    }
+
+    public function staleThresholdAt(ProjectComponent $component): ?Carbon
+    {
+        if ($component->last_heartbeat_at === null || $component->interval_minutes === null) {
+            return null;
+        }
+
+        return $component->last_heartbeat_at
+            ->copy()
+            ->addMinutes($component->interval_minutes + $this->staleGraceMinutes());
+    }
+
+    public function staleGraceMinutes(): int
+    {
+        return max(0, (int) config('monitor.project_component_stale_grace_minutes', 1));
     }
 }

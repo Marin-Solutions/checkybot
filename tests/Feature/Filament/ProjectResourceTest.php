@@ -116,7 +116,10 @@ test('project component detail shows heartbeat history', function () {
         ->assertSee('17');
 });
 
-test('project component detail shows immediate stale threshold for zero-minute intervals', function () {
+test('project component detail shows stale threshold with configured grace window', function () {
+    config(['monitor.project_component_stale_grace_minutes' => 2]);
+    $this->travelTo('2026-04-27 12:00:00');
+
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
 
@@ -138,7 +141,11 @@ test('project component detail shows immediate stale threshold for zero-minute i
     Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
         ->assertSuccessful()
         ->assertSee('Stale Threshold')
-        ->assertSee('Expired');
+        ->assertSee('Mon, Apr 27, 2026 12:01 PM')
+        ->assertSee('Includes 2-minute grace')
+        ->assertSee('Expires');
+
+    $this->travelBack();
 });
 
 test('application list and detail show the worst active component status', function () {
