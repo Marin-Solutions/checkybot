@@ -91,6 +91,11 @@ test('syncs api checks with assertions successfully', function () {
                 'headers' => [
                     'Authorization' => 'Bearer token',
                 ],
+                'request_body_type' => 'form',
+                'request_body' => [
+                    'grant_type' => 'client_credentials',
+                    'scope' => 'health',
+                ],
                 'assertions' => [
                     [
                         'data_path' => 'status',
@@ -127,7 +132,9 @@ test('syncs api checks with assertions successfully', function () {
     ]);
 
     $api = MonitorApis::where('package_name', 'health-check')->first();
-    expect($api->assertions)->toHaveCount(2);
+    expect($api->assertions)->toHaveCount(2)
+        ->and($api->request_body_type)->toBe('form')
+        ->and($api->request_body)->toBe('{"grant_type":"client_credentials","scope":"health"}');
 });
 
 test('updates existing checks', function () {
@@ -443,6 +450,45 @@ test('validates assertion types', function () {
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['api_checks.0.assertions.0.assertion_type']);
+});
+
+test('requires body type when an api check request body is provided', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'login-api',
+                    'url' => 'https://api.example.com/login',
+                    'interval' => '5m',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['api_checks.0.request_body_type']);
+});
+
+test('limits api check request body size', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'login-api',
+                    'url' => 'https://api.example.com/login',
+                    'interval' => '5m',
+                    'request_body_type' => 'raw',
+                    'request_body' => str_repeat('a', 65536),
+                ],
+            ],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['api_checks.0.request_body']);
 });
 
 test('syncs multiple check types atomically', function () {
