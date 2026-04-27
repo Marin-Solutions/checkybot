@@ -30,6 +30,8 @@ class ApiMonitorExecutionService
             'method' => $monitor->http_method,
             'data_path' => $monitor->data_path,
             'headers' => $monitor->headers,
+            'request_body_type' => $monitor->request_body_type,
+            'request_body' => $monitor->request_body,
             'title' => $monitor->title,
             'expected_status' => $monitor->expected_status,
             'timeout_seconds' => $monitor->timeout_seconds,

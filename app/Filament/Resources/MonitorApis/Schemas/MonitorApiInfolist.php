@@ -73,6 +73,17 @@ class MonitorApiInfolist
                             ->state(fn (MonitorApis $record): array => ApiMonitorEvidenceFormatter::maskHeaders($record->headers))
                             ->hidden(fn (MonitorApis $record): bool => blank($record->headers))
                             ->columnSpanFull(),
+                        TextEntry::make('request_body_type')
+                            ->label('Body Type')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => $state ? strtoupper($state) : 'None')
+                            ->color('gray'),
+                        TextEntry::make('has_request_body')
+                            ->label('Request Body')
+                            ->state('Configured')
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->request_body))
+                            ->badge()
+                            ->color('gray'),
                     ])
                     ->columns(3),
                 Section::make('Latest Run Evidence')

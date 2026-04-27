@@ -2,6 +2,9 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\RequestBodyMaxSize;
+use App\Rules\RequestBodyTypeRequired;
+use App\Rules\StructuredRequestBody;
 use App\Services\IntervalParser;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -36,6 +39,8 @@ class PackageSyncRequest extends FormRequest
             'checks.*.url' => ['required', 'string', 'max:1000'],
             'checks.*.headers' => ['nullable', 'array'],
             'checks.*.headers.*' => ['nullable', 'string', 'max:2000'],
+            'checks.*.request_body_type' => ['exclude_unless:checks.*.type,api', new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
+            'checks.*.request_body' => ['exclude_unless:checks.*.type,api', 'nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'checks.*.expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'checks.*.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
             'checks.*.assertions' => ['nullable', 'array', 'max:50'],

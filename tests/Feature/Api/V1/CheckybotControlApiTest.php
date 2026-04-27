@@ -62,6 +62,8 @@ test('control api lists projects and package managed checks with compact status'
             'Accept' => 'application/json',
             'Authorization' => 'Bearer secret-token',
         ],
+        'request_body_type' => 'raw',
+        'request_body' => '   ',
         'current_status' => 'danger',
         'status_summary' => 'API heartbeat failed with HTTP status 500.',
     ]);
@@ -84,7 +86,8 @@ test('control api lists projects and package managed checks with compact status'
         ->assertJsonPath('data.0.key', 'search-health')
         ->assertJsonPath('data.0.status', 'danger')
         ->assertJsonPath('data.0.headers.Accept', 'application/json')
-        ->assertJsonPath('data.0.headers.Authorization', '[redacted]');
+        ->assertJsonPath('data.0.headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.0.has_request_body', true);
 
     expect(json_encode($response->json()))->not->toContain('secret-token');
 });
@@ -100,6 +103,12 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
             'Authorization' => 'Bearer package-secret',
             'X-Api-Key' => 'scrappa-secret',
         ],
+        'request_body_type' => 'json',
+        'request_body' => [
+            'email' => 'monitor@example.com',
+            'password' => 'body-secret',
+            'filters' => [],
+        ],
         'expected_status' => 200,
         'timeout_seconds' => 15,
         'schedule' => 'every_5_minutes',
@@ -114,10 +123,13 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         ->assertJsonPath('data.created', true)
         ->assertJsonPath('data.check.key', 'google-maps-search')
         ->assertJsonPath('data.check.headers.Accept', 'application/json')
-        ->assertJsonPath('data.check.headers.Authorization', '[redacted]');
+        ->assertJsonPath('data.check.headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.check.request_body_type', 'json')
+        ->assertJsonPath('data.check.has_request_body', true);
 
     expect(json_encode($created->json()))->not->toContain('package-secret')
-        ->and(json_encode($created->json()))->not->toContain('scrappa-secret');
+        ->and(json_encode($created->json()))->not->toContain('scrappa-secret')
+        ->and(json_encode($created->json()))->not->toContain('body-secret');
 
     $updated = $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/google-maps-search', array_merge($payload, [
@@ -141,12 +153,21 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
     $storedSchedule = DB::table('monitor_apis')
         ->where('package_name', 'google-maps-search')
         ->value('package_schedule');
+    $rawRequestBody = DB::table('monitor_apis')
+        ->where('package_name', 'google-maps-search')
+        ->value('request_body');
+    $storedRequestBody = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->value('request_body');
 
     expect($rawHeaders)->toContain('encrypted')
         ->and($rawHeaders)->not->toContain('package-secret')
         ->and($rawHeaders)->not->toContain('scrappa-secret');
     expect($storedInterval)->toBe('5m')
-        ->and($storedSchedule)->toBe('every_5_minutes');
+        ->and($storedSchedule)->toBe('every_5_minutes')
+        ->and($rawRequestBody)->toContain('encrypted')
+        ->and($rawRequestBody)->not->toContain('body-secret')
+        ->and($storedRequestBody)->toBe('{"email":"monitor@example.com","password":"body-secret","filters":{}}');
 });
 
 test('control api disables checks without deleting data', function () {
@@ -559,6 +580,78 @@ test('control api rejects invalid schedules', function () {
         ->assertJsonValidationErrors('schedule');
 });
 
+test('control api requires body type when request body is provided', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/login-api', [
+            'name' => 'Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body' => ['probe' => true],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body_type');
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/empty-login-api', [
+            'name' => 'Empty Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body' => [],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body_type');
+});
+
+test('control api limits request body size', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/login-api', [
+            'name' => 'Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body_type' => 'raw',
+            'request_body' => str_repeat('a', 65536),
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body');
+});
+
+test('control api rejects unstructured json and form request bodies', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/login-api', [
+            'name' => 'Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body_type' => 'json',
+            'request_body' => 'email=monitor@example.com',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body');
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/token-api', [
+            'name' => 'Token API',
+            'url' => '/token',
+            'method' => 'POST',
+            'request_body_type' => 'form',
+            'request_body' => 'grant_type=client_credentials',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body');
+});
+
+test('control api rejects non string raw request bodies', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/raw-login-api', [
+            'name' => 'Raw Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body_type' => 'raw',
+            'request_body' => ['probe' => true],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body');
+});
+
 test('mcp endpoint lists tools and calls the shared control surface', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -627,4 +720,96 @@ test('mcp endpoint rejects invalid schedules with a field validation error', fun
         ->assertOk()
         ->assertJsonPath('error.code', -32602)
         ->assertJsonPath('error.data.errors.schedule.0', 'The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
+});
+
+test('mcp endpoint requires body type when request body is provided', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 4,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'login-api',
+                    'name' => 'Login API',
+                    'url' => '/login',
+                    'method' => 'POST',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.request_body_type.0', 'The request body type field is required when request body is present.');
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 5,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'empty-login-api',
+                    'name' => 'Empty Login API',
+                    'url' => '/login',
+                    'method' => 'POST',
+                    'request_body' => [],
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.request_body_type.0', 'The request body type field is required when request body is present.');
+});
+
+test('mcp endpoint rejects unstructured json request body', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 6,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'login-api',
+                    'name' => 'Login API',
+                    'url' => '/login',
+                    'method' => 'POST',
+                    'request_body_type' => 'json',
+                    'request_body' => 'email=monitor@example.com',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.request_body.0', 'The request_body field must be a JSON object or array for json request bodies.');
+});
+
+test('mcp endpoint rejects non string raw request body', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 7,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'raw-login-api',
+                    'name' => 'Raw Login API',
+                    'url' => '/login',
+                    'method' => 'POST',
+                    'request_body_type' => 'raw',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.request_body.0', 'The request_body field must be a string for raw request bodies.');
 });

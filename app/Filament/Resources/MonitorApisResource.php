@@ -16,6 +16,8 @@ use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -117,6 +119,54 @@ class MonitorApisResource extends Resource
                             ->helperText('Optional headers to include in the request')
                             ->columnSpanFull()
                             ->addActionLabel('Add Header'),
+                        Forms\Components\Select::make('request_body_type')
+                            ->label('Request Body Type')
+                            ->options([
+                                'json' => 'JSON',
+                                'form' => 'Form URL Encoded',
+                                'raw' => 'Raw',
+                            ])
+                            ->live()
+                            ->afterStateUpdated(function (?string $state, Set $set): void {
+                                if (blank($state)) {
+                                    $set('request_body', null);
+                                }
+                            })
+                            ->native(false)
+                            ->nullable()
+                            ->helperText('Optional body format for POST, PUT, PATCH, and DELETE requests.'),
+                        Forms\Components\Textarea::make('request_body')
+                            ->label('Request Body')
+                            ->rows(8)
+                            ->maxLength(65535)
+                            ->helperText('Use JSON for JSON and form bodies, or plain text for raw bodies.')
+                            ->columnSpanFull()
+                            ->hidden(fn (Get $get): bool => blank($get('request_body_type')))
+                            ->mutateStateForValidationUsing(function (mixed $state, Get $get): mixed {
+                                if (! is_string($state) || $state === '' || trim($state) !== '') {
+                                    return $state;
+                                }
+
+                                // Laravel skips non-implicit rules for blank values; force whitespace through validation.
+                                if (in_array($get('request_body_type'), ['json', 'form'], true)) {
+                                    return '__checkybot_whitespace_request_body__';
+                                }
+
+                                return str_repeat('_', strlen($state));
+                            })
+                            ->rule(function (Get $get): \Closure {
+                                return function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
+                                    if ($value === null || $value === '' || ! in_array($get('request_body_type'), ['json', 'form'], true)) {
+                                        return;
+                                    }
+
+                                    $decoded = json_decode((string) $value, true);
+
+                                    if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+                                        $fail('The request body must be a JSON object or array for JSON or form body types.');
+                                    }
+                                };
+                            }),
                     ]),
                 Section::make('Failure Handling')
                     ->schema([
@@ -275,6 +325,8 @@ class MonitorApisResource extends Resource
                             'method' => $record->http_method,
                             'data_path' => $record->data_path,
                             'headers' => $record->headers,
+                            'request_body_type' => $record->request_body_type,
+                            'request_body' => $record->request_body,
                             'expected_status' => $record->expected_status,
                             'timeout_seconds' => $record->timeout_seconds,
                             'title' => $record->title,

@@ -4,6 +4,9 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
+use App\Rules\RequestBodyMaxSize;
+use App\Rules\RequestBodyTypeRequired;
+use App\Rules\StructuredRequestBody;
 use App\Services\CheckybotControlService;
 use App\Services\IntervalParser;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -175,6 +178,8 @@ class CheckybotMcpController extends Controller
             'url' => ['required', 'string', 'max:1000'],
             'headers' => ['nullable', 'array'],
             'headers.*' => ['nullable', 'string', 'max:2000'],
+            'request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
+            'request_body' => ['nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
             'assertions' => ['nullable', 'array', 'max:50'],
@@ -226,6 +231,8 @@ class CheckybotMcpController extends Controller
                 'url' => ['type' => 'string'],
                 'method' => ['type' => 'string', 'default' => 'GET'],
                 'headers' => ['type' => 'object', 'additionalProperties' => ['type' => 'string']],
+                'request_body_type' => ['type' => 'string', 'enum' => ['json', 'form', 'raw']],
+                'request_body' => ['description' => 'JSON object/array for json or form body types, or a string for raw bodies.'],
                 'expected_status' => ['type' => 'integer', 'default' => 200],
                 'timeout_seconds' => ['type' => 'integer'],
                 'schedule' => ['type' => 'string'],

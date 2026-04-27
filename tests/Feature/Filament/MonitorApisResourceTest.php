@@ -30,6 +30,8 @@ test('super admin can create api monitor with execution settings', function () {
             'headers' => [
                 'Authorization' => 'Bearer secret',
             ],
+            'request_body_type' => 'json',
+            'request_body' => '{"email":"monitor@example.com","password":"secret"}',
             'save_failed_response' => false,
         ])
         ->call('create')
@@ -46,6 +48,8 @@ test('super admin can create api monitor with execution settings', function () {
         ->and($monitor->is_enabled)->toBeFalse()
         ->and($monitor->data_path)->toBe('data.status')
         ->and($monitor->headers)->toBe(['Authorization' => 'Bearer secret'])
+        ->and($monitor->request_body_type)->toBe('json')
+        ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->save_failed_response)->toBeFalse();
 });
 
@@ -60,6 +64,8 @@ test('super admin can update api monitor execution settings', function () {
         'timeout_seconds' => null,
         'is_enabled' => true,
         'save_failed_response' => true,
+        'request_body_type' => null,
+        'request_body' => null,
     ]);
 
     Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
@@ -68,6 +74,8 @@ test('super admin can update api monitor execution settings', function () {
             'expected_status' => 202,
             'timeout_seconds' => 30,
             'is_enabled' => false,
+            'request_body_type' => 'raw',
+            'request_body' => 'status=active',
             'save_failed_response' => false,
         ])
         ->call('save')
@@ -80,7 +88,126 @@ test('super admin can update api monitor execution settings', function () {
         ->and($monitor->expected_status)->toBe(202)
         ->and($monitor->timeout_seconds)->toBe(30)
         ->and($monitor->is_enabled)->toBeFalse()
+        ->and($monitor->request_body_type)->toBe('raw')
+        ->and($monitor->request_body)->toBe('status=active')
         ->and($monitor->save_failed_response)->toBeFalse();
+});
+
+test('clearing request body type clears the stored request body', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'request_body_type' => 'json',
+        'request_body' => '{"probe":true}',
+    ]);
+
+    Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
+        ->fillForm([
+            'request_body_type' => null,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $monitor->refresh();
+
+    expect($monitor->request_body_type)->toBeNull()
+        ->and($monitor->request_body)->toBeNull();
+});
+
+test('hidden request body is not persisted when body type is cleared', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'request_body_type' => 'json',
+        'request_body' => '{"probe":true}',
+    ]);
+
+    Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
+        ->fillForm([
+            'request_body_type' => null,
+            'request_body' => '{"stale":true}',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $monitor->refresh();
+
+    expect($monitor->request_body_type)->toBeNull()
+        ->and($monitor->request_body)->toBeNull();
+});
+
+test('super admin cannot create json api monitor with a scalar request body', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Scalar JSON API',
+            'url' => 'https://example.com/health',
+            'http_method' => 'POST',
+            'request_body_type' => 'json',
+            'request_body' => '42',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['request_body']);
+});
+
+test('super admin cannot create form api monitor with a null request body scalar', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Null Form API',
+            'url' => 'https://example.com/token',
+            'http_method' => 'POST',
+            'request_body_type' => 'form',
+            'request_body' => 'null',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['request_body']);
+});
+
+test('super admin cannot create json api monitor with a whitespace only request body', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Whitespace JSON API',
+            'url' => 'https://example.com/health',
+            'http_method' => 'POST',
+            'request_body_type' => 'json',
+            'request_body' => '   ',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['request_body']);
+});
+
+test('super admin cannot create raw api monitor with an oversized whitespace request body', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Oversized Raw API',
+            'url' => 'https://example.com/raw',
+            'http_method' => 'POST',
+            'request_body_type' => 'raw',
+            'request_body' => str_repeat(' ', 65536),
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['request_body']);
 });
 
 test('super admin can filter to archived api monitors and keep their history visible', function () {
@@ -258,12 +385,16 @@ test('list test action uses stored execution settings', function () {
         'expected_status' => 204,
         'timeout_seconds' => 30,
         'data_path' => 'data.status',
+        'request_body_type' => 'json',
+        'request_body' => '{"probe":true}',
     ]);
 
     Livewire::test(ListMonitorApis::class)
         ->callTableAction('test', $monitor);
 
-    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/health');
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://example.com/health'
+        && $request->data() === ['probe' => true]);
 });
 
 test('list test action flashes success notification with status code and response time', function () {

@@ -39,6 +39,11 @@ function packageSyncPayload(array $overrides = []): array
                 'headers' => [
                     'X-Api-Key' => 'secret-package-token',
                 ],
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'email' => 'monitor@example.com',
+                    'password' => 'secret',
+                ],
                 'expected_status' => 200,
                 'timeout_seconds' => 15,
                 'assertions' => [
@@ -92,6 +97,7 @@ test('package sync creates a project and api check definitions', function () {
         'request_path' => '/api/google-maps/search',
         'expected_status' => 200,
         'timeout_seconds' => 15,
+        'request_body_type' => 'json',
         'package_schedule' => 'every_5_minutes',
         'package_interval' => '5m',
         'package_name' => 'google-maps-search',
@@ -106,6 +112,8 @@ test('package sync creates a project and api check definitions', function () {
         'Authorization' => 'Bearer default-secret',
         'X-Api-Key' => 'secret-package-token',
     ])->and($monitor->assertions)->toHaveCount(1)
+        ->and($monitor->request_body_type)->toBe('json')
+        ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->assertions->first()->assertion_type)->toBe('exists')
         ->and($monitor->assertions->first()->data_path)->toBe('data');
 });
@@ -154,6 +162,9 @@ test('package sync encrypts header values and does not return them', function ()
     $rawHeaders = DB::table('monitor_apis')
         ->where('package_name', 'google-maps-search')
         ->value('headers');
+    $rawRequestBody = DB::table('monitor_apis')
+        ->where('package_name', 'google-maps-search')
+        ->value('request_body');
     $rawProjectDefaults = DB::table('projects')
         ->where('package_key', 'scrappa')
         ->value('sync_defaults');
@@ -163,6 +174,8 @@ test('package sync encrypts header values and does not return them', function ()
         ->and($rawHeaders)->toContain('encrypted')
         ->and($rawHeaders)->not->toContain('secret-package-token')
         ->and($rawHeaders)->not->toContain('default-secret')
+        ->and($rawRequestBody)->toContain('encrypted')
+        ->and($rawRequestBody)->not->toContain('secret')
         ->and($rawProjectDefaults)->not->toContain('default-secret');
 });
 
@@ -233,6 +246,160 @@ test('package sync rejects invalid schedules', function () {
         ]);
 });
 
+test('package sync requires body type when a request body is provided', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => null,
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body_type',
+        ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'empty-json-login',
+                    'type' => 'api',
+                    'name' => 'Empty JSON login API',
+                    'method' => 'POST',
+                    'url' => '/api/login',
+                    'request_body_type' => null,
+                    'request_body' => [],
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body_type',
+        ]);
+});
+
+test('package sync limits request body size', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => str_repeat('a', 65536),
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body',
+        ]);
+});
+
+test('package sync rejects unstructured json and form request bodies', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'json-login',
+                    'type' => 'api',
+                    'name' => 'JSON Login API',
+                    'method' => 'POST',
+                    'url' => '/api/login',
+                    'request_body_type' => 'json',
+                    'request_body' => 'email=monitor@example.com',
+                ],
+                [
+                    'key' => 'form-token',
+                    'type' => 'api',
+                    'name' => 'Form Token API',
+                    'method' => 'POST',
+                    'url' => '/api/token',
+                    'request_body_type' => 'form',
+                    'request_body' => 'grant_type=client_credentials',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body',
+            'checks.1.request_body',
+        ]);
+});
+
+test('package sync accepts raw string request bodies', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'raw-search',
+                    'type' => 'api',
+                    'name' => 'Raw Search API',
+                    'method' => 'POST',
+                    'url' => '/api/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => 'ids=1,2,3',
+                ],
+            ],
+        ]))
+        ->assertCreated();
+});
+
+test('package sync rejects non string raw request bodies', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'raw-search',
+                    'type' => 'api',
+                    'name' => 'Raw Search API',
+                    'method' => 'POST',
+                    'url' => '/api/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => ['ids' => [1, 2, 3]],
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body',
+        ]);
+});
+
+test('package sync allows request bodies at the configured size limit', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => str_repeat('a', 65535),
+                ],
+            ],
+        ]))
+        ->assertCreated();
+});
+
 test('package sync rejects non string schedules without throwing', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
@@ -298,6 +465,43 @@ test('package sync ignores unsupported check schedules instead of validating the
 
     $this->assertDatabaseMissing('monitor_apis', [
         'package_name' => 'certificate',
+    ]);
+});
+
+test('package sync ignores unsupported check request bodies instead of validating them', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'certificate',
+                    'type' => 'ssl',
+                    'name' => 'Certificate',
+                    'method' => null,
+                    'url' => 'https://api.scrappa.co',
+                    'request_body' => ['probe' => true],
+                ],
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => 'json',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ]));
+
+    $response->assertCreated()
+        ->assertJsonPath('data.summary.created', 1)
+        ->assertJsonPath('data.summary.unsupported', 1);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'certificate',
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'package_name' => 'google-maps-search',
     ]);
 });
 

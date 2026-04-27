@@ -2,6 +2,9 @@
 
 namespace App\Http\Requests\Checkybot;
 
+use App\Rules\RequestBodyMaxSize;
+use App\Rules\RequestBodyTypeRequired;
+use App\Rules\StructuredRequestBody;
 use App\Services\IntervalParser;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -22,6 +25,8 @@ class UpsertControlCheckRequest extends FormRequest
             'url' => ['required', 'string', 'max:1000'],
             'headers' => ['nullable', 'array'],
             'headers.*' => ['nullable', 'string', 'max:2000'],
+            'request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
+            'request_body' => ['nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
             'assertions' => ['nullable', 'array', 'max:50'],

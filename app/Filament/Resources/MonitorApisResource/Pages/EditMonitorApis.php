@@ -37,6 +37,15 @@ class EditMonitorApis extends EditRecord
         $this->callDoMonitoring($this->form);
     }
 
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if (blank($data['request_body_type'] ?? null)) {
+            $data['request_body'] = null;
+        }
+
+        return $data;
+    }
+
     protected function getFormActions(): array
     {
         return array_merge([
