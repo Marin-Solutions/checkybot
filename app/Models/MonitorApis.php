@@ -34,6 +34,8 @@ class MonitorApis extends Model
         'request_path',
         'data_path',
         'headers',
+        'request_body_type',
+        'request_body',
         'expected_status',
         'timeout_seconds',
         'package_schedule',
@@ -68,6 +70,14 @@ class MonitorApis extends Model
         return Attribute::make(
             get: fn (mixed $value): array => $this->decryptHeaders($value),
             set: fn (mixed $value): ?string => $this->encryptHeaders($value),
+        );
+    }
+
+    protected function requestBody(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value): mixed => $this->decryptRequestBody($value),
+            set: fn (mixed $value): ?string => $this->encryptRequestBody($value),
         );
     }
 
@@ -156,6 +166,8 @@ class MonitorApis extends Model
             'expected_status' => $this->expected_status,
             'timeout_seconds' => $this->timeout_seconds,
             'headers' => $this->headers,
+            'request_body_type' => $this->request_body_type,
+            'request_body' => $this->request_body,
             'data_path' => $this->data_path,
         ]);
 
@@ -204,7 +216,7 @@ class MonitorApis extends Model
             );
             $responseData['request_headers'] = ApiMonitorEvidenceFormatter::maskHeaders($headers);
             $httpClient = self::configureHttpClient($httpConfig, $headers);
-            $request = $httpClient->send($method, $url);
+            $request = $httpClient->send($method, $url, self::requestBodyOptions($data));
 
             $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data, $sanitizedUrl, $method);
             $responseData = self::applyExpectedStatusAssertion($responseData, $expectedStatus);
@@ -367,6 +379,36 @@ class MonitorApis extends Model
         ]);
     }
 
+    private function decryptRequestBody(mixed $value): mixed
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $decoded = is_string($value) ? json_decode($value, true) : $value;
+
+        if (is_array($decoded) && isset($decoded['encrypted']) && is_string($decoded['encrypted'])) {
+            try {
+                return Crypt::decryptString($decoded['encrypted']);
+            } catch (DecryptException) {
+                return null;
+            }
+        }
+
+        return $value;
+    }
+
+    private function encryptRequestBody(mixed $value): ?string
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return null;
+        }
+
+        return json_encode([
+            'encrypted' => Crypt::encryptString(is_string($value) ? $value : json_encode($value)),
+        ]);
+    }
+
     private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest
     {
         $client = Http::timeout($config['timeout'])
@@ -377,6 +419,67 @@ class MonitorApis extends Model
         }
 
         return $client;
+    }
+
+    private static function requestBodyOptions(array $data): array
+    {
+        $bodyType = self::normalizeRequestBodyType($data['request_body_type'] ?? null);
+        $body = $data['request_body'] ?? null;
+
+        if ($body === null && isset($data['id'])) {
+            $monitor = self::query()->find($data['id']);
+            $bodyType = self::normalizeRequestBodyType($bodyType ?? $monitor?->request_body_type);
+            $body = $monitor?->request_body;
+        }
+
+        if ($bodyType === null || $body === null || $body === '') {
+            return [];
+        }
+
+        return match ($bodyType) {
+            'json' => ['json' => self::structuredRequestBody($body)],
+            'form' => ['form_params' => self::formRequestBody($body)],
+            'raw' => ['body' => is_string($body) ? $body : json_encode($body)],
+        };
+    }
+
+    private static function normalizeRequestBodyType(?string $bodyType): ?string
+    {
+        $bodyType = strtolower((string) $bodyType);
+
+        return in_array($bodyType, ['json', 'form', 'raw'], true) ? $bodyType : null;
+    }
+
+    private static function structuredRequestBody(mixed $body): mixed
+    {
+        if (! is_string($body)) {
+            return $body;
+        }
+
+        $decoded = json_decode($body, true);
+
+        return json_last_error() === JSON_ERROR_NONE ? $decoded : $body;
+    }
+
+    private static function formRequestBody(mixed $body): array
+    {
+        if (is_array($body)) {
+            return $body;
+        }
+
+        if (! is_string($body)) {
+            return [];
+        }
+
+        $decoded = json_decode($body, true);
+
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            return $decoded;
+        }
+
+        parse_str($body, $parsed);
+
+        return $parsed;
     }
 
     private static function processSuccessfulResponse($request, array $responseData, float $startTime, array $data, string $sanitizedUrl, string $method): array

@@ -36,6 +36,8 @@ class SyncProjectChecksRequest extends FormRequest
             'api_checks.*.url' => ['required', 'url', 'max:1000'],
             'api_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
             'api_checks.*.headers' => ['array'],
+            'api_checks.*.request_body_type' => ['nullable', 'in:json,form,raw'],
+            'api_checks.*.request_body' => ['nullable'],
             'api_checks.*.assertions' => ['array'],
             'api_checks.*.assertions.*.data_path' => ['required', 'string'],
             'api_checks.*.assertions.*.assertion_type' => ['required', 'in:exists,not_exists,type_check,value_compare,array_length,regex_match'],

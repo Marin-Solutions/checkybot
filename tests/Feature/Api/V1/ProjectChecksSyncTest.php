@@ -91,6 +91,11 @@ test('syncs api checks with assertions successfully', function () {
                 'headers' => [
                     'Authorization' => 'Bearer token',
                 ],
+                'request_body_type' => 'form',
+                'request_body' => [
+                    'grant_type' => 'client_credentials',
+                    'scope' => 'health',
+                ],
                 'assertions' => [
                     [
                         'data_path' => 'status',
@@ -127,7 +132,9 @@ test('syncs api checks with assertions successfully', function () {
     ]);
 
     $api = MonitorApis::where('package_name', 'health-check')->first();
-    expect($api->assertions)->toHaveCount(2);
+    expect($api->assertions)->toHaveCount(2)
+        ->and($api->request_body_type)->toBe('form')
+        ->and($api->request_body)->toBe('{"grant_type":"client_credentials","scope":"health"}');
 });
 
 test('updates existing checks', function () {

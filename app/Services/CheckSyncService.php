@@ -138,6 +138,8 @@ class CheckSyncService
                 'url' => $check['url'],
                 'data_path' => '',
                 'headers' => $check['headers'] ?? [],
+                'request_body_type' => $check['request_body_type'] ?? null,
+                'request_body' => $check['request_body'] ?? null,
                 'source' => 'package',
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],

@@ -125,6 +125,8 @@ class PackageSyncService
                 'request_path' => $check['url'],
                 'data_path' => $this->primaryDataPath($check['assertions'] ?? []),
                 'headers' => $this->mergeHeaders($defaults['headers'] ?? [], $check['headers'] ?? []),
+                'request_body_type' => $check['request_body_type'] ?? null,
+                'request_body' => $check['request_body'] ?? null,
                 'expected_status' => $check['expected_status'] ?? 200,
                 'timeout_seconds' => $check['timeout_seconds'] ?? ($defaults['timeout_seconds'] ?? null),
                 'package_schedule' => $check['schedule'] ?? null,

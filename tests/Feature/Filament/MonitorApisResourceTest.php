@@ -30,6 +30,8 @@ test('super admin can create api monitor with execution settings', function () {
             'headers' => [
                 'Authorization' => 'Bearer secret',
             ],
+            'request_body_type' => 'json',
+            'request_body' => '{"email":"monitor@example.com","password":"secret"}',
             'save_failed_response' => false,
         ])
         ->call('create')
@@ -46,6 +48,8 @@ test('super admin can create api monitor with execution settings', function () {
         ->and($monitor->is_enabled)->toBeFalse()
         ->and($monitor->data_path)->toBe('data.status')
         ->and($monitor->headers)->toBe(['Authorization' => 'Bearer secret'])
+        ->and($monitor->request_body_type)->toBe('json')
+        ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->save_failed_response)->toBeFalse();
 });
 
@@ -60,6 +64,8 @@ test('super admin can update api monitor execution settings', function () {
         'timeout_seconds' => null,
         'is_enabled' => true,
         'save_failed_response' => true,
+        'request_body_type' => null,
+        'request_body' => null,
     ]);
 
     Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
@@ -68,6 +74,8 @@ test('super admin can update api monitor execution settings', function () {
             'expected_status' => 202,
             'timeout_seconds' => 30,
             'is_enabled' => false,
+            'request_body_type' => 'raw',
+            'request_body' => 'status=active',
             'save_failed_response' => false,
         ])
         ->call('save')
@@ -80,6 +88,8 @@ test('super admin can update api monitor execution settings', function () {
         ->and($monitor->expected_status)->toBe(202)
         ->and($monitor->timeout_seconds)->toBe(30)
         ->and($monitor->is_enabled)->toBeFalse()
+        ->and($monitor->request_body_type)->toBe('raw')
+        ->and($monitor->request_body)->toBe('status=active')
         ->and($monitor->save_failed_response)->toBeFalse();
 });
 
@@ -258,12 +268,16 @@ test('list test action uses stored execution settings', function () {
         'expected_status' => 204,
         'timeout_seconds' => 30,
         'data_path' => 'data.status',
+        'request_body_type' => 'json',
+        'request_body' => '{"probe":true}',
     ]);
 
     Livewire::test(ListMonitorApis::class)
         ->callTableAction('test', $monitor);
 
-    Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/health');
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://example.com/health'
+        && $request->data() === ['probe' => true]);
 });
 
 test('list test action flashes success notification with status code and response time', function () {

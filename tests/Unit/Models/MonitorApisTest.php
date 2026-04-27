@@ -88,6 +88,19 @@ test('monitor api encrypts headers at rest', function () {
         ->and($monitor->headers['Authorization'])->toBe('Bearer token123');
 });
 
+test('monitor api encrypts request body at rest', function () {
+    $monitor = MonitorApis::factory()->create([
+        'request_body_type' => 'json',
+        'request_body' => '{"password":"secret"}',
+    ]);
+
+    $rawBody = $monitor->getRawOriginal('request_body');
+
+    expect($rawBody)->toContain('encrypted')
+        ->and($rawBody)->not->toContain('secret')
+        ->and($monitor->request_body)->toBe('{"password":"secret"}');
+});
+
 test('monitor api returns empty headers when encrypted payload cannot be decrypted', function () {
     $monitor = MonitorApis::factory()->create([
         'headers' => [
@@ -210,6 +223,90 @@ test('test api accepts http_method input from filament form flows', function () 
 
     expect($result['code'])->toBe(204)
         ->and($result['assertions'])->toBe([]);
+});
+
+test('test api sends configured json request bodies', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/login',
+        'http_method' => 'POST',
+        'request_body_type' => 'json',
+        'request_body' => '{"email":"monitor@example.com","password":"secret"}',
+        'expected_status' => 200,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://api.example.test/login'
+        && $request->data() === [
+            'email' => 'monitor@example.com',
+            'password' => 'secret',
+        ]);
+
+    expect($result['code'])->toBe(200);
+});
+
+test('test api sends configured form request bodies', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    MonitorApis::testApi([
+        'url' => 'https://api.example.test/token',
+        'method' => 'POST',
+        'request_body_type' => 'form',
+        'request_body' => '{"grant_type":"client_credentials","scope":"health"}',
+        'expected_status' => 200,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://api.example.test/token'
+        && $request->data() === [
+            'grant_type' => 'client_credentials',
+            'scope' => 'health',
+        ]);
+});
+
+test('test api sends configured raw request bodies', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response('', 204),
+    ]);
+
+    MonitorApis::testApi([
+        'url' => 'https://api.example.test/search',
+        'method' => 'DELETE',
+        'request_body_type' => 'raw',
+        'request_body' => 'ids=1,2,3',
+        'expected_status' => 204,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'DELETE'
+        && $request->url() === 'https://api.example.test/search'
+        && $request->body() === 'ids=1,2,3');
+});
+
+test('test api loads stored request body when only monitor id is provided', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/stored',
+        'http_method' => 'PATCH',
+        'request_body_type' => 'json',
+        'request_body' => '{"status":"active"}',
+    ]);
+
+    MonitorApis::testApi([
+        'id' => $monitor->id,
+        'url' => $monitor->url,
+        'method' => $monitor->http_method,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'PATCH'
+        && $request->data() === ['status' => 'active']);
 });
 
 test('test api still evaluates assertions for expected 404 json responses', function () {

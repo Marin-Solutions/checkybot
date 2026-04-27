@@ -88,6 +88,8 @@ class CheckybotApiDocumentation
      *                             @OA\Property(property="method", type="string", enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
      *                             @OA\Property(property="url", type="string", example="/health"),
      *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
+     *                             @OA\Property(property="request_body_type", type="string", nullable=true, enum={"json", "form", "raw"}, example="json"),
+     *                             @OA\Property(property="request_body", nullable=true, example={"email": "monitor@example.com", "password": "secret"}),
      *                             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *                             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
      *                             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
@@ -199,6 +201,8 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com/health"),
      *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
      *                     @OA\Property(property="headers", type="object"),
+     *                     @OA\Property(property="request_body_type", type="string", nullable=true, enum={"json", "form", "raw"}, example="json"),
+     *                     @OA\Property(property="request_body", nullable=true, example={"email": "monitor@example.com", "password": "secret"}),
      *                     @OA\Property(
      *                         property="assertions",
      *                         type="array",

@@ -39,6 +39,11 @@ function packageSyncPayload(array $overrides = []): array
                 'headers' => [
                     'X-Api-Key' => 'secret-package-token',
                 ],
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'email' => 'monitor@example.com',
+                    'password' => 'secret',
+                ],
                 'expected_status' => 200,
                 'timeout_seconds' => 15,
                 'assertions' => [
@@ -92,6 +97,7 @@ test('package sync creates a project and api check definitions', function () {
         'request_path' => '/api/google-maps/search',
         'expected_status' => 200,
         'timeout_seconds' => 15,
+        'request_body_type' => 'json',
         'package_schedule' => 'every_5_minutes',
         'package_interval' => '5m',
         'package_name' => 'google-maps-search',
@@ -106,6 +112,8 @@ test('package sync creates a project and api check definitions', function () {
         'Authorization' => 'Bearer default-secret',
         'X-Api-Key' => 'secret-package-token',
     ])->and($monitor->assertions)->toHaveCount(1)
+        ->and($monitor->request_body_type)->toBe('json')
+        ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->assertions->first()->assertion_type)->toBe('exists')
         ->and($monitor->assertions->first()->data_path)->toBe('data');
 });
@@ -154,6 +162,9 @@ test('package sync encrypts header values and does not return them', function ()
     $rawHeaders = DB::table('monitor_apis')
         ->where('package_name', 'google-maps-search')
         ->value('headers');
+    $rawRequestBody = DB::table('monitor_apis')
+        ->where('package_name', 'google-maps-search')
+        ->value('request_body');
     $rawProjectDefaults = DB::table('projects')
         ->where('package_key', 'scrappa')
         ->value('sync_defaults');
@@ -163,6 +174,8 @@ test('package sync encrypts header values and does not return them', function ()
         ->and($rawHeaders)->toContain('encrypted')
         ->and($rawHeaders)->not->toContain('secret-package-token')
         ->and($rawHeaders)->not->toContain('default-secret')
+        ->and($rawRequestBody)->toContain('encrypted')
+        ->and($rawRequestBody)->not->toContain('secret')
         ->and($rawProjectDefaults)->not->toContain('default-secret');
 });
 

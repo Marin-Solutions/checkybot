@@ -10,6 +10,7 @@ trait MonitoringApis
     public function callDoMonitoring($form): void
     {
         $validatedData = $form->getState();
+        $validatedData['request_body'] = $validatedData['request_body'] ?? null;
 
         if ($form->validate()) {
             $result = \App\Models\MonitorApis::testApi($validatedData);
