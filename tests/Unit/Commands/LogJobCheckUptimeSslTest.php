@@ -44,6 +44,21 @@ test('command dispatches websites when last heartbeat plus interval is due', fun
     Queue::assertPushed(LogUptimeSslJob::class, 1);
 });
 
+test('command floors heartbeat timestamps to the minute when checking due websites', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'uptime_check' => true,
+        'uptime_interval' => 60,
+        'last_heartbeat_at' => now()->subMinutes(60)->addSeconds(30),
+    ]);
+
+    $this->artisan('website:log-uptime-ssl')
+        ->assertSuccessful();
+
+    Queue::assertPushed(LogUptimeSslJob::class, 1);
+});
+
 test('command does not dispatch websites before their interval has elapsed', function () {
     Queue::fake();
 

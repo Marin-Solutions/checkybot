@@ -57,10 +57,10 @@ class LogJobCheckUptimeSsl extends Command
     private function dueAtExpression(): string
     {
         return match (Website::query()->getConnection()->getDriverName()) {
-            'sqlite' => "datetime(last_heartbeat_at, '+' || uptime_interval || ' minutes') <= ?",
-            'pgsql' => "last_heartbeat_at + (uptime_interval * interval '1 minute') <= ?",
-            'sqlsrv' => 'DATEADD(minute, uptime_interval, last_heartbeat_at) <= ?',
-            default => 'DATE_ADD(last_heartbeat_at, INTERVAL uptime_interval MINUTE) <= ?',
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || uptime_interval || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', last_heartbeat_at) + (uptime_interval * interval '1 minute') <= ?",
+            'sqlsrv' => 'DATEADD(minute, uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?',
+            default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL uptime_interval MINUTE) <= ?",
         };
     }
 }
