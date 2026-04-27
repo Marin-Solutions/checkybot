@@ -175,7 +175,7 @@ test('project component detail omits grace hint when stale grace is disabled', f
         ->assertSee('Stale Threshold')
         ->assertSee('Mon, Apr 27, 2026 11:59 AM')
         ->assertSee('Expired')
-        ->assertDontSee('Includes 0-minute grace');
+        ->assertDontSee('Includes');
 
     $this->travelBack();
 });
