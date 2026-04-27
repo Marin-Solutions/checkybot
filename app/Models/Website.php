@@ -30,7 +30,6 @@ class Website extends Model
         'uptime_interval',
         'ssl_check',
         'ssl_expiry_date',
-        'ssl_expiry_reminder_sent_at',
         'outbound_check',
         'last_outbound_checked_at',
         'source',

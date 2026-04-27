@@ -50,12 +50,12 @@ class CheckSslExpiryDateJob implements ShouldQueue
             ? Carbon::parse($this->website->ssl_expiry_date)
             : null;
 
-        $this->website->update([
+        $this->website->forceFill([
             'ssl_expiry_date' => $newExpiryDate,
             'ssl_expiry_reminder_sent_at' => $this->expiryDateChanged($currentExpiryDate, $newExpiryDate)
                 ? null
                 : $this->website->ssl_expiry_reminder_sent_at,
-        ]);
+        ])->save();
 
         if (! $this->shouldSendReminder($newExpiryDate)) {
             return;
@@ -113,7 +113,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
             Log::info('SSL expiry reminder sent for website: '.$this->website->url);
 
-            $this->website->update(['ssl_expiry_reminder_sent_at' => now()]);
+            $this->website->forceFill(['ssl_expiry_reminder_sent_at' => now()])->save();
         } else {
             Log::warning('User not found for website: '.$this->website->url);
         }

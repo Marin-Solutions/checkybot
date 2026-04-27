@@ -91,6 +91,16 @@ test('website tracks ssl expiry date', function () {
     expect($website->ssl_expiry_date->format('Y-m-d'))->toBe($expiryDate->format('Y-m-d'));
 });
 
+test('website ssl reminder throttle timestamp is not mass assignable', function () {
+    $website = new Website;
+
+    $website->fill([
+        'ssl_expiry_reminder_sent_at' => now()->addYear(),
+    ]);
+
+    expect($website->ssl_expiry_reminder_sent_at)->toBeNull();
+});
+
 test('extractHost returns the hostname from a full url', function () {
     expect(Website::extractHost('https://example.com/health?foo=bar'))->toBe('example.com');
 });
