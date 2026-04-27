@@ -69,6 +69,6 @@ class ProjectComponentStaleService
 
     public function staleGraceMinutes(): int
     {
-        return max(0, (int) config('monitor.project_component_stale_grace_minutes', 1));
+        return max(0, (int) config('monitor.project_component_stale_grace_minutes'));
     }
 }

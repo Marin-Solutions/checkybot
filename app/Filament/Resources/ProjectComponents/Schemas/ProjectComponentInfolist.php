@@ -125,16 +125,13 @@ class ProjectComponentInfolist
 
     private static function staleThresholdAt(ProjectComponent $record): ?Carbon
     {
-        if ($record->last_heartbeat_at === null || $record->interval_minutes === null) {
-            return null;
-        }
-
         return app(ProjectComponentStaleService::class)->staleThresholdAt($record);
     }
 
     private static function staleThresholdHint(ProjectComponent $record): ?string
     {
-        $thresholdAt = static::staleThresholdAt($record);
+        $staleService = app(ProjectComponentStaleService::class);
+        $thresholdAt = $staleService->staleThresholdAt($record);
 
         if ($thresholdAt === null) {
             return null;
@@ -144,7 +141,7 @@ class ProjectComponentInfolist
             ? 'Expired '.$thresholdAt->diffForHumans()
             : 'Expires '.$thresholdAt->diffForHumans();
 
-        $graceMinutes = app(ProjectComponentStaleService::class)->staleGraceMinutes();
+        $graceMinutes = $staleService->staleGraceMinutes();
 
         if ($graceMinutes <= 0) {
             return $thresholdHint;

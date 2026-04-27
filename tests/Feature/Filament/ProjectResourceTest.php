@@ -148,6 +148,38 @@ test('project component detail shows stale threshold with configured grace windo
     $this->travelBack();
 });
 
+test('project component detail omits grace hint when stale grace is disabled', function () {
+    config(['monitor.project_component_stale_grace_minutes' => 0]);
+    $this->travelTo('2026-04-27 12:00:00');
+
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'No Grace App',
+        'created_by' => $user->id,
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'strict-check',
+        'created_by' => $user->id,
+        'declared_interval' => '1m',
+        'interval_minutes' => 1,
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Stale Threshold')
+        ->assertSee('Mon, Apr 27, 2026 11:59 AM')
+        ->assertSee('Expired')
+        ->assertDontSee('Includes 0-minute grace');
+
+    $this->travelBack();
+});
+
 test('application list and detail show the worst active component status', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');

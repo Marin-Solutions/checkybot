@@ -8,6 +8,8 @@ use App\Models\User;
 use Illuminate\Support\Facades\Http;
 
 test('stale detection marks overdue components as stale danger and records history once', function () {
+    config(['monitor.project_component_stale_grace_minutes' => 1]);
+
     Http::fake([
         '*' => Http::response(['ok' => true], 200),
     ]);
