@@ -16,6 +16,7 @@ class Project extends Model
     protected $fillable = [
         'name',
         'package_key',
+        'package_version',
         'group',
         'environment',
         'technology',

@@ -43,6 +43,7 @@ test('package registration attaches to the guided setup project shell on first i
         'created_by' => $this->user->id,
         'identity_endpoint' => 'https://checkout.example.com',
         'technology' => 'Laravel',
+        'package_version' => '1.2.3',
     ]);
 });
 
@@ -62,6 +63,11 @@ test('package registration reuses an existing application identity for the same 
         ->assertJsonPath('data.created', false);
 
     expect(Project::query()->where('created_by', $this->user->id)->count())->toBe(1);
+
+    $this->assertDatabaseHas('projects', [
+        'id' => $project->id,
+        'package_version' => '1.2.3',
+    ]);
 });
 
 test('package registration auto creates an application when no matching identity exists', function () {
@@ -82,6 +88,31 @@ test('package registration auto creates an application when no matching identity
         'environment' => 'production',
         'identity_endpoint' => 'https://checkout.example.com',
         'technology' => 'Laravel',
+        'package_version' => '1.2.3',
+    ]);
+});
+
+test('package registration updates the stored sdk version on reconnect', function () {
+    $project = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Checkout App',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/register', registrationPayload([
+            'package_version' => '1.2.4',
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.project_id', $project->id)
+        ->assertJsonPath('data.created', false);
+
+    $this->assertDatabaseHas('projects', [
+        'id' => $project->id,
+        'package_version' => '1.2.4',
     ]);
 });
 

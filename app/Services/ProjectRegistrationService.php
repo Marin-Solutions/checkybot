@@ -99,6 +99,10 @@ class ProjectRegistrationService
             $updates['technology'] = $attributes['technology'];
         }
 
+        if (filled($attributes['package_version'] ?? null)) {
+            $updates['package_version'] = $attributes['package_version'];
+        }
+
         if ($updates === []) {
             return;
         }
