@@ -17,6 +17,7 @@ class CheckybotControlService
 {
     public function __construct(
         private readonly ApiMonitorExecutionService $executionService,
+        private readonly HealthEventNotificationService $notificationService,
     ) {}
 
     /**
@@ -405,6 +406,21 @@ class CheckybotControlService
         $execution = $this->executionService->execute($check);
         /** @var MonitorApiResult $result */
         $result = $execution['result'];
+        $status = $execution['status'];
+        $summary = $execution['summary'];
+        $previousStatus = $execution['previous_status'];
+
+        if (
+            in_array($status, ['warning', 'danger'], true)
+            && $previousStatus !== $status
+        ) {
+            $this->notificationService->notifyApi($check, 'heartbeat', $status, $summary);
+        } elseif (
+            $status === 'healthy'
+            && in_array($previousStatus, ['warning', 'danger'], true)
+        ) {
+            $this->notificationService->notifyApi($check, 'recovered', $status, $summary);
+        }
 
         return [
             'check' => [
