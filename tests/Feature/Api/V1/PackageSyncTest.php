@@ -246,6 +246,68 @@ test('package sync rejects invalid schedules', function () {
         ]);
 });
 
+test('package sync requires body type when a request body is provided', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => null,
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body_type',
+        ]);
+});
+
+test('package sync limits request body size', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => str_repeat('a', 65536),
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body',
+        ]);
+});
+
+test('package sync allows request bodies at the configured size limit', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => str_repeat('a', 65535),
+                ],
+            ],
+        ]))
+        ->assertCreated();
+});
+
 test('package sync rejects non string schedules without throwing', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([

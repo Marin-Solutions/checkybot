@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
+use App\Rules\RequestBodyMaxSize;
 use App\Services\CheckybotControlService;
 use App\Services\IntervalParser;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -175,8 +176,8 @@ class CheckybotMcpController extends Controller
             'url' => ['required', 'string', 'max:1000'],
             'headers' => ['nullable', 'array'],
             'headers.*' => ['nullable', 'string', 'max:2000'],
-            'request_body_type' => ['nullable', 'string', Rule::in(['json', 'form', 'raw'])],
-            'request_body' => ['nullable'],
+            'request_body_type' => ['required_with:request_body', 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
+            'request_body' => ['nullable', new RequestBodyMaxSize],
             'expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
             'assertions' => ['nullable', 'array', 'max:50'],

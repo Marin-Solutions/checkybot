@@ -208,15 +208,18 @@ class MonitorApis extends Model
         $responseData = self::initializeResponseData();
         $httpConfig = self::getHttpConfiguration($data);
         $sanitizedUrl = self::sanitizeUrlForLogs($url);
+        $storedMonitor = isset($data['id']) && (! array_key_exists('headers', $data) || ! array_key_exists('request_body', $data))
+            ? self::find($data['id'])
+            : null;
 
         try {
             // Get headers from data or fetch from database
             $headers = self::normalizeHeaders(
-                $data['headers'] ?? (isset($data['id']) ? self::find($data['id'])?->headers : [])
+                array_key_exists('headers', $data) ? $data['headers'] : ($storedMonitor?->headers ?? [])
             );
             $responseData['request_headers'] = ApiMonitorEvidenceFormatter::maskHeaders($headers);
             $httpClient = self::configureHttpClient($httpConfig, $headers);
-            $request = $httpClient->send($method, $url, self::requestBodyOptions($data));
+            $request = $httpClient->send($method, $url, self::requestBodyOptions($data, $storedMonitor));
 
             $responseData = self::processSuccessfulResponse($request, $responseData, $startTime, $data, $sanitizedUrl, $method);
             $responseData = self::applyExpectedStatusAssertion($responseData, $expectedStatus);
@@ -421,15 +424,16 @@ class MonitorApis extends Model
         return $client;
     }
 
-    private static function requestBodyOptions(array $data): array
+    private static function requestBodyOptions(array $data, ?self $storedMonitor = null): array
     {
         $bodyType = self::normalizeRequestBodyType($data['request_body_type'] ?? null);
-        $body = $data['request_body'] ?? null;
+        $bodyProvided = array_key_exists('request_body', $data);
+        $body = $bodyProvided ? $data['request_body'] : null;
 
-        if ($body === null && isset($data['id'])) {
-            $monitor = self::query()->find($data['id']);
-            $bodyType = self::normalizeRequestBodyType($bodyType ?? $monitor?->request_body_type);
-            $body = $monitor?->request_body;
+        if (! $bodyProvided && isset($data['id'])) {
+            $storedMonitor ??= self::query()->find($data['id']);
+            $bodyType ??= self::normalizeRequestBodyType($storedMonitor?->request_body_type);
+            $body = $storedMonitor?->request_body;
         }
 
         if ($bodyType === null || $body === null || $body === '') {

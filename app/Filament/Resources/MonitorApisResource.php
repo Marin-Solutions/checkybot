@@ -125,6 +125,7 @@ class MonitorApisResource extends Resource
                                 'form' => 'Form URL Encoded',
                                 'raw' => 'Raw',
                             ])
+                            ->live()
                             ->native(false)
                             ->nullable()
                             ->helperText('Optional body format for POST, PUT, PATCH, and DELETE requests.'),
@@ -134,6 +135,7 @@ class MonitorApisResource extends Resource
                             ->maxLength(65535)
                             ->helperText('Use JSON for JSON and form bodies, or plain text for raw bodies.')
                             ->columnSpanFull()
+                            ->hidden(fn (Get $get): bool => blank($get('request_body_type')))
                             ->rule(function (Get $get): \Closure {
                                 return function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
                                     if (blank($value) || ! in_array($get('request_body_type'), ['json', 'form'], true)) {

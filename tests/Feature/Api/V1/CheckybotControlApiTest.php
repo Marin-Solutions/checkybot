@@ -422,6 +422,31 @@ test('control api rejects invalid schedules', function () {
         ->assertJsonValidationErrors('schedule');
 });
 
+test('control api requires body type when request body is provided', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/login-api', [
+            'name' => 'Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body' => ['probe' => true],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body_type');
+});
+
+test('control api limits request body size', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/login-api', [
+            'name' => 'Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body_type' => 'raw',
+            'request_body' => str_repeat('a', 65536),
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body');
+});
+
 test('mcp endpoint lists tools and calls the shared control surface', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -490,4 +515,27 @@ test('mcp endpoint rejects invalid schedules with a field validation error', fun
         ->assertOk()
         ->assertJsonPath('error.code', -32602)
         ->assertJsonPath('error.data.errors.schedule.0', 'The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
+});
+
+test('mcp endpoint requires body type when request body is provided', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 4,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'login-api',
+                    'name' => 'Login API',
+                    'url' => '/login',
+                    'method' => 'POST',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.request_body_type.0', 'The request body type field is required when request body is present.');
 });

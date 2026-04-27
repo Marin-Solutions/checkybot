@@ -117,6 +117,21 @@ test('monitor api returns empty headers when encrypted payload cannot be decrypt
     expect($monitor->fresh()->headers)->toBe([]);
 });
 
+test('monitor api returns null request body when encrypted payload cannot be decrypted', function () {
+    $monitor = MonitorApis::factory()->create([
+        'request_body_type' => 'json',
+        'request_body' => '{"password":"secret"}',
+    ]);
+
+    DB::table('monitor_apis')
+        ->where('id', $monitor->id)
+        ->update([
+            'request_body' => json_encode(['encrypted' => 'corrupted-payload']),
+        ]);
+
+    expect($monitor->fresh()->request_body)->toBeNull();
+});
+
 test('monitor api has data path for response extraction', function () {
     $monitor = MonitorApis::factory()->create([
         'data_path' => 'data.results.items',
@@ -258,6 +273,27 @@ test('test api sends configured form request bodies', function () {
         'method' => 'POST',
         'request_body_type' => 'form',
         'request_body' => '{"grant_type":"client_credentials","scope":"health"}',
+        'expected_status' => 200,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://api.example.test/token'
+        && $request->data() === [
+            'grant_type' => 'client_credentials',
+            'scope' => 'health',
+        ]);
+});
+
+test('test api sends url encoded form request bodies', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    MonitorApis::testApi([
+        'url' => 'https://api.example.test/token',
+        'method' => 'POST',
+        'request_body_type' => 'form',
+        'request_body' => 'grant_type=client_credentials&scope=health',
         'expected_status' => 200,
     ]);
 
