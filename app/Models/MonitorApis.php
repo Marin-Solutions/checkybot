@@ -367,7 +367,7 @@ class MonitorApis extends Model
 
     private function encryptHeaders(mixed $value): ?string
     {
-        if ($value === null || $value === '') {
+        if ($value === null || $value === '' || $value === []) {
             return null;
         }
 
