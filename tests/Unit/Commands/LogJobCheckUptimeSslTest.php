@@ -143,6 +143,21 @@ test('command does not dispatch jobs for websites with uptime check disabled', f
     Queue::assertNotPushed(LogUptimeSslJob::class);
 });
 
+test('command ignores websites with unsupported uptime intervals', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'uptime_check' => true,
+        'uptime_interval' => 2,
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    $this->artisan('website:log-uptime-ssl')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(LogUptimeSslJob::class);
+});
+
 test('command handles no websites', function () {
     Queue::fake();
 

@@ -8,13 +8,14 @@ use App\Services\HealthEventNotificationService;
 use App\Services\PackageHealthStatusService;
 use App\Services\SslCertificateService;
 use App\Support\UptimeTransportError;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
-class LogUptimeSslJob implements ShouldQueue
+class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
@@ -29,6 +30,13 @@ class LogUptimeSslJob implements ShouldQueue
         public Website $website,
         public bool $onDemand = false,
     ) {}
+
+    public function uniqueId(): string
+    {
+        $mode = ($this->onDemand ?? false) ? 'on-demand' : 'scheduled';
+
+        return "website-uptime-ssl:{$this->website->getKey()}:{$mode}";
+    }
 
     /**
      * Execute the job.

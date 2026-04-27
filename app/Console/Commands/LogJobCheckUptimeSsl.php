@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 
 class LogJobCheckUptimeSsl extends Command
 {
@@ -34,13 +35,16 @@ class LogJobCheckUptimeSsl extends Command
         Website::query()
             ->where('uptime_check', true)
             ->whereIn('uptime_interval', $this->intervals)
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('last_heartbeat_at')
+                    ->orWhereRaw($this->dueAtExpression(), [now()->startOfMinute()->toDateTimeString()]);
+            })
             ->chunkById(100, function ($websites) use (&$count): void {
-                $websites
-                    ->filter(fn (Website $website): bool => $this->isDue($website))
-                    ->each(function (Website $website) use (&$count): void {
-                        LogUptimeSslJob::dispatch($website)->onQueue('log-website');
-                        $count++;
-                    });
+                $websites->each(function (Website $website) use (&$count): void {
+                    LogUptimeSslJob::dispatch($website)->onQueue('log-website');
+                    $count++;
+                });
             });
 
         if ($count > 0) {
@@ -50,16 +54,13 @@ class LogJobCheckUptimeSsl extends Command
         return Command::SUCCESS;
     }
 
-    private function isDue(Website $website): bool
+    private function dueAtExpression(): string
     {
-        if ($website->last_heartbeat_at === null) {
-            return true;
-        }
-
-        return $website->last_heartbeat_at
-            ->copy()
-            ->startOfMinute()
-            ->addMinutes((int) $website->uptime_interval)
-            ->lte(now()->startOfMinute());
+        return match (Website::query()->getConnection()->getDriverName()) {
+            'sqlite' => "datetime(last_heartbeat_at, '+' || uptime_interval || ' minutes') <= ?",
+            'pgsql' => "last_heartbeat_at + (uptime_interval * interval '1 minute') <= ?",
+            'sqlsrv' => 'DATEADD(minute, uptime_interval, last_heartbeat_at) <= ?',
+            default => 'DATE_ADD(last_heartbeat_at, INTERVAL uptime_interval MINUTE) <= ?',
+        };
     }
 }
