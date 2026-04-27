@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
 use Illuminate\Console\Command;
+use Illuminate\Database\Eloquent\Builder;
 
 class LogJobCheckUptimeSsl extends Command
 {
@@ -29,28 +30,37 @@ class LogJobCheckUptimeSsl extends Command
      */
     public function handle(): int
     {
-        $currentMinute = now()->minute;
-        $matchingIntervals = array_filter($this->intervals, function ($interval) use ($currentMinute) {
-            return $currentMinute % $interval === 0;
-        });
+        $count = 0;
 
-        if (empty($matchingIntervals)) {
-            $this->info('No intervals match the current minute');
-
-            return Command::SUCCESS;
-        }
-
-        $websites = Website::where('uptime_check', true)
-            ->whereIn('uptime_interval', $matchingIntervals)
-            ->get();
-
-        if ($websites->isNotEmpty()) {
-            $websites->each(function ($website) {
-                LogUptimeSslJob::dispatch($website)->onQueue('log-website');
+        Website::query()
+            ->where('uptime_check', true)
+            ->whereIn('uptime_interval', $this->intervals)
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('last_heartbeat_at')
+                    ->orWhereRaw($this->dueAtExpression(), [now()->startOfMinute()->toDateTimeString()]);
+            })
+            ->chunkById(100, function ($websites) use (&$count): void {
+                $websites->each(function (Website $website) use (&$count): void {
+                    LogUptimeSslJob::dispatch($website)->onQueue('log-website');
+                    $count++;
+                });
             });
-            $this->info('Processing '.$websites->count().' websites for intervals: '.implode(', ', $matchingIntervals));
+
+        if ($count > 0) {
+            $this->info('Processing '.$count.' websites due for uptime checks.');
         }
 
         return Command::SUCCESS;
+    }
+
+    private function dueAtExpression(): string
+    {
+        return match (Website::query()->getConnection()->getDriverName()) {
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || uptime_interval || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', last_heartbeat_at) + (uptime_interval * interval '1 minute') <= ?",
+            'sqlsrv' => 'DATEADD(minute, uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?',
+            default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL uptime_interval MINUTE) <= ?",
+        };
     }
 }

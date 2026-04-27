@@ -79,7 +79,7 @@ test('website can enable uptime check', function () {
 });
 
 test('website can set uptime interval', function () {
-    $website = Website::factory()->create(['uptime_interval' => 60]);
+    $website = Website::factory()->create(['uptime_interval' => '60']);
 
     expect($website->uptime_interval)->toBe(60);
 });
