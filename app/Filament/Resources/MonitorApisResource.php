@@ -142,9 +142,13 @@ class MonitorApisResource extends Resource
                             ->helperText('Use JSON for JSON and form bodies, or plain text for raw bodies.')
                             ->columnSpanFull()
                             ->hidden(fn (Get $get): bool => blank($get('request_body_type')))
+                            // Laravel skips non-implicit rules for blank values; force whitespace through JSON validation.
+                            ->mutateStateForValidationUsing(fn (mixed $state): mixed => is_string($state) && $state !== '' && trim($state) === ''
+                                ? '__checkybot_whitespace_request_body__'
+                                : $state)
                             ->rule(function (Get $get): \Closure {
                                 return function (string $attribute, mixed $value, \Closure $fail) use ($get): void {
-                                    if (blank($value) || ! in_array($get('request_body_type'), ['json', 'form'], true)) {
+                                    if ($value === null || $value === '' || ! in_array($get('request_body_type'), ['json', 'form'], true)) {
                                         return;
                                     }
 
