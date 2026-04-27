@@ -17,6 +17,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -126,6 +127,11 @@ class MonitorApisResource extends Resource
                                 'raw' => 'Raw',
                             ])
                             ->live()
+                            ->afterStateUpdated(function (?string $state, Set $set): void {
+                                if (blank($state)) {
+                                    $set('request_body', null);
+                                }
+                            })
                             ->native(false)
                             ->nullable()
                             ->helperText('Optional body format for POST, PUT, PATCH, and DELETE requests.'),

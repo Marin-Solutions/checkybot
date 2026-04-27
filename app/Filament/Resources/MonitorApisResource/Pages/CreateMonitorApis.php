@@ -21,6 +21,10 @@ class CreateMonitorApis extends CreateRecord
     {
         $data['created_by'] = auth()->id();
 
+        if (blank($data['request_body_type'] ?? null)) {
+            $data['request_body'] = null;
+        }
+
         return $data;
     }
 

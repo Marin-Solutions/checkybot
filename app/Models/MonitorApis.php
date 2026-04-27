@@ -208,11 +208,11 @@ class MonitorApis extends Model
         $responseData = self::initializeResponseData();
         $httpConfig = self::getHttpConfiguration($data);
         $sanitizedUrl = self::sanitizeUrlForLogs($url);
-        $storedMonitor = isset($data['id']) && (! array_key_exists('headers', $data) || ! array_key_exists('request_body', $data))
-            ? self::find($data['id'])
-            : null;
-
         try {
+            $storedMonitor = isset($data['id']) && (! array_key_exists('headers', $data) || ! array_key_exists('request_body', $data))
+                ? self::find($data['id'])
+                : null;
+
             // Get headers from data or fetch from database
             $headers = self::normalizeHeaders(
                 array_key_exists('headers', $data) ? $data['headers'] : ($storedMonitor?->headers ?? [])
@@ -367,7 +367,7 @@ class MonitorApis extends Model
 
     private function encryptHeaders(mixed $value): ?string
     {
-        if ($value === null || $value === '' || $value === []) {
+        if ($value === null || $value === '') {
             return null;
         }
 
@@ -403,7 +403,7 @@ class MonitorApis extends Model
 
     private function encryptRequestBody(mixed $value): ?string
     {
-        if ($value === null || $value === '' || $value === []) {
+        if ($value === null || $value === '') {
             return null;
         }
 
@@ -460,7 +460,7 @@ class MonitorApis extends Model
             return $body;
         }
 
-        $decoded = json_decode($body, true);
+        $decoded = json_decode($body);
 
         return json_last_error() === JSON_ERROR_NONE ? $decoded : $body;
     }

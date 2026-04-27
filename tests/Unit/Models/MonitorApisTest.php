@@ -101,6 +101,21 @@ test('monitor api encrypts request body at rest', function () {
         ->and($monitor->request_body)->toBe('{"password":"secret"}');
 });
 
+test('monitor api preserves encrypted empty request bodies', function () {
+    $monitor = MonitorApis::factory()->create([
+        'request_body_type' => 'json',
+    ]);
+
+    $monitor->request_body = [];
+    $monitor->save();
+
+    $rawBody = $monitor->getRawOriginal('request_body');
+
+    expect($rawBody)->not->toBeNull()
+        ->and((string) $rawBody)->toContain('encrypted')
+        ->and($monitor->request_body)->toBe('[]');
+});
+
 test('monitor api returns empty headers when encrypted payload cannot be decrypted', function () {
     $monitor = MonitorApis::factory()->create([
         'headers' => [
@@ -261,6 +276,42 @@ test('test api sends configured json request bodies', function () {
         ]);
 
     expect($result['code'])->toBe(200);
+});
+
+test('test api preserves empty json object request bodies', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    MonitorApis::testApi([
+        'url' => 'https://api.example.test/object',
+        'http_method' => 'POST',
+        'request_body_type' => 'json',
+        'request_body' => '{}',
+        'expected_status' => 200,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://api.example.test/object'
+        && $request->body() === '{}');
+});
+
+test('test api preserves empty json array request bodies', function () {
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    MonitorApis::testApi([
+        'url' => 'https://api.example.test/array',
+        'http_method' => 'POST',
+        'request_body_type' => 'json',
+        'request_body' => '[]',
+        'expected_status' => 200,
+    ]);
+
+    Http::assertSent(fn ($request) => $request->method() === 'POST'
+        && $request->url() === 'https://api.example.test/array'
+        && $request->body() === '[]');
 });
 
 test('test api sends configured form request bodies', function () {

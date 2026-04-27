@@ -93,6 +93,55 @@ test('super admin can update api monitor execution settings', function () {
         ->and($monitor->save_failed_response)->toBeFalse();
 });
 
+test('clearing request body type clears the stored request body', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'request_body_type' => 'json',
+        'request_body' => '{"probe":true}',
+    ]);
+
+    Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
+        ->fillForm([
+            'request_body_type' => null,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $monitor->refresh();
+
+    expect($monitor->request_body_type)->toBeNull()
+        ->and($monitor->request_body)->toBeNull();
+});
+
+test('hidden request body is not persisted when body type is cleared', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'request_body_type' => 'json',
+        'request_body' => '{"probe":true}',
+    ]);
+
+    Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
+        ->fillForm([
+            'request_body_type' => null,
+            'request_body' => '{"stale":true}',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $monitor->refresh();
+
+    expect($monitor->request_body_type)->toBeNull()
+        ->and($monitor->request_body)->toBeNull();
+});
+
 test('super admin can filter to archived api monitors and keep their history visible', function () {
     $this->createResourcePermissions('MonitorApis');
 
