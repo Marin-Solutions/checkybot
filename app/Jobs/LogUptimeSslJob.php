@@ -33,9 +33,15 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 
     public function uniqueId(): string
     {
-        $mode = ($this->onDemand ?? false) ? 'on-demand' : 'scheduled';
+        $mode = $this->isOnDemand() ? 'on-demand' : 'scheduled';
 
         return "website-uptime-ssl:{$this->website->getKey()}:{$mode}";
+    }
+
+    private function isOnDemand(): bool
+    {
+        // Queued payloads serialized before this flag existed leave the typed property uninitialized.
+        return $this->onDemand ?? false;
     }
 
     /**
@@ -111,7 +117,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
             ]);
 
             // On-demand runs keep scheduler-owned live status and notification state unchanged.
-            if (! ($this->onDemand ?? false)) {
+            if (! $this->isOnDemand()) {
                 $this->website->forceFill([
                     'current_status' => $status,
                     'last_heartbeat_at' => now(),
