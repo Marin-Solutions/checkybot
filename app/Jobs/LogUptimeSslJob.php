@@ -38,6 +38,11 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         return "website-uptime-ssl:{$this->website->getKey()}:{$mode}";
     }
 
+    public function uniqueFor(): int
+    {
+        return $this->website->uptime_interval * 60;
+    }
+
     private function isOnDemand(): bool
     {
         // Queued payloads serialized before this flag existed leave the typed property uninitialized.

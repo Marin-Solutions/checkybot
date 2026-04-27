@@ -34,6 +34,16 @@ test('on-demand uptime jobs use a separate unique key', function () {
         ->not->toBe($scheduledJob->uniqueId());
 });
 
+test('uptime job unique locks expire after the website interval', function () {
+    $website = Website::factory()->create([
+        'uptime_interval' => 60,
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+
+    expect($job->uniqueFor())->toBe(3600);
+});
+
 test('job creates log history for successful check', function () {
     Http::fake([
         '*' => Http::response('', 200),
