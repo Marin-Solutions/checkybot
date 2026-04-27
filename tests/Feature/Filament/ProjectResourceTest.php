@@ -209,6 +209,7 @@ test('application detail shows package sync status metadata', function () {
         'name' => 'Checkout App',
         'created_by' => $user->id,
         'package_key' => 'checkout-app',
+        'package_version' => '1.2.3',
         'base_url' => 'https://checkout.example.com',
         'repository' => 'marin-solutions/checkout',
         'last_synced_at' => $syncedAt,
@@ -264,11 +265,33 @@ test('application detail shows package sync status metadata', function () {
         ->assertSuccessful()
         ->assertSee('Package Sync Status')
         ->assertSee($syncedAt->toDayDateTimeString())
+        ->assertSee('SDK Version')
+        ->assertSee('1.2.3')
         ->assertSee('checkout-app')
         ->assertSee('https://checkout.example.com')
         ->assertSee('marin-solutions/checkout')
         ->assertSeeInOrder(['Synced Checks', '3'])
         ->assertSeeInOrder(['Synced Components', '2']);
+});
+
+test('application detail shows sdk version for registered applications before package sync', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Registered App',
+        'created_by' => $user->id,
+        'package_key' => null,
+        'package_version' => '1.2.3',
+        'last_synced_at' => null,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Package Sync Status')
+        ->assertSeeInOrder(['Last Synced', 'Never'])
+        ->assertSeeInOrder(['SDK Version', '1.2.3'])
+        ->assertSeeInOrder(['Package Key', '-']);
 });
 
 test('application detail hides package sync status for manual applications', function () {

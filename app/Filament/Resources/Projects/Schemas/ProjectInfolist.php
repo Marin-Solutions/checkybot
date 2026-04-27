@@ -48,13 +48,17 @@ class ProjectInfolist
                     ])->columns(2),
                 Section::make('Package Sync Status')
                     ->description('Latest package sync metadata for diagnosing stale or incomplete application integrations.')
-                    ->visible(fn (Project $record): bool => filled($record->package_key))
+                    ->visible(fn (Project $record): bool => filled($record->package_key) || filled($record->package_version))
                     ->schema([
                         TextEntry::make('last_synced_at')
                             ->label('Last Synced')
                             ->state(fn (Project $record): ?string => $record->last_synced_at?->toDayDateTimeString())
                             ->default('Never')
                             ->hint(fn (Project $record): ?string => $record->last_synced_at?->diffForHumans()),
+                        TextEntry::make('package_version')
+                            ->label('SDK Version')
+                            ->default('-')
+                            ->copyable(),
                         TextEntry::make('package_key')
                             ->label('Package Key')
                             ->default('-')
