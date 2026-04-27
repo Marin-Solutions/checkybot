@@ -290,6 +290,56 @@ test('package sync limits request body size', function () {
         ]);
 });
 
+test('package sync rejects unstructured json and form request bodies', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'json-login',
+                    'type' => 'api',
+                    'name' => 'JSON Login API',
+                    'method' => 'POST',
+                    'url' => '/api/login',
+                    'request_body_type' => 'json',
+                    'request_body' => 'email=monitor@example.com',
+                ],
+                [
+                    'key' => 'form-token',
+                    'type' => 'api',
+                    'name' => 'Form Token API',
+                    'method' => 'POST',
+                    'url' => '/api/token',
+                    'request_body_type' => 'form',
+                    'request_body' => 'grant_type=client_credentials',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body',
+            'checks.1.request_body',
+        ]);
+});
+
+test('package sync accepts raw string request bodies', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'raw-search',
+                    'type' => 'api',
+                    'name' => 'Raw Search API',
+                    'method' => 'POST',
+                    'url' => '/api/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => 'ids=1,2,3',
+                ],
+            ],
+        ]))
+        ->assertCreated();
+});
+
 test('package sync allows request bodies at the configured size limit', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([

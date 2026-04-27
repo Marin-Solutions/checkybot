@@ -491,6 +491,36 @@ test('limits api check request body size', function () {
         ->assertJsonValidationErrors(['api_checks.0.request_body']);
 });
 
+test('rejects unstructured json and form api check request bodies', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'json-login',
+                    'url' => 'https://api.example.com/login',
+                    'interval' => '5m',
+                    'request_body_type' => 'json',
+                    'request_body' => 'email=monitor@example.com',
+                ],
+                [
+                    'name' => 'form-token',
+                    'url' => 'https://api.example.com/token',
+                    'interval' => '5m',
+                    'request_body_type' => 'form',
+                    'request_body' => 'grant_type=client_credentials',
+                ],
+            ],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'api_checks.0.request_body',
+            'api_checks.1.request_body',
+        ]);
+});
+
 test('syncs multiple check types atomically', function () {
     $this->syncService->syncChecks($this->project, [
         'uptime_checks' => [

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Rules\RequestBodyMaxSize;
+use App\Rules\StructuredRequestBody;
 use Illuminate\Foundation\Http\FormRequest;
 
 class SyncProjectChecksRequest extends FormRequest
@@ -38,7 +39,7 @@ class SyncProjectChecksRequest extends FormRequest
             'api_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
             'api_checks.*.headers' => ['array'],
             'api_checks.*.request_body_type' => ['required_with:api_checks.*.request_body', 'nullable', 'in:json,form,raw'],
-            'api_checks.*.request_body' => ['nullable', new RequestBodyMaxSize],
+            'api_checks.*.request_body' => ['nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'api_checks.*.assertions' => ['array'],
             'api_checks.*.assertions.*.data_path' => ['required', 'string'],
             'api_checks.*.assertions.*.assertion_type' => ['required', 'in:exists,not_exists,type_check,value_compare,array_length,regex_match'],
