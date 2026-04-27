@@ -40,7 +40,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 
     public function uniqueFor(): int
     {
-        return $this->website->uptime_interval * 60;
+        return ($this->website->uptime_interval * 60) + 3600;
     }
 
     private function isOnDemand(): bool
