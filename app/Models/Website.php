@@ -44,6 +44,7 @@ class Website extends Model
 
     protected $casts = [
         'uptime_check' => 'boolean',
+        'uptime_interval' => 'integer',
         'ssl_check' => 'boolean',
         'outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',

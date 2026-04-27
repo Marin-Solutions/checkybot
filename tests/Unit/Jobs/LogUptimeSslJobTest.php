@@ -6,11 +6,43 @@ use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Mockery\MockInterface;
+
+test('scheduled uptime jobs are unique per website', function () {
+    $website = Website::factory()->create();
+
+    $job = new LogUptimeSslJob($website);
+
+    expect($job)
+        ->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($job->uniqueId())->toBe("website-uptime-ssl:{$website->id}:scheduled");
+});
+
+test('on-demand uptime jobs use a separate unique key', function () {
+    $website = Website::factory()->create();
+
+    $scheduledJob = new LogUptimeSslJob($website);
+    $onDemandJob = new LogUptimeSslJob($website, onDemand: true);
+
+    expect($onDemandJob->uniqueId())
+        ->toBe("website-uptime-ssl:{$website->id}:on-demand")
+        ->not->toBe($scheduledJob->uniqueId());
+});
+
+test('uptime job unique locks extend beyond the website interval', function () {
+    $website = Website::factory()->create([
+        'uptime_interval' => 1,
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+
+    expect($job->uniqueFor())->toBe(3660);
+});
 
 test('job creates log history for successful check', function () {
     Http::fake([
