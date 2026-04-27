@@ -57,10 +57,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
                 : $this->website->ssl_expiry_reminder_sent_at,
         ]);
 
-        $this->website->refresh();
-
         if (! $this->shouldSendReminder($newExpiryDate)) {
-
             return;
         }
 
@@ -120,7 +117,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
     {
         $daysLeft = Carbon::today()->diffInDays($expiryDate->copy()->startOfDay(), false);
 
-        return in_array((int) $daysLeft, [14, 7, 3, 2, 1], true) || $daysLeft < 0;
+        return in_array((int) $daysLeft, [14, 7, 3, 2, 1, 0], true) || $daysLeft < 0;
     }
 
     private function reminderRecentlySent(): bool
