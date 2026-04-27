@@ -32,6 +32,14 @@ class StructuredRequestBody implements DataAwareRule, ValidationRule
 
         $bodyType = Arr::get($this->data, preg_replace('/request_body$/', 'request_body_type', $attribute) ?? '');
 
+        if ($bodyType === 'raw') {
+            if (! is_string($value)) {
+                $fail("The {$attribute} field must be a string for raw request bodies.");
+            }
+
+            return;
+        }
+
         if (! in_array($bodyType, ['json', 'form'], true)) {
             return;
         }

@@ -481,6 +481,19 @@ test('control api rejects unstructured json and form request bodies', function (
         ->assertJsonValidationErrors('request_body');
 });
 
+test('control api rejects non string raw request bodies', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/raw-login-api', [
+            'name' => 'Raw Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body_type' => 'raw',
+            'request_body' => ['probe' => true],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body');
+});
+
 test('mcp endpoint lists tools and calls the shared control surface', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -617,4 +630,28 @@ test('mcp endpoint rejects unstructured json request body', function () {
         ->assertOk()
         ->assertJsonPath('error.code', -32602)
         ->assertJsonPath('error.data.errors.request_body.0', 'The request_body field must be a JSON object or array for json request bodies.');
+});
+
+test('mcp endpoint rejects non string raw request body', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 7,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'raw-login-api',
+                    'name' => 'Raw Login API',
+                    'url' => '/login',
+                    'method' => 'POST',
+                    'request_body_type' => 'raw',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.request_body.0', 'The request_body field must be a string for raw request bodies.');
 });

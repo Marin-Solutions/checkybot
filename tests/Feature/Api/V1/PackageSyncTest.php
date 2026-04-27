@@ -360,6 +360,28 @@ test('package sync accepts raw string request bodies', function () {
         ->assertCreated();
 });
 
+test('package sync rejects non string raw request bodies', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'raw-search',
+                    'type' => 'api',
+                    'name' => 'Raw Search API',
+                    'method' => 'POST',
+                    'url' => '/api/search',
+                    'request_body_type' => 'raw',
+                    'request_body' => ['ids' => [1, 2, 3]],
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body',
+        ]);
+});
+
 test('package sync allows request bodies at the configured size limit', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([

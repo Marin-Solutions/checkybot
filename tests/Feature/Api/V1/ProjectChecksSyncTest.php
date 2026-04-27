@@ -538,6 +538,26 @@ test('rejects unstructured json and form api check request bodies', function () 
         ]);
 });
 
+test('rejects non string raw api check request bodies', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'raw-login-api',
+                    'url' => 'https://api.example.com/login',
+                    'interval' => '5m',
+                    'request_body_type' => 'raw',
+                    'request_body' => ['probe' => true],
+                ],
+            ],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['api_checks.0.request_body']);
+});
+
 test('syncs multiple check types atomically', function () {
     $this->syncService->syncChecks($this->project, [
         'uptime_checks' => [
