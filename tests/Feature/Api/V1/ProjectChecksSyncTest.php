@@ -469,6 +469,23 @@ test('requires body type when an api check request body is provided', function (
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['api_checks.0.request_body_type']);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'empty-login-api',
+                    'url' => 'https://api.example.com/login',
+                    'interval' => '5m',
+                    'request_body' => [],
+                ],
+            ],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['api_checks.0.request_body_type']);
 });
 
 test('limits api check request body size', function () {

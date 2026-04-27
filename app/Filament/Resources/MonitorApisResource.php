@@ -148,10 +148,10 @@ class MonitorApisResource extends Resource
                                         return;
                                     }
 
-                                    json_decode((string) $value, true);
+                                    $decoded = json_decode((string) $value, true);
 
-                                    if (json_last_error() !== JSON_ERROR_NONE) {
-                                        $fail('The request body must be valid JSON for JSON or form body types.');
+                                    if (json_last_error() !== JSON_ERROR_NONE || ! is_array($decoded)) {
+                                        $fail('The request body must be a JSON object or array for JSON or form body types.');
                                     }
                                 };
                             }),

@@ -266,6 +266,26 @@ test('package sync requires body type when a request body is provided', function
         ->assertJsonValidationErrors([
             'checks.0.request_body_type',
         ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'empty-json-login',
+                    'type' => 'api',
+                    'name' => 'Empty JSON login API',
+                    'method' => 'POST',
+                    'url' => '/api/login',
+                    'request_body_type' => null,
+                    'request_body' => [],
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.request_body_type',
+        ]);
 });
 
 test('package sync limits request body size', function () {

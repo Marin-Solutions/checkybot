@@ -432,6 +432,16 @@ test('control api requires body type when request body is provided', function ()
         ])
         ->assertUnprocessable()
         ->assertJsonValidationErrors('request_body_type');
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/empty-login-api', [
+            'name' => 'Empty Login API',
+            'url' => '/login',
+            'method' => 'POST',
+            'request_body' => [],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('request_body_type');
 });
 
 test('control api limits request body size', function () {
@@ -562,13 +572,34 @@ test('mcp endpoint requires body type when request body is provided', function (
         ->assertOk()
         ->assertJsonPath('error.code', -32602)
         ->assertJsonPath('error.data.errors.request_body_type.0', 'The request body type field is required when request body is present.');
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 5,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'empty-login-api',
+                    'name' => 'Empty Login API',
+                    'url' => '/login',
+                    'method' => 'POST',
+                    'request_body' => [],
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.request_body_type.0', 'The request body type field is required when request body is present.');
 });
 
 test('mcp endpoint rejects unstructured json request body', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
             'jsonrpc' => '2.0',
-            'id' => 5,
+            'id' => 6,
             'method' => 'tools/call',
             'params' => [
                 'name' => 'upsert_check',

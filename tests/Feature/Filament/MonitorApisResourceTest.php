@@ -142,6 +142,40 @@ test('hidden request body is not persisted when body type is cleared', function 
         ->and($monitor->request_body)->toBeNull();
 });
 
+test('super admin cannot create json api monitor with a scalar request body', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Scalar JSON API',
+            'url' => 'https://example.com/health',
+            'http_method' => 'POST',
+            'request_body_type' => 'json',
+            'request_body' => '42',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['request_body']);
+});
+
+test('super admin cannot create form api monitor with a null request body scalar', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Null Form API',
+            'url' => 'https://example.com/token',
+            'http_method' => 'POST',
+            'request_body_type' => 'form',
+            'request_body' => 'null',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['request_body']);
+});
+
 test('super admin can filter to archived api monitors and keep their history visible', function () {
     $this->createResourcePermissions('MonitorApis');
 
