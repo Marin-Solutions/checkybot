@@ -84,13 +84,17 @@ class NotificationSetting extends Model
 
     public function sendSslNotification(?string $message = null, array $data = []): void
     {
-        switch ($this->channel_type) {
-            case NotificationChannelTypesEnum::MAIL->name:
+        $channelType = $this->channel_type instanceof NotificationChannelTypesEnum
+            ? $this->channel_type
+            : NotificationChannelTypesEnum::tryFrom((string) $this->channel_type);
+
+        switch ($channelType) {
+            case NotificationChannelTypesEnum::MAIL:
                 $this->sendEmail($data, EmailReminderSsl::class);
 
                 break;
 
-            case NotificationChannelTypesEnum::WEBHOOK->name:
+            case NotificationChannelTypesEnum::WEBHOOK:
                 $descriptionText = 'Your SSL certificate for '.$data['url'].' is nearing expiration in '.$data['daysLeft'].' days. Please renew your SSL certificate as soon as possible to avoid security issues. Best regards, Your team '.config('app.name');
 
                 $response = $this->channel()->sendWebhookNotification([
@@ -108,7 +112,11 @@ class NotificationSetting extends Model
                 break;
 
             default:
-                Log::error("Unknown channel type: {$this->channel_type}");
+                $unknownChannelType = $this->channel_type instanceof NotificationChannelTypesEnum
+                    ? $this->channel_type->value
+                    : (string) $this->channel_type;
+
+                Log::error('Unknown channel type: '.$unknownChannelType);
         }
     }
 

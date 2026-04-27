@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\CheckSslExpiryDateJob;
+use App\Mail\EmailReminderSsl;
 use App\Models\NotificationSetting;
 use App\Models\Website;
 use App\Services\SslCertificateService;
@@ -173,4 +174,99 @@ test('job preserves custom tls ports during ssl expiry lookup', function () {
     $job->handle(app(SslCertificateService::class));
 
     expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isFuture())->toBeTrue();
+});
+
+test('job persists expired ssl expiry date before sending reminder and throttles repeats', function () {
+    Mail::fake();
+
+    $expiredDate = now()->subDays(3);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($expiredDate) {
+        $mock->shouldReceive('extractHost')
+            ->twice()
+            ->with('https://expired.example')
+            ->andReturn('expired.example');
+
+        $mock->shouldReceive('extractPort')
+            ->twice()
+            ->with('https://expired.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->twice()
+            ->with('expired.example', 443)
+            ->andReturn($expiredDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://expired.example',
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => null,
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->ssl_expiry_date)->not->toBeNull();
+    expect(Carbon::parse($website->ssl_expiry_date)->isSameDay($expiredDate))->toBeTrue();
+    expect($website->ssl_expiry_reminder_sent_at)->not->toBeNull();
+
+    Mail::assertSent(EmailReminderSsl::class, 1);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    Mail::assertSent(EmailReminderSsl::class, 1);
+});
+
+test('job persists future ssl expiry date without sending reminder outside reminder window', function () {
+    Mail::fake();
+
+    $futureDate = now()->addDays(45);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($futureDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://healthy.example')
+            ->andReturn('healthy.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://healthy.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('healthy.example', 443)
+            ->andReturn($futureDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://healthy.example',
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => null,
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->ssl_expiry_date)->not->toBeNull();
+    expect(Carbon::parse($website->ssl_expiry_date)->isSameDay($futureDate))->toBeTrue();
+    expect($website->ssl_expiry_reminder_sent_at)->toBeNull();
+
+    Mail::assertNothingSent();
 });

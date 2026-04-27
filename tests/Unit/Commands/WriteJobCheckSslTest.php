@@ -243,6 +243,21 @@ test('command handles ssl expired multiple days ago', function () {
     Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
 });
 
+test('command does not dispatch jobs for ssl reminders sent in the last day', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'ssl_expiry_date' => today()->subDays(10),
+        'ssl_expiry_reminder_sent_at' => now()->subHours(12),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(CheckSslExpiryDateJob::class);
+});
+
 test('command handles ssl expiring today', function () {
     Queue::fake();
 

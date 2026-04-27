@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Website;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -44,10 +45,27 @@ class CheckSslExpiryDateJob implements ShouldQueue
             return;
         }
 
-        $currentExpiryDate = Carbon::parse($this->website->ssl_expiry_date);
+        $newExpiryDate = Carbon::parse($newExpiryDate);
+        $currentExpiryDate = $this->website->ssl_expiry_date
+            ? Carbon::parse($this->website->ssl_expiry_date)
+            : null;
 
-        if ($newExpiryDate->gt($currentExpiryDate)) {
-            $this->website->update(['ssl_expiry_date' => $newExpiryDate]);
+        $this->website->update([
+            'ssl_expiry_date' => $newExpiryDate,
+            'ssl_expiry_reminder_sent_at' => $this->expiryDateChanged($currentExpiryDate, $newExpiryDate)
+                ? null
+                : $this->website->ssl_expiry_reminder_sent_at,
+        ]);
+
+        $this->website->refresh();
+
+        if (! $this->shouldSendReminder($newExpiryDate)) {
+
+            return;
+        }
+
+        if ($this->reminderRecentlySent()) {
+            Log::info('SSL expiry reminder throttled for website: '.$this->website->url);
 
             return;
         }
@@ -67,7 +85,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
             $individualNotifications = $this->website->notificationChannels
                 ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name]);
 
-            if (! empty($individualNotifications)) {
+            if ($individualNotifications->isNotEmpty()) {
                 $individualNotifications->each(function (NotificationSetting $notification) use ($data) {
                     $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
                 });
@@ -77,7 +95,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
             $globalNotifications = $this->website->user->globalNotificationChannels
                 ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name]);
 
-            if (! empty($globalNotifications)) {
+            if ($globalNotifications->isNotEmpty()) {
                 $globalNotifications->each(function (NotificationSetting $notification) use ($data) {
                     $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
                 });
@@ -86,8 +104,31 @@ class CheckSslExpiryDateJob implements ShouldQueue
             }
 
             Log::info('SSL expiry reminder sent for website: '.$this->website->url);
+
+            $this->website->update(['ssl_expiry_reminder_sent_at' => now()]);
         } else {
             Log::warning('User not found for website: '.$this->website->url);
         }
+    }
+
+    private function expiryDateChanged(?CarbonInterface $currentExpiryDate, CarbonInterface $newExpiryDate): bool
+    {
+        return $currentExpiryDate === null || ! $currentExpiryDate->isSameDay($newExpiryDate);
+    }
+
+    private function shouldSendReminder(CarbonInterface $expiryDate): bool
+    {
+        $daysLeft = Carbon::today()->diffInDays($expiryDate->copy()->startOfDay(), false);
+
+        return in_array((int) $daysLeft, [14, 7, 3, 2, 1], true) || $daysLeft < 0;
+    }
+
+    private function reminderRecentlySent(): bool
+    {
+        if ($this->website->ssl_expiry_reminder_sent_at === null) {
+            return false;
+        }
+
+        return Carbon::parse($this->website->ssl_expiry_reminder_sent_at)->gt(now()->subDay());
     }
 }

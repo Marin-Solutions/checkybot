@@ -50,6 +50,10 @@ class WriteJobCheckSsl extends Command
         $websites = Website::where('ssl_check', '1')
             ->get()
             ->filter(function (Website $website) use ($days, $now) {
+                if ($website->ssl_expiry_reminder_sent_at?->gt(now()->subDay())) {
+                    return false;
+                }
+
                 if ($website->ssl_expiry_date === null) {
                     return true;
                 }
