@@ -88,6 +88,15 @@ test('monitor api encrypts headers at rest', function () {
         ->and($monitor->headers['Authorization'])->toBe('Bearer token123');
 });
 
+test('monitor api stores empty headers as null', function () {
+    $monitor = MonitorApis::factory()->create([
+        'headers' => [],
+    ]);
+
+    expect($monitor->getRawOriginal('headers'))->toBeNull()
+        ->and($monitor->headers)->toBe([]);
+});
+
 test('monitor api encrypts request body at rest', function () {
     $monitor = MonitorApis::factory()->create([
         'request_body_type' => 'json',
