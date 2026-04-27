@@ -47,6 +47,7 @@ class Website extends Model
         'ssl_check' => 'boolean',
         'outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
+        'ssl_expiry_reminder_sent_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
         'stale_at' => 'datetime',
         'silenced_until' => 'datetime',
