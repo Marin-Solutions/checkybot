@@ -29,28 +29,37 @@ class LogJobCheckUptimeSsl extends Command
      */
     public function handle(): int
     {
-        $currentMinute = now()->minute;
-        $matchingIntervals = array_filter($this->intervals, function ($interval) use ($currentMinute) {
-            return $currentMinute % $interval === 0;
-        });
+        $count = 0;
 
-        if (empty($matchingIntervals)) {
-            $this->info('No intervals match the current minute');
-
-            return Command::SUCCESS;
-        }
-
-        $websites = Website::where('uptime_check', true)
-            ->whereIn('uptime_interval', $matchingIntervals)
-            ->get();
-
-        if ($websites->isNotEmpty()) {
-            $websites->each(function ($website) {
-                LogUptimeSslJob::dispatch($website)->onQueue('log-website');
+        Website::query()
+            ->where('uptime_check', true)
+            ->whereIn('uptime_interval', $this->intervals)
+            ->chunkById(100, function ($websites) use (&$count): void {
+                $websites
+                    ->filter(fn (Website $website): bool => $this->isDue($website))
+                    ->each(function (Website $website) use (&$count): void {
+                        LogUptimeSslJob::dispatch($website)->onQueue('log-website');
+                        $count++;
+                    });
             });
-            $this->info('Processing '.$websites->count().' websites for intervals: '.implode(', ', $matchingIntervals));
+
+        if ($count > 0) {
+            $this->info('Processing '.$count.' websites due for uptime checks.');
         }
 
         return Command::SUCCESS;
+    }
+
+    private function isDue(Website $website): bool
+    {
+        if ($website->last_heartbeat_at === null) {
+            return true;
+        }
+
+        return $website->last_heartbeat_at
+            ->copy()
+            ->startOfMinute()
+            ->addMinutes((int) $website->uptime_interval)
+            ->lte(now()->startOfMinute());
     }
 }
