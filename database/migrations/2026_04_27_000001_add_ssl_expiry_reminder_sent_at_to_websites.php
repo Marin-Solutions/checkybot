@@ -1,0 +1,22 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('websites', function (Blueprint $table) {
+            $table->timestamp('ssl_expiry_reminder_sent_at')->nullable()->after('ssl_expiry_date');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('websites', function (Blueprint $table) {
+            $table->dropColumn('ssl_expiry_reminder_sent_at');
+        });
+    }
+};

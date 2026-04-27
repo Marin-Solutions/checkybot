@@ -44,7 +44,7 @@ class WriteJobCheckSsl extends Command
 
     protected function sslExpiryDay(): Collection
     {
-        $days = [14, 7, 3, 2, 1];
+        $days = [14, 7, 3, 2, 1, 0];
         $now = Carbon::today();
 
         $websites = Website::where('ssl_check', '1')
@@ -57,7 +57,7 @@ class WriteJobCheckSsl extends Command
                 $expiryDate = Carbon::parse($website->ssl_expiry_date);
                 $diffInDays = $now->diffInDays($expiryDate, false);
 
-                return in_array($diffInDays, $days) || $diffInDays < 0;
+                return in_array((int) $diffInDays, $days, true) || $diffInDays < 0;
             })
             ->values();
 

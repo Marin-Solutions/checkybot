@@ -1,8 +1,10 @@
 <?php
 
+use App\Mail\EmailReminderSsl;
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
+use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 
@@ -24,6 +26,59 @@ test('send test notification dispatches sample email when channel type is mail',
         return $mail->hasTo('ops@example.com')
             && $mail->event === 'test_notification'
             && $mail->status === 'ok';
+    });
+});
+
+test('send ssl notification dispatches reminder email when channel type is mail', function () {
+    Mail::fake();
+
+    $user = User::factory()->create();
+    $setting = NotificationSetting::factory()->email()->create([
+        'address' => 'ops@example.com',
+    ]);
+
+    $setting->sendSslNotification(data: [
+        'user' => $user,
+        'daysLeft' => 0,
+        'url' => 'https://example.com',
+    ]);
+
+    Mail::assertSent(EmailReminderSsl::class, function (EmailReminderSsl $mail) {
+        return $mail->hasTo('ops@example.com');
+    });
+});
+
+test('send ssl notification triggers webhook when channel type is webhook', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $user = User::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'method' => 'POST',
+        'url' => 'https://example.com/ssl-webhook',
+        'request_body' => [
+            'message' => '{message}',
+            'description' => '{description}',
+        ],
+    ]);
+
+    $setting = NotificationSetting::factory()->webhook()->create([
+        'notification_channel_id' => $channel->id,
+    ]);
+
+    $setting->sendSslNotification(data: [
+        'user' => $user,
+        'daysLeft' => 0,
+        'url' => 'https://example.com',
+    ]);
+
+    Http::assertSent(function ($request) {
+        $body = $request->data();
+
+        return $request->url() === 'https://example.com/ssl-webhook'
+            && ($body['message'] ?? '') === 'Action Required: Renew Your SSL Certificate.'
+            && str_contains($body['description'] ?? '', 'https://example.com');
     });
 });
 

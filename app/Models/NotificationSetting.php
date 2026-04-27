@@ -82,18 +82,28 @@ class NotificationSetting extends Model
         $query->where('flag_active', 1);
     }
 
-    public function sendSslNotification(?string $message = null, array $data = []): void
+    public function sendSslNotification(?string $message = null, array $data = []): bool
     {
-        switch ($this->channel_type) {
-            case NotificationChannelTypesEnum::MAIL->name:
-                $this->sendEmail($data, EmailReminderSsl::class);
+        $channelType = $this->resolveChannelType();
 
-                break;
+        switch ($channelType) {
+            case NotificationChannelTypesEnum::MAIL:
+                return $this->sendEmail($data, EmailReminderSsl::class);
 
-            case NotificationChannelTypesEnum::WEBHOOK->name:
+            case NotificationChannelTypesEnum::WEBHOOK:
+                $channel = $this->channel;
+
+                if (! $channel) {
+                    Log::error('SSL webhook notification failed because the channel is missing', [
+                        'notification_setting_id' => $this->id,
+                    ]);
+
+                    return false;
+                }
+
                 $descriptionText = 'Your SSL certificate for '.$data['url'].' is nearing expiration in '.$data['daysLeft'].' days. Please renew your SSL certificate as soon as possible to avoid security issues. Best regards, Your team '.config('app.name');
 
-                $response = $this->channel()->sendWebhookNotification([
+                $response = $channel->sendWebhookNotification([
                     'message' => 'Action Required: Renew Your SSL Certificate.',
                     'description' => $descriptionText,
                 ]);
@@ -101,20 +111,28 @@ class NotificationSetting extends Model
                 $code = (int) ($response['code'] ?? 0);
                 if ($code >= 200 && $code < 300) {
                     Log::info('Webhook Notification successfully sent to '.$response['url']);
+
+                    return true;
                 } else {
                     Log::error('Webhook Notification failed sent', ['url' => $response['url'], 'code' => $code]);
+
+                    return false;
                 }
 
-                break;
-
             default:
-                Log::error("Unknown channel type: {$this->channel_type}");
+                $unknownChannelType = $channelType?->value ?? (string) $this->channel_type;
+
+                Log::error('Unknown channel type: '.$unknownChannelType);
+
+                return false;
         }
     }
 
-    private function sendEmail($data, $MailClass): void
+    private function sendEmail($data, $MailClass): bool
     {
         Mail::to($this->address)->send(new $MailClass($data));
+
+        return true;
     }
 
     public function channel(): \Illuminate\Database\Eloquent\Relations\BelongsTo
