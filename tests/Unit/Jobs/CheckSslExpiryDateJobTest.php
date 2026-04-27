@@ -2,6 +2,7 @@
 
 use App\Jobs\CheckSslExpiryDateJob;
 use App\Mail\EmailReminderSsl;
+use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\Website;
 use App\Services\SslCertificateService;
@@ -314,4 +315,57 @@ test('job sends ssl reminder on the expiry day', function () {
     expect($website->fresh()->ssl_expiry_reminder_sent_at)->not->toBeNull();
 
     Mail::assertSent(EmailReminderSsl::class, 1);
+});
+
+test('job does not throttle ssl reminders when all webhook deliveries fail', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => false], 500),
+    ]);
+
+    $expiredDate = now()->subDay();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($expiredDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://webhook-failure.example')
+            ->andReturn('webhook-failure.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://webhook-failure.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('webhook-failure.example', 443)
+            ->andReturn($expiredDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://webhook-failure.example',
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => null,
+    ]);
+
+    $channel = NotificationChannels::factory()->create([
+        'method' => 'POST',
+        'url' => 'https://example.com/ssl-webhook',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->webhook()
+        ->create([
+            'user_id' => $website->created_by,
+            'notification_channel_id' => $channel->id,
+        ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->ssl_expiry_date)->not->toBeNull();
+    expect($website->ssl_expiry_reminder_sent_at)->toBeNull();
 });

@@ -78,26 +78,37 @@ class CheckSslExpiryDateJob implements ShouldQueue
                 'url' => $this->website->url,
             ];
 
+            $delivered = false;
+
             /* Individual website notification */
-            $individualNotifications = $this->website->notificationChannels
-                ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name]);
+            $individualNotifications = $this->website->notificationChannels()
+                ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name])
+                ->get();
 
             if ($individualNotifications->isNotEmpty()) {
-                $individualNotifications->each(function (NotificationSetting $notification) use ($data) {
-                    $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
+                $individualNotifications->each(function (NotificationSetting $notification) use ($data, &$delivered) {
+                    $delivered = $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data) || $delivered;
                 });
             }
 
             /* Global Notification */
-            $globalNotifications = $this->website->user->globalNotificationChannels
-                ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name]);
+            $globalNotifications = $this->website->user->globalNotificationChannels()
+                ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name])
+                ->get();
 
             if ($globalNotifications->isNotEmpty()) {
-                $globalNotifications->each(function (NotificationSetting $notification) use ($data) {
-                    $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data);
+                $globalNotifications->each(function (NotificationSetting $notification) use ($data, &$delivered) {
+                    $delivered = $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data) || $delivered;
                 });
-            } else {
+            } elseif ($individualNotifications->isEmpty()) {
                 Mail::to($user)->send(new EmailReminderSsl($data));
+                $delivered = true;
+            }
+
+            if (! $delivered) {
+                Log::warning('SSL expiry reminder had no successful deliveries for website: '.$this->website->url);
+
+                return;
             }
 
             Log::info('SSL expiry reminder sent for website: '.$this->website->url);
