@@ -429,6 +429,7 @@ test('sync command registers a guided setup application before syncing package d
             'name' => 'Checkout App',
             'environment' => 'production',
             'identity_endpoint' => 'https://checkout.example.com',
+            'package_version' => '0.1.0',
         ])
         ->and($fakeClient->projectIdAtSync)->toBe('321')
         ->and($fakeClient->checkPayloads)->toHaveCount(1)

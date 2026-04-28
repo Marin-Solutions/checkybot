@@ -2,6 +2,7 @@
 
 namespace MarinSolutions\CheckybotLaravel\Commands;
 
+use Composer\InstalledVersions;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -194,11 +195,35 @@ class CheckybotCommand extends Command
             'technology' => 'Laravel',
         ];
 
+        if (filled($packageVersion = $this->resolvePackageVersion())) {
+            $payload['package_version'] = $packageVersion;
+        }
+
         if (filled($config['app_id'] ?? null)) {
             $payload['app_id'] = (string) $config['app_id'];
         }
 
         return $payload;
+    }
+
+    protected function resolvePackageVersion(): ?string
+    {
+        if (class_exists(InstalledVersions::class) && InstalledVersions::isInstalled('marin-solutions/checkybot-laravel')) {
+            return InstalledVersions::getPrettyVersion('marin-solutions/checkybot-laravel')
+                ?? InstalledVersions::getVersion('marin-solutions/checkybot-laravel');
+        }
+
+        $composerPath = __DIR__.'/../../composer.json';
+
+        if (! is_file($composerPath)) {
+            return null;
+        }
+
+        $composer = json_decode((string) file_get_contents($composerPath), true);
+
+        return is_array($composer) && filled($composer['version'] ?? null)
+            ? (string) $composer['version']
+            : null;
     }
 
     /**

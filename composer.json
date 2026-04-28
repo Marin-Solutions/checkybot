@@ -65,7 +65,7 @@
       "type": "path",
       "url": "packages/checkybot-laravel",
       "options": {
-        "symlink": false
+        "symlink": true
       }
     }
   ],
