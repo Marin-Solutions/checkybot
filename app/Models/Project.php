@@ -3,11 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Casts\Attribute;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class Project extends Model
 {
@@ -72,35 +72,64 @@ class Project extends Model
         return $this->hasMany(ProjectComponent::class)->where('is_archived', false);
     }
 
+    public function uptimeEnabledWebsites(): HasMany
+    {
+        return $this->hasMany(Website::class)->where('uptime_check', true);
+    }
+
+    public function enabledMonitorApis(): HasMany
+    {
+        return $this->hasMany(MonitorApis::class)->where('is_enabled', true);
+    }
+
     protected function applicationStatus(): Attribute
     {
         return Attribute::make(
-            get: fn (): string => $this->resolveApplicationStatus(
-                $this->relationLoaded('activeComponents')
-                    ? $this->activeComponents
-                    : $this->activeComponents()->get(['current_status'])
-            ),
+            get: fn (): string => $this->resolveApplicationStatus(),
         );
     }
 
-    /**
-     * @param  Collection<int, ProjectComponent>  $components
-     */
-    protected function resolveApplicationStatus(Collection $components): string
+    protected function resolveApplicationStatus(): string
     {
-        if ($components->isEmpty()) {
+        $statuses = $this->monitoredSurfaceStatuses();
+
+        if ($statuses->isEmpty()) {
             return 'unknown';
         }
 
         $worstStatus = 'healthy';
 
-        foreach ($components as $component) {
-            if ($this->statusPriority($component->current_status) > $this->statusPriority($worstStatus)) {
-                $worstStatus = $component->current_status;
+        foreach ($statuses as $status) {
+            if ($this->statusPriority($status) > $this->statusPriority($worstStatus)) {
+                $worstStatus = $status;
             }
         }
 
         return $worstStatus;
+    }
+
+    /**
+     * @return Collection<int, string|null>
+     */
+    protected function monitoredSurfaceStatuses(): Collection
+    {
+        return collect()
+            ->merge($this->loadedOrQueriedStatuses('activeComponents'))
+            ->merge($this->loadedOrQueriedStatuses('uptimeEnabledWebsites'))
+            ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'));
+    }
+
+    /**
+     * @return Collection<int, string|null>
+     */
+    protected function loadedOrQueriedStatuses(string $relation): Collection
+    {
+        /** @var Collection<int, ProjectComponent|Website|MonitorApis> $records */
+        $records = $this->relationLoaded($relation)
+            ? $this->getRelation($relation)
+            : $this->{$relation}()->get(['current_status']);
+
+        return $records->pluck('current_status');
     }
 
     protected function statusPriority(?string $status): int
