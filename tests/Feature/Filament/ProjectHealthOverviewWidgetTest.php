@@ -60,6 +60,7 @@ describe('ProjectHealthOverviewWidget', function () {
             'package_interval' => '5m',
             'uptime_check' => true,
             'current_status' => 'warning',
+            'last_heartbeat_at' => now()->subMinutes(15),
             'stale_at' => now()->subMinutes(10),
         ]);
 
