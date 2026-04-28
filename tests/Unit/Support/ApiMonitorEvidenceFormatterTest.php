@@ -119,6 +119,7 @@ test('stringify assertion value handles scalars and complex types', function () 
 
 test('status and http code colors follow monitor severity rules', function () {
     expect(ApiMonitorEvidenceFormatter::statusColor('danger'))->toBe('danger')
+        ->and(ApiMonitorEvidenceFormatter::httpCodeColor(0))->toBe('danger')
         ->and(ApiMonitorEvidenceFormatter::httpCodeColor(404))->toBe('warning')
         ->and(ApiMonitorEvidenceFormatter::httpCodeColor(200))->toBe('success');
 });

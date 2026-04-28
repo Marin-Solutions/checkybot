@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\UptimeTransportError;
 use Carbon\CarbonInterface;
 
 class PackageHealthStatusService
@@ -61,6 +62,10 @@ class PackageHealthStatusService
         $code = $result['code'] ?? 0;
 
         if ($status === 'danger') {
+            if ($code === 0 && filled($result['transport_error_type'] ?? null)) {
+                return UptimeTransportError::summary($result['transport_error_type'], 'API heartbeat');
+            }
+
             return "API heartbeat failed with HTTP status {$code}.";
         }
 

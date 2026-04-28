@@ -208,11 +208,12 @@ test('monitor api redacts sensitive query parameters in log-safe urls', function
     $method = new ReflectionMethod(MonitorApis::class, 'sanitizeUrlForLogs');
     $method->setAccessible(true);
 
-    $sanitized = $method->invoke(null, 'https://api.example.test/health?token=secret-token&plain=value');
+    $sanitized = $method->invoke(null, 'https://api.example.test/health?token=secret-token&api_key=secret-key&plain=value');
 
     expect($sanitized)
-        ->toBe('https://api.example.test/health?token=%5Bredacted%5D&plain=value')
-        ->not->toContain('secret-token');
+        ->toBe('https://api.example.test/health?token=%5Bredacted%5D&api_key=%5Bredacted%5D&plain=value')
+        ->not->toContain('secret-token')
+        ->not->toContain('secret-key');
 });
 
 test('test api returns response time in milliseconds on success', function () {
@@ -246,7 +247,48 @@ test('test api returns response time in milliseconds when the request throws a c
         ->and($result['response_time_ms'])->toBeInt()
         ->and($result['response_time_ms'])->toBeGreaterThanOrEqual(0)
         ->and($result['code'])->toBe(0)
-        ->and($result['error'])->toStartWith('Connection timeout:');
+        ->and($result['error'])->toStartWith('Timeout:')
+        ->and($result['transport_error_type'])->toBe('timeout')
+        ->and($result['transport_error_message'])->toBe('timeout');
+});
+
+test('test api redacts sensitive query parameters before persisting transport errors', function () {
+    $url = 'https://api.example.test/timeout?api_key=secret-key&plain=value';
+
+    Http::fake(function () use ($url): never {
+        throw new \Illuminate\Http\Client\ConnectionException("cURL error 28: Operation timed out for {$url}");
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => $url,
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result['error'])
+        ->toContain('api_key=%5Bredacted%5D')
+        ->not->toContain('secret-key')
+        ->and($result['transport_error_message'])
+        ->toContain('api_key=%5Bredacted%5D')
+        ->not->toContain('secret-key');
+});
+
+test('test api does not record transport evidence for unexpected application exceptions', function () {
+    Http::fake(function (): never {
+        throw new \InvalidArgumentException('request options are invalid');
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/invalid-request',
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result['code'])->toBe(0)
+        ->and($result['error'])->toBe('Unexpected error: request options are invalid')
+        ->and($result['transport_error_type'])->toBeNull()
+        ->and($result['transport_error_message'])->toBeNull()
+        ->and($result['transport_error_code'])->toBeNull();
 });
 
 test('test api preserves final http error status after retries', function () {
@@ -734,6 +776,37 @@ test('preview assertion uses legitimate saved error payloads instead of forcing 
         ->and($preview['actual'])->toBe('invalid_token');
 });
 
+test('preview assertion uses saved error payloads that look like new transport messages', function () {
+    Http::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'error',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'Timeout: upstream service unavailable',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_body' => [
+            'error' => 'Timeout: upstream service unavailable',
+        ],
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    Http::assertNothingSent();
+
+    expect($preview['source'])->toBe('saved_response')
+        ->and($preview['passed'])->toBeTrue()
+        ->and($preview['actual'])->toBe('Timeout: upstream service unavailable');
+});
+
 test('preview assertion uses non-string saved error payloads instead of treating them as metadata', function () {
     Http::fake();
 
@@ -820,8 +893,8 @@ test('preview assertion fails when fresh test has a transport error even if asse
 
     expect($preview['source'])->toBe('fresh_test')
         ->and($preview['passed'])->toBeFalse()
-        ->and($preview['message'])->toStartWith('Connection timeout:')
-        ->and($preview['actual'])->toStartWith('Connection timeout:')
+        ->and($preview['message'])->toStartWith('Timeout:')
+        ->and($preview['actual'])->toStartWith('Timeout:')
         ->and($preview['expected'])->toBe('response body without transport or JSON errors');
 });
 

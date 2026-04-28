@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasSnooze;
 use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\UptimeTransportError;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -242,7 +243,9 @@ class MonitorApis extends Model
 
             return $responseData;
         } catch (ConnectionException $exception) {
-            Log::error('Connection timeout while testing API', [
+            $transportError = UptimeTransportError::fromThrowable($exception);
+
+            Log::error('Transport error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
                 'monitor_title' => $data['title'] ?? null,
                 'method' => $method,
@@ -250,12 +253,17 @@ class MonitorApis extends Model
                 'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
                 'timeout' => $httpConfig['timeout'],
                 'retries' => $httpConfig['retries'],
+                'transport_error_type' => $transportError['type']->value,
+                'transport_error_code' => $transportError['code'],
             ]);
 
             $responseData['code'] = 0;
             $responseData['body'] = null;
-            $responseData['error'] = 'Connection timeout: '.$exception->getMessage();
+            $responseData['error'] = UptimeTransportError::label($transportError['type']).': '.self::sanitizeLogMessage($exception->getMessage(), $url);
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
+            $responseData['transport_error_type'] = $transportError['type']->value;
+            $responseData['transport_error_message'] = self::sanitizeLogMessage($transportError['message'], $url);
+            $responseData['transport_error_code'] = $transportError['code'];
 
             return $responseData;
         } catch (RequestException $exception) {
@@ -273,11 +281,18 @@ class MonitorApis extends Model
                 $responseData['raw_body'] = $exception->response->body();
                 $responseData['response_headers'] = ApiMonitorEvidenceFormatter::maskHeaders($exception->response->headers());
             } else {
+                $transportError = UptimeTransportError::fromThrowable($exception);
+
                 $responseData['code'] = 0;
-                $responseData['body'] = $exception->getMessage();
-                $responseData['raw_body'] = $exception->getMessage();
+                $sanitizedMessage = self::sanitizeLogMessage($exception->getMessage(), $url);
+
+                $responseData['body'] = $sanitizedMessage;
+                $responseData['raw_body'] = $sanitizedMessage;
+                $responseData['transport_error_type'] = $transportError['type']->value;
+                $responseData['transport_error_message'] = self::sanitizeLogMessage($transportError['message'], $url);
+                $responseData['transport_error_code'] = $transportError['code'];
             }
-            $responseData['error'] = $exception->getMessage();
+            $responseData['error'] = self::sanitizeLogMessage($exception->getMessage(), $url);
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
             return $responseData;
@@ -310,6 +325,9 @@ class MonitorApis extends Model
             'request_headers' => [],
             'response_headers' => [],
             'response_time_ms' => 0,
+            'transport_error_type' => null,
+            'transport_error_message' => null,
+            'transport_error_code' => null,
         ];
     }
 

@@ -45,14 +45,14 @@ class UptimeTransportError
         };
     }
 
-    public static function summary(UptimeTransportErrorType|string|null $type): string
+    public static function summary(UptimeTransportErrorType|string|null $type, string $subject = 'Website heartbeat'): string
     {
         return match (static::normalizeType($type)) {
-            UptimeTransportErrorType::Dns => 'Website heartbeat failed before an HTTP response: DNS lookup failed.',
-            UptimeTransportErrorType::Timeout => 'Website heartbeat failed before an HTTP response: the request timed out.',
-            UptimeTransportErrorType::Tls => 'Website heartbeat failed before an HTTP response: TLS/SSL negotiation failed.',
-            UptimeTransportErrorType::Connection => 'Website heartbeat failed before an HTTP response: the connection could not be established.',
-            default => 'Website heartbeat failed before an HTTP response because of a transport error.',
+            UptimeTransportErrorType::Dns => "{$subject} failed before an HTTP response: DNS lookup failed.",
+            UptimeTransportErrorType::Timeout => "{$subject} failed before an HTTP response: the request timed out.",
+            UptimeTransportErrorType::Tls => "{$subject} failed before an HTTP response: TLS/SSL negotiation failed.",
+            UptimeTransportErrorType::Connection => "{$subject} failed before an HTTP response: the connection could not be established.",
+            default => "{$subject} failed before an HTTP response because of a transport error.",
         };
     }
 
