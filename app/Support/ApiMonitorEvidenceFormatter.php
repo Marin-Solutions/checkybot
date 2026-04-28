@@ -132,15 +132,15 @@ class ApiMonitorEvidenceFormatter
     public static function isSensitiveHeader(string $name): bool
     {
         $normalized = strtolower($name);
+        $compact = str_replace(['-', '_', ' '], '', $normalized);
 
         return $normalized === 'authorization'
-            || str_contains($normalized, 'token')
-            || str_contains($normalized, 'secret')
-            || str_contains($normalized, 'api-key')
-            || str_contains($normalized, 'apikey')
-            || str_contains($normalized, 'auth')
-            || str_contains($normalized, 'signature')
-            || str_contains($normalized, 'cookie');
+            || str_contains($compact, 'token')
+            || str_contains($compact, 'secret')
+            || str_contains($compact, 'apikey')
+            || str_contains($compact, 'auth')
+            || str_contains($compact, 'signature')
+            || str_contains($compact, 'cookie');
     }
 
     private static function normalizeHeaderValue(mixed $value): string

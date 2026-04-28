@@ -259,10 +259,10 @@ class MonitorApis extends Model
 
             $responseData['code'] = 0;
             $responseData['body'] = null;
-            $responseData['error'] = UptimeTransportError::label($transportError['type']).': '.$exception->getMessage();
+            $responseData['error'] = UptimeTransportError::label($transportError['type']).': '.self::sanitizeLogMessage($exception->getMessage(), $url);
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
             $responseData['transport_error_type'] = $transportError['type']->value;
-            $responseData['transport_error_message'] = $transportError['message'];
+            $responseData['transport_error_message'] = self::sanitizeLogMessage($transportError['message'], $url);
             $responseData['transport_error_code'] = $transportError['code'];
 
             return $responseData;
@@ -284,13 +284,15 @@ class MonitorApis extends Model
                 $transportError = UptimeTransportError::fromThrowable($exception);
 
                 $responseData['code'] = 0;
-                $responseData['body'] = $exception->getMessage();
-                $responseData['raw_body'] = $exception->getMessage();
+                $sanitizedMessage = self::sanitizeLogMessage($exception->getMessage(), $url);
+
+                $responseData['body'] = $sanitizedMessage;
+                $responseData['raw_body'] = $sanitizedMessage;
                 $responseData['transport_error_type'] = $transportError['type']->value;
-                $responseData['transport_error_message'] = $transportError['message'];
+                $responseData['transport_error_message'] = self::sanitizeLogMessage($transportError['message'], $url);
                 $responseData['transport_error_code'] = $transportError['code'];
             }
-            $responseData['error'] = $exception->getMessage();
+            $responseData['error'] = self::sanitizeLogMessage($exception->getMessage(), $url);
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
             return $responseData;

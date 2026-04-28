@@ -208,11 +208,12 @@ test('monitor api redacts sensitive query parameters in log-safe urls', function
     $method = new ReflectionMethod(MonitorApis::class, 'sanitizeUrlForLogs');
     $method->setAccessible(true);
 
-    $sanitized = $method->invoke(null, 'https://api.example.test/health?token=secret-token&plain=value');
+    $sanitized = $method->invoke(null, 'https://api.example.test/health?token=secret-token&api_key=secret-key&plain=value');
 
     expect($sanitized)
-        ->toBe('https://api.example.test/health?token=%5Bredacted%5D&plain=value')
-        ->not->toContain('secret-token');
+        ->toBe('https://api.example.test/health?token=%5Bredacted%5D&api_key=%5Bredacted%5D&plain=value')
+        ->not->toContain('secret-token')
+        ->not->toContain('secret-key');
 });
 
 test('test api returns response time in milliseconds on success', function () {
@@ -249,6 +250,27 @@ test('test api returns response time in milliseconds when the request throws a c
         ->and($result['error'])->toStartWith('Timeout:')
         ->and($result['transport_error_type'])->toBe('timeout')
         ->and($result['transport_error_message'])->toBe('timeout');
+});
+
+test('test api redacts sensitive query parameters before persisting transport errors', function () {
+    $url = 'https://api.example.test/timeout?api_key=secret-key&plain=value';
+
+    Http::fake(function () use ($url): never {
+        throw new \Illuminate\Http\Client\ConnectionException("cURL error 28: Operation timed out for {$url}");
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => $url,
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result['error'])
+        ->toContain('api_key=%5Bredacted%5D')
+        ->not->toContain('secret-key')
+        ->and($result['transport_error_message'])
+        ->toContain('api_key=%5Bredacted%5D')
+        ->not->toContain('secret-key');
 });
 
 test('test api does not record transport evidence for unexpected application exceptions', function () {
