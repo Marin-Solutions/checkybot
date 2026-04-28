@@ -57,16 +57,16 @@ class NotificationSettingResource extends Resource
                             ->columnSpan(1)
                             ->rules(function (callable $get) {
                                 return match ($get('channel_type')) {
-                                    NotificationChannelTypesEnum::MAIL->name => ['required', 'email'],
-                                    NotificationChannelTypesEnum::WEBHOOK->name => ['required', 'url'],
+                                    NotificationChannelTypesEnum::MAIL->value => ['required', 'email'],
+                                    NotificationChannelTypesEnum::WEBHOOK->value => ['required', 'url'],
                                 };
                             })
-                            ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->name),
+                            ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->value),
                         Forms\Components\Select::make('notification_channel_id')
                             ->label('Notification Channel')
                             ->required()
                             ->options(fn () => auth()->user()->webhookChannels()->pluck('title', 'id'))
-                            ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->name),
+                            ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->value),
                     ])->columns(2),
             ]);
     }
@@ -80,10 +80,17 @@ class NotificationSettingResource extends Resource
                 Tables\Columns\TextColumn::make('channel_type_value')
                     ->label('Channel Type'),
                 Tables\Columns\TextColumn::make('channel.title')
-                    ->label('Channel Name')
-                    ->visible(fn ($record) => $record && $record->channel_type === NotificationChannelTypesEnum::WEBHOOK->name),
+                    ->label('Channel')
+                    ->placeholder('Email delivery')
+                    ->state(fn (NotificationSetting $record): ?string => $record->channel_type === NotificationChannelTypesEnum::WEBHOOK
+                        ? $record->channel?->title
+                        : null),
                 Tables\Columns\TextColumn::make('address')
-                    ->visible(fn ($record) => $record && $record->channel_type === NotificationChannelTypesEnum::MAIL->name),
+                    ->label('Destination')
+                    ->placeholder('Webhook channel')
+                    ->state(fn (NotificationSetting $record): ?string => $record->channel_type === NotificationChannelTypesEnum::MAIL
+                        ? $record->address
+                        : null),
                 Tables\Columns\ToggleColumn::make('flag_active')
                     ->label('Active'),
             ])

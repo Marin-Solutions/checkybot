@@ -116,3 +116,27 @@ test('global notification list shows empty state with create CTA when no rules e
         ->assertSee('Rules added here apply automatically to every website with the matching monitor enabled.')
         ->assertSee('Add notification rule');
 });
+
+test('global notification list shows the destination for email and webhook rules', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Ops Webhook',
+    ]);
+
+    $emailSetting = NotificationSetting::factory()->email()->create([
+        'user_id' => $user->id,
+        'address' => 'ops@example.com',
+    ]);
+
+    $webhookSetting = NotificationSetting::factory()->webhook()->create([
+        'user_id' => $user->id,
+        'notification_channel_id' => $channel->id,
+    ]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->assertCanSeeTableRecords([$emailSetting, $webhookSetting])
+        ->assertSee('ops@example.com')
+        ->assertSee('Ops Webhook');
+});
