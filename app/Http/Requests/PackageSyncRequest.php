@@ -2,12 +2,15 @@
 
 namespace App\Http\Requests;
 
+use App\Console\Commands\LogJobCheckUptimeSsl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
 use App\Services\IntervalParser;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class PackageSyncRequest extends FormRequest
 {
@@ -32,8 +35,8 @@ class PackageSyncRequest extends FormRequest
             'defaults.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
 
             'checks' => ['present', 'array', 'max:200'],
-            'checks.*.key' => ['required', 'string', 'alpha_dash', 'max:150', 'distinct'],
-            'checks.*.type' => ['required', Rule::in(['api', 'ssl', 'uptime', 'links', 'opengraph'])],
+            'checks.*.key' => ['required', 'string', 'alpha_dash', 'max:150'],
+            'checks.*.type' => ['required', Rule::in(['api', 'ssl', 'uptime'])],
             'checks.*.name' => ['required', 'string', 'max:255'],
             'checks.*.method' => ['required_if:checks.*.type,api', 'nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
             'checks.*.url' => ['required', 'string', 'max:1000'],
@@ -64,15 +67,100 @@ class PackageSyncRequest extends FormRequest
                 $segments = explode('.', $attribute);
                 $type = isset($segments[1]) ? $this->input("checks.{$segments[1]}.type") : null;
 
-                if ($type !== 'api') {
+                if (! in_array($type, ['api', 'ssl', 'uptime'], true)) {
                     return;
                 }
 
-                if ($value !== null && (! is_string($value) || ! IntervalParser::isValid($value))) {
+                if (! is_string($value) || ! IntervalParser::isValid($value)) {
                     $fail('The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
                 }
             }],
             'checks.*.enabled' => ['nullable', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $checks = $this->input('checks', []);
+
+            if (! is_array($checks)) {
+                return;
+            }
+
+            $keysByType = [];
+            $urlByWebsiteKey = [];
+
+            foreach ($checks as $index => $check) {
+                if (! is_array($check)) {
+                    continue;
+                }
+
+                $type = $check['type'] ?? null;
+                $key = $check['key'] ?? null;
+
+                if (is_string($type) && is_string($key)) {
+                    if (isset($keysByType[$type][$key])) {
+                        $validator->errors()->add(
+                            "checks.{$index}.key",
+                            "The checks.{$index}.key field has a duplicate value."
+                        );
+                    }
+
+                    $keysByType[$type][$key] = true;
+                }
+
+                if (! in_array($type, ['ssl', 'uptime'], true)) {
+                    continue;
+                }
+
+                $url = $check['url'] ?? null;
+
+                if (is_string($key) && is_string($url)) {
+                    $normalizedUrl = $this->resolveUrl($this->input('project.base_url'), $url);
+
+                    if (isset($urlByWebsiteKey[$key]) && $urlByWebsiteKey[$key] !== $normalizedUrl) {
+                        $validator->errors()->add(
+                            "checks.{$index}.url",
+                            'Uptime and SSL checks that share a key must have the same URL.'
+                        );
+                    }
+
+                    $urlByWebsiteKey[$key] = $normalizedUrl;
+                }
+
+                if (! array_key_exists('schedule', $check) || $check['schedule'] === null) {
+                    $validator->errors()->add(
+                        "checks.{$index}.schedule",
+                        'The schedule field is required for uptime and SSL checks.'
+                    );
+                }
+
+                if ($type === 'uptime' && is_string($check['schedule'] ?? null) && IntervalParser::isValid($check['schedule'])) {
+                    $normalizedSchedule = IntervalParser::normalize($check['schedule']);
+
+                    if (Str::endsWith($normalizedSchedule, 's')) {
+                        $validator->errors()->add(
+                            "checks.{$index}.schedule",
+                            'Uptime schedules cannot be specified in seconds. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.'
+                        );
+                    } elseif (! in_array(IntervalParser::toMinutes($normalizedSchedule), LogJobCheckUptimeSsl::SUPPORTED_INTERVALS, true)) {
+                        $validator->errors()->add(
+                            "checks.{$index}.schedule",
+                            'Unsupported uptime interval. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.'
+                        );
+                    }
+                }
+            }
+        });
+    }
+
+    private function resolveUrl(mixed $baseUrl, string $url): string
+    {
+        if (Str::startsWith($url, ['http://', 'https://'])) {
+            return $url;
+        }
+
+        return rtrim(is_string($baseUrl) ? $baseUrl : '', '/').'/'.ltrim($url, '/');
     }
 }

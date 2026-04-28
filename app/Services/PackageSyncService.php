@@ -6,6 +6,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
+use App\Models\Website;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -15,19 +16,24 @@ class PackageSyncService
 {
     /**
      * @param  array<string, mixed>  $payload
-     * @return array{project: Project, project_created: bool, summary: array<string, int>, synced_at: Carbon}
+     * @return array{project: Project, project_created: bool, summary: array<string, mixed>, synced_at: Carbon}
      */
     public function sync(User $user, array $payload): array
     {
         return DB::transaction(function () use ($user, $payload): array {
             $syncedAt = now();
             $project = $this->upsertProject($user, $payload, $syncedAt);
-            $summary = $this->syncApiChecks($project, $payload, $syncedAt);
+            $apiSummary = $this->syncApiChecks($project, $payload, $syncedAt);
+            $uptimeSummary = $this->syncWebsiteChecks($project, $payload, 'uptime');
+            $sslSummary = $this->syncWebsiteChecks($project, $payload, 'ssl');
+            $this->clearDisabledWebsitePackageIntervals($project);
+            $this->recalculateUptimeOnlyPackageIntervals($project);
+            $this->resetStatusForFullyDisabledWebsites($project);
 
             return [
                 'project' => $project,
                 'project_created' => $project->wasRecentlyCreated,
-                'summary' => $summary,
+                'summary' => $this->summarize($apiSummary, $uptimeSummary, $sslSummary),
                 'synced_at' => $syncedAt,
             ];
         });
@@ -81,20 +87,17 @@ class PackageSyncService
 
     /**
      * @param  array<string, mixed>  $payload
-     * @return array{created: int, updated: int, disabled_missing: int, unsupported: int}
+     * @return array{created: int, updated: int, disabled_missing: int}
      */
     private function syncApiChecks(Project $project, array $payload, Carbon $syncedAt): array
     {
         $created = 0;
         $updated = 0;
-        $unsupported = 0;
         $activeApiKeys = [];
         $defaults = $payload['defaults'] ?? [];
 
         foreach ($payload['checks'] as $check) {
             if ($check['type'] !== 'api') {
-                $unsupported++;
-
                 continue;
             }
 
@@ -154,7 +157,84 @@ class PackageSyncService
             'created' => $created,
             'updated' => $updated,
             'disabled_missing' => $disabledMissing,
-            'unsupported' => $unsupported,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array{created: int, updated: int, disabled_missing: int}
+     */
+    private function syncWebsiteChecks(Project $project, array $payload, string $type): array
+    {
+        $created = 0;
+        $updated = 0;
+        $activeKeys = [];
+
+        foreach ($payload['checks'] as $check) {
+            if ($check['type'] !== $type) {
+                continue;
+            }
+
+            $activeKeys[] = $check['key'];
+            $website = Website::withTrashed()
+                ->where('project_id', $project->id)
+                ->where('source', 'package')
+                ->where('package_name', $check['key'])
+                ->first();
+
+            $wasCreated = false;
+
+            if (! $website instanceof Website) {
+                $website = new Website;
+                $wasCreated = true;
+            } elseif ($website->trashed()) {
+                $website->restore();
+            }
+
+            $normalizedSchedule = IntervalParser::normalizeOrFail($check['schedule'] ?? null, 'schedule');
+
+            $enabled = $check['enabled'] ?? true;
+            $data = [
+                'project_id' => $project->id,
+                'created_by' => $project->created_by,
+                'name' => $check['name'],
+                'url' => $this->resolveUrl($project->base_url, $check['url']),
+                'description' => '',
+                'source' => 'package',
+                'package_name' => $check['key'],
+                'package_interval' => $normalizedSchedule,
+            ];
+
+            if ($type === 'uptime') {
+                $data['uptime_check'] = $enabled;
+                $data['uptime_interval'] = IntervalParser::toMinutes($normalizedSchedule);
+                $data['ssl_check'] = $website->exists ? $website->ssl_check : false;
+            } else {
+                $data['ssl_check'] = $enabled;
+                $data['uptime_check'] = $website->exists ? $website->uptime_check : false;
+                $data['uptime_interval'] = $data['uptime_check'] ? $website->uptime_interval : null;
+            }
+
+            if ($data['uptime_check']) {
+                $data['package_interval'] = IntervalParser::fromMinutes((int) $data['uptime_interval']);
+            }
+
+            $website->fill($data);
+            $website->save();
+
+            if ($wasCreated) {
+                $created++;
+            } else {
+                $updated++;
+            }
+        }
+
+        $disabledMissing = $this->disableMissingWebsiteChecks($project, $activeKeys, $type);
+
+        return [
+            'created' => $created,
+            'updated' => $updated,
+            'disabled_missing' => $disabledMissing,
         ];
     }
 
@@ -219,6 +299,68 @@ class PackageSyncService
         ]);
     }
 
+    /**
+     * @param  array<int, string>  $activeKeys
+     */
+    private function disableMissingWebsiteChecks(Project $project, array $activeKeys, string $type): int
+    {
+        $query = Website::query()
+            ->where('project_id', $project->id)
+            ->where('source', 'package')
+            ->where($type === 'uptime' ? 'uptime_check' : 'ssl_check', true);
+
+        if ($activeKeys !== []) {
+            $query->whereNotIn('package_name', array_values(array_unique($activeKeys)));
+        }
+
+        return $query->update([
+            $type === 'uptime' ? 'uptime_check' : 'ssl_check' => false,
+        ]);
+    }
+
+    private function clearDisabledWebsitePackageIntervals(Project $project): void
+    {
+        Website::query()
+            ->where('project_id', $project->id)
+            ->where('source', 'package')
+            ->where('uptime_check', false)
+            ->where('ssl_check', false)
+            ->whereNotNull('package_interval')
+            ->update(['package_interval' => null]);
+    }
+
+    private function resetStatusForFullyDisabledWebsites(Project $project): void
+    {
+        Website::query()
+            ->where('project_id', $project->id)
+            ->where('source', 'package')
+            ->where('uptime_check', false)
+            ->where('ssl_check', false)
+            ->update([
+                'current_status' => 'unknown',
+                'status_summary' => 'Disabled because it was missing from the latest package sync.',
+            ]);
+    }
+
+    private function recalculateUptimeOnlyPackageIntervals(Project $project): void
+    {
+        Website::query()
+            ->where('project_id', $project->id)
+            ->where('source', 'package')
+            ->where('uptime_check', true)
+            ->where('ssl_check', false)
+            ->get(['id', 'uptime_interval', 'package_interval'])
+            ->each(function (Website $website): void {
+                $packageInterval = IntervalParser::fromMinutes((int) $website->uptime_interval);
+
+                if ($website->package_interval !== $packageInterval) {
+                    Website::query()
+                        ->where('id', $website->id)
+                        ->update(['package_interval' => $packageInterval]);
+                }
+            });
+    }
+
     private function resolveUrl(?string $baseUrl, string $url): string
     {
         if (Str::startsWith($url, ['http://', 'https://'])) {
@@ -226,6 +368,28 @@ class PackageSyncService
         }
 
         return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
+    }
+
+    /**
+     * @param  array{created: int, updated: int, disabled_missing: int}  $apiSummary
+     * @param  array{created: int, updated: int, disabled_missing: int}  $uptimeSummary
+     * @param  array{created: int, updated: int, disabled_missing: int}  $sslSummary
+     * @return array<string, mixed>
+     */
+    private function summarize(array $apiSummary, array $uptimeSummary, array $sslSummary): array
+    {
+        $summaries = [$apiSummary, $uptimeSummary, $sslSummary];
+
+        return [
+            'created' => array_sum(array_column($summaries, 'created')),
+            'updated' => array_sum(array_column($summaries, 'updated')),
+            'disabled_missing' => array_sum(array_column($summaries, 'disabled_missing')),
+            // Kept for existing package clients; unsupported check types now fail validation.
+            'unsupported' => 0,
+            'api_checks' => $apiSummary,
+            'uptime_checks' => $uptimeSummary,
+            'ssl_checks' => $sslSummary,
+        ];
     }
 
     /**

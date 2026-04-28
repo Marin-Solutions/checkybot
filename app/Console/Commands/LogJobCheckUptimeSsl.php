@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 class LogJobCheckUptimeSsl extends Command
 {
+    public const SUPPORTED_INTERVALS = [1, 5, 10, 15, 30, 60, 360, 720, 1440];
+
     /**
      * The name and signature of the console command.
      *
@@ -23,7 +25,7 @@ class LogJobCheckUptimeSsl extends Command
      */
     protected $description = 'Log website uptime and SSL';
 
-    protected array $intervals = [1, 5, 10, 15, 30, 60, 360, 720, 1440];
+    protected array $intervals = self::SUPPORTED_INTERVALS;
 
     /**
      * Execute the console command.

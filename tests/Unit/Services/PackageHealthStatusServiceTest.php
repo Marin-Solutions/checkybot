@@ -52,6 +52,15 @@ test('stale detection waits until after the exact interval boundary', function (
         ->and($service->isStale(now()->subMinutes(5)->subSecond(), '5m'))->toBeTrue();
 });
 
+test('ssl status treats certificates expired earlier today as danger', function () {
+    Carbon::setTestNow('2026-04-24 17:00:00');
+
+    $service = app(PackageHealthStatusService::class);
+
+    expect($service->sslStatusFromExpiryDate(Carbon::parse('2026-04-24 09:00:00')))->toBe('danger')
+        ->and($service->summaryForSsl(Carbon::parse('2026-04-24 09:00:00')))->toBe('SSL certificate expired today.');
+});
+
 afterEach(function () {
     Carbon::setTestNow();
 });
