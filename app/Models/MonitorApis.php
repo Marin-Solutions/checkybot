@@ -259,7 +259,7 @@ class MonitorApis extends Model
 
             $responseData['code'] = 0;
             $responseData['body'] = null;
-            $responseData['error'] = 'Connection timeout: '.$exception->getMessage();
+            $responseData['error'] = UptimeTransportError::label($transportError['type']).': '.$exception->getMessage();
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
             $responseData['transport_error_type'] = $transportError['type']->value;
             $responseData['transport_error_message'] = $transportError['message'];
@@ -295,25 +295,18 @@ class MonitorApis extends Model
 
             return $responseData;
         } catch (\Exception $exception) {
-            $transportError = UptimeTransportError::fromThrowable($exception);
-
             Log::error('Unexpected error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
                 'monitor_title' => $data['title'] ?? null,
                 'method' => $method,
                 'url' => $sanitizedUrl,
                 'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
-                'transport_error_type' => $transportError['type']->value,
-                'transport_error_code' => $transportError['code'],
             ]);
 
             $responseData['code'] = 0;
             $responseData['body'] = null;
             $responseData['error'] = 'Unexpected error: '.$exception->getMessage();
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
-            $responseData['transport_error_type'] = $transportError['type']->value;
-            $responseData['transport_error_message'] = $transportError['message'];
-            $responseData['transport_error_code'] = $transportError['code'];
 
             return $responseData;
         }
@@ -831,6 +824,11 @@ class MonitorApis extends Model
     private static function isLegacyGeneratedError(string $error): bool
     {
         return str_starts_with($error, 'Connection timeout:')
+            || str_starts_with($error, 'Connection failure:')
+            || str_starts_with($error, 'DNS failure:')
+            || str_starts_with($error, 'TLS/SSL failure:')
+            || str_starts_with($error, 'Timeout:')
+            || str_starts_with($error, 'Transport error:')
             || str_starts_with($error, 'Unexpected error:')
             || str_starts_with($error, 'Invalid JSON response:')
             || str_starts_with($error, 'HTTP request returned status code ');

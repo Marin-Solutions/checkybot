@@ -246,9 +246,27 @@ test('test api returns response time in milliseconds when the request throws a c
         ->and($result['response_time_ms'])->toBeInt()
         ->and($result['response_time_ms'])->toBeGreaterThanOrEqual(0)
         ->and($result['code'])->toBe(0)
-        ->and($result['error'])->toStartWith('Connection timeout:')
+        ->and($result['error'])->toStartWith('Timeout:')
         ->and($result['transport_error_type'])->toBe('timeout')
         ->and($result['transport_error_message'])->toBe('timeout');
+});
+
+test('test api does not record transport evidence for unexpected application exceptions', function () {
+    Http::fake(function (): never {
+        throw new \InvalidArgumentException('request options are invalid');
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/invalid-request',
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result['code'])->toBe(0)
+        ->and($result['error'])->toBe('Unexpected error: request options are invalid')
+        ->and($result['transport_error_type'])->toBeNull()
+        ->and($result['transport_error_message'])->toBeNull()
+        ->and($result['transport_error_code'])->toBeNull();
 });
 
 test('test api preserves final http error status after retries', function () {
@@ -822,8 +840,8 @@ test('preview assertion fails when fresh test has a transport error even if asse
 
     expect($preview['source'])->toBe('fresh_test')
         ->and($preview['passed'])->toBeFalse()
-        ->and($preview['message'])->toStartWith('Connection timeout:')
-        ->and($preview['actual'])->toStartWith('Connection timeout:')
+        ->and($preview['message'])->toStartWith('Timeout:')
+        ->and($preview['actual'])->toStartWith('Timeout:')
         ->and($preview['expected'])->toBe('response body without transport or JSON errors');
 });
 

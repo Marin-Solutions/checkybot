@@ -70,7 +70,7 @@ class ResultsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('transport_error_type')
                     ->label('Transport')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                    ->formatStateUsing(fn (?string $state): ?string => $state === null ? null : UptimeTransportError::label($state))
                     ->color(fn (?string $state): string => UptimeTransportError::color($state))
                     ->placeholder('-'),
 

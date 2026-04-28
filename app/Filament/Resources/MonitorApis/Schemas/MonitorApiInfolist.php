@@ -35,10 +35,11 @@ class MonitorApiInfolist
                             ->hint(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->diffForHumans()),
                         TextEntry::make('latest_result_http_code')
                             ->label('Latest HTTP Code')
-                            ->state(fn (MonitorApis $record): ?string => $record->latestResult?->http_code === 0 ? 'No response' : (string) ($record->latestResult?->http_code ?? ''))
+                            ->state(fn (MonitorApis $record): ?int => $record->latestResult?->http_code)
                             ->default('-')
                             ->badge()
-                            ->color(fn (mixed $state): string => ApiMonitorEvidenceFormatter::httpCodeColor(is_numeric($state) ? (int) $state : null)),
+                            ->formatStateUsing(fn (?int $state): string => $state === 0 ? 'No response' : (string) ($state ?? '-'))
+                            ->color(fn (?int $state): string => ApiMonitorEvidenceFormatter::httpCodeColor($state)),
                         TextEntry::make('latest_result_transport_error')
                             ->label('Latest Transport Error')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->transport_error_type)
