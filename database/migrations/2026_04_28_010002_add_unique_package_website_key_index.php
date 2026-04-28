@@ -89,14 +89,20 @@ return new class extends Migration
             ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END')
             ->orderByDesc('updated_at')
             ->orderBy('id')
-            ->get(['uptime_check', 'uptime_interval', 'ssl_check', 'package_interval']);
+            ->get(['uptime_check', 'uptime_interval', 'ssl_check', 'package_interval', 'deleted_at']);
 
-        $uptimeCheck = $websites->contains(fn (object $website): bool => (bool) $website->uptime_check);
-        $sslCheck = $websites->contains(fn (object $website): bool => (bool) $website->ssl_check);
-        $uptimeInterval = $websites
+        $activeWebsites = $websites->filter(fn (object $website): bool => $website->deleted_at === null);
+
+        if ($activeWebsites->isEmpty()) {
+            return;
+        }
+
+        $uptimeCheck = $activeWebsites->contains(fn (object $website): bool => (bool) $website->uptime_check);
+        $sslCheck = $activeWebsites->contains(fn (object $website): bool => (bool) $website->ssl_check);
+        $uptimeInterval = $activeWebsites
             ->first(fn (object $website): bool => (bool) $website->uptime_check && $website->uptime_interval !== null)
             ?->uptime_interval;
-        $sslPackageInterval = $websites
+        $sslPackageInterval = $activeWebsites
             ->first(fn (object $website): bool => (bool) $website->ssl_check && $website->package_interval !== null)
             ?->package_interval;
 

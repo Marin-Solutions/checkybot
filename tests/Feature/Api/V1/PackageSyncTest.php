@@ -581,6 +581,43 @@ test('package website key migration merges split duplicate check flags', functio
         ->and($keptWebsite->package_interval)->toBe('5m');
 });
 
+test('package website key migration ignores soft deleted duplicates when merging check flags', function () {
+    $migration = require database_path('migrations/2026_04_28_010002_add_unique_package_website_key_index.php');
+    $migration->down();
+
+    $project = Project::factory()->create(['created_by' => $this->user->id]);
+    $deletedUptimeWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'uptime_interval' => 5,
+        'ssl_check' => false,
+        'package_interval' => '5m',
+    ]);
+    $activeSslWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => false,
+        'uptime_interval' => null,
+        'ssl_check' => true,
+        'package_interval' => '1d',
+    ]);
+    $deletedUptimeWebsite->delete();
+
+    $migration->up();
+
+    $keptWebsite = $activeSslWebsite->fresh();
+
+    expect(Website::withTrashed()->find($deletedUptimeWebsite->id))->toBeNull()
+        ->and($keptWebsite)->not->toBeNull()
+        ->and($keptWebsite->uptime_check)->toBeFalse()
+        ->and($keptWebsite->uptime_interval)->toBeNull()
+        ->and($keptWebsite->ssl_check)->toBeTrue()
+        ->and($keptWebsite->package_interval)->toBe('1d');
+});
+
 test('package sync updates and disables missing website checks by stable package keys', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
