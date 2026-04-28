@@ -73,13 +73,15 @@ class ProjectsTable
                         // both a positive check and a negation of worse statuses.
                         return match ($value) {
                             'danger' => static::whereHasMonitoredStatus($query, ['danger']),
-                            'warning' => $query
-                                ->tap(fn (Builder $query) => static::whereHasMonitoredStatus($query, ['warning']))
-                                ->tap(fn (Builder $query) => static::whereDoesntHaveMonitoredStatus($query, ['danger'])),
-                            'healthy' => $query
-                                ->tap(fn (Builder $query) => static::whereHasMonitoredSurface($query))
-                                ->tap(fn (Builder $query) => static::whereDoesntHaveMonitoredStatus($query, ['warning', 'danger'])),
-                            'unknown' => static::whereDoesntHaveMonitoredSurface($query),
+                            'warning' => static::whereDoesntHaveMonitoredStatus(
+                                static::whereHasMonitoredStatus($query, ['warning']),
+                                ['danger'],
+                            ),
+                            'healthy' => static::whereDoesntHaveMonitoredStatus(
+                                static::whereHasKnownMonitoredStatus($query),
+                                ['warning', 'danger'],
+                            ),
+                            'unknown' => static::whereDoesntHaveKnownMonitoredStatus($query),
                             default => $query,
                         };
                     }),
@@ -163,22 +165,22 @@ class ProjectsTable
             ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses));
     }
 
-    protected static function whereHasMonitoredSurface(Builder $query): Builder
+    protected static function whereHasKnownMonitoredStatus(Builder $query): Builder
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents')
-                ->orWhereHas('uptimeEnabledWebsites')
-                ->orWhereHas('enabledMonitorApis');
+                ->whereHas('activeComponents', fn (Builder $components) => $components->whereNotNull('current_status'))
+                ->orWhereHas('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereNotNull('current_status'))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereNotNull('current_status'));
         });
     }
 
-    protected static function whereDoesntHaveMonitoredSurface(Builder $query): Builder
+    protected static function whereDoesntHaveKnownMonitoredStatus(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents')
-            ->whereDoesntHave('uptimeEnabledWebsites')
-            ->whereDoesntHave('enabledMonitorApis');
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereNotNull('current_status'))
+            ->whereDoesntHave('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereNotNull('current_status'))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereNotNull('current_status'));
     }
 
     /**

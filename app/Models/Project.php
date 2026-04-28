@@ -116,7 +116,8 @@ class Project extends Model
         return collect()
             ->merge($this->loadedOrQueriedStatuses('activeComponents'))
             ->merge($this->loadedOrQueriedStatuses('uptimeEnabledWebsites'))
-            ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'));
+            ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'))
+            ->filter();
     }
 
     /**

@@ -549,24 +549,32 @@ test('super admin can filter applications by current status', function () {
         'created_by' => $user->id,
     ]);
 
+    $uncheckedWebsiteProject = Project::factory()->create(['name' => 'Unchecked Website App', 'created_by' => $user->id]);
+    Website::factory()->create([
+        'project_id' => $uncheckedWebsiteProject->id,
+        'uptime_check' => true,
+        'current_status' => null,
+        'created_by' => $user->id,
+    ]);
+
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'danger')
         ->assertCanSeeTableRecords([$dangerProject, $websiteDangerProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $apiWarningProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $apiWarningProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'warning')
         ->assertCanSeeTableRecords([$warningProject, $apiWarningProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $websiteDangerProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $websiteDangerProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'healthy')
         ->assertCanSeeTableRecords([$healthyProject, $websiteHealthyProject])
-        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $apiWarningProject, $unknownProject, $disabledDangerProject]);
+        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $apiWarningProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'unknown')
-        ->assertCanSeeTableRecords([$unknownProject, $disabledDangerProject])
+        ->assertCanSeeTableRecords([$unknownProject, $disabledDangerProject, $uncheckedWebsiteProject])
         ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $websiteDangerProject, $apiWarningProject, $websiteHealthyProject]);
 });
 
@@ -609,10 +617,33 @@ test('application status rolls up enabled websites and api monitors', function (
         'current_status' => 'danger',
     ]);
 
+    $uncheckedWebsiteProject = Project::factory()->create(['created_by' => $user->id]);
+    Website::factory()->create([
+        'project_id' => $uncheckedWebsiteProject->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'current_status' => null,
+    ]);
+
+    $mixedSurfaceProject = Project::factory()->create(['created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $mixedSurfaceProject->id,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    Website::factory()->create([
+        'project_id' => $mixedSurfaceProject->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'current_status' => 'danger',
+    ]);
+
     expect($healthyProject->fresh()->application_status)->toBe('healthy')
         ->and($websiteDangerProject->fresh()->application_status)->toBe('danger')
         ->and($apiWarningProject->fresh()->application_status)->toBe('warning')
-        ->and($disabledDangerProject->fresh()->application_status)->toBe('unknown');
+        ->and($disabledDangerProject->fresh()->application_status)->toBe('unknown')
+        ->and($uncheckedWebsiteProject->fresh()->application_status)->toBe('unknown')
+        ->and($mixedSurfaceProject->fresh()->application_status)->toBe('danger');
 });
 
 test('super admin can filter applications to only failing', function () {
