@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\RunSource;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Support\UptimeTransportError;
@@ -22,6 +23,8 @@ class WebsiteLogHistoryFactory extends Factory
             'transport_error_type' => null,
             'transport_error_message' => null,
             'transport_error_code' => null,
+            'run_source' => RunSource::Scheduled,
+            'is_on_demand' => false,
         ];
     }
 
@@ -70,6 +73,14 @@ class WebsiteLogHistoryFactory extends Factory
             'summary' => UptimeTransportError::summary($type),
             'transport_error_type' => $type,
             ...$defaults,
+        ]);
+    }
+
+    public function onDemand(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'run_source' => RunSource::OnDemand,
+            'is_on_demand' => true,
         ]);
     }
 }

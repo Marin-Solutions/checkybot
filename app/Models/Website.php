@@ -288,6 +288,7 @@ class Website extends Model
     public function logHistoryLast24h(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(WebsiteLogHistory::class)
+            ->where('is_on_demand', false)
             ->where('created_at', '>=', now()->subHours(24));
     }
 

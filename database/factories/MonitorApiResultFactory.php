@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\RunSource;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -29,6 +30,8 @@ class MonitorApiResultFactory extends Factory
             'summary' => $isSuccess ? 'Heartbeat received successfully.' : 'API heartbeat failed.',
             'request_headers' => ['Accept' => 'application/json'],
             'response_headers' => ['content-type' => 'application/json'],
+            'run_source' => RunSource::Scheduled,
+            'is_on_demand' => false,
         ];
     }
 
@@ -53,6 +56,14 @@ class MonitorApiResultFactory extends Factory
                 'message' => 'Test failed',
             ]],
             'status' => 'danger',
+        ]);
+    }
+
+    public function onDemand(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'run_source' => RunSource::OnDemand,
+            'is_on_demand' => true,
         ]);
     }
 }

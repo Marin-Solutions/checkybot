@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\RunSource;
 use App\Filament\Resources\MonitorApisResource\Pages\CreateMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ListMonitorApis;
@@ -567,6 +568,8 @@ test('view page run now action persists a real run and surfaces evidence', funct
 
     expect($monitor->results()->count())->toBe(1)
         ->and($monitor->results()->latest('id')->first()->status)->toBe('healthy')
+        ->and($monitor->results()->latest('id')->first()->run_source)->toBe(RunSource::OnDemand)
+        ->and($monitor->results()->latest('id')->first()->is_on_demand)->toBeTrue()
         ->and($monitor->current_status)->toBeNull()
         ->and($monitor->last_heartbeat_at)->toBeNull()
         ->and($monitor->status_summary)->toBeNull();
@@ -603,6 +606,8 @@ test('view page run now action surfaces failure evidence and persists the failed
     expect($monitor->results()->count())->toBe(1)
         ->and($monitor->results()->first()->http_code)->toBe(500)
         ->and($monitor->results()->first()->status)->toBe('danger')
+        ->and($monitor->results()->first()->run_source)->toBe(RunSource::OnDemand)
+        ->and($monitor->results()->first()->is_on_demand)->toBeTrue()
         ->and($monitor->current_status)->toBe('healthy')
         ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
         ->and($monitor->status_summary)->toBe('API responded as expected.');

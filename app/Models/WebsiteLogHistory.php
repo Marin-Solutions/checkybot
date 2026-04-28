@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RunSource;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -21,6 +22,8 @@ class WebsiteLogHistory extends Model
         'transport_error_type',
         'transport_error_message',
         'transport_error_code',
+        'run_source',
+        'is_on_demand',
     ];
 
     protected function casts(): array
@@ -30,6 +33,8 @@ class WebsiteLogHistory extends Model
             'http_status_code' => 'integer',
             'speed' => 'integer',
             'transport_error_code' => 'integer',
+            'run_source' => RunSource::class,
+            'is_on_demand' => 'boolean',
         ];
     }
 }

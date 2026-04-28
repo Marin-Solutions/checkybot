@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\RunSource;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\HealthEventNotificationService;
@@ -33,20 +34,24 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 
     public function uniqueId(): string
     {
-        $mode = $this->isOnDemand() ? 'on-demand' : 'scheduled';
+        $mode = $this->isOnDemand() ? RunSource::OnDemand->value : RunSource::Scheduled->value;
 
         return "website-uptime-ssl:{$this->website->getKey()}:{$mode}";
     }
 
     public function uniqueFor(): int
     {
+        if ($this->isOnDemand()) {
+            return 60;
+        }
+
         return ($this->website->uptime_interval * 60) + 3600;
     }
 
     private function isOnDemand(): bool
     {
-        // Queued payloads serialized before this flag existed leave the typed property uninitialized.
-        return $this->onDemand ?? false;
+        // Legacy queued payloads may not include the onDemand flag.
+        return isset($this->onDemand) && $this->onDemand;
     }
 
     /**
@@ -119,6 +124,8 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                 'transport_error_type' => $transportError ? $transportError['type']->value : null,
                 'transport_error_message' => $transportError['message'] ?? null,
                 'transport_error_code' => $transportError['code'] ?? null,
+                'run_source' => $this->isOnDemand() ? RunSource::OnDemand : RunSource::Scheduled,
+                'is_on_demand' => $this->isOnDemand(),
             ]);
 
             // On-demand runs keep scheduler-owned live status and notification state unchanged.

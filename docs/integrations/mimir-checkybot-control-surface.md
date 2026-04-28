@@ -177,7 +177,7 @@ Example upsert response:
 - `POST /control/projects/{project}/runs`
 - `POST /control/projects/{project}/checks/{check}/runs`
 
-These endpoints execute synchronously and return the fresh result payload immediately. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions.
+These endpoints execute synchronously and return the fresh result payload immediately. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are diagnostic: they are appended to run history, but they do not move live status, alert subscribers, or appear in latest failure feeds.
 
 ### Recent results and latest failures
 

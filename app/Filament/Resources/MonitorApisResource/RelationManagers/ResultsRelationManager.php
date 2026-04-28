@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
+use App\Enums\RunSource;
 use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
 use App\Models\MonitorApiResult;
 use App\Support\ApiMonitorEvidenceFormatter;
@@ -49,6 +50,12 @@ class ResultsRelationManager extends RelationManager
                     ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
                     ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
 
+                Tables\Columns\TextColumn::make('run_source')
+                    ->label('Run')
+                    ->badge()
+                    ->formatStateUsing(fn (mixed $state): string => RunSource::coerce($state)->label())
+                    ->color(fn (mixed $state): string => RunSource::coerce($state)->color()),
+
                 Tables\Columns\TextColumn::make('summary')
                     ->label('Summary')
                     ->wrap()
@@ -88,6 +95,9 @@ class ResultsRelationManager extends RelationManager
                 Tables\Filters\Filter::make('high_response_time')
                     ->label('High Response Time')
                     ->query(fn ($query) => $query->where('response_time_ms', '>', 1000)),
+                Tables\Filters\SelectFilter::make('run_source')
+                    ->label('Run')
+                    ->options(RunSource::options()),
             ])
             ->recordActions([
                 ViewAction::make()
@@ -107,6 +117,11 @@ class ResultsRelationManager extends RelationManager
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
                             ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                        TextEntry::make('run_source')
+                            ->label('Run')
+                            ->badge()
+                            ->formatStateUsing(fn (mixed $state): string => RunSource::coerce($state)->label())
+                            ->color(fn (mixed $state): string => RunSource::coerce($state)->color()),
                         TextEntry::make('summary')
                             ->default('-')
                             ->columnSpanFull(),

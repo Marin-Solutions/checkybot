@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\RunSource;
 use App\Models\WebsiteLogHistory;
 
 test('website log history has correct table name', function () {
@@ -18,6 +19,8 @@ test('website log history has fillable attributes', function () {
         'transport_error_type' => 'dns',
         'transport_error_message' => 'cURL error 6: Could not resolve host: example.invalid',
         'transport_error_code' => 6,
+        'run_source' => RunSource::OnDemand,
+        'is_on_demand' => true,
     ]);
 
     expect($log->website_id)->toBe($website->id);
@@ -27,6 +30,8 @@ test('website log history has fillable attributes', function () {
     expect($log->transport_error_type)->toBe('dns');
     expect($log->transport_error_message)->toContain('Could not resolve host');
     expect($log->transport_error_code)->toBe(6);
+    expect($log->run_source)->toBe(RunSource::OnDemand);
+    expect($log->is_on_demand)->toBeTrue();
 });
 
 test('website log history records successful response', function () {
