@@ -1,5 +1,9 @@
 <?php
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\NotificationScopesEnum;
+use App\Enums\WebsiteServicesEnum;
+use App\Filament\Resources\NotificationSettingResource\Pages\CreateNotificationSetting;
 use App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings;
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
@@ -139,4 +143,52 @@ test('global notification list shows the destination for email and webhook rules
         ->assertCanSeeTableRecords([$emailSetting, $webhookSetting])
         ->assertSee('ops@example.com')
         ->assertSee('Ops Webhook');
+});
+
+test('super admin can create a global email notification rule', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationSetting::class)
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+            'address' => 'global-ops@example.com',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'scope' => NotificationScopesEnum::GLOBAL->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+        'notification_channel_id' => null,
+        'address' => 'global-ops@example.com',
+    ]);
+});
+
+test('super admin can create a global webhook notification rule', function () {
+    $user = $this->actingAsSuperAdmin();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Global Hook',
+    ]);
+
+    Livewire::test(CreateNotificationSetting::class)
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $channel->id,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'scope' => NotificationScopesEnum::GLOBAL->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+        'notification_channel_id' => $channel->id,
+        'address' => null,
+    ]);
 });
