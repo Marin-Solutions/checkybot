@@ -6,7 +6,7 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\Website;
-use Carbon\CarbonInterface;
+use App\Support\PackageCheckTableEvidence;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Collection;
@@ -112,8 +112,6 @@ class ProjectHealthOverviewWidget extends BaseWidget
             ];
         }
 
-        $now = now();
-
         $components = ProjectComponent::query()
             ->where('project_id', $project->getKey())
             ->where('is_archived', false)
@@ -122,12 +120,12 @@ class ProjectHealthOverviewWidget extends BaseWidget
         $websites = Website::query()
             ->where('project_id', $project->getKey())
             ->where('uptime_check', true)
-            ->get(['current_status', 'stale_at']);
+            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at']);
 
         $apis = MonitorApis::query()
             ->where('project_id', $project->getKey())
             ->where('is_enabled', true)
-            ->get(['current_status', 'stale_at']);
+            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at']);
 
         $componentBuckets = $components->reduce(function (array $carry, ProjectComponent $component): array {
             $carry[$this->classifyComponent($component)]++;
@@ -135,8 +133,8 @@ class ProjectHealthOverviewWidget extends BaseWidget
             return $carry;
         }, self::EMPTY_BUCKETS);
 
-        $websiteBuckets = $this->bucketByStaleAt($websites, $now);
-        $apiBuckets = $this->bucketByStaleAt($apis, $now);
+        $websiteBuckets = $this->bucketPackageChecks($websites);
+        $apiBuckets = $this->bucketPackageChecks($apis);
 
         return [
             'tracked' => $components->count() + $websites->count() + $apis->count(),
@@ -161,17 +159,19 @@ class ProjectHealthOverviewWidget extends BaseWidget
     }
 
     /**
-     * Bucket Website / MonitorApis records by their current_status, treating
-     * any record whose stale_at threshold has elapsed as stale regardless of
-     * the recorded current_status.
+     * Bucket Website / MonitorApis records by the same freshness rules shown
+     * in package-managed tables. There, stale_at is the stale detection time,
+     * not a future freshness threshold, so any populated stale_at keeps the
+     * row stale until a later heartbeat clears it.
      *
      * @param  Collection<int, Website|MonitorApis>  $items
      * @return array{failing: int, healthy: int, stale: int, no_data: int}
      */
-    private function bucketByStaleAt(Collection $items, CarbonInterface $now): array
+    private function bucketPackageChecks(Collection $items): array
     {
-        return $items->reduce(function (array $carry, $item) use ($now): array {
-            $isStale = $item->stale_at !== null && $item->stale_at->lessThan($now);
+        return $items->reduce(function (array $carry, $item): array {
+            $isStale = PackageCheckTableEvidence::freshnessState($item) === PackageCheckTableEvidence::STATE_STALE;
+
             $bucket = match (true) {
                 $isStale => 'stale',
                 $item->current_status === 'healthy' => 'healthy',
