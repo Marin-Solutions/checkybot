@@ -7,39 +7,49 @@ use Carbon\CarbonInterface;
 
 class PackageCheckTableEvidence
 {
+    public const STATE_DISABLED = 'Disabled';
+
+    public const STATE_FRESH = 'Fresh';
+
+    public const STATE_AWAITING_HEARTBEAT = 'Awaiting heartbeat';
+
+    public const STATE_STALE = 'Stale';
+
+    public const STATE_SCHEDULE_UNKNOWN = 'Schedule unknown';
+
     public static function freshnessState(object $record): string
     {
         if (static::isMonitoringDisabled($record)) {
-            return 'Disabled';
+            return self::STATE_DISABLED;
         }
 
         if (blank($record->package_interval)) {
-            return 'Schedule unknown';
+            return self::STATE_SCHEDULE_UNKNOWN;
         }
 
         if ($record->last_heartbeat_at === null) {
-            return 'Awaiting heartbeat';
+            return self::STATE_AWAITING_HEARTBEAT;
         }
 
         $thresholdAt = static::staleThresholdAt($record);
 
         if ($thresholdAt === null) {
-            return $record->stale_at !== null ? 'Stale' : 'Schedule unknown';
+            return $record->stale_at !== null ? self::STATE_STALE : self::STATE_SCHEDULE_UNKNOWN;
         }
 
         if ($thresholdAt->lt(now()) || $record->stale_at !== null) {
-            return 'Stale';
+            return self::STATE_STALE;
         }
 
-        return 'Fresh';
+        return self::STATE_FRESH;
     }
 
     public static function freshnessColor(string $state): string
     {
         return match ($state) {
-            'Fresh' => 'success',
-            'Awaiting heartbeat' => 'warning',
-            'Stale' => 'danger',
+            self::STATE_FRESH => 'success',
+            self::STATE_AWAITING_HEARTBEAT => 'warning',
+            self::STATE_STALE => 'danger',
             default => 'gray',
         };
     }

@@ -125,7 +125,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
         $apis = MonitorApis::query()
             ->where('project_id', $project->getKey())
             ->where('is_enabled', true)
-            ->get(['current_status', 'is_enabled', 'last_heartbeat_at', 'package_interval', 'stale_at']);
+            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at']);
 
         $componentBuckets = $components->reduce(function (array $carry, ProjectComponent $component): array {
             $carry[$this->classifyComponent($component)]++;
@@ -170,7 +170,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
     private function bucketPackageChecks(Collection $items): array
     {
         return $items->reduce(function (array $carry, $item): array {
-            $isStale = PackageCheckTableEvidence::freshnessState($item) === 'Stale';
+            $isStale = PackageCheckTableEvidence::freshnessState($item) === PackageCheckTableEvidence::STATE_STALE;
 
             $bucket = match (true) {
                 $isStale => 'stale',
