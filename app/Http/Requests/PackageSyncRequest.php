@@ -123,7 +123,9 @@ class PackageSyncRequest extends FormRequest
                 $name = $check['name'] ?? null;
 
                 if (is_string($key) && is_string($url)) {
-                    $normalizedUrl = $this->resolveUrl($this->input('project.base_url'), $url);
+                    $normalizedUrl = $this->canonicalUrlForSharedKeyComparison(
+                        $this->resolveUrl($this->input('project.base_url'), $url)
+                    );
 
                     if (isset($urlByWebsiteKey[$key]) && $urlByWebsiteKey[$key] !== $normalizedUrl) {
                         $validator->errors()->add(
@@ -199,5 +201,16 @@ class PackageSyncRequest extends FormRequest
         }
 
         return rtrim(is_string($baseUrl) ? $baseUrl : '', '/').'/'.ltrim($url, '/');
+    }
+
+    private function canonicalUrlForSharedKeyComparison(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if (! is_array($parts) || ($parts['path'] ?? null) !== '/' || isset($parts['query']) || isset($parts['fragment'])) {
+            return $url;
+        }
+
+        return rtrim($url, '/');
     }
 }

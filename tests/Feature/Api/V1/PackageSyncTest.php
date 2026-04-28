@@ -862,7 +862,7 @@ test('package sync accepts equivalent normalized urls for shared uptime and ssl 
                     'key' => 'homepage',
                     'type' => 'ssl',
                     'name' => 'Homepage uptime',
-                    'url' => 'https://api.scrappa.co/',
+                    'url' => 'https://api.scrappa.co',
                     'schedule' => '1d',
                 ],
             ],
@@ -872,7 +872,7 @@ test('package sync accepts equivalent normalized urls for shared uptime and ssl 
 
     $this->assertDatabaseHas('websites', [
         'package_name' => 'homepage',
-        'url' => 'https://api.scrappa.co/',
+        'url' => 'https://api.scrappa.co',
         'uptime_check' => true,
         'ssl_check' => true,
     ]);
