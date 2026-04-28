@@ -426,5 +426,6 @@ test('command skips due schedules when a website already has a pending or runnin
 
     $schedule->refresh();
     expect($schedule->last_run_at)->toBeNull();
-    expect($schedule->next_run_at->equalTo($originalNextRun))->toBeTrue();
+    expect($schedule->next_run_at->equalTo($originalNextRun))->toBeFalse();
+    expect($schedule->next_run_at->isFuture())->toBeTrue();
 });
