@@ -5,6 +5,10 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
+use App\Models\Website;
+use App\Models\WebsiteLogHistory;
+use App\Services\PackageSyncService;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
@@ -75,7 +79,10 @@ test('package sync creates a project and api check definitions', function () {
         ->assertJsonPath('data.project.key', 'scrappa')
         ->assertJsonPath('data.summary.created', 1)
         ->assertJsonPath('data.summary.updated', 0)
-        ->assertJsonPath('data.summary.disabled_missing', 0);
+        ->assertJsonPath('data.summary.disabled_missing', 0)
+        ->assertJsonPath('data.summary.api_checks.created', 1)
+        ->assertJsonPath('data.summary.uptime_checks.created', 0)
+        ->assertJsonPath('data.summary.ssl_checks.created', 0);
 
     $projectId = $response->json('data.project.id');
 
@@ -421,88 +428,896 @@ test('package sync rejects non string schedules without throwing', function () {
         ]);
 });
 
-test('package sync counts reserved non api check types as unsupported', function () {
+test('package sync creates website backed uptime and ssl check definitions', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
                 [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => 'every_5_minutes',
+                ],
+                [
                     'key' => 'certificate',
                     'type' => 'ssl',
                     'name' => 'Certificate',
-                    'method' => null,
                     'url' => 'https://api.scrappa.co',
+                    'schedule' => '1d',
                 ],
             ],
         ]));
 
     $response->assertCreated()
-        ->assertJsonPath('data.summary.created', 0)
-        ->assertJsonPath('data.summary.unsupported', 1);
+        ->assertJsonPath('data.summary.created', 2)
+        ->assertJsonPath('data.summary.unsupported', 0)
+        ->assertJsonPath('data.summary.uptime_checks.created', 1)
+        ->assertJsonPath('data.summary.ssl_checks.created', 1);
 
-    $this->assertDatabaseMissing('monitor_apis', [
-        'package_name' => 'certificate',
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $response->json('data.project.id'),
+        'package_name' => 'homepage-uptime',
+        'name' => 'Homepage uptime',
+        'url' => 'https://api.scrappa.co/',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'uptime_interval' => 5,
+        'package_interval' => '5m',
+        'source' => 'package',
     ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $response->json('data.project.id'),
+        'package_name' => 'certificate',
+        'name' => 'Certificate',
+        'url' => 'https://api.scrappa.co',
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'uptime_interval' => null,
+        'package_interval' => '1d',
+        'source' => 'package',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$response->json('data.project.id')}/checks/certificate")
+        ->assertOk()
+        ->assertJsonPath('data.type', 'ssl')
+        ->assertJsonPath('data.interval', '1d')
+        ->assertJsonPath('data.interval_minutes', 1440);
 });
 
-test('package sync ignores unsupported check schedules instead of validating them', function () {
+test('package sync treats absolute website urls case insensitively', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
                 [
+                    'key' => 'external-status',
+                    'type' => 'uptime',
+                    'name' => 'External status',
+                    'url' => 'HTTPS://status.example.com',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $response->json('data.project.id'),
+        'package_name' => 'external-status',
+        'url' => 'HTTPS://status.example.com',
+        'uptime_check' => true,
+        'source' => 'package',
+    ]);
+});
+
+test('package website key index does not constrain manual websites', function () {
+    $project = Project::factory()->create(['created_by' => $this->user->id]);
+
+    Website::factory()
+        ->count(2)
+        ->create([
+            'project_id' => $project->id,
+            'source' => 'manual',
+            'package_name' => null,
+        ]);
+
+    expect(Website::where('project_id', $project->id)->count())->toBe(2);
+});
+
+test('package website key index rejects duplicate package rows', function () {
+    $project = Project::factory()->create(['created_by' => $this->user->id]);
+
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+    ]);
+})->throws(QueryException::class);
+
+test('package website key migration keeps active duplicates and reassigns history', function () {
+    $migration = require database_path('migrations/2026_04_28_010002_add_unique_package_website_key_index.php');
+    $migration->down();
+
+    $project = Project::factory()->create(['created_by' => $this->user->id]);
+    $deletedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+    ]);
+    $activeWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+    ]);
+    $deletedWebsite->delete();
+
+    $history = WebsiteLogHistory::factory()->create(['website_id' => $deletedWebsite->id]);
+
+    $migration->up();
+
+    expect(Website::withTrashed()->find($deletedWebsite->id))->toBeNull()
+        ->and(Website::find($activeWebsite->id))->not->toBeNull()
+        ->and($history->fresh()->website_id)->toBe($activeWebsite->id);
+});
+
+test('package website key migration merges split duplicate check flags', function () {
+    $migration = require database_path('migrations/2026_04_28_010002_add_unique_package_website_key_index.php');
+    $migration->down();
+
+    $project = Project::factory()->create(['created_by' => $this->user->id]);
+    $uptimeWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'uptime_interval' => 5,
+        'ssl_check' => false,
+        'package_interval' => '5m',
+        'updated_at' => now()->subMinute(),
+    ]);
+    $sslWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => false,
+        'uptime_interval' => null,
+        'ssl_check' => true,
+        'package_interval' => '1d',
+        'updated_at' => now(),
+    ]);
+
+    $migration->up();
+
+    $keptWebsite = $sslWebsite->fresh();
+
+    expect(Website::withTrashed()->find($uptimeWebsite->id))->toBeNull()
+        ->and($keptWebsite)->not->toBeNull()
+        ->and($keptWebsite->uptime_check)->toBeTrue()
+        ->and($keptWebsite->uptime_interval)->toBe(5)
+        ->and($keptWebsite->ssl_check)->toBeTrue()
+        ->and($keptWebsite->package_interval)->toBe('5m');
+});
+
+test('package website key migration ignores soft deleted duplicates when merging check flags', function () {
+    $migration = require database_path('migrations/2026_04_28_010002_add_unique_package_website_key_index.php');
+    $migration->down();
+
+    $project = Project::factory()->create(['created_by' => $this->user->id]);
+    $deletedUptimeWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'uptime_interval' => 5,
+        'ssl_check' => false,
+        'package_interval' => '5m',
+    ]);
+    $activeSslWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => false,
+        'uptime_interval' => null,
+        'ssl_check' => true,
+        'package_interval' => '1d',
+    ]);
+    $deletedUptimeWebsite->delete();
+
+    $migration->up();
+
+    $keptWebsite = $activeSslWebsite->fresh();
+
+    expect(Website::withTrashed()->find($deletedUptimeWebsite->id))->toBeNull()
+        ->and($keptWebsite)->not->toBeNull()
+        ->and($keptWebsite->uptime_check)->toBeFalse()
+        ->and($keptWebsite->uptime_interval)->toBeNull()
+        ->and($keptWebsite->ssl_check)->toBeTrue()
+        ->and($keptWebsite->package_interval)->toBe('1d');
+});
+
+test('package sync updates and disables missing website checks by stable package keys', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+                [
                     'key' => 'certificate',
                     'type' => 'ssl',
                     'name' => 'Certificate',
-                    'method' => null,
+                    'url' => 'https://api.scrappa.co',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    Website::query()
+        ->where('package_name', 'certificate')
+        ->update([
+            'last_heartbeat_at' => now()->subHour(),
+            'stale_at' => now()->subMinutes(5),
+        ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage',
+                    'url' => '/status',
+                    'schedule' => '10m',
+                ],
+            ],
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.updated', 1)
+        ->assertJsonPath('data.summary.disabled_missing', 1)
+        ->assertJsonPath('data.summary.uptime_checks.updated', 1)
+        ->assertJsonPath('data.summary.ssl_checks.disabled_missing', 1);
+
+    expect(DB::table('websites')->where('package_name', 'homepage-uptime')->count())->toBe(1)
+        ->and(DB::table('websites')->where('package_name', 'certificate')->count())->toBe(1);
+
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'homepage-uptime',
+        'name' => 'Homepage',
+        'url' => 'https://api.scrappa.co/status',
+        'uptime_check' => true,
+        'uptime_interval' => 10,
+        'package_interval' => '10m',
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'certificate',
+        'ssl_check' => false,
+        'package_interval' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+});
+
+test('package sync restores soft deleted website checks when re-added', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $website = Website::query()->where('package_name', 'homepage-uptime')->sole();
+    $website->delete();
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.updated', 1);
+
+    $this->assertDatabaseHas('websites', [
+        'id' => $website->id,
+        'deleted_at' => null,
+    ]);
+});
+
+test('package sync does not inherit uptime flag when restoring a deleted website via ssl-only sync', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'ssl',
+                    'name' => 'Homepage',
+                    'url' => '/',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    Website::query()->where('package_name', 'homepage')->delete();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'ssl',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]))
+        ->assertOk();
+
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'homepage',
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'deleted_at' => null,
+    ]);
+});
+
+test('package sync allows uptime and ssl checks to share a key through the api', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'ssl',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated()
+        ->assertJsonPath('data.summary.created', 2)
+        ->assertJsonPath('data.summary.updated', 0)
+        ->assertJsonPath('data.summary.uptime_checks.created', 1)
+        ->assertJsonPath('data.summary.uptime_checks.updated', 0)
+        ->assertJsonPath('data.summary.ssl_checks.created', 1)
+        ->assertJsonPath('data.summary.ssl_checks.updated', 0);
+
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'uptime_interval' => 5,
+        'package_interval' => '5m',
+    ]);
+});
+
+test('package shared uptime and ssl key can be read as the primary uptime check', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'ssl',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $projectId = $response->json('data.project.id');
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$projectId}/checks/homepage")
+        ->assertOk()
+        ->assertJsonPath('data.id', "uptime:{$website->id}")
+        ->assertJsonPath('data.key', 'homepage')
+        ->assertJsonPath('data.type', 'uptime');
+});
+
+test('package sync accepts equivalent normalized urls for shared uptime and ssl keys', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'ssl',
+                    'name' => 'Homepage uptime',
+                    'url' => 'HTTPS://API.SCRAPPA.CO:443',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'homepage',
+        'url' => 'HTTPS://API.SCRAPPA.CO:443',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+});
+
+test('package sync rejects shared uptime and ssl keys with different urls', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/health',
+                    'schedule' => '5m',
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'ssl',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.1.url',
+        ]);
+});
+
+test('package sync rejects shared uptime and ssl keys with different names', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'ssl',
+                    'name' => 'Homepage certificate',
+                    'url' => '/',
+                    'schedule' => '1d',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.1.name',
+        ]);
+});
+
+test('package sync rejects duplicate keys within the same check type', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime duplicate',
+                    'url' => '/duplicate',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.1.key',
+        ]);
+});
+
+test('package sync rejects shared keys outside the uptime ssl pair', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'health',
+                    'type' => 'api',
+                    'name' => 'Health API',
+                    'method' => 'GET',
+                    'url' => '/health',
+                ],
+                [
+                    'key' => 'health',
+                    'type' => 'uptime',
+                    'name' => 'Health uptime',
+                    'url' => '/health',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.1.key',
+        ]);
+});
+
+test('package sync service preserves website flags when uptime and ssl share a key', function () {
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'uptime',
+                'name' => 'Homepage',
+                'url' => '/',
+                'schedule' => '5m',
+            ],
+            [
+                'key' => 'homepage',
+                'type' => 'ssl',
+                'name' => 'Homepage certificate',
+                'url' => '/',
+                'schedule' => '1d',
+            ],
+        ],
+    ]));
+
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    expect($website->uptime_check)->toBeTrue()
+        ->and($website->ssl_check)->toBeTrue()
+        ->and($website->uptime_interval)->toBe(5)
+        ->and($website->package_interval)->toBe('5m');
+});
+
+test('package sync keeps package interval while a shared-key website check remains active', function () {
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'uptime',
+                'name' => 'Homepage',
+                'url' => '/',
+                'schedule' => '5m',
+            ],
+            [
+                'key' => 'homepage',
+                'type' => 'ssl',
+                'name' => 'Homepage certificate',
+                'url' => '/',
+                'schedule' => '1d',
+            ],
+        ],
+    ]));
+
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'ssl',
+                'name' => 'Homepage certificate',
+                'url' => '/',
+                'schedule' => '1d',
+            ],
+        ],
+    ]));
+
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    expect($website->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeTrue()
+        ->and($website->package_interval)->toBe('1d');
+});
+
+test('package sync recalculates package interval when ssl is removed from a shared-key website', function () {
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'uptime',
+                'name' => 'Homepage',
+                'url' => '/',
+                'schedule' => '5m',
+            ],
+            [
+                'key' => 'homepage',
+                'type' => 'ssl',
+                'name' => 'Homepage certificate',
+                'url' => '/',
+                'schedule' => '1d',
+            ],
+        ],
+    ]));
+
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'uptime',
+                'name' => 'Homepage',
+                'url' => '/',
+                'schedule' => '30m',
+            ],
+        ],
+    ]));
+
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    expect($website->uptime_check)->toBeTrue()
+        ->and($website->ssl_check)->toBeFalse()
+        ->and($website->uptime_interval)->toBe(30)
+        ->and($website->package_interval)->toBe('30m');
+});
+
+test('package sync uses uptime interval for shared-key package stale detection', function () {
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'uptime',
+                'name' => 'Homepage',
+                'url' => '/',
+                'schedule' => '1h',
+            ],
+            [
+                'key' => 'homepage',
+                'type' => 'ssl',
+                'name' => 'Homepage certificate',
+                'url' => '/',
+                'schedule' => '5m',
+            ],
+        ],
+    ]));
+
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    expect($website->uptime_check)->toBeTrue()
+        ->and($website->ssl_check)->toBeTrue()
+        ->and($website->uptime_interval)->toBe(60)
+        ->and($website->package_interval)->toBe('1h');
+});
+
+test('package sync keeps status while a shared-key website check remains active', function () {
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'uptime',
+                'name' => 'Homepage',
+                'url' => '/',
+                'schedule' => '5m',
+            ],
+            [
+                'key' => 'homepage',
+                'type' => 'ssl',
+                'name' => 'Homepage certificate',
+                'url' => '/',
+                'schedule' => '1d',
+            ],
+        ],
+    ]));
+
+    Website::query()
+        ->where('package_name', 'homepage')
+        ->update([
+            'current_status' => 'success',
+            'status_summary' => 'Certificate healthy.',
+        ]);
+
+    app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'homepage',
+                'type' => 'ssl',
+                'name' => 'Homepage certificate',
+                'url' => '/',
+                'schedule' => '1d',
+            ],
+        ],
+    ]));
+
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    expect($website->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeTrue()
+        ->and($website->current_status)->toBe('success')
+        ->and($website->status_summary)->toBe('Certificate healthy.');
+});
+
+test('package sync rejects check types that are not implemented by the package sync API', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-links',
+                    'type' => 'links',
+                    'name' => 'Homepage links',
+                    'url' => '/',
+                ],
+                [
+                    'key' => 'homepage-og',
+                    'type' => 'opengraph',
+                    'name' => 'Homepage Open Graph',
+                    'url' => '/',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.type',
+            'checks.1.type',
+        ]);
+});
+
+test('package sync requires valid schedules for uptime and ssl checks', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => null,
+                ],
+                [
+                    'key' => 'certificate',
+                    'type' => 'ssl',
+                    'name' => 'Certificate',
                     'url' => 'https://api.scrappa.co',
                     'schedule' => 'daily',
                 ],
             ],
         ]));
 
-    $response->assertCreated()
-        ->assertJsonPath('data.summary.created', 0)
-        ->assertJsonPath('data.summary.unsupported', 1);
-
-    $this->assertDatabaseMissing('monitor_apis', [
-        'package_name' => 'certificate',
-    ]);
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.schedule',
+            'checks.1.schedule',
+        ]);
 });
 
-test('package sync ignores unsupported check request bodies instead of validating them', function () {
+test('package sync requires schedule keys for uptime and ssl checks', function () {
+    $payload = packageSyncPayload();
+    $payload['checks'] = [
+        [
+            'key' => 'homepage-uptime',
+            'type' => 'uptime',
+            'name' => 'Homepage uptime',
+            'url' => '/',
+        ],
+        [
+            'key' => 'certificate',
+            'type' => 'ssl',
+            'name' => 'Certificate',
+            'url' => 'https://api.scrappa.co',
+        ],
+    ];
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.schedule',
+            'checks.1.schedule',
+        ]);
+});
+
+test('package sync rejects website schedules that cannot be executed as configured', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
                 [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '2m',
+                ],
+                [
                     'key' => 'certificate',
                     'type' => 'ssl',
                     'name' => 'Certificate',
-                    'method' => null,
                     'url' => 'https://api.scrappa.co',
-                    'request_body' => ['probe' => true],
+                    'schedule' => '2m',
                 ],
                 [
-                    'key' => 'google-maps-search',
-                    'type' => 'api',
-                    'name' => 'Google Maps search API',
-                    'method' => 'GET',
-                    'url' => '/api/google-maps/search',
-                    'request_body_type' => 'json',
-                    'request_body' => ['probe' => true],
+                    'key' => 'seconds-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Seconds uptime',
+                    'url' => '/seconds',
+                    'schedule' => '30s',
+                ],
+                [
+                    'key' => 'seconds-certificate',
+                    'type' => 'ssl',
+                    'name' => 'Seconds certificate',
+                    'url' => 'https://api.scrappa.co',
+                    'schedule' => '30s',
                 ],
             ],
         ]));
 
-    $response->assertCreated()
-        ->assertJsonPath('data.summary.created', 1)
-        ->assertJsonPath('data.summary.unsupported', 1);
-
-    $this->assertDatabaseMissing('monitor_apis', [
-        'package_name' => 'certificate',
-    ]);
-
-    $this->assertDatabaseHas('monitor_apis', [
-        'package_name' => 'google-maps-search',
-    ]);
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.schedule',
+            'checks.2.schedule',
+            'checks.3.schedule',
+        ])
+        ->assertJsonMissingValidationErrors([
+            'checks.1.schedule',
+        ]);
 });
 
 test('package sync can claim an existing project by identity endpoint fallback', function () {

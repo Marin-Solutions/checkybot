@@ -7,6 +7,10 @@ use App\Mail\EmailReminderSsl;
 use App\Models\NotificationSetting;
 use App\Models\User;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
+use App\Services\HealthEventNotificationService;
+use App\Services\IntervalParser;
+use App\Services\PackageHealthStatusService;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
@@ -26,13 +30,24 @@ class CheckSslExpiryDateJob implements ShouldQueue
     /**
      * Execute the job.
      */
-    public function handle(SslCertificateService $sslCertificateService): void
-    {
+    public function handle(
+        SslCertificateService $sslCertificateService,
+        ?PackageHealthStatusService $statusService = null,
+        ?HealthEventNotificationService $notificationService = null,
+    ): void {
+        $statusService ??= app(PackageHealthStatusService::class);
+        $notificationService ??= app(HealthEventNotificationService::class);
+
+        if (! $this->website->ssl_check) {
+            return;
+        }
+
         $host = $sslCertificateService->extractHost($this->website->url);
         $port = $sslCertificateService->extractPort($this->website->url);
 
         if (blank($host)) {
             Log::error('Could not determine SSL host for website '.$this->website->url);
+            $this->recordPackageHealth(null, $statusService, $notificationService);
 
             return;
         }
@@ -41,6 +56,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
             $newExpiryDate = $sslCertificateService->getExpirationDateForHost($host, $port);
         } catch (\Exception $e) {
             Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage());
+            $this->recordPackageHealth(null, $statusService, $notificationService);
 
             return;
         }
@@ -56,6 +72,8 @@ class CheckSslExpiryDateJob implements ShouldQueue
                 ? null
                 : $this->website->ssl_expiry_reminder_sent_at,
         ])->save();
+
+        $this->recordPackageHealth($newExpiryDate, $statusService, $notificationService);
 
         if (! $this->shouldSendReminder($newExpiryDate)) {
             return;
@@ -138,5 +156,65 @@ class CheckSslExpiryDateJob implements ShouldQueue
         }
 
         return $this->website->ssl_expiry_reminder_sent_at->gt(now()->subDay());
+    }
+
+    private function recordPackageHealth(
+        ?CarbonInterface $expiryDate,
+        PackageHealthStatusService $statusService,
+        HealthEventNotificationService $notificationService,
+    ): void {
+        if (
+            $this->website->source !== 'package'
+            || $this->website->uptime_check
+            || blank($this->website->package_interval)
+            || ! $this->packageIntervalElapsed()
+        ) {
+            return;
+        }
+
+        $status = $statusService->sslStatusFromExpiryDate($expiryDate);
+        $summary = $statusService->summaryForSsl($expiryDate);
+        $previousStatus = $this->website->current_status;
+
+        WebsiteLogHistory::create([
+            'website_id' => $this->website->id,
+            'ssl_expiry_date' => $expiryDate,
+            'status' => $status,
+            'summary' => $summary,
+        ]);
+
+        $this->website->forceFill([
+            'current_status' => $status,
+            'last_heartbeat_at' => now(),
+            'stale_at' => null,
+            'status_summary' => $summary,
+        ])->save();
+
+        if (
+            in_array($status, ['warning', 'danger'], true)
+            && $previousStatus !== $status
+        ) {
+            $notificationService->notifyWebsite($this->website, 'heartbeat', $status, $summary);
+        } elseif (
+            $status === 'healthy'
+            && in_array($previousStatus, ['warning', 'danger'], true)
+        ) {
+            $notificationService->notifyWebsite($this->website, 'recovered', $status, $summary);
+        }
+    }
+
+    private function packageIntervalElapsed(): bool
+    {
+        if ($this->website->last_heartbeat_at === null) {
+            return true;
+        }
+
+        try {
+            return $this->website->last_heartbeat_at->lte(
+                now()->subMinutes(IntervalParser::toMinutes($this->website->package_interval))
+            );
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 }

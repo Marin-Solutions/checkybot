@@ -93,6 +93,10 @@ test('converts minutes back to interval string', function () {
     expect(IntervalParser::fromMinutes(2880))->toBe('2d');
 });
 
+test('throws exception for non-positive minutes when converting from minutes', function () {
+    IntervalParser::fromMinutes(0);
+})->throws(\InvalidArgumentException::class, 'Interval value must be greater than zero.');
+
 test('prefers hours over minutes when converting', function () {
     expect(IntervalParser::fromMinutes(60))->toBe('1h');
     expect(IntervalParser::fromMinutes(120))->toBe('2h');

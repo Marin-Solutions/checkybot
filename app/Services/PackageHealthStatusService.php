@@ -56,6 +56,47 @@ class PackageHealthStatusService
         };
     }
 
+    public function sslStatusFromExpiryDate(?CarbonInterface $expiryDate): string
+    {
+        if ($expiryDate === null) {
+            return 'danger';
+        }
+
+        if ($expiryDate->isPast()) {
+            return 'danger';
+        }
+
+        $daysLeft = today()->diffInDays($expiryDate->copy()->startOfDay(), false);
+
+        return match (true) {
+            $daysLeft <= 14 => 'warning',
+            default => 'healthy',
+        };
+    }
+
+    public function summaryForSsl(?CarbonInterface $expiryDate): string
+    {
+        if ($expiryDate === null) {
+            return 'SSL certificate check failed before an expiry date could be read.';
+        }
+
+        if ($expiryDate->isPast()) {
+            $daysExpired = abs((int) today()->diffInDays($expiryDate->copy()->startOfDay(), false));
+
+            return $daysExpired === 0
+                ? 'SSL certificate expired today.'
+                : "SSL certificate expired {$daysExpired} day(s) ago.";
+        }
+
+        $daysLeft = today()->diffInDays($expiryDate->copy()->startOfDay(), false);
+
+        if ($daysLeft <= 14) {
+            return "SSL certificate expires in {$daysLeft} day(s).";
+        }
+
+        return "SSL certificate is valid for {$daysLeft} day(s).";
+    }
+
     public function summaryForApi(array $result, ?int $expectedStatus = null): string
     {
         $status = $this->apiStatusFromResult($result, $expectedStatus);

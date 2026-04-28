@@ -94,6 +94,22 @@ class CheckybotImportService
             ->filter(fn (array $check): bool => $check['key'] === $checkKey)
             ->values();
 
+        if ($keyMatches->count() === 2) {
+            $databaseIds = $keyMatches
+                ->pluck('database_id')
+                ->unique()
+                ->values();
+            $types = $keyMatches
+                ->pluck('type')
+                ->sort()
+                ->values()
+                ->all();
+
+            if ($databaseIds->count() === 1 && $types === ['ssl', 'uptime']) {
+                return $keyMatches->firstWhere('type', 'uptime') ?? $keyMatches->first();
+            }
+        }
+
         if ($keyMatches->count() !== 1) {
             throw (new ModelNotFoundException)->setModel(MonitorApis::class, [$checkKey]);
         }
@@ -222,7 +238,9 @@ class CheckybotImportService
             'target' => $this->sanitizeUrl($website->url),
             'url' => $this->sanitizeUrl($website->url),
             'interval' => $website->package_interval,
-            'interval_minutes' => $website->uptime_interval,
+            'interval_minutes' => $type === 'uptime'
+                ? $website->uptime_interval
+                : ($website->package_interval !== null ? IntervalParser::toMinutes($website->package_interval) : null),
             'enabled' => $type === 'uptime' ? $website->uptime_check : $website->ssl_check,
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,

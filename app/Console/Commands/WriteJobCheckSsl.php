@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\CheckSslExpiryDateJob;
 use App\Models\Website;
+use App\Services\IntervalParser;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Collection;
@@ -50,6 +51,14 @@ class WriteJobCheckSsl extends Command
         $websites = Website::where('ssl_check', '1')
             ->get()
             ->filter(function (Website $website) use ($days, $now) {
+                if ($this->packageSslCheckIsDue($website)) {
+                    return true;
+                }
+
+                if ($this->isPackageSslOnlyCheck($website)) {
+                    return false;
+                }
+
                 if ($website->ssl_expiry_date === null) {
                     return true;
                 }
@@ -62,5 +71,29 @@ class WriteJobCheckSsl extends Command
             ->values();
 
         return $websites;
+    }
+
+    private function packageSslCheckIsDue(Website $website): bool
+    {
+        if (! $this->isPackageSslOnlyCheck($website)) {
+            return false;
+        }
+
+        if ($website->last_heartbeat_at === null) {
+            return true;
+        }
+
+        try {
+            return $website->last_heartbeat_at->lte(now()->subMinutes(IntervalParser::toMinutes($website->package_interval)));
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+    }
+
+    private function isPackageSslOnlyCheck(Website $website): bool
+    {
+        return $website->source === 'package'
+            && ! $website->uptime_check
+            && filled($website->package_interval);
     }
 }

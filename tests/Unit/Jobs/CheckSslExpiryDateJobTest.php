@@ -5,6 +5,7 @@ use App\Mail\EmailReminderSsl;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
@@ -368,4 +369,190 @@ test('job does not throttle ssl reminders when all webhook deliveries fail', fun
 
     expect($website->ssl_expiry_date)->not->toBeNull();
     expect($website->ssl_expiry_reminder_sent_at)->toBeNull();
+});
+
+test('job records package ssl heartbeat status when certificate is healthy', function () {
+    Mail::fake();
+
+    $futureDate = now()->addDays(45);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($futureDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://package.example')
+            ->andReturn('package.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://package.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('package.example', 443)
+            ->andReturn($futureDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://package.example',
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => '1d',
+        'current_status' => 'danger',
+        'last_heartbeat_at' => null,
+        'stale_at' => now()->subHour(),
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+
+    expect($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at)->not->toBeNull()
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe('SSL certificate is valid for 45 day(s).')
+        ->and($history?->status)->toBe('healthy')
+        ->and($history?->summary)->toBe('SSL certificate is valid for 45 day(s).');
+});
+
+test('job does not overwrite package uptime health for shared ssl checks', function () {
+    Mail::fake();
+
+    $futureDate = now()->addDays(45);
+    $lastHeartbeat = now()->subMinutes(5)->startOfSecond();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($futureDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://shared-package.example')
+            ->andReturn('shared-package.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://shared-package.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('shared-package.example', 443)
+            ->andReturn($futureDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://shared-package.example',
+        'ssl_check' => true,
+        'uptime_check' => true,
+        'source' => 'package',
+        'package_name' => 'shared',
+        'package_interval' => '5m',
+        'current_status' => 'danger',
+        'last_heartbeat_at' => $lastHeartbeat,
+        'stale_at' => now()->subHour(),
+        'status_summary' => 'Uptime check returned HTTP 500.',
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->current_status)->toBe('danger')
+        ->and($website->last_heartbeat_at->equalTo($lastHeartbeat))->toBeTrue()
+        ->and($website->stale_at)->not->toBeNull()
+        ->and($website->status_summary)->toBe('Uptime check returned HTTP 500.')
+        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
+});
+
+test('job does not record package ssl heartbeat before interval elapses on reminder dispatch', function () {
+    Mail::fake();
+
+    $futureDate = today()->addDays(14);
+    $lastHeartbeat = now()->subHour()->startOfSecond();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($futureDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://package-reminder.example')
+            ->andReturn('package-reminder.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://package-reminder.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('package-reminder.example', 443)
+            ->andReturn($futureDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://package-reminder.example',
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => '1d',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => $lastHeartbeat,
+        'status_summary' => 'SSL certificate is valid for 15 day(s).',
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->last_heartbeat_at->equalTo($lastHeartbeat))->toBeTrue()
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->status_summary)->toBe('SSL certificate is valid for 15 day(s).')
+        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
+});
+
+test('job records package ssl failure status when certificate cannot be read', function () {
+    Mail::fake();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://broken-package.example')
+            ->andReturn('broken-package.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://broken-package.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('broken-package.example', 443)
+            ->andThrow(new RuntimeException('certificate unavailable'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://broken-package.example',
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => '1d',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => null,
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+
+    expect($website->current_status)->toBe('danger')
+        ->and($website->last_heartbeat_at)->not->toBeNull()
+        ->and($website->status_summary)->toBe('SSL certificate check failed before an expiry date could be read.')
+        ->and($history?->status)->toBe('danger')
+        ->and($history?->summary)->toBe('SSL certificate check failed before an expiry date could be read.');
 });

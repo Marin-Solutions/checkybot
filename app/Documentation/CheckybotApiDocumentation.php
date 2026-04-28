@@ -43,7 +43,8 @@ class CheckybotApiDocumentation
      *     path="/v1/package/sync",
      *     operationId="syncPackageChecks",
      *     tags={"package"},
-     *     summary="Sync package-managed API checks",
+     *     summary="Sync package-managed API, uptime, and SSL checks",
+     *     description="The package payload is the source of truth for package-managed checks. Matching checks are overwritten on each sync, package-managed website descriptions are reset from package data, missing package checks are disabled, and uptime plus SSL may share one key when they describe the same website.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\RequestBody(
@@ -116,17 +117,17 @@ class CheckybotApiDocumentation
      *
      *                         @OA\Schema(
      *                             type="object",
-     *                             required={"key", "type", "name", "url"},
+     *                             required={"key", "type", "name", "url", "schedule"},
      *
      *                             @OA\Property(property="key", type="string", example="homepage"),
-     *                             @OA\Property(property="type", type="string", enum={"ssl", "uptime", "links", "opengraph"}, example="uptime"),
+     *                             @OA\Property(property="type", type="string", enum={"ssl", "uptime"}, example="uptime"),
      *                             @OA\Property(property="name", type="string", example="Homepage"),
      *                             @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}),
      *                             @OA\Property(property="url", type="string", example="https://app.example.com"),
      *                             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
      *                             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *                             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
-     *                             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
+     *                             @OA\Property(property="schedule", type="string", example="5m"),
      *                             @OA\Property(property="enabled", type="boolean", nullable=true, example=true)
      *                         )
      *                     }
