@@ -362,7 +362,7 @@ class PackageSyncService
 
     private function resolveUrl(?string $baseUrl, string $url): string
     {
-        if (Str::startsWith($url, ['http://', 'https://'])) {
+        if (preg_match('/^https?:\/\//i', $url) === 1) {
             return $url;
         }
 

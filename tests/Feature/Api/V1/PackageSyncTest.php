@@ -487,6 +487,31 @@ test('package sync creates website backed uptime and ssl check definitions', fun
         ->assertJsonPath('data.interval_minutes', 1440);
 });
 
+test('package sync treats absolute website urls case insensitively', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'external-status',
+                    'type' => 'uptime',
+                    'name' => 'External status',
+                    'url' => 'HTTPS://status.example.com',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $response->json('data.project.id'),
+        'package_name' => 'external-status',
+        'url' => 'HTTPS://status.example.com',
+        'uptime_check' => true,
+        'source' => 'package',
+    ]);
+});
+
 test('package website key index does not constrain manual websites', function () {
     $project = Project::factory()->create(['created_by' => $this->user->id]);
 
