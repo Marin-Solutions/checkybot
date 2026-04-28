@@ -20,6 +20,23 @@ class SyncProjectChecksRequest extends FormRequest
         return $this->user() && $this->user()->id === $project->created_by;
     }
 
+    protected function prepareForValidation(): void
+    {
+        if (! is_array($this->input('api_checks'))) {
+            return;
+        }
+
+        $this->merge([
+            'api_checks' => array_map(function (mixed $check): mixed {
+                if (is_array($check) && isset($check['method']) && is_string($check['method'])) {
+                    $check['method'] = strtoupper($check['method']);
+                }
+
+                return $check;
+            }, $this->input('api_checks')),
+        ]);
+    }
+
     public function rules(): array
     {
         return [
@@ -38,7 +55,7 @@ class SyncProjectChecksRequest extends FormRequest
             'api_checks.*.name' => $this->checkNameRules(),
             'api_checks.*.url' => ['required', 'url', 'max:1000'],
             'api_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
-            'api_checks.*.method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS,get,post,put,patch,delete,head,options'],
+            'api_checks.*.method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS'],
             'api_checks.*.headers' => ['array'],
             'api_checks.*.request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'in:json,form,raw'],
             'api_checks.*.request_body' => ['nullable', new RequestBodyMaxSize, new StructuredRequestBody],

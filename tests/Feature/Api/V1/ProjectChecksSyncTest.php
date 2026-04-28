@@ -198,6 +198,30 @@ test('updates api checks with execution settings from legacy sync', function () 
     ]);
 });
 
+test('legacy sync defaults nullable expected status to success status', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'nullable-status-api',
+                    'url' => 'https://api.example.com/status',
+                    'interval' => '5m',
+                    'expected_status' => null,
+                ],
+            ],
+        ]);
+
+    $response->assertOk();
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'nullable-status-api',
+        'expected_status' => 200,
+    ]);
+});
+
 test('updates existing checks', function () {
     Website::factory()->create([
         'project_id' => $this->project->id,
@@ -511,6 +535,55 @@ test('validates assertion types', function () {
 
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['api_checks.0.assertions.0.assertion_type']);
+});
+
+test('validates api check execution settings', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'bad-method',
+                    'url' => 'https://api.example.com/method',
+                    'interval' => '5m',
+                    'method' => 'CONNECT',
+                ],
+                [
+                    'name' => 'bad-low-status',
+                    'url' => 'https://api.example.com/status-low',
+                    'interval' => '5m',
+                    'expected_status' => 99,
+                ],
+                [
+                    'name' => 'bad-high-status',
+                    'url' => 'https://api.example.com/status-high',
+                    'interval' => '5m',
+                    'expected_status' => 600,
+                ],
+                [
+                    'name' => 'bad-low-timeout',
+                    'url' => 'https://api.example.com/timeout-low',
+                    'interval' => '5m',
+                    'timeout_seconds' => 0,
+                ],
+                [
+                    'name' => 'bad-high-timeout',
+                    'url' => 'https://api.example.com/timeout-high',
+                    'interval' => '5m',
+                    'timeout_seconds' => 121,
+                ],
+            ],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'api_checks.0.method',
+            'api_checks.1.expected_status',
+            'api_checks.2.expected_status',
+            'api_checks.3.timeout_seconds',
+            'api_checks.4.timeout_seconds',
+        ]);
 });
 
 test('requires body type when an api check request body is provided', function () {
