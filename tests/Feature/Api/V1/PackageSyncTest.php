@@ -543,6 +543,44 @@ test('package website key migration keeps active duplicates and reassigns histor
         ->and($history->fresh()->website_id)->toBe($activeWebsite->id);
 });
 
+test('package website key migration merges split duplicate check flags', function () {
+    $migration = require database_path('migrations/2026_04_28_010002_add_unique_package_website_key_index.php');
+    $migration->down();
+
+    $project = Project::factory()->create(['created_by' => $this->user->id]);
+    $uptimeWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'uptime_interval' => 5,
+        'ssl_check' => false,
+        'package_interval' => '5m',
+        'updated_at' => now()->subMinute(),
+    ]);
+    $sslWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => false,
+        'uptime_interval' => null,
+        'ssl_check' => true,
+        'package_interval' => '1d',
+        'updated_at' => now(),
+    ]);
+
+    $migration->up();
+
+    $keptWebsite = $sslWebsite->fresh();
+
+    expect(Website::withTrashed()->find($uptimeWebsite->id))->toBeNull()
+        ->and($keptWebsite)->not->toBeNull()
+        ->and($keptWebsite->uptime_check)->toBeTrue()
+        ->and($keptWebsite->uptime_interval)->toBe(5)
+        ->and($keptWebsite->ssl_check)->toBeTrue()
+        ->and($keptWebsite->package_interval)->toBe('5m');
+});
+
 test('package sync updates and disables missing website checks by stable package keys', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([

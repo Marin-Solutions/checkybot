@@ -1,5 +1,6 @@
 <?php
 
+use App\Services\IntervalParser;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -70,12 +71,46 @@ return new class extends Migration
                 continue;
             }
 
+            $this->mergeDuplicateWebsiteChecks($duplicate, (int) $keepId);
             $this->reassignWebsiteReferences($duplicateIds->all(), (int) $keepId);
 
             DB::table('websites')
                 ->whereIn('id', $duplicateIds->all())
                 ->delete();
         }
+    }
+
+    protected function mergeDuplicateWebsiteChecks(object $duplicate, int $keepId): void
+    {
+        $websites = DB::table('websites')
+            ->where('project_id', $duplicate->project_id)
+            ->where('source', $duplicate->source)
+            ->where('package_name', $duplicate->package_name)
+            ->orderByRaw('CASE WHEN id = ? THEN 0 ELSE 1 END', [$keepId])
+            ->orderByRaw('CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END')
+            ->orderByDesc('updated_at')
+            ->orderBy('id')
+            ->get(['uptime_check', 'uptime_interval', 'ssl_check', 'package_interval']);
+
+        $uptimeCheck = $websites->contains(fn (object $website): bool => (bool) $website->uptime_check);
+        $sslCheck = $websites->contains(fn (object $website): bool => (bool) $website->ssl_check);
+        $uptimeInterval = $websites
+            ->first(fn (object $website): bool => (bool) $website->uptime_check && $website->uptime_interval !== null)
+            ?->uptime_interval;
+        $sslPackageInterval = $websites
+            ->first(fn (object $website): bool => (bool) $website->ssl_check && $website->package_interval !== null)
+            ?->package_interval;
+
+        DB::table('websites')
+            ->where('id', $keepId)
+            ->update([
+                'uptime_check' => $uptimeCheck,
+                'uptime_interval' => $uptimeCheck ? $uptimeInterval : null,
+                'ssl_check' => $sslCheck,
+                'package_interval' => $uptimeInterval !== null
+                    ? IntervalParser::fromMinutes((int) $uptimeInterval)
+                    : $sslPackageInterval,
+            ]);
     }
 
     /**
