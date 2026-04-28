@@ -1,5 +1,9 @@
 <?php
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\NotificationScopesEnum;
+use App\Enums\WebsiteServicesEnum;
+use App\Filament\Resources\NotificationSettingResource\Pages\CreateNotificationSetting;
 use App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings;
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
@@ -115,4 +119,106 @@ test('global notification list shows empty state with create CTA when no rules e
         ->assertSee('Create a rule to be alerted by email or webhook when any of your monitors changes state.')
         ->assertSee('Rules added here apply automatically to every website with the matching monitor enabled.')
         ->assertSee('Add notification rule');
+});
+
+test('global notification list shows the destination for email and webhook rules', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Ops Webhook',
+    ]);
+
+    $emailSetting = NotificationSetting::factory()->email()->create([
+        'user_id' => $user->id,
+        'address' => 'ops@example.com',
+    ]);
+
+    $webhookSetting = NotificationSetting::factory()->webhook()->create([
+        'user_id' => $user->id,
+        'notification_channel_id' => $channel->id,
+    ]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->assertCanSeeTableRecords([$emailSetting, $webhookSetting])
+        ->assertSee('ops@example.com')
+        ->assertSee('Ops Webhook');
+});
+
+test('global notification list flags webhook rules with removed channels', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $setting = NotificationSetting::factory()->webhook()->create([
+        'user_id' => $user->id,
+        'notification_channel_id' => 999999,
+    ]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->assertCanSeeTableRecords([$setting])
+        ->assertSee('(channel removed)');
+});
+
+test('super admin can create a global email notification rule', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationSetting::class)
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+            'address' => 'global-ops@example.com',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'scope' => NotificationScopesEnum::GLOBAL->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+        'notification_channel_id' => null,
+        'address' => 'global-ops@example.com',
+    ]);
+});
+
+test('global notification create form handles a missing channel type validation path', function () {
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationSetting::class)
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => null,
+            'address' => null,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['channel_type' => 'required']);
+});
+
+test('super admin can create a global webhook notification rule', function () {
+    $user = $this->actingAsSuperAdmin();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Global Hook',
+    ]);
+
+    Livewire::test(CreateNotificationSetting::class)
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $channel->id,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'scope' => NotificationScopesEnum::GLOBAL->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+        'notification_channel_id' => $channel->id,
+        'address' => null,
+    ]);
 });

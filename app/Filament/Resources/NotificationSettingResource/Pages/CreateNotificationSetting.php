@@ -16,13 +16,13 @@ class CreateNotificationSetting extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['user_id'] = auth()->id();
-        $data['scope'] = NotificationScopesEnum::GLOBAL->name;
+        $data['scope'] = NotificationScopesEnum::GLOBAL->value;
 
-        if ($data['channel_type'] === NotificationChannelTypesEnum::MAIL->name) {
+        if ($data['channel_type'] === NotificationChannelTypesEnum::MAIL->value) {
             $data['notification_channel_id'] = null;
         }
 
-        if ($data['channel_type'] === NotificationChannelTypesEnum::WEBHOOK->name) {
+        if ($data['channel_type'] === NotificationChannelTypesEnum::WEBHOOK->value) {
             $data['address'] = null;
         }
 

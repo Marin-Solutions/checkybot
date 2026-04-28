@@ -69,12 +69,12 @@ class NotificationSetting extends Model
 
     public function scopeGlobalScope(Builder $query): void
     {
-        $query->where('scope', NotificationScopesEnum::GLOBAL->name);
+        $query->where('scope', NotificationScopesEnum::GLOBAL->value);
     }
 
     public function scopeWebsiteScope(Builder $query): void
     {
-        $query->where('scope', NotificationScopesEnum::WEBSITE->name);
+        $query->where('scope', NotificationScopesEnum::WEBSITE->value);
     }
 
     public function scopeActive(Builder $query): void
