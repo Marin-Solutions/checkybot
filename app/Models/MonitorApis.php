@@ -824,11 +824,6 @@ class MonitorApis extends Model
     private static function isLegacyGeneratedError(string $error): bool
     {
         return str_starts_with($error, 'Connection timeout:')
-            || str_starts_with($error, 'Connection failure:')
-            || str_starts_with($error, 'DNS failure:')
-            || str_starts_with($error, 'TLS/SSL failure:')
-            || str_starts_with($error, 'Timeout:')
-            || str_starts_with($error, 'Transport error:')
             || str_starts_with($error, 'Unexpected error:')
             || str_starts_with($error, 'Invalid JSON response:')
             || str_starts_with($error, 'HTTP request returned status code ');

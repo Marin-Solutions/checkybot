@@ -38,8 +38,8 @@ class MonitorApiInfolist
                             ->state(fn (MonitorApis $record): ?int => $record->latestResult?->http_code)
                             ->default('-')
                             ->badge()
-                            ->formatStateUsing(fn (?int $state): string => $state === 0 ? 'No response' : (string) ($state ?? '-'))
-                            ->color(fn (?int $state): string => ApiMonitorEvidenceFormatter::httpCodeColor($state)),
+                            ->formatStateUsing(fn (mixed $state): string => (string) $state === '0' ? 'No response' : (string) ($state ?? '-'))
+                            ->color(fn (MonitorApis $record): string => ApiMonitorEvidenceFormatter::httpCodeColor($record->latestResult?->http_code)),
                         TextEntry::make('latest_result_transport_error')
                             ->label('Latest Transport Error')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->transport_error_type)
