@@ -169,18 +169,18 @@ class ProjectsTable
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => $components->whereNotNull('current_status'))
-                ->orWhereHas('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereNotNull('current_status'))
-                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereNotNull('current_status'));
+                ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+                ->orWhereHas('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
         });
     }
 
     protected static function whereDoesntHaveKnownMonitoredStatus(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereNotNull('current_status'))
-            ->whereDoesntHave('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereNotNull('current_status'))
-            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereNotNull('current_status'));
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+            ->whereDoesntHave('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
     }
 
     /**

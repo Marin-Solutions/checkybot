@@ -13,6 +13,12 @@ class Project extends Model
 {
     use HasFactory;
 
+    public const KNOWN_APPLICATION_STATUSES = [
+        'healthy',
+        'warning',
+        'danger',
+    ];
+
     protected $fillable = [
         'name',
         'package_key',
@@ -117,7 +123,7 @@ class Project extends Model
             ->merge($this->loadedOrQueriedStatuses('activeComponents'))
             ->merge($this->loadedOrQueriedStatuses('uptimeEnabledWebsites'))
             ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'))
-            ->filter();
+            ->filter(fn (?string $status): bool => in_array($status, self::KNOWN_APPLICATION_STATUSES, true));
     }
 
     /**
