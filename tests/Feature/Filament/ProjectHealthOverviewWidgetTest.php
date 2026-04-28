@@ -180,6 +180,7 @@ describe('ProjectHealthOverviewWidget', function () {
             'package_interval' => '5m',
             'is_enabled' => true,
             'current_status' => 'danger',
+            'last_heartbeat_at' => now()->subMinutes(2),
             'stale_at' => now()->addMinutes(10),
         ]);
 
