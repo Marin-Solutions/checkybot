@@ -57,6 +57,7 @@ describe('ProjectHealthOverviewWidget', function () {
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'source' => 'package',
+            'package_interval' => '5m',
             'uptime_check' => true,
             'current_status' => 'warning',
             'stale_at' => now()->subMinutes(10),
@@ -129,14 +130,15 @@ describe('ProjectHealthOverviewWidget', function () {
             ->and($counts['stale'])->toBe(0);
     });
 
-    it('treats websites whose stale_at has elapsed as stale even when current_status is healthy', function () {
+    it('treats package websites with detected stale_at as stale even when current_status is healthy', function () {
         Website::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'source' => 'package',
+            'package_interval' => '5m',
             'uptime_check' => true,
             'current_status' => 'healthy',
-            'stale_at' => now()->subMinutes(10),
+            'stale_at' => now()->addMinutes(10),
         ]);
 
         $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
@@ -146,6 +148,47 @@ describe('ProjectHealthOverviewWidget', function () {
         expect($counts['tracked'])->toBe(1)
             ->and($counts['stale'])->toBe(1)
             ->and($counts['healthy'])->toBe(0);
+    });
+
+    it('uses package freshness thresholds for websites before stale_at is written', function () {
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'package_interval' => '5m',
+            'uptime_check' => true,
+            'current_status' => 'healthy',
+            'last_heartbeat_at' => now()->subMinutes(6),
+            'stale_at' => null,
+        ]);
+
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
+
+        expect($counts['tracked'])->toBe(1)
+            ->and($counts['stale'])->toBe(1)
+            ->and($counts['healthy'])->toBe(0);
+    });
+
+    it('treats package apis with detected stale_at as stale even when the detection time is not in the past', function () {
+        MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'package_interval' => '5m',
+            'is_enabled' => true,
+            'current_status' => 'danger',
+            'stale_at' => now()->addMinutes(10),
+        ]);
+
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
+
+        expect($counts['tracked'])->toBe(1)
+            ->and($counts['stale'])->toBe(1)
+            ->and($counts['failing'])->toBe(0);
     });
 
     it('excludes paused websites from the failing and stale counts', function () {
