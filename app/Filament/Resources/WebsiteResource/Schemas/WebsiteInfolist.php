@@ -4,6 +4,7 @@ namespace App\Filament\Resources\WebsiteResource\Schemas;
 
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Services\IntervalParser;
 use App\Support\UptimeTransportError;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -16,6 +17,9 @@ class WebsiteInfolist
 {
     /** @var \WeakMap<Website, array<int, array<string, mixed>>>|null */
     private static ?\WeakMap $recentFailureCache = null;
+
+    /** @var \WeakMap<Website, array{threshold: Carbon|null, invalid_interval: bool}>|null */
+    private static ?\WeakMap $expectedStaleCache = null;
 
     public static function configure(Schema $schema): Schema
     {
@@ -55,18 +59,23 @@ class WebsiteInfolist
                     ])
                     ->columns(2),
                 Section::make('Heartbeat & Freshness')
-                    ->description('When Checkybot last heard from this target and when it will be considered stale.')
+                    ->description('When Checkybot last heard from this target, when freshness was due, and when stale status was detected.')
                     ->schema([
                         TextEntry::make('last_heartbeat_at')
                             ->label('Last Heartbeat')
                             ->state(fn (Website $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
                             ->default('Never')
                             ->hint(fn (Website $record): ?string => $record->last_heartbeat_at?->diffForHumans()),
-                        TextEntry::make('stale_at')
-                            ->label('Stale After')
-                            ->state(fn (Website $record): ?string => $record->stale_at?->toDayDateTimeString())
+                        TextEntry::make('expected_stale_at')
+                            ->label('Expected Stale Threshold')
+                            ->state(fn (Website $record): ?string => static::expectedStaleAt($record)?->toDayDateTimeString())
                             ->default('-')
-                            ->hint(fn (Website $record): ?string => static::staleHint($record->stale_at)),
+                            ->hint(fn (Website $record): ?string => static::expectedStaleHint($record)),
+                        TextEntry::make('stale_at')
+                            ->label('Detected Stale At')
+                            ->state(fn (Website $record): ?string => $record->stale_at?->toDayDateTimeString())
+                            ->default('Not detected')
+                            ->hint(fn (Website $record): ?string => static::detectedStaleHint($record->stale_at)),
                         TextEntry::make('latest_log_response_time')
                             ->label('Last Response Time')
                             ->state(fn (Website $record): ?string => $record->latestLogHistory?->speed !== null
@@ -81,7 +90,7 @@ class WebsiteInfolist
                                 return $avg !== null ? round($avg).'ms' : '-';
                             }),
                     ])
-                    ->columns(2),
+                    ->columns(3),
                 Section::make('Uptime Monitoring')
                     ->schema([
                         IconEntry::make('uptime_check')
@@ -326,15 +335,66 @@ class WebsiteInfolist
         return (int) round($today->diffInDays($expiry, false));
     }
 
-    private static function staleHint(?Carbon $staleAt): ?string
+    private static function expectedStaleAt(Website $record): ?Carbon
+    {
+        return static::expectedStaleEvidence($record)['threshold'];
+    }
+
+    private static function expectedStaleHint(Website $record): ?string
+    {
+        $evidence = static::expectedStaleEvidence($record);
+
+        if ($evidence['invalid_interval']) {
+            return "Cannot parse package interval {$record->package_interval}";
+        }
+
+        if ($evidence['threshold'] === null) {
+            return null;
+        }
+
+        return $evidence['threshold']->isPast()
+            ? 'Freshness threshold passed '.$evidence['threshold']->diffForHumans()
+            : 'Freshness threshold '.$evidence['threshold']->diffForHumans();
+    }
+
+    /**
+     * @return array{threshold: Carbon|null, invalid_interval: bool}
+     */
+    private static function expectedStaleEvidence(Website $record): array
+    {
+        static::$expectedStaleCache ??= new \WeakMap;
+
+        return static::$expectedStaleCache[$record] ??= static::resolveExpectedStaleEvidence($record);
+    }
+
+    /**
+     * @return array{threshold: Carbon|null, invalid_interval: bool}
+     */
+    private static function resolveExpectedStaleEvidence(Website $record): array
+    {
+        if ($record->last_heartbeat_at === null || blank($record->package_interval)) {
+            return ['threshold' => null, 'invalid_interval' => false];
+        }
+
+        try {
+            return [
+                'threshold' => $record->last_heartbeat_at->copy()->addMinutes(IntervalParser::toMinutes($record->package_interval)),
+                'invalid_interval' => false,
+            ];
+        } catch (\Throwable) {
+            return ['threshold' => null, 'invalid_interval' => true];
+        }
+    }
+
+    private static function detectedStaleHint(?Carbon $staleAt): ?string
     {
         if ($staleAt === null) {
             return null;
         }
 
         return $staleAt->isPast()
-            ? 'Stale since '.$staleAt->diffForHumans()
-            : 'Becomes stale '.$staleAt->diffForHumans();
+            ? 'Detected stale '.$staleAt->diffForHumans()
+            : 'Scheduled detection '.$staleAt->diffForHumans();
     }
 
     private static function toCarbon(mixed $value): ?Carbon
