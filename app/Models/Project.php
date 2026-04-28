@@ -109,7 +109,7 @@ class Project extends Model
     }
 
     /**
-     * @return Collection<int, string|null>
+     * @return Collection<int, string>
      */
     protected function monitoredSurfaceStatuses(): Collection
     {
