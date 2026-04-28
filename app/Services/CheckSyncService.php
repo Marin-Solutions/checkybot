@@ -45,7 +45,7 @@ class CheckSyncService
                 'url' => $check['url'],
                 'description' => '',
                 'uptime_check' => true,
-                'ssl_check' => $website?->ssl_check ?? false,
+                'ssl_check' => ($website && ! $website->trashed()) ? $website->ssl_check : false,
                 'uptime_interval' => IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
                 'package_name' => $check['name'],
@@ -91,9 +91,11 @@ class CheckSyncService
                 'name' => $check['name'],
                 'url' => $check['url'],
                 'description' => '',
-                'uptime_check' => $website?->uptime_check ?? false,
+                'uptime_check' => ($website && ! $website->trashed()) ? $website->uptime_check : false,
                 'ssl_check' => true,
-                'uptime_interval' => IntervalParser::toMinutes($check['interval']),
+                'uptime_interval' => ($website && ! $website->trashed() && $website->uptime_check)
+                    ? $website->uptime_interval
+                    : IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
