@@ -737,23 +737,81 @@ test('soft-deleted websites are not counted in bulk uptime enable notification',
 
 test('super admin can render view page with infolist sections', function () {
     $user = $this->actingAsSuperAdmin();
+    $lastHeartbeatAt = \Illuminate\Support\Carbon::parse('2026-04-24 12:00:00');
+    $detectedStaleAt = \Illuminate\Support\Carbon::parse('2026-04-24 12:08:00');
+
     $website = Website::factory()->create([
         'created_by' => $user->id,
+        'source' => 'package',
+        'package_interval' => '5m',
         'current_status' => 'danger',
         'status_summary' => 'Website returned HTTP 500.',
         'ssl_check' => true,
         'ssl_expiry_date' => now()->addDays(45)->toDateString(),
-        'last_heartbeat_at' => now()->subMinutes(3),
-        'stale_at' => now()->addMinutes(12),
+        'last_heartbeat_at' => $lastHeartbeatAt,
+        'stale_at' => $detectedStaleAt,
     ]);
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
         ->assertSee('Heartbeat & Freshness')
+        ->assertSee('Expected Stale Threshold')
+        ->assertSee($lastHeartbeatAt->copy()->addMinutes(5)->toDayDateTimeString())
+        ->assertSee('Detected Stale At')
+        ->assertSee($detectedStaleAt->toDayDateTimeString())
         ->assertSee('Uptime Monitoring')
         ->assertSee('SSL Certificate')
         ->assertSee('Website returned HTTP 500.')
         ->assertSee('Danger');
+});
+
+test('view page does not blame package interval when expected stale threshold lacks heartbeat', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => null,
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Expected Stale Threshold')
+        ->assertSee('Never')
+        ->assertDontSee('Cannot parse package interval 5m');
+});
+
+test('view page keeps expected stale threshold quiet when package interval is blank', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_interval' => null,
+        'last_heartbeat_at' => \Illuminate\Support\Carbon::parse('2026-04-24 12:00:00'),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Expected Stale Threshold')
+        ->assertDontSee('Cannot parse package interval');
+});
+
+test('view page explains invalid package interval for expected stale threshold', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_interval' => 'xyz',
+        'last_heartbeat_at' => \Illuminate\Support\Carbon::parse('2026-04-24 12:00:00'),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Expected Stale Threshold')
+        ->assertSee('Cannot parse package interval xyz');
 });
 
 test('view page run now action persists a real heartbeat and surfaces evidence', function () {
