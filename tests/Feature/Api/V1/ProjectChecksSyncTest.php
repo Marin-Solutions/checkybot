@@ -198,6 +198,51 @@ test('updates api checks with execution settings from legacy sync', function () 
     ]);
 });
 
+test('preserves existing api execution settings when legacy sync omits them', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/old-health',
+        'http_method' => 'PATCH',
+        'expected_status' => 204,
+        'timeout_seconds' => 30,
+        'is_enabled' => false,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'created_by' => $this->user->id,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '10m',
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'PATCH',
+        'expected_status' => 204,
+        'timeout_seconds' => 30,
+        'is_enabled' => false,
+        'package_interval' => '10m',
+    ]);
+});
+
 test('legacy sync defaults nullable expected status to success status', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [

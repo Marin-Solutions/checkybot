@@ -136,16 +136,24 @@ class CheckSyncService
                 'project_id' => $project->id,
                 'title' => $check['name'],
                 'url' => $check['url'],
-                'http_method' => strtoupper($check['method'] ?? 'GET'),
+                'http_method' => array_key_exists('method', $check)
+                    ? strtoupper($check['method'] ?? 'GET')
+                    : ($monitorApi?->http_method ?? 'GET'),
                 'request_path' => $check['url'],
                 'data_path' => '',
                 'headers' => $check['headers'] ?? [],
                 'request_body_type' => $check['request_body_type'] ?? null,
                 'request_body' => $check['request_body'] ?? null,
-                'expected_status' => $check['expected_status'] ?? 200,
-                'timeout_seconds' => $check['timeout_seconds'] ?? null,
+                'expected_status' => array_key_exists('expected_status', $check)
+                    ? ($check['expected_status'] ?? 200)
+                    : ($monitorApi?->expected_status ?? 200),
+                'timeout_seconds' => array_key_exists('timeout_seconds', $check)
+                    ? $check['timeout_seconds']
+                    : $monitorApi?->timeout_seconds,
                 'package_schedule' => $check['interval'],
-                'is_enabled' => $check['enabled'] ?? true,
+                'is_enabled' => array_key_exists('enabled', $check)
+                    ? ($check['enabled'] ?? true)
+                    : ($monitorApi?->is_enabled ?? true),
                 'source' => 'package',
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
