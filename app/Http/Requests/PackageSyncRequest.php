@@ -249,7 +249,7 @@ class PackageSyncRequest extends FormRequest
 
         $url .= $parts['host'] ?? '';
 
-        if (isset($parts['port'])) {
+        if (isset($parts['port']) && ! $this->isDefaultPort($parts)) {
             $url .= ':'.$parts['port'];
         }
 
@@ -264,5 +264,14 @@ class PackageSyncRequest extends FormRequest
         }
 
         return $url;
+    }
+
+    /**
+     * @param  array{scheme?: string, port?: int}  $parts
+     */
+    private function isDefaultPort(array $parts): bool
+    {
+        return (($parts['scheme'] ?? null) === 'http' && $parts['port'] === 80)
+            || (($parts['scheme'] ?? null) === 'https' && $parts['port'] === 443);
     }
 }
