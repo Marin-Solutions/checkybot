@@ -5,6 +5,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -201,6 +202,32 @@ test('command records failed checks', function () {
         'monitor_api_id' => $monitor->id,
         'is_success' => false,
     ]);
+});
+
+test('command records transport evidence when api check fails before http response', function () {
+    Http::fake(function (): never {
+        throw new ConnectionException('cURL error 6: Could not resolve host: missing.example');
+    });
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://missing.example/health',
+        'save_failed_response' => true,
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->assertSuccessful();
+
+    $monitor->refresh();
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($monitor->current_status)->toBe('danger')
+        ->and($monitor->status_summary)->toBe('API heartbeat failed before an HTTP response: DNS lookup failed.')
+        ->and($result?->http_code)->toBe(0)
+        ->and($result?->status)->toBe('danger')
+        ->and($result?->summary)->toBe('API heartbeat failed before an HTTP response: DNS lookup failed.')
+        ->and($result?->transport_error_type)->toBe('dns')
+        ->and($result?->transport_error_message)->toContain('Could not resolve host')
+        ->and($result?->transport_error_code)->toBe(6);
 });
 
 test('command treats matching expected 404 status as healthy', function () {

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
 use App\Models\MonitorApiResult;
 use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\UptimeTransportError;
 use Filament\Actions\ViewAction;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -63,7 +64,15 @@ class ResultsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('http_code')
                     ->label('HTTP Code')
                     ->badge()
+                    ->formatStateUsing(fn (?int $state): string => $state === 0 ? 'No response' : (string) ($state ?? '-'))
                     ->color(fn (?int $state): string => ApiMonitorEvidenceFormatter::httpCodeColor($state)),
+
+                Tables\Columns\TextColumn::make('transport_error_type')
+                    ->label('Transport')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                    ->color(fn (?string $state): string => UptimeTransportError::color($state))
+                    ->placeholder('-'),
 
                 Tables\Columns\TextColumn::make('failed_assertions')
                     ->label('Failed Assertions')
@@ -113,7 +122,14 @@ class ResultsRelationManager extends RelationManager
                         TextEntry::make('http_code')
                             ->label('HTTP Code')
                             ->badge()
+                            ->formatStateUsing(fn (?int $state): string => $state === 0 ? 'No response' : (string) ($state ?? '-'))
                             ->color(fn (?int $state): string => ApiMonitorEvidenceFormatter::httpCodeColor($state)),
+                        TextEntry::make('transport_error_type')
+                            ->label('Transport Error')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                            ->color(fn (?string $state): string => UptimeTransportError::color($state))
+                            ->visible(fn (MonitorApiResult $record): bool => filled($record->transport_error_type)),
                         TextEntry::make('response_time_ms')
                             ->label('Response Time')
                             ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
@@ -122,6 +138,24 @@ class ResultsRelationManager extends RelationManager
                             ->dateTimeInUserZone(),
                     ])
                     ->columns(3),
+                Section::make('Transport Evidence')
+                    ->hidden(fn (MonitorApiResult $record): bool => blank($record->transport_error_type))
+                    ->schema([
+                        TextEntry::make('transport_error_type')
+                            ->label('Classification')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                            ->color(fn (?string $state): string => UptimeTransportError::color($state)),
+                        TextEntry::make('transport_error_code')
+                            ->label('cURL Error Code')
+                            ->placeholder('-')
+                            ->copyable(),
+                        TextEntry::make('transport_error_message')
+                            ->label('Message')
+                            ->copyable()
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(2),
                 Section::make('Failed Assertions')
                     ->hidden(fn (MonitorApiResult $record): bool => blank($record->failed_assertions))
                     ->schema([

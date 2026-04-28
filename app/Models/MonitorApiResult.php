@@ -24,6 +24,9 @@ class MonitorApiResult extends Model
         'response_body',
         'status',
         'summary',
+        'transport_error_type',
+        'transport_error_message',
+        'transport_error_code',
         'request_headers',
         'response_headers',
     ];
@@ -33,6 +36,7 @@ class MonitorApiResult extends Model
         'response_time_ms' => 'integer',
         'http_code' => 'integer',
         'failed_assertions' => 'array',
+        'transport_error_code' => 'integer',
         'request_headers' => 'array',
         'response_headers' => 'array',
     ];
@@ -103,6 +107,9 @@ class MonitorApiResult extends Model
             'response_body' => $savedResponseBody,
             'status' => $status,
             'summary' => $summary,
+            'transport_error_type' => $testResult['transport_error_type'] ?? null,
+            'transport_error_message' => $testResult['transport_error_message'] ?? null,
+            'transport_error_code' => $testResult['transport_error_code'] ?? null,
             'request_headers' => $testResult['request_headers'] ?? null,
             'response_headers' => $testResult['response_headers'] ?? null,
         ]);

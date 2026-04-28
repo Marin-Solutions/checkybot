@@ -246,7 +246,9 @@ test('test api returns response time in milliseconds when the request throws a c
         ->and($result['response_time_ms'])->toBeInt()
         ->and($result['response_time_ms'])->toBeGreaterThanOrEqual(0)
         ->and($result['code'])->toBe(0)
-        ->and($result['error'])->toStartWith('Connection timeout:');
+        ->and($result['error'])->toStartWith('Connection timeout:')
+        ->and($result['transport_error_type'])->toBe('timeout')
+        ->and($result['transport_error_message'])->toBe('timeout');
 });
 
 test('test api preserves final http error status after retries', function () {

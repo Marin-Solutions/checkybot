@@ -58,6 +58,7 @@ test('formats transport error labels colors and summaries from enum or persisted
         ->and(UptimeTransportError::color(UptimeTransportErrorType::Timeout))->toBe('warning')
         ->and(UptimeTransportError::color('connection'))->toBe('danger')
         ->and(UptimeTransportError::summary('connection'))->toBe('Website heartbeat failed before an HTTP response: the connection could not be established.')
+        ->and(UptimeTransportError::summary('dns', 'API heartbeat'))->toBe('API heartbeat failed before an HTTP response: DNS lookup failed.')
         ->and(UptimeTransportError::summary(UptimeTransportErrorType::Unknown))->toBe('Website heartbeat failed before an HTTP response because of a transport error.');
 });
 

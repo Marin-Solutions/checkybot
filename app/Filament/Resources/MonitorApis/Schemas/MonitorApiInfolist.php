@@ -4,6 +4,7 @@ namespace App\Filament\Resources\MonitorApis\Schemas;
 
 use App\Models\MonitorApis;
 use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\UptimeTransportError;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -34,10 +35,17 @@ class MonitorApiInfolist
                             ->hint(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->diffForHumans()),
                         TextEntry::make('latest_result_http_code')
                             ->label('Latest HTTP Code')
-                            ->state(fn (MonitorApis $record): ?int => $record->latestResult?->http_code)
+                            ->state(fn (MonitorApis $record): ?string => $record->latestResult?->http_code === 0 ? 'No response' : (string) ($record->latestResult?->http_code ?? ''))
                             ->default('-')
                             ->badge()
                             ->color(fn (mixed $state): string => ApiMonitorEvidenceFormatter::httpCodeColor(is_numeric($state) ? (int) $state : null)),
+                        TextEntry::make('latest_result_transport_error')
+                            ->label('Latest Transport Error')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestResult?->transport_error_type)
+                            ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestResult?->transport_error_type))
+                            ->badge()
+                            ->color(fn (?string $state): string => UptimeTransportError::color($state)),
                         TextEntry::make('latest_result_response_time')
                             ->label('Latest Response Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->response_time_ms !== null ? "{$record->latestResult->response_time_ms}ms" : null)
@@ -97,6 +105,22 @@ class MonitorApiInfolist
                         TextEntry::make('latestResult.summary')
                             ->label('Run Summary')
                             ->default('-')
+                            ->columnSpanFull(),
+                        TextEntry::make('latestResult.transport_error_type')
+                            ->label('Transport Error')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                            ->color(fn (?string $state): string => UptimeTransportError::color($state))
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestResult?->transport_error_type)),
+                        TextEntry::make('latestResult.transport_error_code')
+                            ->label('cURL Error Code')
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestResult?->transport_error_type))
+                            ->default('-')
+                            ->copyable(),
+                        TextEntry::make('latestResult.transport_error_message')
+                            ->label('Transport Message')
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestResult?->transport_error_type))
+                            ->copyable()
                             ->columnSpanFull(),
                         RepeatableEntry::make('latest_failed_assertions')
                             ->label('Failed Assertions')

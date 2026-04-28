@@ -51,6 +51,7 @@ class ApiMonitorEvidenceFormatter
     {
         return match (true) {
             $httpCode === null => 'gray',
+            $httpCode === 0 => 'danger',
             $httpCode >= 500 => 'danger',
             $httpCode >= 400 => 'warning',
             $httpCode >= 200 => 'success',
