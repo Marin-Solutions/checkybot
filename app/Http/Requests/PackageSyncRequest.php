@@ -207,10 +207,62 @@ class PackageSyncRequest extends FormRequest
     {
         $parts = parse_url($url);
 
-        if (! is_array($parts) || ($parts['path'] ?? null) !== '/' || isset($parts['query']) || isset($parts['fragment'])) {
+        if (! is_array($parts)) {
             return $url;
         }
 
-        return rtrim($url, '/');
+        if (isset($parts['scheme'])) {
+            $parts['scheme'] = strtolower($parts['scheme']);
+        }
+
+        if (isset($parts['host'])) {
+            $parts['host'] = strtolower($parts['host']);
+        }
+
+        if (($parts['path'] ?? null) === '/' && ! isset($parts['query']) && ! isset($parts['fragment'])) {
+            unset($parts['path']);
+        }
+
+        return $this->buildUrl($parts);
+    }
+
+    /**
+     * @param  array{scheme?: string, host?: string, port?: int, user?: string, pass?: string, path?: string, query?: string, fragment?: string}  $parts
+     */
+    private function buildUrl(array $parts): string
+    {
+        $url = '';
+
+        if (isset($parts['scheme'])) {
+            $url .= $parts['scheme'].'://';
+        }
+
+        if (isset($parts['user'])) {
+            $url .= $parts['user'];
+
+            if (isset($parts['pass'])) {
+                $url .= ':'.$parts['pass'];
+            }
+
+            $url .= '@';
+        }
+
+        $url .= $parts['host'] ?? '';
+
+        if (isset($parts['port'])) {
+            $url .= ':'.$parts['port'];
+        }
+
+        $url .= $parts['path'] ?? '';
+
+        if (isset($parts['query'])) {
+            $url .= '?'.$parts['query'];
+        }
+
+        if (isset($parts['fragment'])) {
+            $url .= '#'.$parts['fragment'];
+        }
+
+        return $url;
     }
 }
