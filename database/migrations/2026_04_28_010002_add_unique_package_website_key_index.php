@@ -114,6 +114,10 @@ return new class extends Migration
 
     protected function intervalFromMinutes(int $minutes): string
     {
+        if ($minutes < 1) {
+            throw new InvalidArgumentException('Minutes must be greater than zero.');
+        }
+
         if ($minutes % 1440 === 0) {
             return ($minutes / 1440).'d';
         }
