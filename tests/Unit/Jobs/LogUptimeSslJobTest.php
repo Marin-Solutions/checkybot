@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\RunSource;
 use App\Jobs\LogUptimeSslJob;
 use App\Models\NotificationSetting;
 use App\Models\Website;
@@ -30,7 +31,7 @@ test('on-demand uptime jobs use a separate unique key', function () {
     $onDemandJob = new LogUptimeSslJob($website, onDemand: true);
 
     expect($onDemandJob->uniqueId())
-        ->toBe("website-uptime-ssl:{$website->id}:on-demand")
+        ->toBe("website-uptime-ssl:{$website->id}:".RunSource::OnDemand->value)
         ->not->toBe($scheduledJob->uniqueId());
 });
 
@@ -42,6 +43,16 @@ test('uptime job unique locks extend beyond the website interval', function () {
     $job = new LogUptimeSslJob($website);
 
     expect($job->uniqueFor())->toBe(3660);
+});
+
+test('on-demand uptime jobs use a short diagnostic unique lock', function () {
+    $website = Website::factory()->create([
+        'uptime_interval' => 60,
+    ]);
+
+    $job = new LogUptimeSslJob($website, onDemand: true);
+
+    expect($job->uniqueFor())->toBe(60);
 });
 
 test('job creates log history for successful check', function () {
@@ -289,6 +300,8 @@ test('on-demand runs do not notify and leave the live status fields untouched', 
     $website->refresh();
 
     expect($log?->status)->toBe('danger')
+        ->and($log?->run_source)->toBe(RunSource::OnDemand)
+        ->and($log?->is_on_demand)->toBeTrue()
         ->and($website->current_status)->toBe('healthy')
         ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->status_summary)->toBeNull();

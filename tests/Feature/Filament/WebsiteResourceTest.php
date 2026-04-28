@@ -2,6 +2,7 @@
 
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
+use App\Enums\RunSource;
 use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
@@ -840,6 +841,8 @@ test('view page run now action persists a real heartbeat and surfaces evidence',
 
     expect($website->logHistory()->count())->toBe(1)
         ->and($website->logHistory()->first()->status)->toBe('healthy')
+        ->and($website->logHistory()->first()->run_source)->toBe(RunSource::OnDemand)
+        ->and($website->logHistory()->first()->is_on_demand)->toBeTrue()
         ->and($website->current_status)->toBeNull()
         ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->status_summary)->toBeNull();
@@ -869,6 +872,8 @@ test('view page run now action surfaces failure when target returns server error
     expect($website->logHistory()->count())->toBe(1)
         ->and($website->logHistory()->first()->http_status_code)->toBe(500)
         ->and($website->logHistory()->first()->status)->toBe('danger')
+        ->and($website->logHistory()->first()->run_source)->toBe(RunSource::OnDemand)
+        ->and($website->logHistory()->first()->is_on_demand)->toBeTrue()
         ->and($website->current_status)->toBe('healthy')
         ->and($website->status_summary)->toBe('Heartbeat received successfully.');
 });
@@ -949,6 +954,26 @@ test('view page renders recent failures when non-healthy logs exist', function (
         ->assertSee('Recent Failures')
         ->assertSee('Origin returned HTTP 503 Service Unavailable.')
         ->assertSee('503');
+});
+
+test('view page excludes diagnostic rows from recent failures', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'http_status_code' => 503,
+        'summary' => 'Diagnostic-only failure.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    expect($website->logHistory()->whereIn('status', ['warning', 'danger'])->where('is_on_demand', false)->count())->toBe(0);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertDontSee('Recent Failures')
+        ->assertSee('Diagnostic-only failure.');
 });
 
 test('view page surfaces transport error evidence for failed uptime logs', function () {

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\WebsiteResource\RelationManagers;
 
+use App\Enums\RunSource;
 use App\Support\UptimeTransportError;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
@@ -26,6 +27,11 @@ class LogHistoryRelationManager extends RelationManager
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                TextColumn::make('run_source')
+                    ->label('Run')
+                    ->badge()
+                    ->formatStateUsing(fn (mixed $state): string => RunSource::coerce($state)->label())
+                    ->color(fn (mixed $state): string => RunSource::coerce($state)->color()),
                 TextColumn::make('http_status_code')
                     ->label('HTTP'),
                 TextColumn::make('transport_error_type')
@@ -57,6 +63,9 @@ class LogHistoryRelationManager extends RelationManager
                         'warning' => 'Warning',
                         'danger' => 'Danger',
                     ]),
+                Tables\Filters\SelectFilter::make('run_source')
+                    ->label('Run')
+                    ->options(RunSource::options()),
             ])
             ->defaultSort('created_at', 'desc')
             ->headerActions([])

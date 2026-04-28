@@ -50,6 +50,25 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('All good');
     });
 
+    it('excludes on-demand website diagnostics from the incident feed', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Diagnostic homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->onDemand()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Run Now returned HTTP 503',
+            'created_at' => now()->subMinute(),
+        ]);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertDontSee('Diagnostic homepage')
+            ->assertDontSee('Run Now returned HTTP 503')
+            ->assertSee('All clear');
+    });
+
     it('lists failing monitor API results even without an explicit status', function () {
         $api = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
@@ -72,6 +91,24 @@ describe('IncidentFeedWidget', function () {
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('Billing webhook')
             ->assertSee('Billing webhook returned 500');
+    });
+
+    it('excludes on-demand API diagnostics from the incident feed', function () {
+        $api = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Diagnostic API',
+        ]);
+
+        MonitorApiResult::factory()->failed()->onDemand()->create([
+            'monitor_api_id' => $api->id,
+            'summary' => 'Run Now API returned 500',
+            'created_at' => now()->subMinute(),
+        ]);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertDontSee('Diagnostic API')
+            ->assertDontSee('Run Now API returned 500')
+            ->assertSee('All clear');
     });
 
     it('lists warning and danger component heartbeats', function () {

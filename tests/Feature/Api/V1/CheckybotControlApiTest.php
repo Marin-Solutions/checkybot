@@ -1,6 +1,6 @@
 <?php
 
-use App\Mail\HealthStatusAlert;
+use App\Enums\RunSource;
 use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
@@ -200,7 +200,7 @@ test('control api disables checks without deleting data', function () {
     ]);
 });
 
-test('control api triggers a check run and lists recent failures', function () {
+test('control api triggers a diagnostic check run without moving live status or latest failures', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 500),
     ]);
@@ -213,33 +213,74 @@ test('control api triggers a check run and lists recent failures', function () {
         'title' => 'Search health',
         'url' => 'https://api.scrappa.test/health',
         'data_path' => 'data.status',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(10),
         'is_enabled' => true,
     ]);
+
+    $heartbeatBefore = $monitor->last_heartbeat_at;
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/control/projects/scrappa/checks/search-health/runs')
         ->assertOk()
         ->assertJsonPath('data.check.key', 'search-health')
         ->assertJsonPath('data.result.success', false)
-        ->assertJsonPath('data.result.status', 'danger');
+        ->assertJsonPath('data.result.status', 'danger')
+        ->assertJsonPath('data.result.run_source', RunSource::OnDemand->value)
+        ->assertJsonPath('data.result.is_on_demand', true);
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('danger')
-        ->and($monitor->last_heartbeat_at)->not->toBeNull();
+    expect($monitor->current_status)->toBe('healthy')
+        ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue();
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/failures?project=scrappa')
         ->assertOk()
-        ->assertJsonPath('data.0.check.key', 'search-health')
-        ->assertJsonPath('data.0.status', 'danger');
+        ->assertJsonCount(0, 'data');
 });
 
-test('control api sends failure notifications for check run status transitions', function () {
+test('control api excludes diagnostic API rows from latest failures', function () {
+    $scheduledMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'scheduled-health',
+        'title' => 'Scheduled health',
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $scheduledMonitor->id,
+        'summary' => 'Scheduled failure',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $diagnosticMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'diagnostic-health',
+        'title' => 'Diagnostic health',
+    ]);
+    MonitorApiResult::factory()->failed()->onDemand()->create([
+        'monitor_api_id' => $diagnosticMonitor->id,
+        'summary' => 'Diagnostic failure',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.key', 'scheduled-health')
+        ->assertJsonPath('data.0.summary', 'Scheduled failure');
+
+    expect(json_encode($response->json()))->not->toContain('Diagnostic failure');
+});
+
+test('control api diagnostic check run does not send failure notifications', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),
     ]);
-
     Mail::fake();
 
     $monitor = MonitorApis::factory()->create([
@@ -275,21 +316,15 @@ test('control api sends failure notifications for check run status transitions',
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('warning');
+    expect($monitor->current_status)->toBe('healthy');
 
-    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
-        return $mail->event === 'heartbeat'
-            && $mail->eventLabel === 'warning'
-            && $mail->status === 'warning'
-            && $mail->summary === 'API heartbeat is degraded with HTTP status 200.';
-    });
+    Mail::assertNothingSent();
 });
 
-test('control api sends recovery notifications for check run status transitions', function () {
+test('control api diagnostic check run does not send recovery notifications', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
     ]);
-
     Mail::fake();
 
     $monitor = MonitorApis::factory()->create([
@@ -319,14 +354,9 @@ test('control api sends recovery notifications for check run status transitions'
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('healthy');
+    expect($monitor->current_status)->toBe('danger');
 
-    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
-        return $mail->event === 'recovered'
-            && $mail->eventLabel === 'recovered'
-            && $mail->status === 'healthy'
-            && $mail->summary === 'API heartbeat succeeded with HTTP status 200.';
-    });
+    Mail::assertNothingSent();
 });
 
 test('control api returns project detail and recent runs', function () {
@@ -455,7 +485,7 @@ test('control api triggers all enabled project checks synchronously', function (
         ->assertJsonPath('data.results.0.result.status', 'healthy');
 });
 
-test('control api project run sends notifications for check status transitions', function () {
+test('control api project diagnostic run does not send notifications for check status transitions', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),
     ]);
@@ -493,18 +523,15 @@ test('control api project run sends notifications for check status transitions',
         ->assertOk()
         ->assertJsonPath('data.status', 'completed')
         ->assertJsonPath('data.checks_run', 1)
-        ->assertJsonPath('data.results.0.result.status', 'warning');
+        ->assertJsonPath('data.results.0.result.status', 'warning')
+        ->assertJsonPath('data.results.0.result.run_source', RunSource::OnDemand->value)
+        ->assertJsonPath('data.results.0.result.is_on_demand', true);
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('warning');
+    expect($monitor->current_status)->toBe('danger');
 
-    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
-        return $mail->event === 'heartbeat'
-            && $mail->eventLabel === 'warning'
-            && $mail->status === 'warning'
-            && $mail->summary === 'API heartbeat is degraded with HTTP status 200.';
-    });
+    Mail::assertNothingSent();
 });
 
 test('control api trigger runs respect stored method and expected status', function () {

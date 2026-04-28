@@ -92,6 +92,38 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertDontSee('Other project API broke');
     });
 
+    it('excludes on-demand diagnostics from the project incident feed', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Project diagnostic homepage',
+        ]);
+        WebsiteLogHistory::factory()->onDemand()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Project Run Now returned HTTP 503',
+            'created_at' => now()->subMinute(),
+        ]);
+
+        $api = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'title' => 'Project diagnostic API',
+        ]);
+        MonitorApiResult::factory()->failed()->onDemand()->create([
+            'monitor_api_id' => $api->id,
+            'summary' => 'Project Run Now API returned 500',
+            'created_at' => now()->subMinute(),
+        ]);
+
+        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->assertDontSee('Project diagnostic homepage')
+            ->assertDontSee('Project Run Now returned HTTP 503')
+            ->assertDontSee('Project diagnostic API')
+            ->assertDontSee('Project Run Now API returned 500')
+            ->assertSee('All clear');
+    });
+
     it('includes project-scoped component heartbeat incidents and hides others', function () {
         $myComponent = ProjectComponent::factory()->create([
             'project_id' => $this->project->id,
