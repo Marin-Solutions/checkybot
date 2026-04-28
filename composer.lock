@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "af3cb98765839383ac42c747076b116c",
+    "content-hash": "1ec126d74a07641e69355acb181b4f15",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -5107,7 +5107,7 @@
             "dist": {
                 "type": "path",
                 "url": "packages/checkybot-laravel",
-                "reference": "5b38bd487be44f713502f0362b81ba2315466afd"
+                "reference": "2dbbc833128dd4884d2fe58eec22da8f7c1857d8"
             },
             "require": {
                 "guzzlehttp/guzzle": "^7.8",
@@ -5187,7 +5187,7 @@
                 "uptime"
             ],
             "transport-options": {
-                "symlink": false,
+                "symlink": true,
                 "relative": true
             }
         },
