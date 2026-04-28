@@ -1,6 +1,5 @@
 <?php
 
-use App\Services\IntervalParser;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
@@ -108,9 +107,22 @@ return new class extends Migration
                 'uptime_interval' => $uptimeCheck ? $uptimeInterval : null,
                 'ssl_check' => $sslCheck,
                 'package_interval' => $uptimeInterval !== null
-                    ? IntervalParser::fromMinutes((int) $uptimeInterval)
+                    ? $this->intervalFromMinutes((int) $uptimeInterval)
                     : $sslPackageInterval,
             ]);
+    }
+
+    protected function intervalFromMinutes(int $minutes): string
+    {
+        if ($minutes % 1440 === 0) {
+            return ($minutes / 1440).'d';
+        }
+
+        if ($minutes % 60 === 0) {
+            return ($minutes / 60).'h';
+        }
+
+        return $minutes.'m';
     }
 
     /**
