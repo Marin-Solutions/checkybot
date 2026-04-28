@@ -7,6 +7,7 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\Website;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 class CheckSyncService
 {
@@ -202,6 +203,10 @@ class CheckSyncService
 
     protected function pruneOrphanedWebsites(Project $project, array $keepNames, bool $uptime = false, bool $ssl = false): int
     {
+        if ($uptime && $ssl) {
+            throw new InvalidArgumentException('Package website pruning must target one check type at a time.');
+        }
+
         $query = Website::where('project_id', $project->id)
             ->where('source', 'package');
 
@@ -218,7 +223,7 @@ class CheckSyncService
         }
 
         if ($uptime) {
-            $disabled = (clone $query)
+            (clone $query)
                 ->where('ssl_check', true)
                 ->update(['uptime_check' => false]);
 
@@ -226,11 +231,11 @@ class CheckSyncService
                 ->where('ssl_check', false)
                 ->delete();
 
-            return $disabled + $deleted;
+            return $deleted;
         }
 
         if ($ssl) {
-            $disabled = (clone $query)
+            (clone $query)
                 ->where('uptime_check', true)
                 ->update(['ssl_check' => false]);
 
@@ -238,7 +243,7 @@ class CheckSyncService
                 ->where('uptime_check', false)
                 ->delete();
 
-            return $disabled + $deleted;
+            return $deleted;
         }
 
         return $query->delete();
