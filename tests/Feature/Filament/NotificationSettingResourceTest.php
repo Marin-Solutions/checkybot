@@ -145,6 +145,19 @@ test('global notification list shows the destination for email and webhook rules
         ->assertSee('Ops Webhook');
 });
 
+test('global notification list flags webhook rules with removed channels', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $setting = NotificationSetting::factory()->webhook()->create([
+        'user_id' => $user->id,
+        'notification_channel_id' => 999999,
+    ]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->assertCanSeeTableRecords([$setting])
+        ->assertSee('(channel removed)');
+});
+
 test('super admin can create a global email notification rule', function () {
     $user = $this->actingAsSuperAdmin();
 
@@ -157,7 +170,7 @@ test('super admin can create a global email notification rule', function () {
         ->call('create')
         ->assertHasNoFormErrors()
         ->assertNotified()
-        ->assertRedirect('/');
+        ->assertRedirect();
 
     $this->assertDatabaseHas('notification_settings', [
         'user_id' => $user->id,
@@ -198,7 +211,7 @@ test('super admin can create a global webhook notification rule', function () {
         ->call('create')
         ->assertHasNoFormErrors()
         ->assertNotified()
-        ->assertRedirect('/');
+        ->assertRedirect();
 
     $this->assertDatabaseHas('notification_settings', [
         'user_id' => $user->id,

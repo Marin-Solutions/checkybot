@@ -83,9 +83,11 @@ class NotificationSettingResource extends Resource
                 Tables\Columns\TextColumn::make('channel.title')
                     ->label('Channel')
                     ->placeholder('Email delivery')
-                    ->state(fn (NotificationSetting $record): ?string => $record->channel_type === NotificationChannelTypesEnum::WEBHOOK
-                        ? $record->channel?->title
-                        : null),
+                    ->state(fn (NotificationSetting $record): ?string => match (true) {
+                        $record->channel_type !== NotificationChannelTypesEnum::WEBHOOK => null,
+                        $record->channel !== null => $record->channel->title,
+                        default => '(channel removed)',
+                    }),
                 Tables\Columns\TextColumn::make('address')
                     ->label('Destination')
                     ->placeholder('Webhook channel')
