@@ -88,6 +88,10 @@ test('syncs api checks with assertions successfully', function () {
                 'name' => 'health-check',
                 'url' => 'https://api.example.com/health',
                 'interval' => '5m',
+                'method' => 'POST',
+                'expected_status' => 202,
+                'timeout_seconds' => 15,
+                'enabled' => false,
                 'headers' => [
                     'Authorization' => 'Bearer token',
                 ],
@@ -126,6 +130,12 @@ test('syncs api checks with assertions successfully', function () {
         'project_id' => $this->project->id,
         'title' => 'health-check',
         'url' => 'https://api.example.com/health',
+        'http_method' => 'POST',
+        'request_path' => 'https://api.example.com/health',
+        'expected_status' => 202,
+        'timeout_seconds' => 15,
+        'package_schedule' => '5m',
+        'is_enabled' => false,
         'source' => 'package',
         'package_name' => 'health-check',
         'package_interval' => '5m',
@@ -135,6 +145,57 @@ test('syncs api checks with assertions successfully', function () {
     expect($api->assertions)->toHaveCount(2)
         ->and($api->request_body_type)->toBe('form')
         ->and($api->request_body)->toBe('{"grant_type":"client_credentials","scope":"health"}');
+});
+
+test('updates api checks with execution settings from legacy sync', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/old-health',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'timeout_seconds' => 5,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'created_by' => $this->user->id,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '10m',
+                'method' => 'patch',
+                'expected_status' => 204,
+                'timeout_seconds' => 30,
+                'enabled' => false,
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'PATCH',
+        'request_path' => 'https://api.example.com/health',
+        'expected_status' => 204,
+        'timeout_seconds' => 30,
+        'package_schedule' => '10m',
+        'package_interval' => '10m',
+        'is_enabled' => false,
+    ]);
 });
 
 test('updates existing checks', function () {
