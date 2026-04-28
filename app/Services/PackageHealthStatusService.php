@@ -68,7 +68,6 @@ class PackageHealthStatusService
         $daysLeft = today()->diffInDays($expiryDate->copy()->startOfDay(), false);
 
         return match (true) {
-            $daysLeft < 0 => 'danger',
             $daysLeft <= 14 => 'warning',
             default => 'healthy',
         };

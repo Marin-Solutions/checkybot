@@ -89,7 +89,10 @@ class PackageSyncRequest extends FormRequest
             }
 
             $keysByType = [];
+            $typesByKey = [];
+            $indexesByKey = [];
             $urlByWebsiteKey = [];
+            $nameByWebsiteKey = [];
 
             foreach ($checks as $index => $check) {
                 if (! is_array($check)) {
@@ -108,6 +111,8 @@ class PackageSyncRequest extends FormRequest
                     }
 
                     $keysByType[$type][$key] = true;
+                    $typesByKey[$key][$type] = true;
+                    $indexesByKey[$key][] = $index;
                 }
 
                 if (! in_array($type, ['ssl', 'uptime'], true)) {
@@ -115,6 +120,7 @@ class PackageSyncRequest extends FormRequest
                 }
 
                 $url = $check['url'] ?? null;
+                $name = $check['name'] ?? null;
 
                 if (is_string($key) && is_string($url)) {
                     $normalizedUrl = $this->resolveUrl($this->input('project.base_url'), $url);
@@ -129,6 +135,17 @@ class PackageSyncRequest extends FormRequest
                     $urlByWebsiteKey[$key] = $normalizedUrl;
                 }
 
+                if (is_string($key) && is_string($name)) {
+                    if (isset($nameByWebsiteKey[$key]) && $nameByWebsiteKey[$key] !== $name) {
+                        $validator->errors()->add(
+                            "checks.{$index}.name",
+                            'Uptime and SSL checks that share a key must have the same name.'
+                        );
+                    }
+
+                    $nameByWebsiteKey[$key] = $name;
+                }
+
                 if (! array_key_exists('schedule', $check) || $check['schedule'] === null) {
                     $validator->errors()->add(
                         "checks.{$index}.schedule",
@@ -136,20 +153,40 @@ class PackageSyncRequest extends FormRequest
                     );
                 }
 
-                if ($type === 'uptime' && is_string($check['schedule'] ?? null) && IntervalParser::isValid($check['schedule'])) {
+                if (in_array($type, ['ssl', 'uptime'], true) && is_string($check['schedule'] ?? null) && IntervalParser::isValid($check['schedule'])) {
                     $normalizedSchedule = IntervalParser::normalize($check['schedule']);
 
                     if (Str::endsWith($normalizedSchedule, 's')) {
                         $validator->errors()->add(
                             "checks.{$index}.schedule",
-                            'Uptime schedules cannot be specified in seconds. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.'
+                            'Uptime and SSL schedules cannot be specified in seconds. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.'
                         );
-                    } elseif (! in_array(IntervalParser::toMinutes($normalizedSchedule), LogJobCheckUptimeSsl::SUPPORTED_INTERVALS, true)) {
+                    } elseif ($type === 'uptime' && ! in_array(IntervalParser::toMinutes($normalizedSchedule), LogJobCheckUptimeSsl::SUPPORTED_INTERVALS, true)) {
                         $validator->errors()->add(
                             "checks.{$index}.schedule",
                             'Unsupported uptime interval. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.'
                         );
                     }
+                }
+            }
+
+            foreach ($typesByKey as $key => $types) {
+                $typeNames = array_keys($types);
+                sort($typeNames);
+
+                if ($typeNames === ['ssl', 'uptime']) {
+                    continue;
+                }
+
+                if (count($typeNames) <= 1) {
+                    continue;
+                }
+
+                foreach (array_slice($indexesByKey[$key] ?? [], 1) as $index) {
+                    $validator->errors()->add(
+                        "checks.{$index}.key",
+                        'Check keys must be unique across the package payload, except when uptime and SSL checks share the same key.'
+                    );
                 }
             }
         });

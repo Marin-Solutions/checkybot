@@ -44,6 +44,7 @@ class CheckybotApiDocumentation
      *     operationId="syncPackageChecks",
      *     tags={"package"},
      *     summary="Sync package-managed API, uptime, and SSL checks",
+     *     description="The package payload is the source of truth for package-managed checks. Matching checks are overwritten on each sync, missing package checks are disabled, and uptime plus SSL may share one key when they describe the same website.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\RequestBody(

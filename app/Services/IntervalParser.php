@@ -87,6 +87,10 @@ class IntervalParser
      */
     public static function fromMinutes(int $minutes): string
     {
+        if ($minutes < 1) {
+            throw new \InvalidArgumentException('Interval value must be greater than zero.');
+        }
+
         if ($minutes % 1440 === 0) {
             return ($minutes / 1440).'d';
         }

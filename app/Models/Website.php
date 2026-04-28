@@ -13,6 +13,9 @@ use Illuminate\Support\Facades\Http;
 use Spatie\Dns\Dns;
 use Spatie\SslCertificate\SslCertificate;
 
+/**
+ * @property int|null $uptime_interval
+ */
 class Website extends Model
 {
     use HasFactory;

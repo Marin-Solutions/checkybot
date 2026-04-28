@@ -26,7 +26,6 @@ class PackageSyncService
             $apiSummary = $this->syncApiChecks($project, $payload, $syncedAt);
             $uptimeSummary = $this->syncWebsiteChecks($project, $payload, 'uptime');
             $sslSummary = $this->syncWebsiteChecks($project, $payload, 'ssl');
-            $this->clearDisabledWebsitePackageIntervals($project);
             $this->recalculateUptimeOnlyPackageIntervals($project);
             $this->resetStatusForFullyDisabledWebsites($project);
 
@@ -183,12 +182,17 @@ class PackageSyncService
                 ->first();
 
             $wasCreated = false;
+            $wasRestored = false;
+            $wasTypeEnabled = $website instanceof Website
+                && ! $website->trashed()
+                && (bool) ($type === 'uptime' ? $website->uptime_check : $website->ssl_check);
 
             if (! $website instanceof Website) {
                 $website = new Website;
                 $wasCreated = true;
             } elseif ($website->trashed()) {
                 $website->restore();
+                $wasRestored = true;
             }
 
             $normalizedSchedule = IntervalParser::normalizeOrFail($check['schedule'] ?? null, 'schedule');
@@ -202,27 +206,30 @@ class PackageSyncService
                 'description' => '',
                 'source' => 'package',
                 'package_name' => $check['key'],
-                'package_interval' => $normalizedSchedule,
             ];
 
             if ($type === 'uptime') {
                 $data['uptime_check'] = $enabled;
                 $data['uptime_interval'] = IntervalParser::toMinutes($normalizedSchedule);
-                $data['ssl_check'] = $website->exists ? $website->ssl_check : false;
+                $data['package_interval'] = IntervalParser::fromMinutes($data['uptime_interval']);
+                // Don't inherit ssl_check from a restored row — the SSL pass will set it if needed.
+                $data['ssl_check'] = ($website->exists && ! $wasRestored) ? $website->ssl_check : false;
             } else {
                 $data['ssl_check'] = $enabled;
-                $data['uptime_check'] = $website->exists ? $website->uptime_check : false;
+                $data['package_interval'] = $normalizedSchedule;
+                // Don't inherit uptime_check from a restored row — the uptime pass already ran and didn't include this key.
+                $data['uptime_check'] = ($website->exists && ! $wasRestored) ? $website->uptime_check : false;
                 $data['uptime_interval'] = $data['uptime_check'] ? $website->uptime_interval : null;
-            }
 
-            if ($data['uptime_check']) {
-                $data['package_interval'] = IntervalParser::fromMinutes((int) $data['uptime_interval']);
+                if ($data['uptime_check']) {
+                    $data['package_interval'] = IntervalParser::fromMinutes((int) $data['uptime_interval']);
+                }
             }
 
             $website->fill($data);
             $website->save();
 
-            if ($wasCreated) {
+            if ($wasCreated || ($enabled && ! $wasRestored && ! $wasTypeEnabled)) {
                 $created++;
             } else {
                 $updated++;
@@ -318,17 +325,6 @@ class PackageSyncService
         ]);
     }
 
-    private function clearDisabledWebsitePackageIntervals(Project $project): void
-    {
-        Website::query()
-            ->where('project_id', $project->id)
-            ->where('source', 'package')
-            ->where('uptime_check', false)
-            ->where('ssl_check', false)
-            ->whereNotNull('package_interval')
-            ->update(['package_interval' => null]);
-    }
-
     private function resetStatusForFullyDisabledWebsites(Project $project): void
     {
         Website::query()
@@ -339,6 +335,9 @@ class PackageSyncService
             ->update([
                 'current_status' => 'unknown',
                 'status_summary' => 'Disabled because it was missing from the latest package sync.',
+                'package_interval' => null,
+                'last_heartbeat_at' => null,
+                'stale_at' => null,
             ]);
     }
 
