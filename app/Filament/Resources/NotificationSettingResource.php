@@ -59,6 +59,7 @@ class NotificationSettingResource extends Resource
                                 return match ($get('channel_type')) {
                                     NotificationChannelTypesEnum::MAIL->value => ['required', 'email'],
                                     NotificationChannelTypesEnum::WEBHOOK->value => ['required', 'url'],
+                                    default => [],
                                 };
                             })
                             ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::MAIL->value),

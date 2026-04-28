@@ -155,7 +155,9 @@ test('super admin can create a global email notification rule', function () {
             'address' => 'global-ops@example.com',
         ])
         ->call('create')
-        ->assertHasNoFormErrors();
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect('/');
 
     $this->assertDatabaseHas('notification_settings', [
         'user_id' => $user->id,
@@ -165,6 +167,19 @@ test('super admin can create a global email notification rule', function () {
         'notification_channel_id' => null,
         'address' => 'global-ops@example.com',
     ]);
+});
+
+test('global notification create form handles a missing channel type validation path', function () {
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationSetting::class)
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => null,
+            'address' => null,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['channel_type' => 'required']);
 });
 
 test('super admin can create a global webhook notification rule', function () {
@@ -181,7 +196,9 @@ test('super admin can create a global webhook notification rule', function () {
             'notification_channel_id' => $channel->id,
         ])
         ->call('create')
-        ->assertHasNoFormErrors();
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect('/');
 
     $this->assertDatabaseHas('notification_settings', [
         'user_id' => $user->id,
