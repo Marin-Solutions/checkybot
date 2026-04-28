@@ -44,7 +44,7 @@ class CheckSyncService
                 'url' => $check['url'],
                 'description' => '',
                 'uptime_check' => true,
-                'ssl_check' => false,
+                'ssl_check' => $website?->ssl_check ?? false,
                 'uptime_interval' => IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
                 'package_name' => $check['name'],
@@ -90,7 +90,7 @@ class CheckSyncService
                 'name' => $check['name'],
                 'url' => $check['url'],
                 'description' => '',
-                'uptime_check' => false,
+                'uptime_check' => $website?->uptime_check ?? false,
                 'ssl_check' => true,
                 'uptime_interval' => IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
@@ -215,6 +215,30 @@ class CheckSyncService
 
         if (! empty($keepNames)) {
             $query->whereNotIn('package_name', $keepNames);
+        }
+
+        if ($uptime) {
+            $disabled = (clone $query)
+                ->where('ssl_check', true)
+                ->update(['uptime_check' => false]);
+
+            $deleted = (clone $query)
+                ->where('ssl_check', false)
+                ->delete();
+
+            return $disabled + $deleted;
+        }
+
+        if ($ssl) {
+            $disabled = (clone $query)
+                ->where('uptime_check', true)
+                ->update(['ssl_check' => false]);
+
+            $deleted = (clone $query)
+                ->where('uptime_check', false)
+                ->delete();
+
+            return $disabled + $deleted;
         }
 
         return $query->delete();

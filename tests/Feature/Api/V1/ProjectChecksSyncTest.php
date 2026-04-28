@@ -781,6 +781,83 @@ test('syncs uptime and ssl package checks with the same url', function () {
     ]);
 });
 
+test('syncs uptime and ssl package checks with the same package name onto one website', function () {
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            ['name' => 'homepage', 'url' => 'https://shared-example.com', 'interval' => '5m'],
+        ],
+        'ssl_checks' => [
+            ['name' => 'homepage', 'url' => 'https://shared-example.com', 'interval' => '1d'],
+        ],
+        'api_checks' => [],
+    ]);
+
+    expect($summary['uptime_checks'])->toBe([
+        'created' => 1,
+        'updated' => 0,
+        'deleted' => 0,
+    ]);
+
+    expect($summary['ssl_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    expect(Website::where('package_name', 'homepage')->count())->toBe(1);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'url' => 'https://shared-example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'source' => 'package',
+    ]);
+});
+
+test('removing one shared package website check preserves the remaining check type', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            ['name' => 'homepage', 'url' => 'https://shared-example.com', 'interval' => '5m'],
+        ],
+        'ssl_checks' => [
+            ['name' => 'homepage', 'url' => 'https://shared-example.com', 'interval' => '1d'],
+        ],
+        'api_checks' => [],
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            ['name' => 'homepage', 'url' => 'https://shared-example.com', 'interval' => '10m'],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    expect($summary['uptime_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    expect($summary['ssl_checks'])->toBe([
+        'created' => 0,
+        'updated' => 0,
+        'deleted' => 1,
+    ]);
+
+    expect(Website::where('package_name', 'homepage')->count())->toBe(1);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'package_interval' => '10m',
+    ]);
+});
+
 test('updates uptime and ssl package checks with the same url', function () {
     $this->syncService->syncChecks($this->project, [
         'uptime_checks' => [
