@@ -67,42 +67,28 @@ class ProjectsTable
                             return $query;
                         }
 
-                        // Mirror Project::resolveApplicationStatus(): the project's
-                        // status is the worst active component status. Warning and
-                        // Healthy therefore require both a positive check (has the
-                        // matching status) AND a negation (no worse statuses exist),
-                        // so the computed rollup and the filter always agree.
+                        // Mirror Project::application_status(): the project's status is
+                        // the worst active component, uptime-enabled website or enabled
+                        // API monitor status. Warning and Healthy therefore require
+                        // both a positive check and a negation of worse statuses.
                         return match ($value) {
-                            'danger' => $query->whereHas(
-                                'activeComponents',
-                                fn (Builder $components) => $components->where('current_status', 'danger'),
+                            'danger' => static::whereHasMonitoredStatus($query, ['danger']),
+                            'warning' => static::whereDoesntHaveMonitoredStatus(
+                                static::whereHasMonitoredStatus($query, ['warning']),
+                                ['danger'],
                             ),
-                            'warning' => $query
-                                ->whereHas(
-                                    'activeComponents',
-                                    fn (Builder $components) => $components->where('current_status', 'warning'),
-                                )
-                                ->whereDoesntHave(
-                                    'activeComponents',
-                                    fn (Builder $components) => $components->where('current_status', 'danger'),
-                                ),
-                            'healthy' => $query
-                                ->whereHas('activeComponents')
-                                ->whereDoesntHave(
-                                    'activeComponents',
-                                    fn (Builder $components) => $components->whereIn('current_status', ['warning', 'danger']),
-                                ),
-                            'unknown' => $query->whereDoesntHave('activeComponents'),
+                            'healthy' => static::whereDoesntHaveMonitoredStatus(
+                                static::whereHasKnownMonitoredStatus($query),
+                                ['warning', 'danger'],
+                            ),
+                            'unknown' => static::whereDoesntHaveKnownMonitoredStatus($query),
                             default => $query,
                         };
                     }),
                 Filter::make('only_failing')
                     ->label('Show only failing')
                     ->toggle()
-                    ->query(fn (Builder $query): Builder => $query->whereHas(
-                        'activeComponents',
-                        fn (Builder $components) => $components->whereIn('current_status', ['warning', 'danger']),
-                    )),
+                    ->query(fn (Builder $query): Builder => static::whereHasMonitoredStatus($query, ['warning', 'danger'])),
             ])
             ->recordActions([
                 ViewAction::make(),
@@ -153,6 +139,48 @@ class ProjectsTable
                     DeleteBulkAction::make(),
                 ]),
             ]);
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     */
+    protected static function whereHasMonitoredStatus(Builder $query, array $statuses): Builder
+    {
+        return $query->where(function (Builder $query) use ($statuses): void {
+            $query
+                ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', $statuses))
+                ->orWhereHas('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses));
+        });
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     */
+    protected static function whereDoesntHaveMonitoredStatus(Builder $query, array $statuses): Builder
+    {
+        return $query
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereIn('current_status', $statuses))
+            ->whereDoesntHave('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses));
+    }
+
+    protected static function whereHasKnownMonitoredStatus(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+                ->orWhereHas('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
+        });
+    }
+
+    protected static function whereDoesntHaveKnownMonitoredStatus(Builder $query): Builder
+    {
+        return $query
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+            ->whereDoesntHave('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
     }
 
     /**
