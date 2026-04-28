@@ -447,12 +447,12 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/runs",
      *     operationId="triggerControlProjectRun",
      *     tags={"control"},
-     *     summary="Run all enabled checks for a project",
+     *     summary="Run diagnostic checks for all enabled checks in a project",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *
-     *     @OA\Response(response=200, description="Project run completed"),
+     *     @OA\Response(response=200, description="Diagnostic project run completed"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=404, description="Project not found")
      * )
@@ -464,13 +464,13 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/checks/{check}/runs",
      *     operationId="triggerControlProjectCheckRun",
      *     tags={"control"},
-     *     summary="Run one package-managed API check",
+     *     summary="Run one package-managed API check as a diagnostic",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *     @OA\Parameter(name="check", in="path", required=true, @OA\Schema(type="string")),
      *
-     *     @OA\Response(response=200, description="Check run completed"),
+     *     @OA\Response(response=200, description="Diagnostic check run completed"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=404, description="Project or check not found"),
      *     @OA\Response(response=409, description="Check is disabled")

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\WebsiteResource\Schemas;
 
+use App\Enums\RunSource;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\IntervalParser;
@@ -124,6 +125,12 @@ class WebsiteInfolist
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'No runs recorded')
                             ->color(fn (?string $state): string => static::statusColor($state)),
+                        TextEntry::make('latest_log_run_source')
+                            ->label('Last Run')
+                            ->state(fn (Website $record): mixed => $record->latestLogHistory?->run_source)
+                            ->badge()
+                            ->formatStateUsing(fn (mixed $state): string => RunSource::tryCoerce($state)?->label() ?? '-')
+                            ->color(fn (mixed $state): string => RunSource::tryCoerce($state)?->color() ?? 'gray'),
                         TextEntry::make('latest_log_summary')
                             ->label('Last Monitor Summary')
                             ->state(fn (Website $record): ?string => $record->latestLogHistory?->summary)
@@ -215,6 +222,7 @@ class WebsiteInfolist
 
         return static::$recentFailureCache[$record] ??= $record->logHistory()
             ->whereIn('status', ['warning', 'danger'])
+            ->where('is_on_demand', false)
             ->where('created_at', '>=', now()->subDays(7))
             ->latest('created_at')
             ->limit(5)

@@ -17,7 +17,6 @@ class CheckybotControlService
 {
     public function __construct(
         private readonly ApiMonitorExecutionService $executionService,
-        private readonly HealthEventNotificationService $notificationService,
     ) {}
 
     /**
@@ -231,6 +230,7 @@ class CheckybotControlService
     public function latestFailures(User $user, ?Project $project = null, int $limit = 25): array
     {
         $query = $this->resultQuery($user)
+            ->where('is_on_demand', false)
             ->where(function (Builder $resultQuery): void {
                 $resultQuery->where('is_success', false)
                     ->orWhereIn('status', ['warning', 'danger']);
@@ -394,6 +394,8 @@ class CheckybotControlService
             'success' => $result->is_success,
             'status' => $result->status ?? ($result->is_success ? 'healthy' : 'danger'),
             'summary' => $result->summary,
+            'run_source' => $result->run_source->value,
+            'is_on_demand' => (bool) $result->is_on_demand,
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
             'failed_assertions' => $result->failed_assertions,
@@ -407,14 +409,9 @@ class CheckybotControlService
      */
     private function runCheck(MonitorApis $check): array
     {
-        $execution = $this->executionService->execute($check);
+        $execution = $this->executionService->execute($check, onDemand: true);
         /** @var MonitorApiResult $result */
         $result = $execution['result'];
-        $status = $execution['status'];
-        $summary = $execution['summary'];
-        $previousStatus = $execution['previous_status'];
-
-        $this->notificationService->notifyApiIfTransitioned($check, $previousStatus, $status, $summary);
 
         return [
             'check' => [

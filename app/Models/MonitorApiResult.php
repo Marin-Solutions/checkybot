@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RunSource;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -29,17 +30,24 @@ class MonitorApiResult extends Model
         'transport_error_code',
         'request_headers',
         'response_headers',
+        'run_source',
+        'is_on_demand',
     ];
 
-    protected $casts = [
-        'is_success' => 'boolean',
-        'response_time_ms' => 'integer',
-        'http_code' => 'integer',
-        'failed_assertions' => 'array',
-        'transport_error_code' => 'integer',
-        'request_headers' => 'array',
-        'response_headers' => 'array',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'is_success' => 'boolean',
+            'response_time_ms' => 'integer',
+            'http_code' => 'integer',
+            'failed_assertions' => 'array',
+            'transport_error_code' => 'integer',
+            'request_headers' => 'array',
+            'response_headers' => 'array',
+            'run_source' => RunSource::class,
+            'is_on_demand' => 'boolean',
+        ];
+    }
 
     protected function responseBody(): Attribute
     {
@@ -54,8 +62,15 @@ class MonitorApiResult extends Model
         return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
     }
 
-    public static function recordResult(MonitorApis $api, array $testResult, float $startTime, ?string $status = null, ?string $summary = null): self
-    {
+    public static function recordResult(
+        MonitorApis $api,
+        array $testResult,
+        float $startTime,
+        ?string $status = null,
+        ?string $summary = null,
+        RunSource|string $runSource = RunSource::Scheduled,
+    ): self {
+        $runSource = RunSource::coerce($runSource);
         $isSuccess = $status === null ? true : $status === 'healthy';
         $failedAssertions = [];
 
@@ -112,6 +127,8 @@ class MonitorApiResult extends Model
             'transport_error_code' => $testResult['transport_error_code'] ?? null,
             'request_headers' => $testResult['request_headers'] ?? null,
             'response_headers' => $testResult['response_headers'] ?? null,
+            'run_source' => $runSource,
+            'is_on_demand' => $runSource->isOnDemand(),
         ]);
     }
 

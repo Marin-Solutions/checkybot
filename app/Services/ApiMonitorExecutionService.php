@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\RunSource;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 
@@ -41,7 +42,14 @@ class ApiMonitorExecutionService
         $summary = $this->statusService->summaryForApi($rawResult, $monitor->expected_status);
         $previousStatus = $monitor->current_status;
 
-        $result = MonitorApiResult::recordResult($monitor, $rawResult, $startTime, $status, $summary);
+        $result = MonitorApiResult::recordResult(
+            $monitor,
+            $rawResult,
+            $startTime,
+            $status,
+            $summary,
+            $onDemand ? RunSource::OnDemand : RunSource::Scheduled,
+        );
 
         if (! $onDemand) {
             $monitor->forceFill([

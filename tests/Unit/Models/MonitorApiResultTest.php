@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\RunSource;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 
@@ -31,6 +32,13 @@ test('monitor api result casts is success to boolean', function () {
     $result = MonitorApiResult::factory()->create(['is_success' => 1]);
 
     expect($result->is_success)->toBeBool();
+});
+
+test('monitor api result tracks diagnostic run source', function () {
+    $result = MonitorApiResult::factory()->onDemand()->create();
+
+    expect($result->run_source)->toBe(RunSource::OnDemand)
+        ->and($result->is_on_demand)->toBeTrue();
 });
 
 test('monitor api result casts response time to integer', function () {
@@ -87,12 +95,14 @@ test('record result creates successful result', function () {
         ],
     ];
 
-    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, runSource: RunSource::OnDemand);
 
     expect($result->is_success)->toBeTrue();
     expect($result->http_code)->toBe(200);
     expect($result->failed_assertions)->toBeEmpty();
     expect($result->response_time_ms)->toBeGreaterThanOrEqual(0);
+    expect($result->run_source)->toBe(RunSource::OnDemand);
+    expect($result->is_on_demand)->toBeTrue();
 });
 
 test('record result creates failed result with assertions', function () {

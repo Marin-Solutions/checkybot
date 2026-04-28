@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MonitorApis\Schemas;
 
+use App\Enums\RunSource;
 use App\Models\MonitorApis;
 use App\Support\ApiMonitorEvidenceFormatter;
 use App\Support\UptimeTransportError;
@@ -103,6 +104,11 @@ class MonitorApiInfolist
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
                             ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                        TextEntry::make('latestResult.run_source')
+                            ->label('Run')
+                            ->badge()
+                            ->formatStateUsing(fn (mixed $state): string => RunSource::coerce($state)->label())
+                            ->color(fn (mixed $state): string => RunSource::coerce($state)->color()),
                         TextEntry::make('latestResult.summary')
                             ->label('Run Summary')
                             ->default('-')

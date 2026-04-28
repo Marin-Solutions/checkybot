@@ -80,6 +80,7 @@ class ResponseTimeChart extends ChartWidget
 
         $results = MonitorApiResult::query()
             ->where('monitor_api_id', $this->record->id)
+            ->where('is_on_demand', false)
             ->where('created_at', '>=', $this->getTimeRangeStart($timeRange))
             ->selectRaw("{$bucketExpression} as time_bucket")
             ->selectRaw('AVG(response_time_ms) as avg_response_time')
