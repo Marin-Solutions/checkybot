@@ -425,7 +425,7 @@ test('command skips due schedules when a website already has a pending or runnin
     Queue::assertNotPushed(SeoHealthCheckJob::class);
 
     $schedule->refresh();
-    expect($schedule->last_run_at)->not->toBeNull();
+    expect($schedule->last_run_at)->toBeNull();
     expect($schedule->next_run_at->equalTo($originalNextRun))->toBeFalse();
     expect($schedule->next_run_at->isFuture())->toBeTrue();
 });

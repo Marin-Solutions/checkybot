@@ -55,7 +55,7 @@ class RunScheduledSeoChecks extends Command
                     ->exists()
                 ) {
                     $this->warn("Skipping {$website->url}: a check is already pending or running.");
-                    $schedule->updateNextRun();
+                    $schedule->advanceNextRun();
 
                     Log::info("Skipped scheduled SEO check for {$website->url}: existing pending/running check found. Schedule advanced to {$schedule->next_run_at}.");
 

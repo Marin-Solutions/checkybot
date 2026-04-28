@@ -109,6 +109,21 @@ test('seo schedule updates next run time', function () {
     expect($schedule->next_run_at->isFuture())->toBeTrue();
 });
 
+test('seo schedule advances next run time without recording a run', function () {
+    $schedule = SeoSchedule::factory()->daily()->create([
+        'last_run_at' => null,
+        'schedule_time' => '14:30:00',
+        'next_run_at' => now()->subHour(),
+    ]);
+
+    $schedule->advanceNextRun();
+
+    $schedule->refresh();
+    expect($schedule->last_run_at)->toBeNull();
+    expect($schedule->next_run_at)->not->toBeNull();
+    expect($schedule->next_run_at->isFuture())->toBeTrue();
+});
+
 test('seo schedule calculates next daily run', function () {
     $schedule = SeoSchedule::factory()->daily()->create([
         'schedule_time' => '09:00:00',

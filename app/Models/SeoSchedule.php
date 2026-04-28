@@ -60,6 +60,16 @@ class SeoSchedule extends Model
     }
 
     /**
+     * Advance the schedule without recording a completed run.
+     */
+    public function advanceNextRun(): void
+    {
+        $this->update([
+            'next_run_at' => $this->calculateNextRun(),
+        ]);
+    }
+
+    /**
      * Calculate the next run time based on frequency, time, and day
      */
     protected function calculateNextRun(): Carbon
