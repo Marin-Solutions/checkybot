@@ -7,6 +7,7 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\Website;
 use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 class CheckSyncService
 {
@@ -44,7 +45,7 @@ class CheckSyncService
                 'url' => $check['url'],
                 'description' => '',
                 'uptime_check' => true,
-                'ssl_check' => false,
+                'ssl_check' => ($website && ! $website->trashed()) ? $website->ssl_check : false,
                 'uptime_interval' => IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
                 'package_name' => $check['name'],
@@ -90,9 +91,11 @@ class CheckSyncService
                 'name' => $check['name'],
                 'url' => $check['url'],
                 'description' => '',
-                'uptime_check' => false,
+                'uptime_check' => ($website && ! $website->trashed()) ? $website->uptime_check : false,
                 'ssl_check' => true,
-                'uptime_interval' => IntervalParser::toMinutes($check['interval']),
+                'uptime_interval' => ($website && ! $website->trashed() && $website->uptime_check)
+                    ? $website->uptime_interval
+                    : IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
@@ -202,6 +205,10 @@ class CheckSyncService
 
     protected function pruneOrphanedWebsites(Project $project, array $keepNames, bool $uptime = false, bool $ssl = false): int
     {
+        if ($uptime && $ssl) {
+            throw new InvalidArgumentException('Package website pruning must target one check type at a time.');
+        }
+
         $query = Website::where('project_id', $project->id)
             ->where('source', 'package');
 
@@ -215,6 +222,30 @@ class CheckSyncService
 
         if (! empty($keepNames)) {
             $query->whereNotIn('package_name', $keepNames);
+        }
+
+        if ($uptime) {
+            (clone $query)
+                ->where('ssl_check', true)
+                ->update(['uptime_check' => false]);
+
+            $deleted = (clone $query)
+                ->where('ssl_check', false)
+                ->delete();
+
+            return $deleted;
+        }
+
+        if ($ssl) {
+            (clone $query)
+                ->where('uptime_check', true)
+                ->update(['ssl_check' => false]);
+
+            $deleted = (clone $query)
+                ->where('uptime_check', false)
+                ->delete();
+
+            return $deleted;
         }
 
         return $query->delete();
