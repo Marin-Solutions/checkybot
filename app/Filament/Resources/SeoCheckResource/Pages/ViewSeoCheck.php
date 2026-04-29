@@ -26,10 +26,25 @@ class ViewSeoCheck extends ViewRecord
                 ->modalDescription('Are you sure you want to cancel this SEO check? This action cannot be undone.')
                 ->action(function () {
                     $record = $this->getRecord();
-                    $record->update([
-                        'status' => 'failed',
-                        'finished_at' => now(),
-                    ]);
+                    $cancelled = SeoCheck::query()
+                        ->whereKey($record->id)
+                        ->whereIn('status', [SeoCheck::STATUS_PENDING, SeoCheck::STATUS_RUNNING])
+                        ->update([
+                            'status' => SeoCheck::STATUS_CANCELLED,
+                            'finished_at' => now(),
+                        ]);
+
+                    if ($cancelled === 0) {
+                        \Filament\Notifications\Notification::make()
+                            ->title('SEO Check Already Finished')
+                            ->body('This SEO check can no longer be cancelled.')
+                            ->warning()
+                            ->send();
+
+                        $this->refreshFormData(['record']);
+
+                        return;
+                    }
 
                     \Filament\Notifications\Notification::make()
                         ->title('SEO Check Cancelled')
@@ -114,6 +129,7 @@ class ViewSeoCheck extends ViewRecord
                                         'completed' => 'success',
                                         'running' => 'warning',
                                         'failed' => 'danger',
+                                        'cancelled' => 'gray',
                                         'pending' => 'gray',
                                     }),
                                 \Filament\Infolists\Components\TextEntry::make('total_urls_crawled')
