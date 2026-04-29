@@ -68,9 +68,14 @@ class SeoCheckFactory extends Factory
             'failure_summary' => 'SEO crawler failed before the crawl could complete.',
             'failure_context' => [
                 'exception' => 'Exception',
-                'website_url' => 'https://example.com',
                 'total_urls_crawled' => 0,
             ],
-        ]);
+        ])->afterCreating(function (SeoCheck $seoCheck): void {
+            $seoCheck->update([
+                'failure_context' => array_merge($seoCheck->failure_context ?? [], [
+                    'website_url' => $seoCheck->website?->url,
+                ]),
+            ]);
+        });
     }
 }
