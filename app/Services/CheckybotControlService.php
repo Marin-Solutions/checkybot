@@ -439,14 +439,9 @@ class CheckybotControlService
     {
         return collect($headers)
             ->mapWithKeys(fn (mixed $value, string $name): array => [
-                $name => $this->isSensitiveHeader($name) ? '[redacted]' : $value,
+                $name => $this->redactEvidenceValue($value, $name),
             ])
             ->all();
-    }
-
-    private function isSensitiveHeader(string $name): bool
-    {
-        return $this->isSensitiveEvidenceKey($name);
     }
 
     private function isSensitiveEvidenceKey(string $name): bool
@@ -458,7 +453,7 @@ class CheckybotControlService
             || str_contains($compact, 'token')
             || str_contains($compact, 'secret')
             || str_contains($compact, 'apikey')
-            || str_contains($compact, 'auth')
+            || str_contains($compact, 'authkey')
             || str_contains($compact, 'signature')
             || str_contains($compact, 'cookie')
             || str_contains($compact, 'password');

@@ -426,6 +426,8 @@ test('control api result payloads include safe api failure evidence', function (
         'response_body' => [
             'error' => 'upstream unavailable',
             'trace_id' => 'trace-123',
+            'author' => 'Scrappa worker',
+            'authenticated_at' => '2026-04-29T06:00:00Z',
             'access_token' => 'body-token-secret',
             'nested' => [
                 'password' => 'body-password-secret',
@@ -449,6 +451,8 @@ test('control api result payloads include safe api failure evidence', function (
         ->assertJsonPath('data.0.response_headers.x-request-id', 'req-123')
         ->assertJsonPath('data.0.response_body.error', 'upstream unavailable')
         ->assertJsonPath('data.0.response_body.trace_id', 'trace-123')
+        ->assertJsonPath('data.0.response_body.author', 'Scrappa worker')
+        ->assertJsonPath('data.0.response_body.authenticated_at', '2026-04-29T06:00:00Z')
         ->assertJsonPath('data.0.response_body.access_token', '[redacted]')
         ->assertJsonPath('data.0.response_body.nested.password', '[redacted]')
         ->assertJsonPath('data.0.response_body.nested.detail', 'resolver timeout');
@@ -458,6 +462,38 @@ test('control api result payloads include safe api failure evidence', function (
         ->and(json_encode($response->json()))->not->toContain('response-secret')
         ->and(json_encode($response->json()))->not->toContain('body-token-secret')
         ->and(json_encode($response->json()))->not->toContain('body-password-secret');
+});
+
+test('control api result evidence preserves null bodies and truncates long strings', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+    ]);
+
+    $longValue = str_repeat('x', 4200);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'summary' => 'API heartbeat failed with a very large debug payload.',
+        'transport_error_message' => $longValue,
+        'request_headers' => [
+            'x-debug-trace' => $longValue,
+        ],
+        'response_body' => null,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.0.response_body', null);
+
+    expect($response->json('data.0.transport_error_message'))->toEndWith('... [truncated]')
+        ->and($response->json('data.0.transport_error_message'))->not->toBe($longValue)
+        ->and($response->json('data.0.request_headers.x-debug-trace'))->toEndWith('... [truncated]')
+        ->and($response->json('data.0.request_headers.x-debug-trace'))->not->toBe($longValue);
 });
 
 test('control api returns latest result for each listed check', function () {
