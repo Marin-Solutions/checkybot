@@ -63,16 +63,6 @@ class CreateWebsite extends CreateRecord
         $scheduleDay = $this->data['seo_schedule_day'] ?? 'Monday';
 
         if ($scheduleEnabled && $scheduleFrequency) {
-            // Parse time
-            [$hours, $minutes] = explode(':', $scheduleTime);
-
-            // Calculate next run time
-            $nextRunAt = match ($scheduleFrequency) {
-                'daily' => now()->addDay()->setTime((int) $hours, (int) $minutes),
-                'weekly' => now()->next($scheduleDay)->setTime((int) $hours, (int) $minutes),
-                default => now()->addDay()->setTime((int) $hours, (int) $minutes),
-            };
-
             SeoSchedule::create([
                 'website_id' => $website->id,
                 'created_by' => Auth::id(),
@@ -80,7 +70,7 @@ class CreateWebsite extends CreateRecord
                 'schedule_time' => $scheduleTime.':00',
                 'schedule_day' => $scheduleFrequency === 'weekly' ? $scheduleDay : null,
                 'is_active' => true,
-                'next_run_at' => $nextRunAt,
+                'next_run_at' => SeoSchedule::calculateNextRunAt($scheduleFrequency, $scheduleTime, $scheduleDay),
             ]);
         }
     }
