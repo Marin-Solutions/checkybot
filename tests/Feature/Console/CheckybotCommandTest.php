@@ -195,6 +195,7 @@ test('sync command sends external checks from the registry alongside due compone
         ->headers([
             'Accept' => 'application/json',
         ])
+        ->dontSaveFailedResponse()
         ->every('5m')
         ->expectPathExists('status');
 
@@ -277,6 +278,7 @@ test('sync command sends external checks from the registry alongside due compone
                     'headers' => [
                         'Accept' => 'application/json',
                     ],
+                    'save_failed_response' => false,
                     'assertions' => [
                         [
                             'data_path' => 'status',

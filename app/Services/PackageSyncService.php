@@ -131,6 +131,7 @@ class PackageSyncService
                 'request_body' => $check['request_body'] ?? null,
                 'expected_status' => $check['expected_status'] ?? 200,
                 'timeout_seconds' => $check['timeout_seconds'] ?? ($defaults['timeout_seconds'] ?? null),
+                'save_failed_response' => $check['save_failed_response'] ?? true,
                 'package_schedule' => $check['schedule'] ?? null,
                 // Stale detection still reads package_interval, so persist the compact normalized form there.
                 'package_interval' => $normalizedSchedule,

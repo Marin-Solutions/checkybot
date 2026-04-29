@@ -46,6 +46,7 @@ class PackageSyncRequest extends FormRequest
             'checks.*.request_body' => ['exclude_unless:checks.*.type,api', 'nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'checks.*.expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'checks.*.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'checks.*.save_failed_response' => ['exclude_unless:checks.*.type,api', 'nullable', 'boolean'],
             'checks.*.assertions' => ['nullable', 'array', 'max:50'],
             'checks.*.assertions.*.type' => ['required', 'string', Rule::in([
                 'json_path_exists',

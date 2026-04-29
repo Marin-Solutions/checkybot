@@ -246,7 +246,14 @@ curl -X POST https://your-domain.com/api/v1/projects/{project}/checks/sync \
       }
     ],
     "ssl_checks": [],
-    "api_checks": []
+    "api_checks": [
+      {
+        "name": "login",
+        "url": "https://example.com/api/login",
+        "interval": "5m",
+        "save_failed_response": false
+      }
+    ]
   }'
 ```
 

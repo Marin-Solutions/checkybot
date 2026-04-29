@@ -93,6 +93,7 @@ class CheckybotApiDocumentation
      *                             @OA\Property(property="request_body", nullable=true, example={"email": "monitor@example.com", "password": "secret"}),
      *                             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *                             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
+     *                             @OA\Property(property="save_failed_response", type="boolean", nullable=true, example=false, description="Set false to avoid storing failed response bodies for this API check."),
      *                             @OA\Property(property="schedule", type="string", nullable=true, example="5m"),
      *                             @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
      *                             @OA\Property(
@@ -204,6 +205,7 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="headers", type="object"),
      *                     @OA\Property(property="request_body_type", type="string", nullable=true, enum={"json", "form", "raw"}, example="json"),
      *                     @OA\Property(property="request_body", nullable=true, example={"email": "monitor@example.com", "password": "secret"}),
+     *                     @OA\Property(property="save_failed_response", type="boolean", nullable=true, example=false, description="Set false to avoid storing failed response bodies for this API check."),
      *                     @OA\Property(
      *                         property="assertions",
      *                         type="array",

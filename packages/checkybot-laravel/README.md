@@ -240,6 +240,12 @@ Checkybot::api('endpoint')
     ->withHeader('Authorization', 'Bearer token')
     ->withHeader('Accept', 'application/json')
     ->everyFiveMinutes();
+
+// Opt out of storing failed response bodies for sensitive endpoints
+Checkybot::api('login')
+    ->url('https://example.com/api/login')
+    ->everyFiveMinutes()
+    ->dontSaveFailedResponse();
 ```
 
 ### Response Assertions (Pest-style)
