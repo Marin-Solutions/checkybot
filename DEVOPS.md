@@ -1,6 +1,6 @@
 # DevOps
 
-This document describes the production and staging infrastructure for CheckyBot as seen through Ploi MCP on 2026-04-29.
+This document describes the production and staging infrastructure for CheckyBot.
 
 Keep this file up to date when Ploi infrastructure, runtime versions, queues, or databases change.
 
