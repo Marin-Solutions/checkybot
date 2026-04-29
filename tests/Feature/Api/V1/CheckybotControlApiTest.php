@@ -416,6 +416,7 @@ test('control api result payloads include safe api failure evidence', function (
         'request_headers' => [
             'Accept' => 'application/json',
             'Authorization' => 'Bearer request-secret',
+            'Proxy-Authorization' => 'Basic proxy-secret',
             'X-Api-Key' => 'package-secret',
         ],
         'response_headers' => [
@@ -446,6 +447,7 @@ test('control api result payloads include safe api failure evidence', function (
         ->assertJsonPath('data.0.transport_error_code', 6)
         ->assertJsonPath('data.0.request_headers.Accept', 'application/json')
         ->assertJsonPath('data.0.request_headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.0.request_headers.Proxy-Authorization', '[redacted]')
         ->assertJsonPath('data.0.request_headers.X-Api-Key', '[redacted]')
         ->assertJsonPath('data.0.response_headers.content-type', 'application/json')
         ->assertJsonPath('data.0.response_headers.set-cookie', '[redacted]')
@@ -460,6 +462,7 @@ test('control api result payloads include safe api failure evidence', function (
         ->assertJsonPath('data.0.response_body.nested.detail', 'resolver timeout');
 
     expect(json_encode($response->json()))->not->toContain('request-secret')
+        ->and(json_encode($response->json()))->not->toContain('proxy-secret')
         ->and(json_encode($response->json()))->not->toContain('package-secret')
         ->and(json_encode($response->json()))->not->toContain('response-secret')
         ->and(json_encode($response->json()))->not->toContain('raw-body-secret')
