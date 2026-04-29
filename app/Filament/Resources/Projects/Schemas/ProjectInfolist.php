@@ -139,17 +139,13 @@ class ProjectInfolist
 
     private static function syncedWebsiteChecksCount(Project $record): int
     {
-        $uptimeChecksCount = $record->packageManagedWebsites()
+        return (int) $record->packageManagedWebsites()
             ->withTrashed()
-            ->where('uptime_check', true)
-            ->count();
-
-        $sslChecksCount = $record->packageManagedWebsites()
-            ->withTrashed()
-            ->where('ssl_check', true)
-            ->count();
-
-        return $uptimeChecksCount + $sslChecksCount;
+            ->selectRaw(<<<'SQL'
+                COALESCE(SUM(CASE WHEN uptime_check THEN 1 ELSE 0 END), 0)
+                + COALESCE(SUM(CASE WHEN ssl_check THEN 1 ELSE 0 END), 0) as total
+            SQL)
+            ->value('total');
     }
 
     private static function syncedComponentsCount(Project $record): int
