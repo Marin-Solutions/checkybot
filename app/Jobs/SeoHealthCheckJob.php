@@ -103,7 +103,7 @@ class SeoHealthCheckJob implements ShouldQueue
         }
     }
 
-    protected function createCrawler(string $baseUrl): Crawler
+    public function createCrawler(string $baseUrl): Crawler
     {
         // Create crawler with SEO-specific configuration
         return Crawler::create()

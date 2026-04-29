@@ -32,7 +32,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected int $crawledCount = 0;
 
-    protected int $maxUrls = self::MAX_URLS; // Limit to prevent infinite crawling
+    // Defensive guard for direct observer usage; SeoHealthCheckJob enforces this at the Spatie crawler level.
+    protected int $maxUrls = self::MAX_URLS;
 
     protected int $lastBroadcastCount = 0; // Track when we last broadcasted
 

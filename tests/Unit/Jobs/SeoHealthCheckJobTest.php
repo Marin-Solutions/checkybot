@@ -84,11 +84,7 @@ test('job configures crawler with seo url limit', function () {
 
     $job = new SeoHealthCheckJob($seoCheck);
 
-    $reflection = new \ReflectionClass($job);
-    $method = $reflection->getMethod('createCrawler');
-    $method->setAccessible(true);
-
-    $crawler = $method->invoke($job, $website->getBaseURL());
+    $crawler = $job->createCrawler($website->getBaseURL());
 
     expect($crawler->getTotalCrawlLimit())->toBe(SeoHealthCheckCrawler::MAX_URLS);
 });
