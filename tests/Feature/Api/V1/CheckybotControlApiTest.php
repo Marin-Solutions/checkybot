@@ -399,6 +399,143 @@ test('control api returns project detail and recent runs', function () {
         ->assertJsonPath('data.0.check.key', 'search-health');
 });
 
+test('control api result payloads include safe api failure evidence', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'http_code' => 0,
+        'summary' => 'API heartbeat failed because DNS lookup failed.',
+        'transport_error_type' => 'dns',
+        'transport_error_message' => 'Could not resolve https://user:transport-secret@api.scrappa.test/private/request-secret?debug=transport-query-secret, with Bearer transport-bearer-secret',
+        'transport_error_code' => 6,
+        'request_headers' => [
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer request-secret',
+            'Proxy-Authorization' => 'Basic proxy-secret',
+            'X-Api-Key' => 'package-secret',
+        ],
+        'response_headers' => [
+            'content-type' => 'application/json',
+            'set-cookie' => 'session=response-secret',
+            'x-request-id' => 'req-123',
+        ],
+        'response_body' => [
+            'error' => 'upstream unavailable',
+            'trace_id' => 'trace-123',
+            'author' => 'Scrappa worker',
+            'authenticated_at' => '2026-04-29T06:00:00Z',
+            MonitorApiResult::RAW_BODY_KEY => 'Token expired. Your token was: raw-body-secret',
+            MonitorApiResult::ERROR_METADATA_KEY => 'cURL error included error-metadata-secret',
+            'raw_body' => 'Token expired. Your token was: legacy-raw-secret',
+            'access_token' => 'body-token-secret',
+            'nested' => [
+                'password' => 'body-password-secret',
+                'detail' => 'resolver timeout',
+            ],
+        ],
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.0.check.key', 'search-health')
+        ->assertJsonPath('data.0.transport_error_type', 'dns')
+        ->assertJsonPath('data.0.transport_error_message', 'Could not resolve https://api.scrappa.test/[redacted-url], with Bearer [redacted]')
+        ->assertJsonPath('data.0.transport_error_code', 6)
+        ->assertJsonPath('data.0.request_headers.Accept', 'application/json')
+        ->assertJsonPath('data.0.request_headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.0.request_headers.Proxy-Authorization', '[redacted]')
+        ->assertJsonPath('data.0.request_headers.X-Api-Key', '[redacted]')
+        ->assertJsonPath('data.0.response_headers.content-type', 'application/json')
+        ->assertJsonPath('data.0.response_headers.set-cookie', '[redacted]')
+        ->assertJsonPath('data.0.response_headers.x-request-id', 'req-123')
+        ->assertJsonPath('data.0.response_body.error', 'upstream unavailable')
+        ->assertJsonPath('data.0.response_body.trace_id', 'trace-123')
+        ->assertJsonPath('data.0.response_body.author', 'Scrappa worker')
+        ->assertJsonPath('data.0.response_body.authenticated_at', '2026-04-29T06:00:00Z')
+        ->assertJsonPath('data.0.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
+        ->assertJsonPath('data.0.response_body.'.MonitorApiResult::ERROR_METADATA_KEY, '[redacted]')
+        ->assertJsonPath('data.0.response_body.raw_body', '[redacted]')
+        ->assertJsonPath('data.0.response_body.access_token', '[redacted]')
+        ->assertJsonPath('data.0.response_body.nested.password', '[redacted]')
+        ->assertJsonPath('data.0.response_body.nested.detail', 'resolver timeout');
+
+    expect(json_encode($response->json()))->not->toContain('request-secret')
+        ->and(json_encode($response->json()))->not->toContain('proxy-secret')
+        ->and(json_encode($response->json()))->not->toContain('package-secret')
+        ->and(json_encode($response->json()))->not->toContain('response-secret')
+        ->and(json_encode($response->json()))->not->toContain('transport-secret')
+        ->and(json_encode($response->json()))->not->toContain('transport-query-secret')
+        ->and(json_encode($response->json()))->not->toContain('transport-bearer-secret')
+        ->and(json_encode($response->json()))->not->toContain('raw-body-secret')
+        ->and(json_encode($response->json()))->not->toContain('error-metadata-secret')
+        ->and(json_encode($response->json()))->not->toContain('legacy-raw-secret')
+        ->and(json_encode($response->json()))->not->toContain('body-token-secret')
+        ->and(json_encode($response->json()))->not->toContain('body-password-secret');
+});
+
+test('control api redacts top-level raw response body strings', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'summary' => 'API heartbeat failed with a raw upstream body.',
+        'response_body' => 'Token expired. Your token was: top-level-body-secret',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.0.response_body', '[redacted]');
+
+    expect(json_encode($response->json()))->not->toContain('top-level-body-secret');
+});
+
+test('control api result evidence preserves null bodies and truncates long strings', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+    ]);
+
+    $longValue = str_repeat('x', 4200);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'summary' => 'API heartbeat failed with a very large debug payload.',
+        'transport_error_message' => $longValue,
+        'request_headers' => [
+            'x-debug-trace' => $longValue,
+        ],
+        'response_body' => null,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.0.response_body', null);
+
+    expect($response->json('data.0.transport_error_message'))->toEndWith('... [truncated]')
+        ->and($response->json('data.0.transport_error_message'))->not->toBe($longValue)
+        ->and($response->json('data.0.request_headers.x-debug-trace'))->toEndWith('... [truncated]')
+        ->and($response->json('data.0.request_headers.x-debug-trace'))->not->toBe($longValue);
+});
+
 test('control api project status counts exclude disabled checks and report them separately', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,

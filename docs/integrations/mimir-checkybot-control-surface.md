@@ -86,7 +86,22 @@ Example project detail response:
       "summary": "API heartbeat is degraded with HTTP status 404.",
       "http_code": 404,
       "response_time_ms": 142,
+      "transport_error_type": null,
+      "transport_error_message": null,
+      "transport_error_code": null,
       "failed_assertions": [],
+      "request_headers": {
+        "Accept": "application/json",
+        "Authorization": "[redacted]"
+      },
+      "response_headers": {
+        "content-type": "application/json",
+        "x-request-id": "req_123"
+      },
+      "response_body": {
+        "error": "not_found",
+        "trace_id": "trace_123"
+      },
       "checked_at": "2026-04-21T11:58:12Z",
       "created_at": "2026-04-21T11:58:12Z"
     }
