@@ -413,7 +413,7 @@ test('control api result payloads include safe api failure evidence', function (
         'http_code' => 0,
         'summary' => 'API heartbeat failed because DNS lookup failed.',
         'transport_error_type' => 'dns',
-        'transport_error_message' => 'Could not resolve api.scrappa.test',
+        'transport_error_message' => 'Could not resolve https://user:transport-secret@api.scrappa.test/private/request-secret?debug=transport-query-secret with Bearer transport-bearer-secret',
         'transport_error_code' => 6,
         'request_headers' => [
             'Accept' => 'application/json',
@@ -447,7 +447,7 @@ test('control api result payloads include safe api failure evidence', function (
         ->assertOk()
         ->assertJsonPath('data.0.check.key', 'search-health')
         ->assertJsonPath('data.0.transport_error_type', 'dns')
-        ->assertJsonPath('data.0.transport_error_message', 'Could not resolve api.scrappa.test')
+        ->assertJsonPath('data.0.transport_error_message', 'Could not resolve https://api.scrappa.test/[redacted-url] with Bearer [redacted]')
         ->assertJsonPath('data.0.transport_error_code', 6)
         ->assertJsonPath('data.0.request_headers.Accept', 'application/json')
         ->assertJsonPath('data.0.request_headers.Authorization', '[redacted]')
@@ -471,11 +471,37 @@ test('control api result payloads include safe api failure evidence', function (
         ->and(json_encode($response->json()))->not->toContain('proxy-secret')
         ->and(json_encode($response->json()))->not->toContain('package-secret')
         ->and(json_encode($response->json()))->not->toContain('response-secret')
+        ->and(json_encode($response->json()))->not->toContain('transport-secret')
+        ->and(json_encode($response->json()))->not->toContain('transport-query-secret')
+        ->and(json_encode($response->json()))->not->toContain('transport-bearer-secret')
         ->and(json_encode($response->json()))->not->toContain('raw-body-secret')
         ->and(json_encode($response->json()))->not->toContain('error-metadata-secret')
         ->and(json_encode($response->json()))->not->toContain('legacy-raw-secret')
         ->and(json_encode($response->json()))->not->toContain('body-token-secret')
         ->and(json_encode($response->json()))->not->toContain('body-password-secret');
+});
+
+test('control api redacts top-level raw response body strings', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'summary' => 'API heartbeat failed with a raw upstream body.',
+        'response_body' => 'Token expired. Your token was: top-level-body-secret',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.0.response_body', '[redacted]');
+
+    expect(json_encode($response->json()))->not->toContain('top-level-body-secret');
 });
 
 test('control api result evidence preserves null bodies and truncates long strings', function () {

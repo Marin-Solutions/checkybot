@@ -409,12 +409,12 @@ class CheckybotControlService
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
             'transport_error_type' => $result->transport_error_type,
-            'transport_error_message' => $this->redactEvidenceValue($result->transport_error_message),
+            'transport_error_message' => $this->redactTransportErrorMessage($result->transport_error_message),
             'transport_error_code' => $result->transport_error_code,
             'failed_assertions' => $result->failed_assertions,
             'request_headers' => $this->redactHeaders($result->request_headers ?? []),
             'response_headers' => $this->redactHeaders($result->response_headers ?? []),
-            'response_body' => $this->redactEvidenceValue($result->response_body),
+            'response_body' => $this->redactResponseBody($result->response_body),
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
@@ -492,6 +492,59 @@ class CheckybotControlService
         }
 
         return $value;
+    }
+
+    private function redactTransportErrorMessage(?string $message): ?string
+    {
+        if ($message === null) {
+            return null;
+        }
+
+        return Str::limit($this->sanitizeEvidenceString($message), self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
+    }
+
+    private function redactResponseBody(mixed $responseBody): mixed
+    {
+        if (is_string($responseBody)) {
+            return '[redacted]';
+        }
+
+        return $this->redactEvidenceValue($responseBody);
+    }
+
+    private function sanitizeEvidenceString(string $value): string
+    {
+        $value = preg_replace_callback(
+            '~https?://[^\s<>"\')]+~i',
+            fn (array $matches): string => $this->redactUrlEvidence($matches[0]),
+            $value,
+        ) ?? $value;
+
+        $value = preg_replace(
+            '~\b(token|secret|api[_-]?key|auth[_-]?key|password|signature)=([^\s&]+)~i',
+            '$1=[redacted]',
+            $value,
+        ) ?? $value;
+
+        return preg_replace(
+            '#\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+#i',
+            '$1 [redacted]',
+            $value,
+        ) ?? $value;
+    }
+
+    private function redactUrlEvidence(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if ($parts === false || ! isset($parts['host'])) {
+            return '[redacted-url]';
+        }
+
+        $scheme = $parts['scheme'] ?? 'https';
+        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
+
+        return "{$scheme}://{$parts['host']}{$port}/[redacted-url]";
     }
 
     private function resolveUrl(?string $baseUrl, string $url): string
