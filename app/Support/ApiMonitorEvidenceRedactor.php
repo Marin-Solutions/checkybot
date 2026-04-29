@@ -23,6 +23,9 @@ class ApiMonitorEvidenceRedactor
             ->all();
     }
 
+    /**
+     * @return mixed Redacted response body evidence safe for API payloads.
+     */
     public static function redactResponseBody(mixed $responseBody): mixed
     {
         if (is_string($responseBody)) {
@@ -32,6 +35,9 @@ class ApiMonitorEvidenceRedactor
         return self::redactValue($responseBody);
     }
 
+    /**
+     * @return string|null Redacted and truncated transport error evidence.
+     */
     public static function redactTransportErrorMessage(?string $message): ?string
     {
         if ($message === null) {
@@ -74,6 +80,8 @@ class ApiMonitorEvidenceRedactor
             || $name === MonitorApiResult::ERROR_METADATA_KEY
             || $name === MonitorApis::LEGACY_RAW_BODY_KEY
             || str_contains($compact, 'authorization')
+            // Prefer over-redaction for evidence payload keys because saved
+            // response bodies may contain arbitrary customer API structures.
             || str_contains($compact, 'token')
             || str_contains($compact, 'secret')
             || str_contains($compact, 'apikey')

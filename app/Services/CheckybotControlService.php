@@ -354,7 +354,7 @@ class CheckybotControlService
             'last_synced_at' => $check->last_synced_at?->toISOString(),
             'last_heartbeat_at' => $check->last_heartbeat_at?->toISOString(),
             'stale_at' => $check->stale_at?->toISOString(),
-            'headers' => $this->redactHeaders($check->headers),
+            'headers' => ApiMonitorEvidenceRedactor::redactHeaders($check->headers),
             'request_body_type' => $check->request_body_type,
             'has_request_body' => $check->hasRequestBody(),
             'assertions' => $this->assertionsPayload($check->assertions),
@@ -408,12 +408,12 @@ class CheckybotControlService
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
             'transport_error_type' => $result->transport_error_type,
-            'transport_error_message' => $this->redactTransportErrorMessage($result->transport_error_message),
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($result->transport_error_message),
             'transport_error_code' => $result->transport_error_code,
             'failed_assertions' => $result->failed_assertions,
-            'request_headers' => $this->redactHeaders($result->request_headers ?? []),
-            'response_headers' => $this->redactHeaders($result->response_headers ?? []),
-            'response_body' => $this->redactResponseBody($result->response_body),
+            'request_headers' => ApiMonitorEvidenceRedactor::redactHeaders($result->request_headers ?? []),
+            'response_headers' => ApiMonitorEvidenceRedactor::redactHeaders($result->response_headers ?? []),
+            'response_body' => ApiMonitorEvidenceRedactor::redactResponseBody($result->response_body),
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
@@ -436,25 +436,6 @@ class CheckybotControlService
             ],
             'result' => $this->resultPayload($result->load('monitorApi.project')),
         ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $headers
-     * @return array<string, mixed>
-     */
-    private function redactHeaders(array $headers): array
-    {
-        return ApiMonitorEvidenceRedactor::redactHeaders($headers);
-    }
-
-    private function redactTransportErrorMessage(?string $message): ?string
-    {
-        return ApiMonitorEvidenceRedactor::redactTransportErrorMessage($message);
-    }
-
-    private function redactResponseBody(mixed $responseBody): mixed
-    {
-        return ApiMonitorEvidenceRedactor::redactResponseBody($responseBody);
     }
 
     private function resolveUrl(?string $baseUrl, string $url): string
