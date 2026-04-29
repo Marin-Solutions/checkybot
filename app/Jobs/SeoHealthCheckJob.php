@@ -53,13 +53,7 @@ class SeoHealthCheckJob implements ShouldQueue
             $website = $this->seoCheck->website;
             $baseUrl = $website->getBaseURL();
 
-            // Create crawler with SEO-specific configuration
-            $crawler = Crawler::create()
-                ->setCrawlObserver(new SeoHealthCheckCrawler($this->seoCheck))
-                ->setCrawlProfile(new CrawlInternalUrls($baseUrl))
-                ->setDelayBetweenRequests(1000) // 1 second delay between requests
-                ->setUserAgent('CheckyBot SEO Crawler/1.0 (+https://checkybot.com/bot)')
-                ->ignoreRobots(false); // Respect robots.txt
+            $crawler = $this->createCrawler($baseUrl);
 
             try {
                 Log::info("Starting crawl for {$baseUrl}");
@@ -107,6 +101,18 @@ class SeoHealthCheckJob implements ShouldQueue
 
             throw $e; // Re-throw to mark job as failed
         }
+    }
+
+    protected function createCrawler(string $baseUrl): Crawler
+    {
+        // Create crawler with SEO-specific configuration
+        return Crawler::create()
+            ->setCrawlObserver(new SeoHealthCheckCrawler($this->seoCheck))
+            ->setCrawlProfile(new CrawlInternalUrls($baseUrl))
+            ->setTotalCrawlLimit(SeoHealthCheckCrawler::MAX_URLS)
+            ->setDelayBetweenRequests(1000) // 1 second delay between requests
+            ->setUserAgent('CheckyBot SEO Crawler/1.0 (+https://checkybot.com/bot)')
+            ->ignoreRobots(false); // Respect robots.txt
     }
 
     public function failed(\Throwable $exception): void

@@ -1,5 +1,6 @@
 <?php
 
+use App\Crawlers\SeoHealthCheckCrawler;
 use App\Events\CrawlFailed;
 use App\Jobs\SeoHealthCheckJob;
 use App\Mail\SeoCheckCompleted;
@@ -70,6 +71,26 @@ test('job has correct tries', function () {
     $job = new SeoHealthCheckJob($seoCheck);
 
     expect($job->tries)->toBe(1);
+});
+
+test('job configures crawler with seo url limit', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+    $seoCheck = SeoCheck::create([
+        'website_id' => $website->id,
+        'status' => 'pending',
+    ]);
+
+    $job = new SeoHealthCheckJob($seoCheck);
+
+    $reflection = new \ReflectionClass($job);
+    $method = $reflection->getMethod('createCrawler');
+    $method->setAccessible(true);
+
+    $crawler = $method->invoke($job, $website->getBaseURL());
+
+    expect($crawler->getTotalCrawlLimit())->toBe(SeoHealthCheckCrawler::MAX_URLS);
 });
 
 test('job can be dispatched to queue', function () {

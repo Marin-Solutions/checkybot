@@ -18,6 +18,8 @@ use Spatie\Crawler\CrawlObservers\CrawlObserver;
 
 class SeoHealthCheckCrawler extends CrawlObserver
 {
+    public const MAX_URLS = 1000;
+
     protected SeoCheck $seoCheck;
 
     protected array $crawlResults = [];
@@ -30,7 +32,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected int $crawledCount = 0;
 
-    protected int $maxUrls = 1000; // Limit to prevent infinite crawling
+    protected int $maxUrls = self::MAX_URLS; // Limit to prevent infinite crawling
 
     protected int $lastBroadcastCount = 0; // Track when we last broadcasted
 
