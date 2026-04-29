@@ -179,7 +179,7 @@ test('command skips inactive schedules', function () {
     Queue::assertNotPushed(SeoHealthCheckJob::class);
 });
 
-test('command skips schedules with no crawlable urls', function () {
+test('command records failed check and advances schedule when no crawlable urls found', function () {
     Queue::fake();
     Log::spy();
 
@@ -221,7 +221,7 @@ test('command skips schedules with no crawlable urls', function () {
         ->and($seoCheck->status)->toBe('failed')
         ->and($seoCheck->total_urls_crawled)->toBe(0)
         ->and($seoCheck->total_crawlable_urls)->toBe(0)
-        ->and($seoCheck->robots_txt_checked)->toBe(1)
+        ->and($seoCheck->robots_txt_checked)->toBeTrue()
         ->and($seoCheck->finished_at)->not->toBeNull()
         ->and($seoCheck->crawl_summary['scheduled_by'])->toBe($user->id)
         ->and($seoCheck->crawl_summary['schedule_id'])->toBe($schedule->id)

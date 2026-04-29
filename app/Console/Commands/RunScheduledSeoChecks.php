@@ -95,6 +95,8 @@ class RunScheduledSeoChecks extends Command
                     $this->warn("No crawlable URLs found for {$website->url}. Schedule advanced.");
                     Log::warning("No crawlable URLs found for scheduled check: {$website->url}. Schedule advanced to {$schedule->next_run_at}.");
 
+                    $bar->advance();
+
                     continue;
                 }
 
