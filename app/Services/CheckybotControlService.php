@@ -535,16 +535,23 @@ class CheckybotControlService
 
     private function redactUrlEvidence(string $url): string
     {
+        $trailing = '';
+
+        while ($url !== '' && str_contains('.,', substr($url, -1))) {
+            $trailing = substr($url, -1).$trailing;
+            $url = substr($url, 0, -1);
+        }
+
         $parts = parse_url($url);
 
         if ($parts === false || ! isset($parts['host'])) {
-            return '[redacted-url]';
+            return '[redacted-url]'.$trailing;
         }
 
         $scheme = $parts['scheme'] ?? 'https';
         $port = isset($parts['port']) ? ':'.$parts['port'] : '';
 
-        return "{$scheme}://{$parts['host']}{$port}/[redacted-url]";
+        return "{$scheme}://{$parts['host']}{$port}/[redacted-url]{$trailing}";
     }
 
     private function resolveUrl(?string $baseUrl, string $url): string

@@ -413,7 +413,7 @@ test('control api result payloads include safe api failure evidence', function (
         'http_code' => 0,
         'summary' => 'API heartbeat failed because DNS lookup failed.',
         'transport_error_type' => 'dns',
-        'transport_error_message' => 'Could not resolve https://user:transport-secret@api.scrappa.test/private/request-secret?debug=transport-query-secret with Bearer transport-bearer-secret',
+        'transport_error_message' => 'Could not resolve https://user:transport-secret@api.scrappa.test/private/request-secret?debug=transport-query-secret, with Bearer transport-bearer-secret',
         'transport_error_code' => 6,
         'request_headers' => [
             'Accept' => 'application/json',
@@ -447,7 +447,7 @@ test('control api result payloads include safe api failure evidence', function (
         ->assertOk()
         ->assertJsonPath('data.0.check.key', 'search-health')
         ->assertJsonPath('data.0.transport_error_type', 'dns')
-        ->assertJsonPath('data.0.transport_error_message', 'Could not resolve https://api.scrappa.test/[redacted-url] with Bearer [redacted]')
+        ->assertJsonPath('data.0.transport_error_message', 'Could not resolve https://api.scrappa.test/[redacted-url], with Bearer [redacted]')
         ->assertJsonPath('data.0.transport_error_code', 6)
         ->assertJsonPath('data.0.request_headers.Accept', 'application/json')
         ->assertJsonPath('data.0.request_headers.Authorization', '[redacted]')
