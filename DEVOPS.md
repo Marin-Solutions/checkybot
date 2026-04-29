@@ -8,7 +8,6 @@ Keep this file up to date when Ploi infrastructure, runtime versions, queues, or
 
 - Ploi name: `checkybot-main`
 - Ploi server id: `79201`
-- Server status: `active`
 - Server type: `server`
 - Network details: available through Ploi when needed.
 - System user for sites: `ploi`
@@ -68,7 +67,6 @@ Keep this file up to date when Ploi infrastructure, runtime versions, queues, or
 - Ploi database id: `199162`
 - Name: `checkybot`
 - Type: `mysql`
-- Status: `active`
 - Server id: `79201`
 
 Use read-only production database access for inspection or exports when possible. Do not run destructive operations against production manually.
@@ -78,7 +76,6 @@ Use read-only production database access for inspection or exports when possible
 - Ploi database id: `249720`
 - Name: `staging`
 - Type: `mysql`
-- Status: `active`
 - Server id: `79201`
 
 ## Queue Workers
