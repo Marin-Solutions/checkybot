@@ -10,6 +10,11 @@ class EditNotificationSetting extends EditRecord
 {
     protected static string $resource = NotificationSettingResource::class;
 
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        return NotificationSettingResource::normalizeChannelData($data);
+    }
+
     protected function getHeaderActions(): array
     {
         return [

@@ -33,6 +33,19 @@ class NotificationSettingResource extends Resource
         return number_format(static::getModel()::where('user_id', auth()->id())->count());
     }
 
+    public static function normalizeChannelData(array $data): array
+    {
+        if ($data['channel_type'] === NotificationChannelTypesEnum::MAIL->value) {
+            $data['notification_channel_id'] = null;
+        }
+
+        if ($data['channel_type'] === NotificationChannelTypesEnum::WEBHOOK->value) {
+            $data['address'] = null;
+        }
+
+        return $data;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
