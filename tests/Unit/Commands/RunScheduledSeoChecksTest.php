@@ -202,13 +202,38 @@ test('command skips schedules with no crawlable urls', function () {
         ->with($website->url)
         ->andReturn([]);
 
+    $originalNextRun = $schedule->next_run_at->copy();
+
     $this->artisan('seo:run-scheduled')
         ->assertSuccessful();
 
     Queue::assertNotPushed(SeoHealthCheckJob::class);
 
+    $schedule->refresh();
+
+    expect($schedule->last_run_at)->not->toBeNull();
+    expect($schedule->next_run_at->equalTo($originalNextRun))->toBeFalse();
+    expect($schedule->next_run_at->isFuture())->toBeTrue();
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->first();
+
+    expect($seoCheck)->not->toBeNull()
+        ->and($seoCheck->status)->toBe('failed')
+        ->and($seoCheck->total_urls_crawled)->toBe(0)
+        ->and($seoCheck->total_crawlable_urls)->toBe(0)
+        ->and($seoCheck->robots_txt_checked)->toBe(1)
+        ->and($seoCheck->finished_at)->not->toBeNull()
+        ->and($seoCheck->crawl_summary['scheduled_by'])->toBe($user->id)
+        ->and($seoCheck->crawl_summary['schedule_id'])->toBe($schedule->id)
+        ->and($seoCheck->crawl_summary['is_scheduled'])->toBeTrue()
+        ->and($seoCheck->crawl_summary['failure_reason'])->toBe('no_crawlable_urls')
+        ->and($seoCheck->crawl_summary['summary'])->toContain('No crawlable URLs were found');
+
     Log::shouldHaveReceived('warning')
-        ->with("No crawlable URLs found for scheduled check: {$website->url}")
+        ->withArgs(function ($message) use ($schedule, $website) {
+            return str_contains($message, "No crawlable URLs found for scheduled check: {$website->url}")
+                && str_contains($message, (string) $schedule->next_run_at);
+        })
         ->once();
 });
 

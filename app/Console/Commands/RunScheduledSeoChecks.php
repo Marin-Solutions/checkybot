@@ -70,8 +70,30 @@ class RunScheduledSeoChecks extends Command
                 $crawlableUrls = $robotsSitemapService->getCrawlableUrls($website->url);
 
                 if (empty($crawlableUrls)) {
-                    $this->warn("No crawlable URLs found for {$website->url}. Skipping...");
-                    Log::warning("No crawlable URLs found for scheduled check: {$website->url}");
+                    $summary = 'No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.';
+
+                    SeoCheck::create([
+                        'website_id' => $schedule->website_id,
+                        'status' => 'failed',
+                        'progress' => 0,
+                        'total_urls_crawled' => 0,
+                        'total_crawlable_urls' => 0,
+                        'sitemap_used' => false,
+                        'robots_txt_checked' => true,
+                        'finished_at' => now(),
+                        'crawl_summary' => [
+                            'scheduled_by' => $schedule->created_by,
+                            'schedule_id' => $schedule->id,
+                            'is_scheduled' => true,
+                            'failure_reason' => 'no_crawlable_urls',
+                            'summary' => $summary,
+                        ],
+                    ]);
+
+                    $schedule->updateNextRun();
+
+                    $this->warn("No crawlable URLs found for {$website->url}. Schedule advanced.");
+                    Log::warning("No crawlable URLs found for scheduled check: {$website->url}. Schedule advanced to {$schedule->next_run_at}.");
 
                     continue;
                 }
