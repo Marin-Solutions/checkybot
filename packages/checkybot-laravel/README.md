@@ -244,8 +244,8 @@ Checkybot::api('endpoint')
 // Opt out of storing failed response bodies for sensitive endpoints
 Checkybot::api('login')
     ->url('https://example.com/api/login')
-    ->everyFiveMinutes()
-    ->dontSaveFailedResponse();
+    ->dontSaveFailedResponse()
+    ->everyFiveMinutes();
 ```
 
 ### Response Assertions (Pest-style)
