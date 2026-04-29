@@ -450,7 +450,6 @@ class CheckybotControlService
         $compact = str_replace(['-', '_', ' '], '', $normalized);
 
         return $name === MonitorApiResult::RAW_BODY_KEY
-            || $normalized === 'authorization'
             || str_contains($compact, 'authorization')
             || str_contains($compact, 'token')
             || str_contains($compact, 'secret')
