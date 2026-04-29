@@ -61,13 +61,14 @@ Example project detail response:
     "repository": "Marin-Solutions/scrappa",
     "checks_count": 4,
     "enabled_checks_count": 3,
+    "disabled_checks_count": 1,
     "created_at": "2026-04-20T08:12:00Z",
     "last_synced_at": "2026-04-21T11:59:00Z",
     "updated_at": "2026-04-21T11:59:00Z",
     "status_counts": {
       "healthy": 2,
       "warning": 1,
-      "unknown": 1
+      "disabled": 1
     },
     "latest_failure": {
       "id": 991,

@@ -4,6 +4,7 @@ use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\NotificationSettingResource\Pages\CreateNotificationSetting;
+use App\Filament\Resources\NotificationSettingResource\Pages\EditNotificationSetting;
 use App\Filament\Resources\NotificationSettingResource\Pages\ListNotificationSettings;
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
@@ -217,6 +218,70 @@ test('super admin can create a global webhook notification rule', function () {
         'user_id' => $user->id,
         'scope' => NotificationScopesEnum::GLOBAL->value,
         'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+        'notification_channel_id' => $channel->id,
+        'address' => null,
+    ]);
+});
+
+test('super admin can edit a global notification rule from webhook to email without stale channel data', function () {
+    $user = $this->actingAsSuperAdmin();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Global Hook',
+    ]);
+
+    $setting = NotificationSetting::factory()->webhook()->create([
+        'user_id' => $user->id,
+        'notification_channel_id' => $channel->id,
+    ]);
+
+    Livewire::test(EditNotificationSetting::class, ['record' => $setting->getRouteKey()])
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+            'address' => 'global-ops@example.com',
+            'notification_channel_id' => $channel->id,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'id' => $setting->id,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+        'notification_channel_id' => null,
+        'address' => 'global-ops@example.com',
+    ]);
+});
+
+test('super admin can edit a global notification rule from email to webhook without stale address data', function () {
+    $user = $this->actingAsSuperAdmin();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Global Hook',
+    ]);
+
+    $setting = NotificationSetting::factory()->email()->create([
+        'user_id' => $user->id,
+        'address' => 'global-ops@example.com',
+    ]);
+
+    Livewire::test(EditNotificationSetting::class, ['record' => $setting->getRouteKey()])
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'address' => 'global-ops@example.com',
+            'notification_channel_id' => $channel->id,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'id' => $setting->id,
         'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
         'notification_channel_id' => $channel->id,
         'address' => null,
