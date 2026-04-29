@@ -51,6 +51,7 @@ class WebsiteSeoCheckResource extends Resource
                         'completed' => 'success',
                         'running' => 'warning',
                         'failed' => 'danger',
+                        'cancelled' => 'gray',
                         'pending' => 'gray',
                         null => 'gray',
                         default => 'gray',
@@ -132,6 +133,7 @@ class WebsiteSeoCheckResource extends Resource
                         'running' => 'Running',
                         'completed' => 'Completed',
                         'failed' => 'Failed',
+                        'cancelled' => 'Cancelled',
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         if (! $data['value']) {
