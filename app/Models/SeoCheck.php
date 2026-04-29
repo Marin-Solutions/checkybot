@@ -33,6 +33,8 @@ class SeoCheck extends Model
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
         'crawl_summary' => 'array',
+        'sitemap_used' => 'boolean',
+        'robots_txt_checked' => 'boolean',
     ];
 
     public function website(): BelongsTo
