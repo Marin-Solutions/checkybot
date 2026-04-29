@@ -135,6 +135,19 @@ class ViewSeoCheck extends ViewRecord
                                     }),
                             ]),
                     ]),
+                \Filament\Schemas\Components\Section::make('Failure Details')
+                    ->columnSpanFull()
+                    ->schema([
+                        \Filament\Infolists\Components\TextEntry::make('failure_summary')
+                            ->label('What failed')
+                            ->copyable()
+                            ->columnSpanFull(),
+                        \Filament\Infolists\Components\KeyValueEntry::make('failure_context')
+                            ->label('Context')
+                            ->state(fn ($record): array => $this->formatFailureContext($record->failure_context ?? []))
+                            ->hidden(fn ($record): bool => blank($record->failure_context)),
+                    ])
+                    ->visible(fn ($record): bool => $record->isFailed() && filled($record->failure_summary)),
                 \Filament\Schemas\Components\Section::make('SEO Summary')
                     ->columnSpanFull()
                     ->schema([
@@ -161,6 +174,28 @@ class ViewSeoCheck extends ViewRecord
                     ])
                     ->visible(fn ($record): bool => $record->isCompleted() || $record->isFailed()),
             ]);
+    }
+
+    protected function formatFailureContext(array $context): array
+    {
+        return collect($context)
+            ->map(function ($value): string {
+                if (is_array($value)) {
+                    return implode(', ', array_map(
+                        fn ($nestedValue): string => is_scalar($nestedValue) || $nestedValue === null
+                            ? (string) $nestedValue
+                            : json_encode($nestedValue, JSON_UNESCAPED_SLASHES),
+                        $value
+                    ));
+                }
+
+                if (is_bool($value)) {
+                    return $value ? 'true' : 'false';
+                }
+
+                return (string) $value;
+            })
+            ->all();
     }
 
     protected function getFooterWidgets(): array

@@ -22,6 +22,8 @@ class SeoCheck extends Model
         'started_at',
         'finished_at',
         'crawl_summary',
+        'failure_summary',
+        'failure_context',
         'computed_errors_count',
         'computed_warnings_count',
         'computed_notices_count',
@@ -33,6 +35,7 @@ class SeoCheck extends Model
         'started_at' => 'datetime',
         'finished_at' => 'datetime',
         'crawl_summary' => 'array',
+        'failure_context' => 'array',
         'sitemap_used' => 'boolean',
         'robots_txt_checked' => 'boolean',
     ];

@@ -9,6 +9,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Spatie\Crawler\Crawler;
 use Spatie\Crawler\CrawlProfiles\CrawlInternalUrls;
 
@@ -48,6 +49,8 @@ class SeoHealthCheckJob implements ShouldQueue
             $this->seoCheck->update([
                 'status' => 'running',
                 'started_at' => now(),
+                'failure_summary' => null,
+                'failure_context' => null,
             ]);
 
             $website = $this->seoCheck->website;
@@ -116,6 +119,8 @@ class SeoHealthCheckJob implements ShouldQueue
         $this->seoCheck->update([
             'status' => 'failed',
             'finished_at' => now(),
+            'failure_summary' => $this->buildFailureSummary($exception),
+            'failure_context' => $this->buildFailureContext($exception),
         ]);
 
         // Broadcast failure event
@@ -128,6 +133,44 @@ class SeoHealthCheckJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::warning('Failed to broadcast crawl failure event: '.$e->getMessage());
         }
+    }
+
+    protected function buildFailureSummary(\Throwable $exception): string
+    {
+        $message = trim($exception->getMessage());
+
+        if ($message === '') {
+            $message = class_basename($exception);
+        }
+
+        return Str::limit($message, 500);
+    }
+
+    protected function buildFailureContext(\Throwable $exception): array
+    {
+        $context = [
+            'exception' => get_class($exception),
+            'message' => $this->buildFailureSummary($exception),
+            'code' => $exception->getCode(),
+            'website_url' => $this->seoCheck->website?->url,
+            'total_urls_crawled' => $this->seoCheck->total_urls_crawled ?? 0,
+        ];
+
+        if (method_exists($exception, 'getRequest')) {
+            $request = $exception->getRequest();
+
+            if ($request) {
+                $context['failed_url'] = (string) $request->getUri();
+                $context['method'] = $request->getMethod();
+            }
+        }
+
+        if (! empty($this->crawlableUrls)) {
+            $context['queued_urls'] = array_slice($this->crawlableUrls, 0, 5);
+            $context['queued_urls_count'] = count($this->crawlableUrls);
+        }
+
+        return array_filter($context, fn ($value): bool => $value !== null && $value !== '');
     }
 
     /**

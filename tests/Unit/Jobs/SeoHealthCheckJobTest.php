@@ -6,6 +6,8 @@ use App\Mail\SeoCheckCompleted;
 use App\Models\SeoCheck;
 use App\Models\User;
 use App\Models\Website;
+use GuzzleHttp\Exception\RequestException;
+use GuzzleHttp\Psr7\Request;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -136,6 +138,55 @@ test('failed method updates status to failed', function () {
     $seoCheck->refresh();
     expect($seoCheck->status)->toBe('failed');
     expect($seoCheck->finished_at)->not->toBeNull();
+    expect($seoCheck->failure_summary)->toBe('Test exception');
+    expect($seoCheck->failure_context)
+        ->toMatchArray([
+            'exception' => Exception::class,
+            'message' => 'Test exception',
+            'website_url' => $website->url,
+            'total_urls_crawled' => 0,
+        ]);
+});
+
+test('failed method stores request url evidence when available', function () {
+    Event::fake();
+    Log::shouldReceive('error')->andReturn(null);
+    Log::shouldReceive('warning')->andReturn(null);
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+    $seoCheck = SeoCheck::create([
+        'website_id' => $website->id,
+        'status' => 'running',
+        'total_urls_crawled' => 3,
+    ]);
+
+    $job = new SeoHealthCheckJob($seoCheck, [
+        'https://example.com',
+        'https://example.com/blocked',
+    ]);
+    $exception = new RequestException(
+        'Blocked by robots.txt',
+        new Request('GET', 'https://example.com/blocked')
+    );
+
+    $job->failed($exception);
+
+    $seoCheck->refresh();
+
+    expect($seoCheck->failure_summary)->toBe('Blocked by robots.txt')
+        ->and($seoCheck->failure_context)->toMatchArray([
+            'exception' => RequestException::class,
+            'failed_url' => 'https://example.com/blocked',
+            'method' => 'GET',
+            'queued_urls' => [
+                'https://example.com',
+                'https://example.com/blocked',
+            ],
+            'queued_urls_count' => 2,
+            'total_urls_crawled' => 3,
+        ]);
 });
 
 test('failed method broadcasts crawl failed event', function () {
