@@ -105,7 +105,7 @@ class SeoSchedule extends Model
         $day = $scheduleDay ?? 'Monday';
         $candidate = $now->copy()->setTime($hours, $minutes);
 
-        if (strcasecmp($candidate->englishDayOfWeek, $day) !== 0 || $candidate->isPast()) {
+        if (strcasecmp($candidate->englishDayOfWeek, $day) !== 0 || $candidate->lessThanOrEqualTo($now)) {
             return $now->copy()->next($day)->setTime($hours, $minutes);
         }
 

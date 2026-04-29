@@ -158,6 +158,14 @@ test('seo schedule calculates next week weekly run when selected time already pa
     expect($nextRun->toDateTimeString())->toBe('2026-05-06 09:00:00');
 });
 
+test('seo schedule calculates next week weekly run when selected time is exactly now', function () {
+    Carbon::setTestNow(Carbon::parse('2026-04-29 14:30:00'));
+
+    $nextRun = SeoSchedule::calculateNextRunAt('weekly', '14:30', 'Wednesday');
+
+    expect($nextRun->toDateTimeString())->toBe('2026-05-06 14:30:00');
+});
+
 test('seo schedule update next run moves completed weekly run to following week', function () {
     Carbon::setTestNow(Carbon::parse('2026-04-29 15:00:00'));
 
@@ -171,6 +179,22 @@ test('seo schedule update next run moves completed weekly run to following week'
 
     $schedule->refresh();
     expect($schedule->last_run_at->toDateTimeString())->toBe('2026-04-29 15:00:00')
+        ->and($schedule->next_run_at->toDateTimeString())->toBe('2026-05-06 14:30:00');
+});
+
+test('seo schedule update next run moves exact weekly run time to following week', function () {
+    Carbon::setTestNow(Carbon::parse('2026-04-29 14:30:00'));
+
+    $schedule = SeoSchedule::factory()->weekly()->create([
+        'schedule_time' => '14:30:00',
+        'schedule_day' => 'Wednesday',
+        'next_run_at' => now(),
+    ]);
+
+    $schedule->updateNextRun();
+
+    $schedule->refresh();
+    expect($schedule->last_run_at->toDateTimeString())->toBe('2026-04-29 14:30:00')
         ->and($schedule->next_run_at->toDateTimeString())->toBe('2026-05-06 14:30:00');
 });
 
