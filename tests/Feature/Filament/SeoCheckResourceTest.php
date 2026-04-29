@@ -28,5 +28,6 @@ test('view seo check page shows failure details for failed checks', function () 
         ->assertSee('Failure Details')
         ->assertSee('Blocked by robots.txt')
         ->assertSee('https://example.com/blocked')
-        ->assertSee('total_urls_crawled');
+        ->assertSee('Failed URL')
+        ->assertSee('URLs Crawled');
 });

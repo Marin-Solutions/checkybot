@@ -194,22 +194,33 @@ class ViewSeoCheck extends ViewRecord
 
     protected function formatFailureContext(array $context): array
     {
+        $labels = [
+            'code' => 'Code',
+            'exception' => 'Exception',
+            'failed_url' => 'Failed URL',
+            'method' => 'Method',
+            'queued_urls' => 'Queued URLs',
+            'queued_urls_count' => 'Queued URLs Count',
+            'total_urls_crawled' => 'URLs Crawled',
+            'website_url' => 'Website URL',
+        ];
+
         return collect($context)
-            ->map(function ($value): string {
+            ->mapWithKeys(function ($value, string $key) use ($labels): array {
                 if (is_array($value)) {
-                    return implode(', ', array_map(
+                    $value = implode(', ', array_map(
                         fn ($nestedValue): string => is_scalar($nestedValue) || $nestedValue === null
                             ? (string) $nestedValue
                             : json_encode($nestedValue, JSON_UNESCAPED_SLASHES),
                         $value
                     ));
+                } elseif (is_bool($value)) {
+                    $value = $value ? 'true' : 'false';
+                } else {
+                    $value = (string) $value;
                 }
 
-                if (is_bool($value)) {
-                    return $value ? 'true' : 'false';
-                }
-
-                return (string) $value;
+                return [$labels[$key] ?? str($key)->headline()->toString() => $value];
             })
             ->all();
     }
