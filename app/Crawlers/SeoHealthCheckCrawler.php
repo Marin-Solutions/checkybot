@@ -32,6 +32,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     protected int $crawledCount = 0;
 
+    protected int $recordedResultCount = 0;
+
     // Defensive guard for direct observer usage; SeoHealthCheckJob enforces this at the Spatie crawler level.
     protected int $maxUrls = self::MAX_URLS;
 
@@ -126,8 +128,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
             return;
         }
 
-        // Skip only if direct observer usage somehow processes beyond the defensive limit.
-        if ($this->crawledCount > $this->maxUrls) {
+        if (! $this->reserveCrawlResultSlot($urlString)) {
             return;
         }
 
@@ -167,6 +168,10 @@ class SeoHealthCheckCrawler extends CrawlObserver
             return;
         }
 
+        if (! $this->reserveCrawlResultSlot($urlString)) {
+            return;
+        }
+
         Log::warning("SEO Crawler: Failed to crawl {$urlString}: ".$requestException->getMessage());
 
         // Record failed crawl
@@ -179,6 +184,19 @@ class SeoHealthCheckCrawler extends CrawlObserver
             'created_at' => now(),
             'updated_at' => now(),
         ];
+    }
+
+    protected function reserveCrawlResultSlot(string $url): bool
+    {
+        if ($this->recordedResultCount >= $this->maxUrls) {
+            Log::info("SEO Crawler: Reached maximum recorded results limit ({$this->maxUrls}), ignoring {$url}");
+
+            return false;
+        }
+
+        $this->recordedResultCount++;
+
+        return true;
     }
 
     public function finishedCrawling(): void

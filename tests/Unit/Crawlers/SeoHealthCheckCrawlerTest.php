@@ -301,6 +301,23 @@ test('records seo data for the last allowed url', function () {
     expect(SeoCrawlResult::where('seo_check_id', $this->seoCheck->id)->where('url', (string) $lastUrl)->exists())->toBeTrue();
 });
 
+test('does not record seo data beyond the defensive max urls limit', function () {
+    $crawler = new SeoHealthCheckCrawler($this->seoCheck);
+    $response = new Response(200, ['Content-Type' => 'text/html'], '<html><title>Page</title></html>');
+
+    for ($i = 1; $i <= SeoHealthCheckCrawler::MAX_URLS + 1; $i++) {
+        $url = new Uri("https://example.com/page{$i}");
+
+        $crawler->willCrawl($url, 'Link');
+        $crawler->crawled($url, $response, null, null);
+    }
+
+    $crawler->finishedCrawling();
+
+    expect(SeoCrawlResult::where('seo_check_id', $this->seoCheck->id)->count())->toBe(SeoHealthCheckCrawler::MAX_URLS);
+    expect(SeoCrawlResult::where('seo_check_id', $this->seoCheck->id)->where('url', 'https://example.com/page1001')->exists())->toBeFalse();
+});
+
 test('populates computed columns on completion', function () {
     $issueDetectionMock = Mockery::mock(SeoIssueDetectionService::class);
     $issueDetectionMock->shouldReceive('detectIssues')->once();
