@@ -74,30 +74,54 @@ class SeoSchedule extends Model
      */
     protected function calculateNextRun(): Carbon
     {
-        $time = $this->schedule_time ?? '02:00:00';
-        [$hours, $minutes] = explode(':', $time);
+        return self::calculateNextRunAt(
+            $this->frequency,
+            $this->schedule_time,
+            $this->schedule_day,
+        );
+    }
 
-        return match ($this->frequency) {
-            'daily' => now()->addDay()->setTime((int) $hours, (int) $minutes),
-            'weekly' => $this->calculateNextWeeklyRun($hours, $minutes),
-            'monthly' => now()->addMonth()->setTime((int) $hours, (int) $minutes),
-            default => now()->addDay()->setTime((int) $hours, (int) $minutes),
+    /**
+     * Calculate the next run time based on frequency, time, and day.
+     */
+    public static function calculateNextRunAt(string $frequency, ?string $scheduleTime = null, ?string $scheduleDay = null): Carbon
+    {
+        [$hours, $minutes] = self::parseScheduleTime($scheduleTime);
+
+        return match ($frequency) {
+            'daily' => now()->addDay()->setTime($hours, $minutes),
+            'weekly' => self::calculateNextWeeklyRunAt($scheduleDay, $hours, $minutes),
+            'monthly' => now()->addMonth()->setTime($hours, $minutes),
+            default => now()->addDay()->setTime($hours, $minutes),
         };
     }
 
     /**
-     * Calculate next weekly run based on selected day
+     * Calculate next weekly run based on selected day.
      */
-    protected function calculateNextWeeklyRun(int $hours, int $minutes): Carbon
+    protected static function calculateNextWeeklyRunAt(?string $scheduleDay, int $hours, int $minutes): Carbon
     {
-        $day = $this->schedule_day ?? 'Monday';
-        $nextRun = now()->next($day)->setTime($hours, $minutes);
+        $now = now();
+        $day = $scheduleDay ?? 'Monday';
+        $candidate = $now->copy()->setTime($hours, $minutes);
 
-        // If the next occurrence is today but the time has passed, get next week's occurrence
-        if ($nextRun->isPast()) {
-            $nextRun = now()->addWeek()->next($day)->setTime($hours, $minutes);
+        if (strcasecmp($candidate->englishDayOfWeek, $day) !== 0 || $candidate->lessThanOrEqualTo($now)) {
+            return $now->copy()->next($day)->setTime($hours, $minutes);
         }
 
-        return $nextRun;
+        return $candidate;
+    }
+
+    /**
+     * Parse schedule time values from form input or stored schedule records.
+     *
+     * @return array{0: int, 1: int}
+     */
+    protected static function parseScheduleTime(?string $scheduleTime): array
+    {
+        $time = $scheduleTime ?? '02:00:00';
+        [$hours, $minutes] = array_pad(explode(':', $time), 2, 0);
+
+        return [(int) $hours, (int) $minutes];
     }
 }
