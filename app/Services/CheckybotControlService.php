@@ -52,6 +52,7 @@ class CheckybotControlService
             ->withCount([
                 'packageManagedApis as checks_count',
                 'packageManagedApis as enabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', true),
+                'packageManagedApis as disabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', false),
             ])
             ->latest('updated_at')
             ->get()
@@ -68,6 +69,7 @@ class CheckybotControlService
             ->loadCount([
                 'packageManagedApis as checks_count',
                 'packageManagedApis as enabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', true),
+                'packageManagedApis as disabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', false),
             ]);
 
         return array_merge($this->projectSummary($project), [
@@ -291,6 +293,7 @@ class CheckybotControlService
             'repository' => $project->repository,
             'checks_count' => (int) ($project->checks_count ?? $project->packageManagedApis()->count()),
             'enabled_checks_count' => (int) ($project->enabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', true)->count()),
+            'disabled_checks_count' => (int) ($project->disabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', false)->count()),
             'created_at' => $project->created_at?->toISOString(),
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
@@ -313,12 +316,17 @@ class CheckybotControlService
      */
     private function statusCounts(Project $project): array
     {
-        return $project->packageManagedApis()
+        $counts = $project->packageManagedApis()
+            ->where('is_enabled', true)
             ->selectRaw("coalesce(current_status, 'unknown') as status, count(*) as aggregate")
             ->groupBy('status')
             ->pluck('aggregate', 'status')
             ->map(fn ($count): int => (int) $count)
             ->all();
+
+        $counts['disabled'] = (int) ($project->disabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', false)->count());
+
+        return $counts;
     }
 
     /**

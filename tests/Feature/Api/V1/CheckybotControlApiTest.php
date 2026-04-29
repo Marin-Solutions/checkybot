@@ -78,7 +78,8 @@ test('control api lists projects and package managed checks with compact status'
         ->assertOk()
         ->assertJsonPath('data.0.key', 'scrappa')
         ->assertJsonPath('data.0.checks_count', 1)
-        ->assertJsonPath('data.0.enabled_checks_count', 1);
+        ->assertJsonPath('data.0.enabled_checks_count', 1)
+        ->assertJsonPath('data.0.disabled_checks_count', 0);
 
     $response = $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/projects/scrappa/checks')
@@ -382,6 +383,7 @@ test('control api returns project detail and recent runs', function () {
         ->assertJsonPath('data.key', 'scrappa')
         ->assertJsonPath('data.checks_count', 1)
         ->assertJsonPath('data.enabled_checks_count', 1)
+        ->assertJsonPath('data.disabled_checks_count', 0)
         ->assertJsonPath('data.status_counts.warning', 1)
         ->assertJsonPath('data.latest_failure.check.key', 'search-health');
 
@@ -395,6 +397,53 @@ test('control api returns project detail and recent runs', function () {
         ->getJson('/api/v1/control/projects/scrappa/runs')
         ->assertOk()
         ->assertJsonPath('data.0.check.key', 'search-health');
+});
+
+test('control api project status counts exclude disabled checks and report them separately', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'healthy-api',
+        'current_status' => 'healthy',
+        'is_enabled' => true,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'stale-api',
+        'current_status' => 'unknown',
+        'is_enabled' => true,
+    ]);
+
+    MonitorApis::factory()->disabled()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'disabled-api',
+        'current_status' => 'unknown',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects')
+        ->assertOk()
+        ->assertJsonPath('data.0.checks_count', 3)
+        ->assertJsonPath('data.0.enabled_checks_count', 2)
+        ->assertJsonPath('data.0.disabled_checks_count', 1);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.checks_count', 3)
+        ->assertJsonPath('data.enabled_checks_count', 2)
+        ->assertJsonPath('data.disabled_checks_count', 1)
+        ->assertJsonPath('data.status_counts.healthy', 1)
+        ->assertJsonPath('data.status_counts.unknown', 1)
+        ->assertJsonPath('data.status_counts.disabled', 1);
+
+    expect($response->json('data.status_counts'))->not->toHaveKey('danger');
 });
 
 test('control api returns latest result for each listed check', function () {
