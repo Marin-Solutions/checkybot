@@ -26,7 +26,7 @@ class MonitorApis extends Model
     use HasSnooze;
     use SoftDeletes;
 
-    private const LEGACY_RAW_BODY_KEY = 'raw_body';
+    public const LEGACY_RAW_BODY_KEY = 'raw_body';
 
     protected $fillable = [
         'title',

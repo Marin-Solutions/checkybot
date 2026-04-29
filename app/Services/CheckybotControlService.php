@@ -17,8 +17,6 @@ class CheckybotControlService
 {
     private const MAX_EVIDENCE_STRING_LENGTH = 4096;
 
-    private const LEGACY_RAW_BODY_KEY = 'raw_body';
-
     public function __construct(
         private readonly ApiMonitorExecutionService $executionService,
     ) {}
@@ -460,7 +458,7 @@ class CheckybotControlService
         $compact = str_replace(['-', '_', ' '], '', $normalized);
 
         return $name === MonitorApiResult::RAW_BODY_KEY
-            || $name === self::LEGACY_RAW_BODY_KEY
+            || $name === MonitorApis::LEGACY_RAW_BODY_KEY
             || str_contains($compact, 'authorization')
             || str_contains($compact, 'token')
             || str_contains($compact, 'secret')
