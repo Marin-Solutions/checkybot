@@ -430,6 +430,7 @@ test('control api result payloads include safe api failure evidence', function (
             'author' => 'Scrappa worker',
             'authenticated_at' => '2026-04-29T06:00:00Z',
             MonitorApiResult::RAW_BODY_KEY => 'Token expired. Your token was: raw-body-secret',
+            'raw_body' => 'Token expired. Your token was: legacy-raw-secret',
             'access_token' => 'body-token-secret',
             'nested' => [
                 'password' => 'body-password-secret',
@@ -457,6 +458,7 @@ test('control api result payloads include safe api failure evidence', function (
         ->assertJsonPath('data.0.response_body.author', 'Scrappa worker')
         ->assertJsonPath('data.0.response_body.authenticated_at', '2026-04-29T06:00:00Z')
         ->assertJsonPath('data.0.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
+        ->assertJsonPath('data.0.response_body.raw_body', '[redacted]')
         ->assertJsonPath('data.0.response_body.access_token', '[redacted]')
         ->assertJsonPath('data.0.response_body.nested.password', '[redacted]')
         ->assertJsonPath('data.0.response_body.nested.detail', 'resolver timeout');
@@ -466,6 +468,7 @@ test('control api result payloads include safe api failure evidence', function (
         ->and(json_encode($response->json()))->not->toContain('package-secret')
         ->and(json_encode($response->json()))->not->toContain('response-secret')
         ->and(json_encode($response->json()))->not->toContain('raw-body-secret')
+        ->and(json_encode($response->json()))->not->toContain('legacy-raw-secret')
         ->and(json_encode($response->json()))->not->toContain('body-token-secret')
         ->and(json_encode($response->json()))->not->toContain('body-password-secret');
 });
