@@ -133,8 +133,23 @@ class ProjectInfolist
 
     private static function syncedChecksCount(Project $record): int
     {
-        return $record->packageManagedWebsites()->withTrashed()->count()
+        return static::syncedWebsiteChecksCount($record)
             + $record->packageManagedApis()->withTrashed()->count();
+    }
+
+    private static function syncedWebsiteChecksCount(Project $record): int
+    {
+        $uptimeChecksCount = $record->packageManagedWebsites()
+            ->withTrashed()
+            ->where('uptime_check', true)
+            ->count();
+
+        $sslChecksCount = $record->packageManagedWebsites()
+            ->withTrashed()
+            ->where('ssl_check', true)
+            ->count();
+
+        return $uptimeChecksCount + $sslChecksCount;
     }
 
     private static function syncedComponentsCount(Project $record): int

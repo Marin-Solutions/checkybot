@@ -374,6 +374,7 @@ test('application record shows package-managed external checks including archive
     $project = Project::factory()->create([
         'name' => 'Payments App',
         'created_by' => $user->id,
+        'package_key' => 'payments-app',
     ]);
 
     $uptimeWebsite = Website::factory()->create([
@@ -441,6 +442,7 @@ test('application record shows package-managed external checks including archive
 
     Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
         ->assertSuccessful()
+        ->assertSeeInOrder(['Synced Checks', '6'])
         ->assertSee('Package-managed Websites')
         ->assertSee('Package-managed APIs');
 
