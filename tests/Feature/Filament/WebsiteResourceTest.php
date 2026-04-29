@@ -22,6 +22,10 @@ use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Spatie\Dns\Dns;
 
+afterEach(function () {
+    Carbon::setTestNow();
+});
+
 test('super admin can render list page', function () {
     $this->actingAsSuperAdmin();
 
@@ -98,29 +102,25 @@ test('super admin can create weekly seo schedule for later today', function () {
         'https://example.com' => Http::response('OK', 200),
     ]);
 
-    try {
-        Livewire::test(CreateWebsite::class)
-            ->fillForm([
-                'name' => 'Scheduled Website',
-                'url' => 'https://example.com',
-                'description' => 'Test description',
-                'uptime_check' => true,
-                'uptime_interval' => 60,
-                'seo_schedule_enabled' => true,
-                'seo_schedule_frequency' => 'weekly',
-                'seo_schedule_time' => '14:30',
-                'seo_schedule_day' => 'Wednesday',
-            ])
-            ->call('create')
-            ->assertHasNoFormErrors();
+    Livewire::test(CreateWebsite::class)
+        ->fillForm([
+            'name' => 'Scheduled Website',
+            'url' => 'https://example.com',
+            'description' => 'Test description',
+            'uptime_check' => true,
+            'uptime_interval' => 60,
+            'seo_schedule_enabled' => true,
+            'seo_schedule_frequency' => 'weekly',
+            'seo_schedule_time' => '14:30',
+            'seo_schedule_day' => 'Wednesday',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors();
 
-        $website = Website::where('url', 'https://example.com')->firstOrFail();
+    $website = Website::where('url', 'https://example.com')->firstOrFail();
 
-        expect($website->created_by)->toBe($user->id)
-            ->and($website->seoSchedule->next_run_at->toDateTimeString())->toBe('2026-04-29 14:30:00');
-    } finally {
-        Carbon::setTestNow();
-    }
+    expect($website->created_by)->toBe($user->id)
+        ->and($website->seoSchedule->next_run_at->toDateTimeString())->toBe('2026-04-29 14:30:00');
 });
 
 test('create website requires url', function () {
