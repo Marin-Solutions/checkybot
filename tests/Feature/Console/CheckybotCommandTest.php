@@ -199,6 +199,11 @@ test('sync command sends external checks from the registry alongside due compone
         ->every('5m')
         ->expectPathExists('status');
 
+    Checkybot::api('status')
+        ->url('https://example.com/api/status')
+        ->saveFailedResponse()
+        ->every('5m');
+
     Checkybot::component('queue')
         ->everyMinute()
         ->metric('pending_jobs', fn (): int => 12)
@@ -287,6 +292,12 @@ test('sync command sends external checks from the registry alongside due compone
                             'is_active' => true,
                         ],
                     ],
+                ],
+                [
+                    'name' => 'status',
+                    'url' => 'https://example.com/api/status',
+                    'interval' => '5m',
+                    'save_failed_response' => true,
                 ],
             ],
         ])

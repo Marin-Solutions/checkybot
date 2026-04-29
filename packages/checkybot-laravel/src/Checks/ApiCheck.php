@@ -234,9 +234,7 @@ class ApiCheck extends BaseCheck
             $data['assertions'] = $this->assertions;
         }
 
-        if (! $this->saveFailedResponse) {
-            $data['save_failed_response'] = false;
-        }
+        $data['save_failed_response'] = $this->saveFailedResponse;
 
         return $data;
     }

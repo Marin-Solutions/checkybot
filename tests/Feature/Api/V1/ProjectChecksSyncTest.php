@@ -208,6 +208,7 @@ test('preserves existing api execution settings when legacy sync omits them', fu
         'http_method' => 'PATCH',
         'expected_status' => 204,
         'timeout_seconds' => 30,
+        'save_failed_response' => false,
         'is_enabled' => false,
         'source' => 'package',
         'package_name' => 'health-check',
@@ -240,6 +241,7 @@ test('preserves existing api execution settings when legacy sync omits them', fu
         'http_method' => 'PATCH',
         'expected_status' => 204,
         'timeout_seconds' => 30,
+        'save_failed_response' => false,
         'is_enabled' => false,
         'package_interval' => '10m',
     ]);
