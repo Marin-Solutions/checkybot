@@ -71,6 +71,7 @@ class RunScheduledSeoChecks extends Command
 
                 if (empty($crawlableUrls)) {
                     $summary = 'No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.';
+                    $failedAt = now();
 
                     SeoCheck::create([
                         'website_id' => $schedule->website_id,
@@ -80,7 +81,8 @@ class RunScheduledSeoChecks extends Command
                         'total_crawlable_urls' => 0,
                         'sitemap_used' => false,
                         'robots_txt_checked' => true,
-                        'finished_at' => now(),
+                        'started_at' => $failedAt,
+                        'finished_at' => $failedAt,
                         'crawl_summary' => [
                             'scheduled_by' => $schedule->created_by,
                             'schedule_id' => $schedule->id,
