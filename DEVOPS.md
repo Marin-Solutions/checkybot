@@ -2,18 +2,18 @@
 
 This document describes the production and staging infrastructure for CheckyBot as seen through Ploi MCP on 2026-04-29.
 
+Keep this file up to date when Ploi infrastructure, runtime versions, queues, or databases change.
+
 ## Ploi Server
 
 - Ploi name: `checkybot-main`
 - Ploi server id: `79201`
 - Server status: `active`
 - Server type: `server`
-- Public IP: `88.99.35.80`
-- SSH port: `22`
+- Network details: available through Ploi when needed.
 - System user for sites: `ploi`
 - Monitoring: enabled
 - OPcache: enabled
-- Reboot required in Ploi: yes
 
 ## Websites
 
@@ -22,7 +22,6 @@ This document describes the production and staging infrastructure for CheckyBot 
 - URL: `https://checkybot.com`
 - Ploi site id: `244469`
 - Ploi server id: `79201`
-- Ploi status at last check: `deploy-failed`
 - Project type: `laravel`
 - Project root: `/`
 - Web directory: `/public`
@@ -32,14 +31,12 @@ This document describes the production and staging infrastructure for CheckyBot 
 - Zero downtime deployment: disabled
 - Ploi staging feature: disabled
 - FastCGI cache: disabled
-- Last deploy seen by Ploi: `2026-04-29 14:29:20`
 
 ### Staging
 
 - URL: `https://staging.checkybot.com`
 - Ploi site id: `313325`
 - Ploi server id: `79201`
-- Ploi status at last check: `active`
 - Project type: `laravel`
 - Project root: `/`
 - Web directory: `/public`
@@ -49,7 +46,6 @@ This document describes the production and staging infrastructure for CheckyBot 
 - Zero downtime deployment: disabled
 - Ploi staging feature: disabled
 - FastCGI cache: disabled
-- Last deploy seen by Ploi: `2025-09-07 14:38:35`
 
 ## Architecture
 
@@ -74,10 +70,8 @@ This document describes the production and staging infrastructure for CheckyBot 
 - Type: `mysql`
 - Status: `active`
 - Server id: `79201`
-- Local database user: `checkybot`
-- Remote read-only database user: `checkybot_remote`
 
-Use the remote read-only user for inspection or exports when possible. Do not run destructive operations against production manually.
+Use read-only production database access for inspection or exports when possible. Do not run destructive operations against production manually.
 
 ### Staging Database
 
@@ -86,7 +80,6 @@ Use the remote read-only user for inspection or exports when possible. Do not ru
 - Type: `mysql`
 - Status: `active`
 - Server id: `79201`
-- Local database user: `staging`
 
 ## Queue Workers
 

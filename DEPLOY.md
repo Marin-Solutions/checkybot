@@ -2,6 +2,8 @@
 
 This repository is deployed through Ploi. The repo currently does not contain a `.ploi.json`, so agents should deploy by explicit Ploi server and site ids instead of relying on project auto-detection.
 
+Keep this file up to date when deployment environments, Ploi site ids, database ids, or production safety rules change.
+
 ## Environments
 
 | Environment | URL | Ploi server id | Ploi site id | Database |
@@ -41,18 +43,13 @@ Use these Ploi MCP operations when available:
 
 Do not deploy production automatically when the user asks for a generic deploy. Generic deploy requests should go to staging first unless the user explicitly says production.
 
+Keep Ploi webhook tokens out of repository files.
+
 ## Database Safety
 
 - Production database id: `199162`, name `checkybot`.
 - Staging database id: `249720`, name `staging`.
-- Production has a remote read-only user named `checkybot_remote`; prefer this user for inspection, exports, and read-only diagnostics.
+- Prefer read-only production database access for inspection, exports, and diagnostics.
 - Do not run destructive production database commands manually.
 - Production migrations should only run as part of the reviewed Ploi deployment flow.
 - If a future task requires production data in staging, create a backup or copy first, use read-only production access where possible, and get explicit approval before replacing staging data.
-
-## Current Notes
-
-- Production site `244469` was reported by Ploi as `deploy-failed` on 2026-04-29 after the last deploy at `2026-04-29 14:29:20`.
-- Staging site `313325` was reported as `active` on 2026-04-29.
-- Ploi deploy scripts include `php artisan migrate --force`, `php artisan queue:restart`, and `php artisan horizon:terminate`.
-- Keep Ploi webhook tokens out of repository files.
