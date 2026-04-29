@@ -7,6 +7,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
+use App\Support\ApiMonitorEvidenceRedactor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
@@ -15,8 +16,6 @@ use Illuminate\Validation\ValidationException;
 
 class CheckybotControlService
 {
-    private const MAX_EVIDENCE_STRING_LENGTH = 4096;
-
     public function __construct(
         private readonly ApiMonitorExecutionService $executionService,
     ) {}
@@ -355,7 +354,7 @@ class CheckybotControlService
             'last_synced_at' => $check->last_synced_at?->toISOString(),
             'last_heartbeat_at' => $check->last_heartbeat_at?->toISOString(),
             'stale_at' => $check->stale_at?->toISOString(),
-            'headers' => $this->redactHeaders($check->headers),
+            'headers' => ApiMonitorEvidenceRedactor::redactHeaders($check->headers),
             'request_body_type' => $check->request_body_type,
             'has_request_body' => $check->hasRequestBody(),
             'assertions' => $this->assertionsPayload($check->assertions),
@@ -409,12 +408,12 @@ class CheckybotControlService
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
             'transport_error_type' => $result->transport_error_type,
-            'transport_error_message' => $this->redactTransportErrorMessage($result->transport_error_message),
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($result->transport_error_message),
             'transport_error_code' => $result->transport_error_code,
             'failed_assertions' => $result->failed_assertions,
-            'request_headers' => $this->redactHeaders($result->request_headers ?? []),
-            'response_headers' => $this->redactHeaders($result->response_headers ?? []),
-            'response_body' => $this->redactResponseBody($result->response_body),
+            'request_headers' => ApiMonitorEvidenceRedactor::redactHeaders($result->request_headers ?? []),
+            'response_headers' => ApiMonitorEvidenceRedactor::redactHeaders($result->response_headers ?? []),
+            'response_body' => ApiMonitorEvidenceRedactor::redactResponseBody($result->response_body),
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
@@ -437,121 +436,6 @@ class CheckybotControlService
             ],
             'result' => $this->resultPayload($result->load('monitorApi.project')),
         ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $headers
-     * @return array<string, mixed>
-     */
-    private function redactHeaders(array $headers): array
-    {
-        return collect($headers)
-            ->mapWithKeys(fn (mixed $value, string $name): array => [
-                $name => $this->redactEvidenceValue($value, $name),
-            ])
-            ->all();
-    }
-
-    private function isSensitiveEvidenceKey(string $name): bool
-    {
-        $normalized = strtolower($name);
-        $compact = str_replace(['-', '_', ' '], '', $normalized);
-
-        return $name === MonitorApiResult::RAW_BODY_KEY
-            || $name === MonitorApiResult::ERROR_METADATA_KEY
-            || $name === MonitorApis::LEGACY_RAW_BODY_KEY
-            || str_contains($compact, 'authorization')
-            || str_contains($compact, 'token')
-            || str_contains($compact, 'secret')
-            || str_contains($compact, 'apikey')
-            || str_contains($compact, 'authkey')
-            || str_contains($compact, 'signature')
-            || str_contains($compact, 'cookie')
-            || str_contains($compact, 'password');
-    }
-
-    private function redactEvidenceValue(mixed $value, ?string $key = null): mixed
-    {
-        if ($key !== null && $this->isSensitiveEvidenceKey($key)) {
-            return '[redacted]';
-        }
-
-        if (is_array($value)) {
-            return collect($value)
-                ->mapWithKeys(fn (mixed $item, int|string $itemKey): array => [
-                    $itemKey => $this->redactEvidenceValue(
-                        $item,
-                        is_string($itemKey) ? $itemKey : null,
-                    ),
-                ])
-                ->all();
-        }
-
-        if (is_string($value)) {
-            return Str::limit($value, self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
-        }
-
-        return $value;
-    }
-
-    private function redactTransportErrorMessage(?string $message): ?string
-    {
-        if ($message === null) {
-            return null;
-        }
-
-        return Str::limit($this->sanitizeEvidenceString($message), self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
-    }
-
-    private function redactResponseBody(mixed $responseBody): mixed
-    {
-        if (is_string($responseBody)) {
-            return '[redacted]';
-        }
-
-        return $this->redactEvidenceValue($responseBody);
-    }
-
-    private function sanitizeEvidenceString(string $value): string
-    {
-        $value = preg_replace_callback(
-            '~https?://[^\s<>"\')]+~i',
-            fn (array $matches): string => $this->redactUrlEvidence($matches[0]),
-            $value,
-        ) ?? $value;
-
-        $value = preg_replace(
-            '~\b(token|secret|api[_-]?key|auth[_-]?key|password|signature)=([^\s&]+)~i',
-            '$1=[redacted]',
-            $value,
-        ) ?? $value;
-
-        return preg_replace(
-            '#\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+#i',
-            '$1 [redacted]',
-            $value,
-        ) ?? $value;
-    }
-
-    private function redactUrlEvidence(string $url): string
-    {
-        $trailing = '';
-
-        while ($url !== '' && str_contains('.,', substr($url, -1))) {
-            $trailing = substr($url, -1).$trailing;
-            $url = substr($url, 0, -1);
-        }
-
-        $parts = parse_url($url);
-
-        if ($parts === false || ! isset($parts['host'])) {
-            return '[redacted-url]'.$trailing;
-        }
-
-        $scheme = $parts['scheme'] ?? 'https';
-        $port = isset($parts['port']) ? ':'.$parts['port'] : '';
-
-        return "{$scheme}://{$parts['host']}{$port}/[redacted-url]{$trailing}";
     }
 
     private function resolveUrl(?string $baseUrl, string $url): string

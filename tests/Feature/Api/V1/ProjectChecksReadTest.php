@@ -325,6 +325,95 @@ test('single check and recent result endpoints return investigation context', fu
         ->assertJsonPath('data.0.summary', 'API returned HTTP 500.');
 });
 
+test('project check read endpoints redact saved api response body evidence', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'current_status' => 'danger',
+    ]);
+
+    $longValue = str_repeat('x', 4200);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'status' => 'danger',
+        'summary' => 'API returned HTTP 500.',
+        'response_body' => [
+            'error' => 'upstream unavailable',
+            'trace_id' => 'trace-123',
+            'details' => $longValue,
+            MonitorApiResult::RAW_BODY_KEY => 'Token expired. Your token was: raw-body-secret',
+            MonitorApiResult::ERROR_METADATA_KEY => 'cURL error included error-metadata-secret',
+            MonitorApis::LEGACY_RAW_BODY_KEY => 'Token expired. Your token was: legacy-raw-secret',
+            'access_token' => 'body-token-secret',
+            'nested' => [
+                'password' => 'body-password-secret',
+                'detail' => 'resolver timeout',
+            ],
+        ],
+    ]);
+
+    $showResponse = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.latest_result.response_body.error', 'upstream unavailable')
+        ->assertJsonPath('data.latest_result.response_body.trace_id', 'trace-123')
+        ->assertJsonPath('data.latest_result.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
+        ->assertJsonPath('data.latest_result.response_body.'.MonitorApiResult::ERROR_METADATA_KEY, '[redacted]')
+        ->assertJsonPath('data.latest_result.response_body.'.MonitorApis::LEGACY_RAW_BODY_KEY, '[redacted]')
+        ->assertJsonPath('data.latest_result.response_body.access_token', '[redacted]')
+        ->assertJsonPath('data.latest_result.response_body.nested.password', '[redacted]')
+        ->assertJsonPath('data.latest_result.response_body.nested.detail', 'resolver timeout');
+
+    expect($showResponse->json('data.latest_result.response_body.details'))->toEndWith('... [truncated]')
+        ->and($showResponse->json('data.latest_result.response_body.details'))->not->toBe($longValue);
+
+    $resultsResponse = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results")
+        ->assertOk()
+        ->assertJsonPath('data.0.response_body.error', 'upstream unavailable')
+        ->assertJsonPath('data.0.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
+        ->assertJsonPath('data.0.response_body.access_token', '[redacted]')
+        ->assertJsonPath('data.0.response_body.nested.password', '[redacted]');
+
+    expect(json_encode($showResponse->json()))->not->toContain('raw-body-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('error-metadata-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('legacy-raw-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('body-token-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('body-password-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('raw-body-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('body-token-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('body-password-secret');
+});
+
+test('project check read endpoints redact top level raw response body strings', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'current_status' => 'danger',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'status' => 'danger',
+        'summary' => 'API returned a raw upstream body.',
+        'response_body' => 'Token expired. Your token was: top-level-body-secret',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results")
+        ->assertOk()
+        ->assertJsonPath('data.0.response_body', '[redacted]');
+
+    expect(json_encode($response->json()))->not->toContain('top-level-body-secret');
+});
+
 test('single check lookup does not match ambiguous bare database ids', function () {
     $website = Website::factory()->create([
         'project_id' => $this->project->id,
