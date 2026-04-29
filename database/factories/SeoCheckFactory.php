@@ -65,6 +65,12 @@ class SeoCheckFactory extends Factory
             'started_at' => now()->subMinutes(30),
             'finished_at' => now()->subMinutes(15),
             'progress' => fake()->numberBetween(10, 50),
+            'failure_summary' => 'SEO crawler failed before the crawl could complete.',
+            'failure_context' => [
+                'exception' => 'Exception',
+                'website_url' => 'https://example.com',
+                'total_urls_crawled' => 0,
+            ],
         ]);
     }
 }

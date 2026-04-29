@@ -142,7 +142,6 @@ test('failed method updates status to failed', function () {
     expect($seoCheck->failure_context)
         ->toMatchArray([
             'exception' => Exception::class,
-            'message' => 'Test exception',
             'website_url' => $website->url,
             'total_urls_crawled' => 0,
         ]);

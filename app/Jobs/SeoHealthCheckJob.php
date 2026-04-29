@@ -53,7 +53,6 @@ class SeoHealthCheckJob implements ShouldQueue
                 'failure_context' => null,
             ]);
 
-            $website = $this->seoCheck->website;
             $baseUrl = $website->getBaseURL();
 
             // Create crawler with SEO-specific configuration
@@ -102,12 +101,6 @@ class SeoHealthCheckJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error("SEO health check failed for website {$this->seoCheck->website->url}: ".$e->getMessage());
 
-            // Update status to failed
-            $this->seoCheck->update([
-                'status' => 'failed',
-                'finished_at' => now(),
-            ]);
-
             throw $e; // Re-throw to mark job as failed
         }
     }
@@ -150,11 +143,13 @@ class SeoHealthCheckJob implements ShouldQueue
     {
         $context = [
             'exception' => get_class($exception),
-            'message' => $this->buildFailureSummary($exception),
-            'code' => $exception->getCode(),
             'website_url' => $this->seoCheck->website?->url,
             'total_urls_crawled' => $this->seoCheck->total_urls_crawled ?? 0,
         ];
+
+        if ($exception->getCode() > 0) {
+            $context['code'] = $exception->getCode();
+        }
 
         if (method_exists($exception, 'getRequest')) {
             $request = $exception->getRequest();
