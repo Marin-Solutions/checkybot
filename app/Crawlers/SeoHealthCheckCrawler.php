@@ -114,8 +114,8 @@ class SeoHealthCheckCrawler extends CrawlObserver
     ): void {
         $urlString = (string) $url;
 
-        // Skip if we've reached the maximum URLs limit
-        if ($this->crawledCount >= $this->maxUrls) {
+        // Skip only if direct observer usage somehow processes beyond the defensive limit.
+        if ($this->crawledCount > $this->maxUrls) {
             return;
         }
 
