@@ -11,6 +11,16 @@ class SeoCheck extends Model
 {
     use HasFactory;
 
+    public const STATUS_PENDING = 'pending';
+
+    public const STATUS_RUNNING = 'running';
+
+    public const STATUS_COMPLETED = 'completed';
+
+    public const STATUS_FAILED = 'failed';
+
+    public const STATUS_CANCELLED = 'cancelled';
+
     protected $fillable = [
         'website_id',
         'status',
@@ -54,27 +64,32 @@ class SeoCheck extends Model
 
     public function isCompleted(): bool
     {
-        return $this->status === 'completed';
+        return $this->status === self::STATUS_COMPLETED;
     }
 
     public function isRunning(): bool
     {
-        return $this->status === 'running';
+        return $this->status === self::STATUS_RUNNING;
     }
 
     public function isFailed(): bool
     {
-        return $this->status === 'failed';
+        return $this->status === self::STATUS_FAILED;
     }
 
     public function isPending(): bool
     {
-        return $this->status === 'pending';
+        return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === self::STATUS_CANCELLED;
     }
 
     public function isCancellable(): bool
     {
-        return in_array($this->status, ['pending', 'running']);
+        return in_array($this->status, [self::STATUS_PENDING, self::STATUS_RUNNING], true);
     }
 
     public function getDurationInSeconds(): ?int

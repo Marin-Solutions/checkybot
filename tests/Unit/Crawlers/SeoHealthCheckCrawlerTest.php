@@ -156,6 +156,53 @@ test('finished crawling broadcasts completion event', function () {
     Event::assertDispatched(CrawlCompleted::class);
 });
 
+test('cancelled check does not write progress', function () {
+    Event::fake();
+
+    $this->seoCheck->update([
+        'status' => 'cancelled',
+        'finished_at' => now(),
+        'total_urls_crawled' => 0,
+        'total_crawlable_urls' => 10,
+    ]);
+
+    $this->crawler->willCrawl(new Uri('https://example.com/page'), 'Link');
+
+    $this->seoCheck->refresh();
+    expect($this->seoCheck->status)->toBe('cancelled')
+        ->and($this->seoCheck->total_urls_crawled)->toBe(0)
+        ->and($this->seoCheck->total_crawlable_urls)->toBe(10);
+
+    Event::assertNotDispatched(CrawlProgressUpdated::class);
+});
+
+test('cancelled check does not write crawl results issues or completion', function () {
+    Event::fake();
+
+    $issueDetectionMock = Mockery::mock(SeoIssueDetectionService::class);
+    $issueDetectionMock->shouldReceive('detectIssues')->never();
+    $this->app->instance(SeoIssueDetectionService::class, $issueDetectionMock);
+
+    $crawler = new SeoHealthCheckCrawler($this->seoCheck);
+    $response = new Response(200, ['Content-Type' => 'text/html'], '<html><head><title>Cancelled</title></head><body>Content</body></html>');
+
+    $crawler->crawled(new Uri('https://example.com/page'), $response, null, null);
+
+    $this->seoCheck->update([
+        'status' => 'cancelled',
+        'finished_at' => now(),
+    ]);
+
+    $crawler->finishedCrawling();
+
+    $this->seoCheck->refresh();
+    expect($this->seoCheck->status)->toBe('cancelled');
+
+    expect(SeoCrawlResult::where('seo_check_id', $this->seoCheck->id)->count())->toBe(0);
+
+    Event::assertNotDispatched(CrawlCompleted::class);
+});
+
 test('extracts internal links', function () {
     $html = '<html><body><a href="https://example.com/internal">Internal Link</a></body></html>';
     $url = new Uri('https://example.com/page');

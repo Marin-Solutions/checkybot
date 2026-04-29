@@ -60,6 +60,12 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     public function willCrawl(UriInterface $url, ?string $linkText): void
     {
+        if ($this->hasBeenCancelled()) {
+            Log::info("SEO Crawler: Skipping {$url} because SEO check {$this->seoCheck->id} was cancelled");
+
+            return;
+        }
+
         // Check if URL is allowed by robots.txt
         if (! $this->isUrlAllowed((string) $url)) {
             Log::info("SEO Crawler: Skipping {$url} - disallowed by robots.txt");
@@ -92,14 +98,14 @@ class SeoHealthCheckCrawler extends CrawlObserver
         $this->estimatedTotalCrawlableUrls = $newTotal;
 
         if ($this->shouldPersistProgress()) {
-            $this->seoCheck->update([
+            $this->updateIfNotCancelled([
                 'total_urls_crawled' => $this->crawledCount,
                 'total_crawlable_urls' => $this->estimatedTotalCrawlableUrls,
             ]);
         }
 
         // Broadcast progress update (every 5 URLs)
-        if ($this->crawledCount % $this->progressPersistEvery === 0 || $this->crawledCount === 1) {
+        if (! $this->hasBeenCancelled() && ($this->crawledCount % $this->progressPersistEvery === 0 || $this->crawledCount === 1)) {
             $this->broadcastProgress((string) $url);
         }
 
@@ -113,6 +119,12 @@ class SeoHealthCheckCrawler extends CrawlObserver
         ?string $linkText = null
     ): void {
         $urlString = (string) $url;
+
+        if ($this->hasBeenCancelled()) {
+            Log::info("SEO Crawler: Ignoring crawled result for {$urlString} because SEO check {$this->seoCheck->id} was cancelled");
+
+            return;
+        }
 
         // Skip only if direct observer usage somehow processes beyond the defensive limit.
         if ($this->crawledCount > $this->maxUrls) {
@@ -149,6 +161,12 @@ class SeoHealthCheckCrawler extends CrawlObserver
     ): void {
         $urlString = (string) $url;
 
+        if ($this->hasBeenCancelled()) {
+            Log::info("SEO Crawler: Ignoring failed crawl for {$urlString} because SEO check {$this->seoCheck->id} was cancelled");
+
+            return;
+        }
+
         Log::warning("SEO Crawler: Failed to crawl {$urlString}: ".$requestException->getMessage());
 
         // Record failed crawl
@@ -165,6 +183,12 @@ class SeoHealthCheckCrawler extends CrawlObserver
 
     public function finishedCrawling(): void
     {
+        if ($this->hasBeenCancelled()) {
+            Log::info("SEO Crawler: SEO check {$this->seoCheck->id} was cancelled before finalization. Skipping result writes, issue detection, and completion.");
+
+            return;
+        }
+
         Log::info("SEO Crawler: Finished crawling. Processed {$this->crawledCount} URLs.");
 
         // Bulk insert crawl results
@@ -172,23 +196,51 @@ class SeoHealthCheckCrawler extends CrawlObserver
             SeoCrawlResult::query()->insert($this->prepareBulkInsertRows($this->crawlResults));
         }
 
+        if ($this->hasBeenCancelled()) {
+            Log::info("SEO Crawler: SEO check {$this->seoCheck->id} was cancelled after result insert. Skipping issue detection and completion.");
+
+            return;
+        }
+
         // Detect and classify issues
         Log::info('SEO Crawler: Starting issue detection and classification...');
         $this->issueDetectionService->detectIssues($this->seoCheck);
         Log::info('SEO Crawler: Issue detection completed.');
+
+        if ($this->hasBeenCancelled()) {
+            Log::info("SEO Crawler: SEO check {$this->seoCheck->id} was cancelled after issue detection. Skipping computed columns and completion.");
+
+            return;
+        }
 
         // Populate computed columns for performance
         Log::info('SEO Crawler: Populating computed columns...');
         $this->populateComputedColumns();
         Log::info('SEO Crawler: Computed columns populated.');
 
+        if ($this->hasBeenCancelled()) {
+            Log::info("SEO Crawler: SEO check {$this->seoCheck->id} was cancelled after computed columns. Skipping completion.");
+
+            return;
+        }
+
         // Update SEO check status to completed
-        $this->seoCheck->update([
-            'status' => 'completed',
-            'finished_at' => now(),
-            'total_urls_crawled' => $this->crawledCount,
-            'total_crawlable_urls' => $this->crawledCount, // Set final total to actual crawled count
-        ]);
+        $completed = SeoCheck::query()
+            ->whereKey($this->seoCheck->id)
+            ->where('status', SeoCheck::STATUS_RUNNING)
+            ->update([
+                'status' => SeoCheck::STATUS_COMPLETED,
+                'finished_at' => now(),
+                'total_urls_crawled' => $this->crawledCount,
+                'total_crawlable_urls' => $this->crawledCount, // Set final total to actual crawled count
+            ]);
+
+        if ($completed === 0) {
+            $this->seoCheck->refresh();
+            Log::info("SEO Crawler: SEO check {$this->seoCheck->id} was not running at completion time. Current status: {$this->seoCheck->status}");
+
+            return;
+        }
 
         // Broadcast completion event
         $this->broadcastCompletion();
@@ -312,6 +364,39 @@ class SeoHealthCheckCrawler extends CrawlObserver
     protected function shouldPersistProgress(): bool
     {
         return $this->crawledCount === 1 || $this->crawledCount % $this->progressPersistEvery === 0;
+    }
+
+    protected function hasBeenCancelled(): bool
+    {
+        if ($this->seoCheck->status === SeoCheck::STATUS_CANCELLED) {
+            return true;
+        }
+
+        $status = SeoCheck::query()
+            ->whereKey($this->seoCheck->id)
+            ->value('status');
+
+        if ($status === SeoCheck::STATUS_CANCELLED) {
+            $this->seoCheck->status = SeoCheck::STATUS_CANCELLED;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function updateIfNotCancelled(array $attributes): bool
+    {
+        $updated = SeoCheck::query()
+            ->whereKey($this->seoCheck->id)
+            ->where('status', '!=', SeoCheck::STATUS_CANCELLED)
+            ->update($attributes);
+
+        if ($updated > 0) {
+            $this->seoCheck->forceFill($attributes);
+        }
+
+        return $updated > 0;
     }
 
     protected function isUrlAllowed(string $url): bool
@@ -557,6 +642,10 @@ class SeoHealthCheckCrawler extends CrawlObserver
      */
     protected function broadcastProgress(string $currentUrl): void
     {
+        if ($this->hasBeenCancelled()) {
+            return;
+        }
+
         // Skip broadcasting if we've had too many failures
         if ($this->broadcastFailures >= 5) {
             return;
@@ -605,6 +694,10 @@ class SeoHealthCheckCrawler extends CrawlObserver
      */
     protected function populateComputedColumns(): void
     {
+        if ($this->hasBeenCancelled()) {
+            return;
+        }
+
         try {
             // Count issues by type
             $errorsCount = $this->seoCheck->seoIssues()->where('severity', 'error')->count();
@@ -637,7 +730,7 @@ class SeoHealthCheckCrawler extends CrawlObserver
             $healthScore = $totalUrls > 0 ? (($totalUrls - $urlsWithErrors) / $totalUrls) * 100 : 0;
 
             // Update computed columns
-            $this->seoCheck->update([
+            $this->updateIfNotCancelled([
                 'computed_errors_count' => $errorsCount,
                 'computed_warnings_count' => $warningsCount,
                 'computed_notices_count' => $noticesCount,
@@ -656,6 +749,10 @@ class SeoHealthCheckCrawler extends CrawlObserver
      */
     protected function broadcastCompletion(): void
     {
+        if ($this->hasBeenCancelled()) {
+            return;
+        }
+
         try {
             $this->seoCheck->refresh();
             $totalIssuesFound = $this->seoCheck->seoIssues()->count();

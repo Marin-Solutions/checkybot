@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Crawlers\SeoHealthCheckCrawler;
+use App\Crawlers\SeoHealthCheckCrawlProfile;
 use App\Mail\SeoCheckCompleted;
 use App\Models\SeoCheck;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -10,7 +11,6 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Spatie\Crawler\Crawler;
-use Spatie\Crawler\CrawlProfiles\CrawlInternalUrls;
 
 class SeoHealthCheckJob implements ShouldQueue
 {
@@ -34,6 +34,13 @@ class SeoHealthCheckJob implements ShouldQueue
     {
         Log::info("Starting SEO health check for SEO check ID: {$this->seoCheck->id}");
 
+        $this->seoCheck->refresh();
+        if ($this->seoCheck->isCancelled()) {
+            Log::info("Skipping SEO health check {$this->seoCheck->id} because it was cancelled before the job started.");
+
+            return;
+        }
+
         try {
             Log::info('Loading website relationship...');
             $website = $this->seoCheck->website;
@@ -45,10 +52,20 @@ class SeoHealthCheckJob implements ShouldQueue
 
         try {
             // Update status to running
-            $this->seoCheck->update([
-                'status' => 'running',
-                'started_at' => now(),
-            ]);
+            $started = SeoCheck::query()
+                ->whereKey($this->seoCheck->id)
+                ->where('status', SeoCheck::STATUS_PENDING)
+                ->update([
+                    'status' => SeoCheck::STATUS_RUNNING,
+                    'started_at' => now(),
+                ]);
+
+            $this->seoCheck->refresh();
+            if ($started === 0) {
+                Log::info("SEO health check {$this->seoCheck->id} was not started because its status is {$this->seoCheck->status}.");
+
+                return;
+            }
 
             $website = $this->seoCheck->website;
             $baseUrl = $website->getBaseURL();
@@ -61,12 +78,33 @@ class SeoHealthCheckJob implements ShouldQueue
                 // Start crawling from specific URLs if provided, otherwise from base URL
                 if (! empty($this->crawlableUrls)) {
                     foreach ($this->crawlableUrls as $url) {
+                        $this->seoCheck->refresh();
+                        if ($this->seoCheck->isCancelled()) {
+                            Log::info("Stopping SEO health check {$this->seoCheck->id} before crawling {$url} because it was cancelled.");
+
+                            return;
+                        }
+
                         Log::info("Starting crawl for specific URL: {$url}");
                         $crawler->startCrawling($url);
                     }
                 } else {
+                    $this->seoCheck->refresh();
+                    if ($this->seoCheck->isCancelled()) {
+                        Log::info("Stopping SEO health check {$this->seoCheck->id} before crawling {$baseUrl} because it was cancelled.");
+
+                        return;
+                    }
+
                     Log::info("Starting crawl for base URL: {$baseUrl}");
                     $crawler->startCrawling($baseUrl);
+                }
+
+                $this->seoCheck->refresh();
+                if ($this->seoCheck->isCancelled()) {
+                    Log::info("SEO health check {$this->seoCheck->id} finished crawler execution after cancellation; skipping notifications.");
+
+                    return;
                 }
 
                 Log::info("SEO health check completed successfully for website: {$website->url}");
@@ -78,13 +116,19 @@ class SeoHealthCheckJob implements ShouldQueue
 
                 // Check if the crawler actually completed by looking at the status
                 $this->seoCheck->refresh();
-                if ($this->seoCheck->status === 'completed') {
+                if ($this->seoCheck->status === SeoCheck::STATUS_COMPLETED) {
                     Log::info("SEO health check completed successfully despite exception for website: {$website->url}");
 
                     // Send email notification if this was a scheduled check
                     $this->sendNotificationIfScheduled();
 
                     return; // Don't throw exception if it actually completed
+                }
+
+                if ($this->seoCheck->isCancelled()) {
+                    Log::info("SEO health check {$this->seoCheck->id} was cancelled while crawler exception was being handled.");
+
+                    return;
                 }
 
                 // If not completed, re-throw the exception
@@ -94,10 +138,13 @@ class SeoHealthCheckJob implements ShouldQueue
             Log::error("SEO health check failed for website {$this->seoCheck->website->url}: ".$e->getMessage());
 
             // Update status to failed
-            $this->seoCheck->update([
-                'status' => 'failed',
-                'finished_at' => now(),
-            ]);
+            SeoCheck::query()
+                ->whereKey($this->seoCheck->id)
+                ->where('status', '!=', SeoCheck::STATUS_CANCELLED)
+                ->update([
+                    'status' => SeoCheck::STATUS_FAILED,
+                    'finished_at' => now(),
+                ]);
 
             throw $e; // Re-throw to mark job as failed
         }
@@ -108,7 +155,7 @@ class SeoHealthCheckJob implements ShouldQueue
         // Create crawler with SEO-specific configuration
         return Crawler::create()
             ->setCrawlObserver(new SeoHealthCheckCrawler($this->seoCheck))
-            ->setCrawlProfile(new CrawlInternalUrls($baseUrl))
+            ->setCrawlProfile(new SeoHealthCheckCrawlProfile($this->seoCheck, $baseUrl))
             ->setTotalCrawlLimit(SeoHealthCheckCrawler::MAX_URLS)
             ->setDelayBetweenRequests(1000) // 1 second delay between requests
             ->setUserAgent('CheckyBot SEO Crawler/1.0 (+https://checkybot.com/bot)')
@@ -119,8 +166,15 @@ class SeoHealthCheckJob implements ShouldQueue
     {
         Log::error("SEO health check job failed for website {$this->seoCheck->website->url}: ".$exception->getMessage());
 
+        $this->seoCheck->refresh();
+        if ($this->seoCheck->isCancelled()) {
+            Log::info("Skipping failure handling for SEO check {$this->seoCheck->id} because it was cancelled.");
+
+            return;
+        }
+
         $this->seoCheck->update([
-            'status' => 'failed',
+            'status' => SeoCheck::STATUS_FAILED,
             'finished_at' => now(),
         ]);
 
