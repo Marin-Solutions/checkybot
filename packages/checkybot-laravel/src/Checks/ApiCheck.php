@@ -23,6 +23,12 @@ namespace MarinSolutions\CheckybotLaravel\Checks;
  *     ->headers(['Authorization' => 'Bearer token'])
  *     ->every('5m');
  *
+ * // Without failed response body storage
+ * Checkybot::api('login')
+ *     ->url('https://example.com/api/login')
+ *     ->dontSaveFailedResponse()
+ *     ->every('5m');
+ *
  * // With fluent assertions (Pest-style)
  * Checkybot::api('health')
  *     ->url('https://example.com/api/health')
@@ -47,6 +53,11 @@ class ApiCheck extends BaseCheck
      * @var array<int, array<string, mixed>>
      */
     protected array $assertions = [];
+
+    /**
+     * Whether Checkybot should store failed response bodies for diagnosis.
+     */
+    protected bool $saveFailedResponse = true;
 
     /**
      * Set HTTP headers to send with the request.
@@ -112,6 +123,28 @@ class ApiCheck extends BaseCheck
     public function withToken(string $token): self
     {
         return $this->withHeader('Authorization', 'Bearer '.$token);
+    }
+
+    /**
+     * Control whether failed response bodies are stored in Checkybot.
+     *
+     * @return $this
+     */
+    public function saveFailedResponse(bool $save = true): self
+    {
+        $this->saveFailedResponse = $save;
+
+        return $this;
+    }
+
+    /**
+     * Opt out of storing failed response bodies for this check.
+     *
+     * @return $this
+     */
+    public function dontSaveFailedResponse(): self
+    {
+        return $this->saveFailedResponse(false);
     }
 
     /**
@@ -200,6 +233,8 @@ class ApiCheck extends BaseCheck
         if (! empty($this->assertions)) {
             $data['assertions'] = $this->assertions;
         }
+
+        $data['save_failed_response'] = $this->saveFailedResponse;
 
         return $data;
     }

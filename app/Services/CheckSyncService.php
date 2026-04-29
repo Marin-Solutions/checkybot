@@ -153,6 +153,9 @@ class CheckSyncService
                 'timeout_seconds' => array_key_exists('timeout_seconds', $check)
                     ? $check['timeout_seconds']
                     : $monitorApi?->timeout_seconds,
+                'save_failed_response' => array_key_exists('save_failed_response', $check)
+                    ? ($check['save_failed_response'] ?? true)
+                    : ($monitorApi?->save_failed_response ?? true),
                 'package_schedule' => $check['interval'],
                 'is_enabled' => array_key_exists('enabled', $check)
                     ? ($check['enabled'] ?? true)

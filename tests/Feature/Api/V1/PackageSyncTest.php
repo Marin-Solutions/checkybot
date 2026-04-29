@@ -160,6 +160,31 @@ test('package sync is idempotent and updates by stable keys', function () {
     ]);
 });
 
+test('package sync persists api failed response body preference', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'login',
+                    'type' => 'api',
+                    'name' => 'Login API',
+                    'method' => 'POST',
+                    'url' => '/api/login',
+                    'save_failed_response' => false,
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $response->json('data.project.id'),
+        'package_name' => 'login',
+        'save_failed_response' => false,
+    ]);
+});
+
 test('package sync encrypts header values and does not return them', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload());
@@ -250,6 +275,28 @@ test('package sync rejects invalid schedules', function () {
     $response->assertUnprocessable()
         ->assertJsonValidationErrors([
             'checks.0.schedule',
+        ]);
+});
+
+test('package sync rejects invalid failed response body preference', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'save_failed_response' => 'not boolean',
+                    'schedule' => 'every_5_minutes',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.save_failed_response',
         ]);
 });
 
