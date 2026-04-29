@@ -15,6 +15,8 @@ use Illuminate\Validation\ValidationException;
 
 class CheckybotControlService
 {
+    private const MAX_EVIDENCE_STRING_LENGTH = 4096;
+
     public function __construct(
         private readonly ApiMonitorExecutionService $executionService,
     ) {}
@@ -398,7 +400,13 @@ class CheckybotControlService
             'is_on_demand' => (bool) $result->is_on_demand,
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
+            'transport_error_type' => $result->transport_error_type,
+            'transport_error_message' => $this->redactEvidenceValue($result->transport_error_message),
+            'transport_error_code' => $result->transport_error_code,
             'failed_assertions' => $result->failed_assertions,
+            'request_headers' => $this->redactHeaders($result->request_headers ?? []),
+            'response_headers' => $this->redactHeaders($result->response_headers ?? []),
+            'response_body' => $this->redactEvidenceValue($result->response_body),
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
@@ -438,14 +446,46 @@ class CheckybotControlService
 
     private function isSensitiveHeader(string $name): bool
     {
+        return $this->isSensitiveEvidenceKey($name);
+    }
+
+    private function isSensitiveEvidenceKey(string $name): bool
+    {
         $normalized = strtolower($name);
+        $compact = str_replace(['-', '_', ' '], '', $normalized);
 
         return $normalized === 'authorization'
-            || str_contains($normalized, 'token')
-            || str_contains($normalized, 'secret')
-            || str_contains($normalized, 'api-key')
-            || str_contains($normalized, 'apikey')
-            || str_contains($normalized, 'auth-key');
+            || str_contains($compact, 'token')
+            || str_contains($compact, 'secret')
+            || str_contains($compact, 'apikey')
+            || str_contains($compact, 'auth')
+            || str_contains($compact, 'signature')
+            || str_contains($compact, 'cookie')
+            || str_contains($compact, 'password');
+    }
+
+    private function redactEvidenceValue(mixed $value, ?string $key = null): mixed
+    {
+        if ($key !== null && $this->isSensitiveEvidenceKey($key)) {
+            return '[redacted]';
+        }
+
+        if (is_array($value)) {
+            return collect($value)
+                ->mapWithKeys(fn (mixed $item, int|string $itemKey): array => [
+                    $itemKey => $this->redactEvidenceValue(
+                        $item,
+                        is_string($itemKey) ? $itemKey : null,
+                    ),
+                ])
+                ->all();
+        }
+
+        if (is_string($value)) {
+            return Str::limit($value, self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
+        }
+
+        return $value;
     }
 
     private function resolveUrl(?string $baseUrl, string $url): string

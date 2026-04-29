@@ -397,6 +397,69 @@ test('control api returns project detail and recent runs', function () {
         ->assertJsonPath('data.0.check.key', 'search-health');
 });
 
+test('control api result payloads include safe api failure evidence', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'http_code' => 0,
+        'summary' => 'API heartbeat failed because DNS lookup failed.',
+        'transport_error_type' => 'dns',
+        'transport_error_message' => 'Could not resolve api.scrappa.test',
+        'transport_error_code' => 6,
+        'request_headers' => [
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer request-secret',
+            'X-Api-Key' => 'package-secret',
+        ],
+        'response_headers' => [
+            'content-type' => 'application/json',
+            'set-cookie' => 'session=response-secret',
+            'x-request-id' => 'req-123',
+        ],
+        'response_body' => [
+            'error' => 'upstream unavailable',
+            'trace_id' => 'trace-123',
+            'access_token' => 'body-token-secret',
+            'nested' => [
+                'password' => 'body-password-secret',
+                'detail' => 'resolver timeout',
+            ],
+        ],
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.0.check.key', 'search-health')
+        ->assertJsonPath('data.0.transport_error_type', 'dns')
+        ->assertJsonPath('data.0.transport_error_message', 'Could not resolve api.scrappa.test')
+        ->assertJsonPath('data.0.transport_error_code', 6)
+        ->assertJsonPath('data.0.request_headers.Accept', 'application/json')
+        ->assertJsonPath('data.0.request_headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.0.request_headers.X-Api-Key', '[redacted]')
+        ->assertJsonPath('data.0.response_headers.content-type', 'application/json')
+        ->assertJsonPath('data.0.response_headers.set-cookie', '[redacted]')
+        ->assertJsonPath('data.0.response_headers.x-request-id', 'req-123')
+        ->assertJsonPath('data.0.response_body.error', 'upstream unavailable')
+        ->assertJsonPath('data.0.response_body.trace_id', 'trace-123')
+        ->assertJsonPath('data.0.response_body.access_token', '[redacted]')
+        ->assertJsonPath('data.0.response_body.nested.password', '[redacted]')
+        ->assertJsonPath('data.0.response_body.nested.detail', 'resolver timeout');
+
+    expect(json_encode($response->json()))->not->toContain('request-secret')
+        ->and(json_encode($response->json()))->not->toContain('package-secret')
+        ->and(json_encode($response->json()))->not->toContain('response-secret')
+        ->and(json_encode($response->json()))->not->toContain('body-token-secret')
+        ->and(json_encode($response->json()))->not->toContain('body-password-secret');
+});
+
 test('control api returns latest result for each listed check', function () {
     $alpha = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
