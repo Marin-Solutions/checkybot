@@ -45,6 +45,7 @@ class SeoCheckResource extends Resource
                         'completed' => 'success',
                         'running' => 'warning',
                         'failed' => 'danger',
+                        'cancelled' => 'gray',
                         'pending' => 'gray',
                     })
                     ->sortable(),
@@ -91,6 +92,7 @@ class SeoCheckResource extends Resource
                         'running' => 'Running',
                         'completed' => 'Completed',
                         'failed' => 'Failed',
+                        'cancelled' => 'Cancelled',
                     ]),
             ])
             ->actions([

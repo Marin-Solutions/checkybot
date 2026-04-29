@@ -121,6 +121,11 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
                 </svg>
                 SEO Health Check Failed
+                @elseif($seoCheck->isCancelled())
+                <svg style="width: 20px; height: 20px; color: #6b7280; margin-right: 12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636L5.636 18.364M5.636 5.636l12.728 12.728"></path>
+                </svg>
+                SEO Health Check Cancelled
                 @else
                 <svg style="width: 20px; height: 20px; color: #6b7280; margin-right: 12px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
@@ -131,15 +136,32 @@
             <span style="display: inline-flex; align-items: center; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 500; 
                     @if($seoCheck->isCompleted()) background: #dcfce7; color: #166534;
                     @elseif($seoCheck->isFailed()) background: #fee2e2; color: #dc2626;
+                    @elseif($seoCheck->isCancelled()) background: #f3f4f6; color: #4b5563;
                     @else background: #f3f4f6; color: #6b7280; @endif">
                 {{ ucfirst($seoCheck->status) }}
             </span>
         </div>
 
         <!-- Completion Message -->
-        <div style="margin-bottom: 24px; padding: 16px; background: #dcfce7; border-radius: 8px;">
-            <div style="color: #166534; font-weight: 500;" class="completion-message">
+        <div style="margin-bottom: 24px; padding: 16px; border-radius: 8px;
+                @if($seoCheck->isCompleted()) background: #dcfce7;
+                @elseif($seoCheck->isFailed()) background: #fee2e2;
+                @elseif($seoCheck->isCancelled()) background: #f3f4f6;
+                @else background: #f3f4f6; @endif">
+            <div style="font-weight: 500;
+                    @if($seoCheck->isCompleted()) color: #166534;
+                    @elseif($seoCheck->isFailed()) color: #dc2626;
+                    @elseif($seoCheck->isCancelled()) color: #4b5563;
+                    @else color: #6b7280; @endif" class="completion-message">
+                @if($seoCheck->isCompleted())
                 SEO Health Check completed! Health Score: {{ $seoCheck->getHealthScoreFormattedAttribute() }}
+                @elseif($seoCheck->isFailed())
+                SEO Health Check failed before it could complete.
+                @elseif($seoCheck->isCancelled())
+                SEO Health Check was cancelled before completion.
+                @else
+                SEO Health Check is pending.
+                @endif
             </div>
         </div>
 
@@ -153,10 +175,12 @@
                 <div style="font-size: 24px; font-weight: 700; color: #ea580c; margin-bottom: 4px;">{{ $issuesFound }}</div>
                 <div style="font-size: 14px; color: #6b7280;">Issues Found</div>
             </div>
-            <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
-                <div style="font-size: 24px; font-weight: 700; color: #16a34a; margin-bottom: 4px;" class="health-score">{{ $seoCheck->getHealthScoreFormattedAttribute() }}</div>
-                <div style="font-size: 14px; color: #6b7280;">Health Score</div>
-            </div>
+            @if($seoCheck->isCompleted())
+                <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
+                    <div style="font-size: 24px; font-weight: 700; color: #16a34a; margin-bottom: 4px;" class="health-score">{{ $seoCheck->getHealthScoreFormattedAttribute() }}</div>
+                    <div style="font-size: 14px; color: #6b7280;">Health Score</div>
+                </div>
+            @endif
             <div style="background: #f9fafb; padding: 16px; border-radius: 8px; border: 1px solid #e5e7eb;">
                 <div style="font-size: 24px; font-weight: 700; color: #111827; margin-bottom: 4px;">
                     @if($seoCheck->finished_at)

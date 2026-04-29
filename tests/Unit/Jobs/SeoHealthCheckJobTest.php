@@ -138,6 +138,29 @@ test('failed method updates status to failed', function () {
     expect($seoCheck->finished_at)->not->toBeNull();
 });
 
+test('failed method does not overwrite cancelled status', function () {
+    Event::fake();
+    Log::shouldReceive('error')->andReturn(null);
+    Log::shouldReceive('info')->andReturn(null);
+
+    $website = Website::factory()->create();
+    $finishedAt = now();
+    $seoCheck = SeoCheck::create([
+        'website_id' => $website->id,
+        'status' => 'cancelled',
+        'finished_at' => $finishedAt,
+    ]);
+
+    $job = new SeoHealthCheckJob($seoCheck);
+
+    $job->failed(new \Exception('Late queue failure'));
+
+    $seoCheck->refresh();
+    expect($seoCheck->status)->toBe('cancelled');
+
+    Event::assertNotDispatched(CrawlFailed::class);
+});
+
 test('failed method broadcasts crawl failed event', function () {
     Event::fake();
     Log::shouldReceive('error')->andReturn(null);

@@ -67,4 +67,14 @@ class SeoCheckFactory extends Factory
             'progress' => fake()->numberBetween(10, 50),
         ]);
     }
+
+    public function cancelled(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => SeoCheck::STATUS_CANCELLED,
+            'started_at' => now()->subMinutes(30),
+            'finished_at' => now()->subMinutes(15),
+            'progress' => fake()->numberBetween(10, 50),
+        ]);
+    }
 }

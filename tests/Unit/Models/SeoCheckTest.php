@@ -54,6 +54,17 @@ test('seo check is failed status method', function () {
     expect($check->isCompleted())->toBeFalse();
     expect($check->isRunning())->toBeFalse();
     expect($check->isPending())->toBeFalse();
+    expect($check->isCancelled())->toBeFalse();
+});
+
+test('seo check is cancelled status method', function () {
+    $check = SeoCheck::factory()->cancelled()->create();
+
+    expect($check->isCancelled())->toBeTrue();
+    expect($check->isFailed())->toBeFalse();
+    expect($check->isCompleted())->toBeFalse();
+    expect($check->isRunning())->toBeFalse();
+    expect($check->isPending())->toBeFalse();
 });
 
 test('seo check is pending status method', function () {
@@ -73,6 +84,12 @@ test('seo check is cancellable when running', function () {
 
 test('seo check is not cancellable when completed', function () {
     $check = SeoCheck::factory()->completed()->create();
+
+    expect($check->isCancellable())->toBeFalse();
+});
+
+test('seo check is not cancellable when cancelled', function () {
+    $check = SeoCheck::factory()->cancelled()->create();
 
     expect($check->isCancellable())->toBeFalse();
 });
