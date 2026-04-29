@@ -347,7 +347,7 @@ test('project check read endpoints redact saved api response body evidence', fun
             'details' => $longValue,
             MonitorApiResult::RAW_BODY_KEY => 'Token expired. Your token was: raw-body-secret',
             MonitorApiResult::ERROR_METADATA_KEY => 'cURL error included error-metadata-secret',
-            'raw_body' => 'Token expired. Your token was: legacy-raw-secret',
+            MonitorApis::LEGACY_RAW_BODY_KEY => 'Token expired. Your token was: legacy-raw-secret',
             'access_token' => 'body-token-secret',
             'nested' => [
                 'password' => 'body-password-secret',
@@ -363,7 +363,7 @@ test('project check read endpoints redact saved api response body evidence', fun
         ->assertJsonPath('data.latest_result.response_body.trace_id', 'trace-123')
         ->assertJsonPath('data.latest_result.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
         ->assertJsonPath('data.latest_result.response_body.'.MonitorApiResult::ERROR_METADATA_KEY, '[redacted]')
-        ->assertJsonPath('data.latest_result.response_body.raw_body', '[redacted]')
+        ->assertJsonPath('data.latest_result.response_body.'.MonitorApis::LEGACY_RAW_BODY_KEY, '[redacted]')
         ->assertJsonPath('data.latest_result.response_body.access_token', '[redacted]')
         ->assertJsonPath('data.latest_result.response_body.nested.password', '[redacted]')
         ->assertJsonPath('data.latest_result.response_body.nested.detail', 'resolver timeout');
