@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Support\ApiMonitorEvidenceRedactor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
@@ -355,7 +356,7 @@ class CheckybotImportService
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
             'failed_assertions' => $result->failed_assertions,
-            'response_body' => $result->response_body,
+            'response_body' => ApiMonitorEvidenceRedactor::redactResponseBody($result->response_body),
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
