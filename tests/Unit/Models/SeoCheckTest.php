@@ -67,6 +67,22 @@ test('seo check is cancelled status method', function () {
     expect($check->isPending())->toBeFalse();
 });
 
+test('failed seo check factory includes failure details', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://factory.example.com',
+    ]);
+    $check = SeoCheck::factory()->failed()->create([
+        'website_id' => $website->id,
+    ]);
+
+    expect($check->failure_summary)->toBe('SEO crawler failed before the crawl could complete.');
+    expect($check->failure_context)->toMatchArray([
+        'exception' => 'Exception',
+        'website_url' => 'https://factory.example.com',
+        'total_urls_crawled' => 0,
+    ]);
+});
+
 test('seo check is pending status method', function () {
     $check = SeoCheck::factory()->create(['status' => 'pending']);
 

@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Spatie\Crawler\Crawler;
 
 class SeoHealthCheckJob implements ShouldQueue
@@ -51,13 +52,14 @@ class SeoHealthCheckJob implements ShouldQueue
         }
 
         try {
-            // Update status to running
             $started = SeoCheck::query()
                 ->whereKey($this->seoCheck->id)
                 ->where('status', SeoCheck::STATUS_PENDING)
                 ->update([
                     'status' => SeoCheck::STATUS_RUNNING,
                     'started_at' => now(),
+                    'failure_summary' => null,
+                    'failure_context' => null,
                 ]);
 
             $this->seoCheck->refresh();
@@ -67,7 +69,6 @@ class SeoHealthCheckJob implements ShouldQueue
                 return;
             }
 
-            $website = $this->seoCheck->website;
             $baseUrl = $website->getBaseURL();
 
             $crawler = $this->createCrawler($baseUrl);
@@ -137,15 +138,6 @@ class SeoHealthCheckJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::error("SEO health check failed for website {$this->seoCheck->website->url}: ".$e->getMessage());
 
-            // Update status to failed
-            SeoCheck::query()
-                ->whereKey($this->seoCheck->id)
-                ->where('status', '!=', SeoCheck::STATUS_CANCELLED)
-                ->update([
-                    'status' => SeoCheck::STATUS_FAILED,
-                    'finished_at' => now(),
-                ]);
-
             throw $e; // Re-throw to mark job as failed
         }
     }
@@ -176,6 +168,8 @@ class SeoHealthCheckJob implements ShouldQueue
         $this->seoCheck->update([
             'status' => SeoCheck::STATUS_FAILED,
             'finished_at' => now(),
+            'failure_summary' => $this->buildFailureSummary($exception),
+            'failure_context' => $this->buildFailureContext($exception),
         ]);
 
         // Broadcast failure event
@@ -188,6 +182,46 @@ class SeoHealthCheckJob implements ShouldQueue
         } catch (\Exception $e) {
             Log::warning('Failed to broadcast crawl failure event: '.$e->getMessage());
         }
+    }
+
+    protected function buildFailureSummary(\Throwable $exception): string
+    {
+        $message = trim($exception->getMessage());
+
+        if ($message === '') {
+            $message = class_basename($exception);
+        }
+
+        return Str::limit($message, 500);
+    }
+
+    protected function buildFailureContext(\Throwable $exception): array
+    {
+        $context = [
+            'exception' => get_class($exception),
+            'website_url' => $this->seoCheck->website?->url,
+            'total_urls_crawled' => $this->seoCheck->total_urls_crawled ?? 0,
+        ];
+
+        if ($exception->getCode() > 0) {
+            $context['code'] = $exception->getCode();
+        }
+
+        if (method_exists($exception, 'getRequest')) {
+            $request = $exception->getRequest();
+
+            if ($request) {
+                $context['failed_url'] = (string) $request->getUri();
+                $context['method'] = $request->getMethod();
+            }
+        }
+
+        if (! empty($this->crawlableUrls)) {
+            $context['queued_urls'] = array_slice($this->crawlableUrls, 0, 5);
+            $context['queued_urls_count'] = count($this->crawlableUrls);
+        }
+
+        return array_filter($context, fn ($value): bool => $value !== null && $value !== '');
     }
 
     /**
