@@ -68,7 +68,6 @@ Example project detail response:
     "status_counts": {
       "healthy": 2,
       "warning": 1,
-      "unknown": 0,
       "disabled": 1
     },
     "latest_failure": {

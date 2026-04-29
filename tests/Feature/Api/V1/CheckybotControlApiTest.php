@@ -426,6 +426,13 @@ test('control api project status counts exclude disabled checks and report them 
         'current_status' => 'unknown',
     ]);
 
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects')
+        ->assertOk()
+        ->assertJsonPath('data.0.checks_count', 3)
+        ->assertJsonPath('data.0.enabled_checks_count', 2)
+        ->assertJsonPath('data.0.disabled_checks_count', 1);
+
     $response = $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/projects/scrappa')
         ->assertOk()

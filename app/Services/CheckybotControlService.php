@@ -324,9 +324,7 @@ class CheckybotControlService
             ->map(fn ($count): int => (int) $count)
             ->all();
 
-        $counts['disabled'] = $project->packageManagedApis()
-            ->where('is_enabled', false)
-            ->count();
+        $counts['disabled'] = (int) ($project->disabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', false)->count());
 
         return $counts;
     }
