@@ -212,8 +212,27 @@ test('finished crawling collapses duplicate rows for the same outbound link key'
     ]);
 });
 
-test('finished crawling removes existing outbound links when no outbound links are found', function () {
+test('finished crawling removes existing outbound links when successful crawl finds no outbound links', function () {
     OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+
+    $this->crawler->crawled(
+        new Uri('https://example.com/source'),
+        new Response(200),
+        null,
+        'Home',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(0);
+});
+
+test('finished crawling preserves existing outbound links when crawl has no successful pages', function () {
+    $existingLink = OutboundLink::factory()->create([
         'website_id' => $this->website->id,
         'found_on' => 'https://example.com/source',
         'outgoing_url' => 'https://external.com/page',
@@ -221,7 +240,79 @@ test('finished crawling removes existing outbound links when no outbound links a
 
     $this->crawler->finishedCrawling();
 
-    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(0);
+    assertDatabaseHas('outbound_link', [
+        'id' => $existingLink->id,
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+});
+
+test('failed crawl without a source page preserves existing outbound links', function () {
+    $existingLink = OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+
+    $url = new Uri('https://example.com');
+    $request = new Request('GET', $url);
+    $exception = new RequestException('Connection timed out', $request);
+
+    $this->crawler->crawlFailed($url, $exception, null, null);
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseHas('outbound_link', [
+        'id' => $existingLink->id,
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+});
+
+test('failed outbound crawl keeps existing link in the latest scan', function () {
+    $existingLink = OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+        'http_status_code' => 200,
+        'last_checked_at' => now()->subDay(),
+    ]);
+
+    $url = new Uri('https://external.com/page');
+    $foundOnUrl = new Uri('https://example.com/source');
+    $request = new Request('GET', $url);
+    $exception = new RequestException('Connection timed out', $request);
+
+    $this->crawler->crawlFailed($url, $exception, $foundOnUrl, 'Link Text');
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseHas('outbound_link', [
+        'id' => $existingLink->id,
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+        'http_status_code' => null,
+    ]);
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(1);
+});
+
+test('failed outbound crawl records response status when available', function () {
+    $url = new Uri('https://external.com/not-found');
+    $foundOnUrl = new Uri('https://example.com/source');
+    $request = new Request('GET', $url);
+    $exception = new RequestException('Not found', $request, new Response(404));
+
+    $this->crawler->crawlFailed($url, $exception, $foundOnUrl, 'Link Text');
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/not-found',
+        'http_status_code' => 404,
+    ]);
 });
 
 test('handles subdomain as external link', function () {
@@ -317,5 +408,19 @@ test('crawl failed ignores internal link failures', function () {
 
     assertDatabaseMissing('outbound_link', [
         'outgoing_url' => 'https://example.com/internal-page',
+    ]);
+});
+
+test('crawl failed ignores same-domain source failures', function () {
+    $url = new Uri('https://external.com/page');
+    $foundOnUrl = new Uri('https://external.com/source');
+    $request = new Request('GET', $url);
+    $exception = new RequestException('Error', $request);
+
+    $this->crawler->crawlFailed($url, $exception, $foundOnUrl, 'Link Text');
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseMissing('outbound_link', [
+        'outgoing_url' => 'https://external.com/page',
     ]);
 });

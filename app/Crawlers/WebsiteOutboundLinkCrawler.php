@@ -22,6 +22,8 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
     protected array $crawledPages = [];
 
+    protected bool $hasSuccessfulCrawl = false;
+
     public function __construct(Website $website)
     {
         $this->website = $website;
@@ -41,25 +43,9 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl = null,
         ?string $linkText = null
     ): void {
-        if (! is_null($foundOnUrl)) {
-            $currentUrl = (string) $url;
-            $foundOnUrl = (string) $foundOnUrl;
-            $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
-            $foundOnUrlDomain = parse_url($foundOnUrl, PHP_URL_HOST);
+        $this->hasSuccessfulCrawl = true;
 
-            if ($currentDomain && $currentDomain !== $foundOnUrlDomain) {
-                $this->crawledPages[] = [
-                    'website_id' => $this->website->id,
-                    'outgoing_url' => $currentUrl,
-                    'found_on' => $foundOnUrl,
-                    'http_status_code' => $response->getStatusCode(),
-                    'transport_error_type' => null,
-                    'transport_error_message' => null,
-                    'transport_error_code' => null,
-                    'last_checked_at' => Carbon::now(),
-                ];
-            }
-        }
+        $this->recordOutboundLink($url, $foundOnUrl, $response->getStatusCode());
     }
 
     /*
@@ -71,27 +57,15 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl = null,
         ?string $linkText = null,
     ): void {
-        if (! is_null($foundOnUrl)) {
-            $currentUrl = (string) $url;
-            $foundOnUrl = (string) $foundOnUrl;
-            $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
-            $foundOnUrlDomain = parse_url($foundOnUrl, PHP_URL_HOST);
+        $response = $requestException->getResponse();
+        $transportError = $response ? null : UptimeTransportError::fromThrowable($requestException);
 
-            if ($currentDomain && $currentDomain !== $foundOnUrlDomain) {
-                $transportError = UptimeTransportError::fromThrowable($requestException);
-
-                $this->crawledPages[] = [
-                    'website_id' => $this->website->id,
-                    'outgoing_url' => $currentUrl,
-                    'found_on' => $foundOnUrl,
-                    'http_status_code' => null,
-                    'transport_error_type' => $transportError['type']->value,
-                    'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($transportError['message']),
-                    'transport_error_code' => $transportError['code'],
-                    'last_checked_at' => Carbon::now(),
-                ];
-            }
-        }
+        $this->recordOutboundLink(
+            $url,
+            $foundOnUrl,
+            $response?->getStatusCode(),
+            $transportError,
+        );
 
         Log::warning('Crawl failed for URL: '.$url, [
             'website_id' => $this->website->id,
@@ -127,6 +101,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ]))
             ->keyBy(fn (array $page): string => $this->linkKey($page['found_on'], $page['outgoing_url']));
 
+        if ($currentPages->isEmpty() && ! $this->hasSuccessfulCrawl) {
+            return;
+        }
+
         OutboundLink::query()
             ->where('website_id', $this->website->id)
             ->get()
@@ -148,6 +126,43 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             });
 
         $currentPages->each(fn (array $page): OutboundLink => OutboundLink::query()->create($page));
+    }
+
+    /**
+     * @param  array{type: \App\Enums\UptimeTransportErrorType, message: string, code: int|null}|null  $transportError
+     */
+    protected function recordOutboundLink(
+        UriInterface $url,
+        ?UriInterface $foundOnUrl,
+        ?int $statusCode,
+        ?array $transportError = null,
+    ): void
+    {
+        if (is_null($foundOnUrl)) {
+            return;
+        }
+
+        $currentUrl = (string) $url;
+        $foundOnUrl = (string) $foundOnUrl;
+        $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
+        $foundOnUrlDomain = parse_url($foundOnUrl, PHP_URL_HOST);
+
+        if (! $currentDomain || $currentDomain === $foundOnUrlDomain) {
+            return;
+        }
+
+        $this->crawledPages[] = [
+            'website_id' => $this->website->id,
+            'outgoing_url' => $currentUrl,
+            'found_on' => $foundOnUrl,
+            'http_status_code' => $statusCode,
+            'transport_error_type' => $transportError ? $transportError['type']->value : null,
+            'transport_error_message' => $transportError
+                ? ApiMonitorEvidenceRedactor::redactTransportErrorMessage($transportError['message'])
+                : null,
+            'transport_error_code' => $transportError['code'] ?? null,
+            'last_checked_at' => Carbon::now(),
+        ];
     }
 
     protected function linkKey(?string $foundOn, ?string $outgoingUrl): string
