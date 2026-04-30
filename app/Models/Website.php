@@ -288,6 +288,22 @@ class Website extends Model
         return $this->hasOne(WebsiteLogHistory::class)->latestOfMany();
     }
 
+    public function latestScheduledLogHistory(): HasOne
+    {
+        return $this->hasOne(WebsiteLogHistory::class)->ofMany(
+            ['created_at' => 'max', 'id' => 'max'],
+            fn ($query) => $query->where('is_on_demand', false),
+        );
+    }
+
+    public function latestDiagnosticLogHistory(): HasOne
+    {
+        return $this->hasOne(WebsiteLogHistory::class)->ofMany(
+            ['created_at' => 'max', 'id' => 'max'],
+            fn ($query) => $query->where('is_on_demand', true),
+        );
+    }
+
     public function logHistoryLast24h(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(WebsiteLogHistory::class)

@@ -1015,6 +1015,43 @@ test('view page excludes diagnostic rows from recent failures', function () {
         ->assertSee('Diagnostic-only failure.');
 });
 
+test('view page separates scheduled latest evidence from newer diagnostics', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'status_summary' => 'Scheduler says the site is healthy.',
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'http_status_code' => 200,
+        'speed' => 180,
+        'summary' => 'Scheduled heartbeat succeeded.',
+        'created_at' => now()->subMinutes(30),
+    ]);
+
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'http_status_code' => 500,
+        'speed' => 920,
+        'summary' => 'Diagnostic heartbeat failed.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Scheduled Result')
+        ->assertSee('Scheduled heartbeat succeeded.')
+        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Diagnostic heartbeat failed.');
+
+    expect($website->refresh()->latestScheduledLogHistory->summary)->toBe('Scheduled heartbeat succeeded.')
+        ->and($website->latestDiagnosticLogHistory->summary)->toBe('Diagnostic heartbeat failed.');
+});
+
 test('view page surfaces transport error evidence for failed uptime logs', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
@@ -1029,7 +1066,7 @@ test('view page surfaces transport error evidence for failed uptime logs', funct
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Last Transport Error')
+        ->assertSee('Latest Scheduled Transport Error')
         ->assertSee('DNS failure')
         ->assertSee('code 6')
         ->assertSee('Could not resolve host');

@@ -47,7 +47,7 @@ class ViewMonitorApis extends ViewRecord
                         return;
                     }
 
-                    $this->record->load('latestResult');
+                    $this->record->load(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult']);
 
                     static::sendRunNowNotification($outcome);
                 }),

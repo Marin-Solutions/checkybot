@@ -48,7 +48,7 @@ class MonitorApisResource extends Resource
         return parent::getEloquentQuery()
             ->where('created_by', auth()->id())
             ->withAvg('results as avg_response_time', 'response_time_ms')
-            ->with(['latestResult'])
+            ->with(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult'])
             ->withoutGlobalScopes([
                 SoftDeletingScope::class,
             ]);
