@@ -174,7 +174,6 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
                 ? ApiMonitorEvidenceRedactor::redactTransportErrorMessage($transportError['message'])
                 : null,
             'transport_error_code' => $transportError['code'] ?? null,
-            'last_checked_at' => Carbon::now(),
         ];
     }
 
