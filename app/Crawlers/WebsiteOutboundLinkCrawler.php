@@ -9,6 +9,7 @@ use App\Support\ApiMonitorEvidenceRedactor;
 use App\Support\UptimeTransportError;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Psr\Http\Message\ResponseInterface;
@@ -103,17 +104,55 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
      */
     public function finishedCrawling(): void
     {
-        if (! empty($this->crawledPages)) {
-            OutboundLink::query()->insert($this->crawledPages);
-        }
+        $checkedAt = Carbon::now();
 
-        $this->website->last_outbound_checked_at = Carbon::now();
-        $this->website->save();
+        DB::transaction(function () use ($checkedAt): void {
+            $this->refreshOutboundLinks($checkedAt);
+
+            $this->website->last_outbound_checked_at = $checkedAt;
+            $this->website->save();
+        });
 
         $this->sendErrorNotification();
 
         /* Create system log */
         Log::info('Outbound Links for website '.$this->website->url.' has been crawled.');
+    }
+
+    protected function refreshOutboundLinks(Carbon $checkedAt): void
+    {
+        $currentPages = collect($this->crawledPages)
+            ->map(fn (array $page): array => array_merge($page, [
+                'last_checked_at' => $checkedAt,
+            ]))
+            ->keyBy(fn (array $page): string => $this->linkKey($page['found_on'], $page['outgoing_url']));
+
+        OutboundLink::query()
+            ->where('website_id', $this->website->id)
+            ->get()
+            ->groupBy(fn (OutboundLink $link): string => $this->linkKey($link->found_on, $link->outgoing_url))
+            ->each(function ($links, string $key) use ($currentPages): void {
+                if (! $currentPages->has($key)) {
+                    $links->each->delete();
+
+                    return;
+                }
+
+                $link = $links->first();
+
+                $link->fill($currentPages->get($key));
+                $link->save();
+
+                $links->slice(1)->each->delete();
+                $currentPages->forget($key);
+            });
+
+        $currentPages->each(fn (array $page): OutboundLink => OutboundLink::query()->create($page));
+    }
+
+    protected function linkKey(?string $foundOn, ?string $outgoingUrl): string
+    {
+        return hash('sha256', serialize([$this->website->id, $foundOn, $outgoingUrl]));
     }
 
     protected function sendErrorNotification(): void

@@ -3,6 +3,7 @@
 use App\Crawlers\WebsiteOutboundLinkCrawler;
 use App\Enums\UptimeTransportErrorType;
 use App\Mail\EmailErrorOutgoingUrl;
+use App\Models\OutboundLink;
 use App\Models\Website;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
@@ -135,6 +136,92 @@ test('stores multiple outbound links', function () {
             'outgoing_url' => $urlString,
         ]);
     }
+});
+
+test('finished crawling refreshes current outbound links and removes stale rows', function () {
+    $currentLink = OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+        'http_status_code' => 404,
+        'last_checked_at' => now()->subDay(),
+    ]);
+
+    OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/old-source',
+        'outgoing_url' => 'https://stale.example/page',
+        'http_status_code' => 500,
+        'last_checked_at' => now()->subDay(),
+    ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/page'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Recovered Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(1);
+
+    assertDatabaseHas('outbound_link', [
+        'id' => $currentLink->id,
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+        'http_status_code' => 200,
+    ]);
+
+    assertDatabaseMissing('outbound_link', [
+        'website_id' => $this->website->id,
+        'outgoing_url' => 'https://stale.example/page',
+    ]);
+});
+
+test('finished crawling collapses duplicate rows for the same outbound link key', function () {
+    OutboundLink::factory()->count(2)->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+        'http_status_code' => 404,
+        'last_checked_at' => now()->subDay(),
+    ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/page'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Duplicate Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    expect(OutboundLink::query()
+        ->where('website_id', $this->website->id)
+        ->where('found_on', 'https://example.com/source')
+        ->where('outgoing_url', 'https://external.com/page')
+        ->count())->toBe(1);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+        'http_status_code' => 200,
+    ]);
+});
+
+test('finished crawling removes existing outbound links when no outbound links are found', function () {
+    OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+
+    $this->crawler->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(0);
 });
 
 test('handles subdomain as external link', function () {
