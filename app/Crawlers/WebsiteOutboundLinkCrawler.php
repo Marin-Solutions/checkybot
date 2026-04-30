@@ -136,8 +136,7 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl,
         ?int $statusCode,
         ?array $transportError = null,
-    ): void
-    {
+    ): void {
         if (is_null($foundOnUrl)) {
             return;
         }
@@ -167,7 +166,7 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
     protected function linkKey(?string $foundOn, ?string $outgoingUrl): string
     {
-        return hash('sha256', serialize([$this->website->id, $foundOn, $outgoingUrl]));
+        return hash('sha256', json_encode([$this->website->id, $foundOn, $outgoingUrl]));
     }
 
     protected function sendErrorNotification(): void
