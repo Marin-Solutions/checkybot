@@ -24,6 +24,8 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
     protected bool $hasSuccessfulCrawl = false;
 
+    protected bool $hasInternalCrawlFailure = false;
+
     public function __construct(Website $website)
     {
         $this->website = $website;
@@ -57,6 +59,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl = null,
         ?string $linkText = null,
     ): void {
+        if ($this->isWebsiteUrl($url)) {
+            $this->hasInternalCrawlFailure = true;
+        }
+
         $response = $requestException->getResponse();
         $transportError = $response ? null : UptimeTransportError::fromThrowable($requestException);
 
@@ -101,7 +107,9 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ]))
             ->keyBy(fn (array $page): string => $this->linkKey($page['found_on'], $page['outgoing_url']));
 
-        if ($currentPages->isEmpty() && ! $this->hasSuccessfulCrawl) {
+        $canPruneStaleLinks = $this->hasSuccessfulCrawl && ! $this->hasInternalCrawlFailure;
+
+        if ($currentPages->isEmpty() && ! $canPruneStaleLinks) {
             return;
         }
 
@@ -109,9 +117,11 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ->where('website_id', $this->website->id)
             ->get()
             ->groupBy(fn (OutboundLink $link): string => $this->linkKey($link->found_on, $link->outgoing_url))
-            ->each(function ($links, string $key) use ($currentPages): void {
+            ->each(function ($links, string $key) use ($canPruneStaleLinks, $currentPages): void {
                 if (! $currentPages->has($key)) {
-                    $links->each->delete();
+                    if ($canPruneStaleLinks) {
+                        $links->each->delete();
+                    }
 
                     return;
                 }
@@ -167,6 +177,11 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
     protected function linkKey(?string $foundOn, ?string $outgoingUrl): string
     {
         return hash('sha256', json_encode([$this->website->id, $foundOn, $outgoingUrl]));
+    }
+
+    protected function isWebsiteUrl(UriInterface $url): bool
+    {
+        return parse_url((string) $url, PHP_URL_HOST) === parse_url($this->website->getBaseURL(), PHP_URL_HOST);
     }
 
     protected function sendErrorNotification(): void

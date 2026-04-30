@@ -270,6 +270,79 @@ test('failed crawl without a source page preserves existing outbound links', fun
     ]);
 });
 
+test('failed internal crawl preserves stale outbound links from unobserved pages', function () {
+    $existingLink = OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/blog',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+
+    $this->crawler->crawled(
+        new Uri('https://example.com'),
+        new Response(200),
+        null,
+        'Home',
+    );
+
+    $failedUrl = new Uri('https://example.com/blog');
+    $request = new Request('GET', $failedUrl);
+    $exception = new RequestException('cURL error 28: Operation timed out', $request);
+
+    $this->crawler->crawlFailed($failedUrl, $exception, new Uri('https://example.com'), 'Blog');
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseHas('outbound_link', [
+        'id' => $existingLink->id,
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/blog',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+});
+
+test('failed internal crawl still refreshes observed outbound links', function () {
+    $observedLink = OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/observed',
+        'http_status_code' => 404,
+    ]);
+
+    $staleLink = OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/blog',
+        'outgoing_url' => 'https://external.com/stale',
+    ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/observed'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Observed Link',
+    );
+
+    $failedUrl = new Uri('https://example.com/blog');
+    $request = new Request('GET', $failedUrl);
+    $exception = new RequestException('cURL error 28: Operation timed out', $request);
+
+    $this->crawler->crawlFailed($failedUrl, $exception, new Uri('https://example.com'), 'Blog');
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseHas('outbound_link', [
+        'id' => $observedLink->id,
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/observed',
+        'http_status_code' => 200,
+    ]);
+
+    assertDatabaseHas('outbound_link', [
+        'id' => $staleLink->id,
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/blog',
+        'outgoing_url' => 'https://external.com/stale',
+    ]);
+});
+
 test('failed outbound crawl keeps existing link in the latest scan', function () {
     $existingLink = OutboundLink::factory()->create([
         'website_id' => $this->website->id,
