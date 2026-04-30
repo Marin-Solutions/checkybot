@@ -113,11 +113,13 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             return;
         }
 
+        $matchedKeys = [];
+
         OutboundLink::query()
             ->where('website_id', $this->website->id)
             ->get()
             ->groupBy(fn (OutboundLink $link): string => $this->linkKey($link->found_on, $link->outgoing_url))
-            ->each(function ($links, string $key) use ($canPruneStaleLinks, $currentPages): void {
+            ->each(function ($links, string $key) use ($canPruneStaleLinks, $currentPages, &$matchedKeys): void {
                 if (! $currentPages->has($key)) {
                     if ($canPruneStaleLinks) {
                         $links->each->delete();
@@ -132,10 +134,12 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
                 $link->save();
 
                 $links->slice(1)->each->delete();
-                $currentPages->forget($key);
+                $matchedKeys[] = $key;
             });
 
-        $currentPages->each(fn (array $page): OutboundLink => OutboundLink::query()->create($page));
+        $currentPages
+            ->except($matchedKeys)
+            ->each(fn (array $page): OutboundLink => OutboundLink::query()->create($page));
     }
 
     /**
