@@ -4,18 +4,29 @@ namespace App\Jobs;
 
 use App\Crawlers\WebsiteOutboundLinkCrawler;
 use App\Models\Website;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Spatie\Crawler\Crawler;
 
-class WebsiteCheckOutboundLinkJob implements ShouldQueue
+class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
     public function __construct(public Website $website)
     {
         //
+    }
+
+    public function uniqueId(): string
+    {
+        return "website-outbound-link:{$this->website->getKey()}";
+    }
+
+    public function uniqueFor(): int
+    {
+        return 86400;
     }
 
     /**

@@ -2,6 +2,7 @@
 
 use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\Website;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Spatie\Crawler\Crawler;
@@ -20,6 +21,24 @@ test('job implements should queue', function () {
     $job = new WebsiteCheckOutboundLinkJob($website);
 
     expect($job)->toBeInstanceOf(\Illuminate\Contracts\Queue\ShouldQueue::class);
+});
+
+test('outbound link jobs are unique per website', function () {
+    $website = Website::factory()->create();
+
+    $job = new WebsiteCheckOutboundLinkJob($website);
+
+    expect($job)
+        ->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($job->uniqueId())->toBe("website-outbound-link:{$website->id}");
+});
+
+test('outbound link job unique lock covers the daily scan window', function () {
+    $website = Website::factory()->create();
+
+    $job = new WebsiteCheckOutboundLinkJob($website);
+
+    expect($job->uniqueFor())->toBe(86400);
 });
 
 test('job can be dispatched to queue', function () {
