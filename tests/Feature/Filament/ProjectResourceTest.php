@@ -1,5 +1,7 @@
 <?php
 
+use App\Filament\Resources\ProjectComponents\Pages\CreateProjectComponent;
+use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
 use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelationManager;
@@ -15,6 +17,186 @@ use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use Livewire\Livewire;
+
+test('operator can create a manual application component', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Payments App',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(CreateProjectComponent::class)
+        ->fillForm([
+            'project_id' => $project->id,
+            'name' => 'queue:payments',
+            'declared_interval' => 'every_5_minutes',
+            'current_status' => 'healthy',
+            'is_archived' => false,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $component = ProjectComponent::query()->where('name', 'queue:payments')->sole();
+
+    expect($component->project_id)->toBe($project->id)
+        ->and($component->created_by)->toBe($user->id)
+        ->and($component->source)->toBe('manual')
+        ->and($component->declared_interval)->toBe('5m')
+        ->and($component->interval_minutes)->toBe(5)
+        ->and($component->current_status)->toBe('healthy')
+        ->and($component->last_reported_status)->toBe('healthy')
+        ->and($component->metrics)->toBe([])
+        ->and($component->is_archived)->toBeFalse()
+        ->and($component->archived_at)->toBeNull();
+});
+
+test('operator can update manual component status interval and archive state', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'source' => 'manual',
+        'name' => 'worker:old',
+        'declared_interval' => '5m',
+        'interval_minutes' => 5,
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+        'is_archived' => false,
+        'archived_at' => null,
+    ]);
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->id])
+        ->fillForm([
+            'name' => 'worker:reports',
+            'declared_interval' => '2h',
+            'current_status' => 'warning',
+            'is_archived' => true,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $component->refresh();
+
+    expect($component->name)->toBe('worker:reports')
+        ->and($component->source)->toBe('manual')
+        ->and($component->declared_interval)->toBe('2h')
+        ->and($component->interval_minutes)->toBe(120)
+        ->and($component->current_status)->toBe('warning')
+        ->and($component->last_reported_status)->toBe('warning')
+        ->and($component->is_archived)->toBeTrue()
+        ->and($component->archived_at)->not->toBeNull();
+});
+
+test('operator cannot save a manual component with an invalid interval', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(CreateProjectComponent::class)
+        ->fillForm([
+            'project_id' => $project->id,
+            'name' => 'nightly-report',
+            'declared_interval' => 'tomorrow',
+            'current_status' => 'healthy',
+            'is_archived' => false,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['declared_interval']);
+});
+
+test('operator cannot create a duplicate component name in the same application', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'name' => 'queue:payments',
+    ]);
+
+    Livewire::test(CreateProjectComponent::class)
+        ->fillForm([
+            'project_id' => $project->id,
+            'name' => 'queue:payments',
+            'declared_interval' => '5m',
+            'current_status' => 'healthy',
+            'is_archived' => false,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['name']);
+
+    expect(ProjectComponent::query()
+        ->where('project_id', $project->id)
+        ->where('name', 'queue:payments')
+        ->count())->toBe(1);
+});
+
+test('operator cannot rename a component to a duplicate name in the same application', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'name' => 'queue:payments',
+    ]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'name' => 'queue:reports',
+    ]);
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->id])
+        ->fillForm([
+            'name' => 'queue:payments',
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['name']);
+
+    expect($component->refresh()->name)->toBe('queue:reports');
+});
+
+test('operator cannot create a component for another users application', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+    $otherProject = Project::factory()->create([
+        'created_by' => $otherUser->id,
+    ]);
+
+    Livewire::test(CreateProjectComponent::class)
+        ->fillForm([
+            'project_id' => $otherProject->id,
+            'name' => 'foreign-worker',
+            'declared_interval' => '5m',
+            'current_status' => 'healthy',
+            'is_archived' => false,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['project_id']);
+
+    expect(ProjectComponent::query()->where('created_by', $user->id)->exists())->toBeFalse();
+});
 
 test('project application list and component list show active and archived components', function () {
     $this->createResourcePermissions('Project');
