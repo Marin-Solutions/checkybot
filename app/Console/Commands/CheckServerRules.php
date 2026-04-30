@@ -6,10 +6,13 @@ use App\Models\NotificationChannels;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerRule;
+use App\Traits\ChecksWebhookResponses;
 use Illuminate\Console\Command;
 
 class CheckServerRules extends Command
 {
+    use ChecksWebhookResponses;
+
     protected $signature = 'server:check-rules';
 
     protected $description = 'Check server monitoring rules and send notifications if conditions are met';
@@ -89,10 +92,18 @@ class CheckServerRules extends Command
             $message = "Alert for {$server->name} ({$server->ip})\n";
             $message .= ucfirst(str_replace('_', ' ', $rule->metric))." is {$currentValue}% {$rule->operator} {$rule->value}%";
 
-            $channel->sendWebhookNotification([
+            $response = $channel->sendWebhookNotification([
                 'message' => $message,
                 'description' => 'Server Monitoring Alert',
             ]);
+
+            if (! $this->webhookResponseWasSuccessful($response)) {
+                $code = (int) ($response['code'] ?? 0);
+
+                $this->error("Webhook notification failed for server {$server->name} with response code {$code}");
+
+                return;
+            }
 
             $this->info("Notification sent for server {$server->name}");
         } catch (\Exception $e) {

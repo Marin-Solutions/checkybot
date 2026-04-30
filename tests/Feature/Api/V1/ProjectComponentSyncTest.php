@@ -255,6 +255,51 @@ test('component sync persists heartbeat state when webhook notification fails', 
         ->withArgs(fn (string $message): bool => str_contains($message, 'Failed to deliver project component notification webhook'));
 });
 
+test('component sync logs non-2xx webhook responses as failed notification delivery', function () {
+    Log::spy();
+
+    Http::fake([
+        '*' => Http::response(['error' => 'rate limited'], 429),
+    ]);
+
+    NotificationSetting::factory()->webhook()->create([
+        'user_id' => $this->user->id,
+        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'danger',
+                    'summary' => 'Queue workers are not processing jobs',
+                    'metrics' => [
+                        'pending_jobs' => 544,
+                    ],
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'Failed to deliver project component notification webhook')
+            && ($context['response_code'] ?? null) === 429);
+});
+
 test('component sync rejects zero intervals at the request boundary', function () {
     $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",

@@ -8,6 +8,7 @@ use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
+use App\Traits\ChecksWebhookResponses;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -15,6 +16,8 @@ use Throwable;
 
 class HealthEventNotificationService
 {
+    use ChecksWebhookResponses;
+
     /**
      * Deliver a health-event alert across the website's configured channels.
      *
@@ -194,10 +197,22 @@ class HealthEventNotificationService
                 $attempts++;
 
                 try {
-                    $channel->sendWebhookNotification([
+                    $response = $channel->sendWebhookNotification([
                         'message' => $message,
                         'description' => $summary,
                     ]);
+
+                    if (! $this->webhookResponseWasSuccessful($response)) {
+                        $failures++;
+
+                        Log::error('Failed to deliver health notification webhook; continuing with other channels', [
+                            'setting_id' => $setting->id,
+                            'event' => $event,
+                            'status' => $status,
+                            'response_code' => (int) ($response['code'] ?? 0),
+                            'response_body' => $response['body'] ?? null,
+                        ]);
+                    }
                 } catch (Throwable $exception) {
                     $failures++;
                     Log::error('Failed to deliver health notification webhook; continuing with other channels', [

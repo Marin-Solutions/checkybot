@@ -7,6 +7,7 @@ use App\Models\NotificationSetting;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
 use Illuminate\Mail\PendingMail;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -72,6 +73,68 @@ test('notifyWebsite isolates a single channel failure, logs it, and returns fals
     Log::shouldHaveReceived('error')
         ->once()
         ->withArgs(fn (string $message): bool => str_contains($message, 'Failed to deliver health notification mail'));
+});
+
+test('notifyWebsite treats non-2xx webhook responses as failed delivery attempts', function () {
+    Log::spy();
+
+    Http::fake([
+        '*' => Http::response(['error' => 'unauthorized'], 401),
+    ]);
+
+    $website = Website::factory()->create([
+        'silenced_until' => null,
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->webhook()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyWebsite($website, 'heartbeat', 'danger', 'Returned HTTP 500.');
+
+    expect($result)->toBeFalse();
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'Failed to deliver health notification webhook')
+            && ($context['response_code'] ?? null) === 401);
+});
+
+test('notifyWebsite returns true when one webhook succeeds and another returns non-2xx', function () {
+    Log::spy();
+
+    Http::fakeSequence()
+        ->push(['ok' => true], 200)
+        ->push(['error' => 'rejected'], 500);
+
+    $website = Website::factory()->create([
+        'silenced_until' => null,
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->webhook()
+        ->count(2)
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyWebsite($website, 'heartbeat', 'danger', 'Returned HTTP 500.');
+
+    expect($result)->toBeTrue();
+    Http::assertSentCount(2);
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'Failed to deliver health notification webhook')
+            && ($context['response_code'] ?? null) === 500);
 });
 
 test('notifyWebsite re-reads silenced_until and skips delivery when the monitor was snoozed concurrently', function () {

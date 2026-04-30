@@ -7,12 +7,15 @@ use App\Enums\WebsiteServicesEnum;
 use App\Mail\ProjectComponentAlertMail;
 use App\Models\NotificationSetting;
 use App\Models\ProjectComponent;
+use App\Traits\ChecksWebhookResponses;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 class ProjectComponentNotificationService
 {
+    use ChecksWebhookResponses;
+
     public function notify(ProjectComponent $component, string $event, string $status): void
     {
         if (
@@ -50,10 +53,21 @@ class ProjectComponentNotificationService
                 }
 
                 try {
-                    $channel->sendWebhookNotification([
+                    $response = $channel->sendWebhookNotification([
                         'message' => $payload['message'],
                         'description' => $payload['details'],
                     ]);
+
+                    if (! $this->webhookResponseWasSuccessful($response)) {
+                        Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
+                            'setting_id' => $setting->id,
+                            'project_component_id' => $component->id,
+                            'event' => $event,
+                            'status' => $status,
+                            'response_code' => (int) ($response['code'] ?? 0),
+                            'response_body' => $response['body'] ?? null,
+                        ]);
+                    }
                 } catch (Throwable $exception) {
                     Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
                         'setting_id' => $setting->id,
