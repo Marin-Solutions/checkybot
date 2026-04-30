@@ -5,6 +5,7 @@ namespace App\Crawlers;
 use App\Mail\EmailErrorOutgoingUrl;
 use App\Models\OutboundLink;
 use App\Models\Website;
+use App\Support\UptimeTransportError;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -50,6 +51,9 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
                     'outgoing_url' => $currentUrl,
                     'found_on' => $foundOnUrl,
                     'http_status_code' => $response->getStatusCode(),
+                    'transport_error_type' => null,
+                    'transport_error_message' => null,
+                    'transport_error_code' => null,
                     'last_checked_at' => Carbon::now(),
                 ];
             }
@@ -65,6 +69,28 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl = null,
         ?string $linkText = null,
     ): void {
+        if (! is_null($foundOnUrl)) {
+            $currentUrl = (string) $url;
+            $foundOnUrl = (string) $foundOnUrl;
+            $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
+            $foundOnUrlDomain = parse_url($foundOnUrl, PHP_URL_HOST);
+
+            if ($currentDomain && $currentDomain !== $foundOnUrlDomain) {
+                $transportError = UptimeTransportError::fromThrowable($requestException);
+
+                $this->crawledPages[] = [
+                    'website_id' => $this->website->id,
+                    'outgoing_url' => $currentUrl,
+                    'found_on' => $foundOnUrl,
+                    'http_status_code' => null,
+                    'transport_error_type' => $transportError['type']->value,
+                    'transport_error_message' => $transportError['message'],
+                    'transport_error_code' => $transportError['code'],
+                    'last_checked_at' => Carbon::now(),
+                ];
+            }
+        }
+
         Log::warning('Crawl failed for URL: '.$url, [
             'website_id' => $this->website->id,
             'error' => $requestException->getMessage(),

@@ -16,6 +16,9 @@ class OutboundLink extends Model
         'found_on',
         'outgoing_url',
         'http_status_code',
+        'transport_error_type',
+        'transport_error_message',
+        'transport_error_code',
         'last_checked_at',
     ];
 
@@ -23,6 +26,7 @@ class OutboundLink extends Model
     {
         return [
             'http_status_code' => 'integer',
+            'transport_error_code' => 'integer',
             'last_checked_at' => 'datetime',
         ];
     }

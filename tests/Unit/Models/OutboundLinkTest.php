@@ -14,6 +14,9 @@ test('outbound link has fillable attributes', function () {
         'found_on' => 'https://example.com/page',
         'outgoing_url' => 'https://external.com',
         'http_status_code' => 200,
+        'transport_error_type' => 'dns',
+        'transport_error_message' => 'cURL error 6: Could not resolve host: external.com',
+        'transport_error_code' => 6,
         'last_checked_at' => now(),
     ]);
 
@@ -21,6 +24,9 @@ test('outbound link has fillable attributes', function () {
     expect($link->found_on)->toBe('https://example.com/page');
     expect($link->outgoing_url)->toBe('https://external.com');
     expect($link->http_status_code)->toBe(200);
+    expect($link->transport_error_type)->toBe('dns');
+    expect($link->transport_error_message)->toContain('Could not resolve host');
+    expect($link->transport_error_code)->toBe(6);
     expect($link->last_checked_at)->not->toBeNull();
 });
 
