@@ -117,6 +117,64 @@ test('operator cannot save a manual component with an invalid interval', functio
         ->assertHasFormErrors(['declared_interval']);
 });
 
+test('operator cannot create a duplicate component name in the same application', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'name' => 'queue:payments',
+    ]);
+
+    Livewire::test(CreateProjectComponent::class)
+        ->fillForm([
+            'project_id' => $project->id,
+            'name' => 'queue:payments',
+            'declared_interval' => '5m',
+            'current_status' => 'healthy',
+            'is_archived' => false,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['name']);
+
+    expect(ProjectComponent::query()
+        ->where('project_id', $project->id)
+        ->where('name', 'queue:payments')
+        ->count())->toBe(1);
+});
+
+test('operator cannot rename a component to a duplicate name in the same application', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'name' => 'queue:payments',
+    ]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'name' => 'queue:reports',
+    ]);
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->id])
+        ->fillForm([
+            'name' => 'queue:payments',
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['name']);
+
+    expect($component->refresh()->name)->toBe('queue:reports');
+});
+
 test('operator cannot create a component for another users application', function () {
     $this->createResourcePermissions('ProjectComponent');
 

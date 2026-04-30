@@ -3,11 +3,14 @@
 namespace App\Filament\Resources\ProjectComponents\Schemas;
 
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Schema;
+use Illuminate\Database\Eloquent\Builder;
 
 class ProjectComponentForm
 {
@@ -30,6 +33,11 @@ class ProjectComponentForm
                         TextInput::make('name')
                             ->required()
                             ->autofocus()
+                            ->scopedUnique(
+                                model: ProjectComponent::class,
+                                ignoreRecord: true,
+                                modifyQueryUsing: fn (Builder $query, Get $get): Builder => $query->where('project_id', $get('project_id')),
+                            )
                             ->maxLength(255)
                             ->helperText('Use the exact cron job, worker, or process name your heartbeat will report.'),
                         TextInput::make('declared_interval')
