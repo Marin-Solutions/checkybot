@@ -180,14 +180,13 @@ test('finished crawling refreshes current outbound links and removes stale rows'
     ]);
 });
 
-test('finished crawling collapses duplicate rows for the same outbound link key', function () {
-    OutboundLink::factory()->count(2)->create([
-        'website_id' => $this->website->id,
-        'found_on' => 'https://example.com/source',
-        'outgoing_url' => 'https://external.com/page',
-        'http_status_code' => 404,
-        'last_checked_at' => now()->subDay(),
-    ]);
+test('finished crawling stores one row for duplicate observations in the same scan', function () {
+    $this->crawler->crawled(
+        new Uri('https://external.com/page'),
+        new Response(404),
+        new Uri('https://example.com/source'),
+        'Duplicate Link',
+    );
 
     $this->crawler->crawled(
         new Uri('https://external.com/page'),
