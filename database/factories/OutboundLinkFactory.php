@@ -16,6 +16,9 @@ class OutboundLinkFactory extends Factory
             'found_on' => fake()->url(),
             'outgoing_url' => fake()->url(),
             'http_status_code' => 200,
+            'transport_error_type' => null,
+            'transport_error_message' => null,
+            'transport_error_code' => null,
             'last_checked_at' => now(),
         ];
     }

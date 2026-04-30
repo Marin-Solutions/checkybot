@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\WebsiteResource\RelationManagers;
 
 use App\Models\OutboundLink;
+use App\Support\UptimeTransportError;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
@@ -52,6 +53,19 @@ class OutboundLinksRelationManager extends RelationManager
                     })
                     ->formatStateUsing(fn (?int $state): string => $state !== null ? (string) $state : '—')
                     ->sortable(),
+                TextColumn::make('transport_error_type')
+                    ->label('Error')
+                    ->badge()
+                    ->color(fn (?string $state): string => UptimeTransportError::color($state))
+                    ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                    ->placeholder('-')
+                    ->sortable(),
+                TextColumn::make('transport_error_message')
+                    ->label('Error Message')
+                    ->limit(70)
+                    ->tooltip(fn (?string $state): ?string => $state)
+                    ->placeholder('-')
+                    ->wrap(),
                 TextColumn::make('last_checked_at')
                     ->label('Last Checked')
                     ->sinceInUserZone()

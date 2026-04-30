@@ -1,6 +1,7 @@
 <?php
 
 use App\Crawlers\WebsiteOutboundLinkCrawler;
+use App\Enums\UptimeTransportErrorType;
 use App\Mail\EmailErrorOutgoingUrl;
 use App\Models\Website;
 use GuzzleHttp\Exception\RequestException;
@@ -177,13 +178,57 @@ test('will crawl does nothing', function () {
     expect(true)->toBeTrue();
 });
 
-test('crawl failed does nothing', function () {
+test('crawl failed stores outbound link evidence with transport error details', function () {
     $url = new Uri('https://external.com/page');
     $foundOnUrl = new Uri('https://example.com/source');
     $request = new Request('GET', $url);
-    $exception = new RequestException('Error', $request);
+    $exception = new RequestException('cURL error 6: Could not resolve host: external.com', $request);
 
     $this->crawler->crawlFailed($url, $exception, $foundOnUrl, 'Link Text');
+    $this->crawler->finishedCrawling();
 
-    expect(true)->toBeTrue();
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'outgoing_url' => 'https://external.com/page',
+        'found_on' => 'https://example.com/source',
+        'http_status_code' => null,
+        'transport_error_type' => UptimeTransportErrorType::Dns->value,
+        'transport_error_code' => 6,
+    ]);
+});
+
+test('crawl failed redacts sensitive transport error details before storing evidence', function () {
+    $url = new Uri('https://user:secret@external.com/private?token=secret-token&debug=true');
+    $foundOnUrl = new Uri('https://example.com/source');
+    $request = new Request('GET', $url);
+    $exception = new RequestException(
+        'Could not resolve https://user:secret@external.com/private?token=secret-token&debug=true with Bearer secret-bearer-token',
+        $request,
+    );
+
+    $this->crawler->crawlFailed($url, $exception, $foundOnUrl, 'Link Text');
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'outgoing_url' => 'https://user:secret@external.com/private?token=secret-token&debug=true',
+        'found_on' => 'https://example.com/source',
+        'http_status_code' => null,
+        'transport_error_type' => UptimeTransportErrorType::Dns->value,
+        'transport_error_message' => 'Could not resolve https://external.com/[redacted-url] with Bearer [redacted]',
+    ]);
+});
+
+test('crawl failed ignores internal link failures', function () {
+    $url = new Uri('https://example.com/internal-page');
+    $foundOnUrl = new Uri('https://example.com/source');
+    $request = new Request('GET', $url);
+    $exception = new RequestException('cURL error 28: Operation timed out', $request);
+
+    $this->crawler->crawlFailed($url, $exception, $foundOnUrl, 'Internal Link');
+    $this->crawler->finishedCrawling();
+
+    assertDatabaseMissing('outbound_link', [
+        'outgoing_url' => 'https://example.com/internal-page',
+    ]);
 });
