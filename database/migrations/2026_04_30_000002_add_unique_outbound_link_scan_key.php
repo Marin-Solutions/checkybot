@@ -27,27 +27,23 @@ return new class extends Migration
 
     private function deleteDuplicateOutboundLinks(): void
     {
-        DB::table('outbound_link')
-            ->whereNotNull('found_on')
-            ->whereNotNull('outgoing_url')
-            ->orderBy('website_id')
-            ->orderBy('found_on')
-            ->orderBy('outgoing_url')
-            ->orderByDesc('last_checked_at')
-            ->orderByDesc('updated_at')
-            ->orderByDesc('id')
-            ->get(['id', 'website_id', 'found_on', 'outgoing_url'])
-            ->groupBy(fn (object $link): string => json_encode([
-                $link->website_id,
-                $link->found_on,
-                $link->outgoing_url,
-            ]))
-            ->each(function ($links): void {
-                $duplicateIds = $links->skip(1)->pluck('id');
-
-                if ($duplicateIds->isNotEmpty()) {
-                    DB::table('outbound_link')->whereIn('id', $duplicateIds)->delete();
-                }
-            });
+        DB::statement(<<<'SQL'
+            DELETE FROM outbound_link
+            WHERE id IN (
+                SELECT id
+                FROM (
+                    SELECT
+                        id,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY website_id, found_on, outgoing_url
+                            ORDER BY last_checked_at DESC, updated_at DESC, id DESC
+                        ) AS duplicate_position
+                    FROM outbound_link
+                    WHERE found_on IS NOT NULL
+                        AND outgoing_url IS NOT NULL
+                ) AS duplicate_outbound_links
+                WHERE duplicate_position > 1
+            )
+        SQL);
     }
 };
