@@ -7,12 +7,15 @@ use App\Enums\WebsiteServicesEnum;
 use App\Mail\ProjectComponentAlertMail;
 use App\Models\NotificationSetting;
 use App\Models\ProjectComponent;
+use App\Traits\ChecksWebhookResponses;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 class ProjectComponentNotificationService
 {
+    use ChecksWebhookResponses;
+
     public function notify(ProjectComponent $component, string $event, string $status): void
     {
         if (
@@ -113,19 +116,5 @@ class ProjectComponentNotificationService
             'message' => "{$component->project->name} / {$component->name} reported {$eventLabel}.",
             'details' => $component->summary ?? 'No additional summary was provided.',
         ];
-    }
-
-    /**
-     * sendWebhookNotification() returns real HTTP statuses for completed
-     * requests and curl errnos for caught network failures. Only HTTP 2xx
-     * confirms delivery.
-     *
-     * @param  array{code?: int|string}  $response
-     */
-    private function webhookResponseWasSuccessful(array $response): bool
-    {
-        $code = (int) ($response['code'] ?? 0);
-
-        return $code >= 200 && $code < 300;
     }
 }

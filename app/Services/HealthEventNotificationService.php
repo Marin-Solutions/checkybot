@@ -8,6 +8,7 @@ use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
+use App\Traits\ChecksWebhookResponses;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -15,6 +16,8 @@ use Throwable;
 
 class HealthEventNotificationService
 {
+    use ChecksWebhookResponses;
+
     /**
      * Deliver a health-event alert across the website's configured channels.
      *
@@ -285,19 +288,5 @@ class HealthEventNotificationService
         $label = $this->eventLabel($event, $status);
 
         return "[{$label}] {$name} {$event}";
-    }
-
-    /**
-     * sendWebhookNotification() returns real HTTP statuses for completed
-     * requests and curl errnos for caught network failures. Only HTTP 2xx
-     * confirms delivery.
-     *
-     * @param  array{code?: int|string}  $response
-     */
-    private function webhookResponseWasSuccessful(array $response): bool
-    {
-        $code = (int) ($response['code'] ?? 0);
-
-        return $code >= 200 && $code < 300;
     }
 }
