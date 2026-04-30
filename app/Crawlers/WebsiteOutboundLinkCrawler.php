@@ -5,6 +5,7 @@ namespace App\Crawlers;
 use App\Mail\EmailErrorOutgoingUrl;
 use App\Models\OutboundLink;
 use App\Models\Website;
+use App\Support\ApiMonitorEvidenceRedactor;
 use App\Support\UptimeTransportError;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Carbon;
@@ -84,7 +85,7 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
                     'found_on' => $foundOnUrl,
                     'http_status_code' => null,
                     'transport_error_type' => $transportError['type']->value,
-                    'transport_error_message' => $transportError['message'],
+                    'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($transportError['message']),
                     'transport_error_code' => $transportError['code'],
                     'last_checked_at' => Carbon::now(),
                 ];
