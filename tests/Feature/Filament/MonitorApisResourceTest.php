@@ -690,12 +690,53 @@ test('api monitor view shows evidence rich latest run overview', function () {
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSee('Overview')
-        ->assertSee('Latest Run Evidence')
+        ->assertSee('Latest Scheduled Run Evidence')
         ->assertSee('API heartbeat failed with HTTP status 500.')
         ->assertSee('Expected HTTP status 200, got 500.')
         ->assertSee('[redacted]')
         ->assertSee('x-request-id')
         ->assertSee('trace-123');
+});
+
+test('api monitor view separates scheduled latest evidence from newer diagnostics', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Checkout API',
+        'current_status' => 'healthy',
+        'status_summary' => 'Scheduler says the API is healthy.',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'healthy',
+        'summary' => 'Scheduled API heartbeat succeeded.',
+        'http_code' => 200,
+        'response_time_ms' => 120,
+        'created_at' => now()->subMinutes(30),
+    ]);
+
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'danger',
+        'summary' => 'Diagnostic API heartbeat failed.',
+        'http_code' => 500,
+        'response_time_ms' => 980,
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Scheduled Run Evidence')
+        ->assertSee('Scheduled API heartbeat succeeded.')
+        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Diagnostic API heartbeat failed.');
+
+    expect($monitor->refresh()->latestScheduledResult->summary)->toBe('Scheduled API heartbeat succeeded.')
+        ->and($monitor->latestDiagnosticResult->summary)->toBe('Diagnostic API heartbeat failed.');
 });
 
 test('super admin can bulk disable api monitors', function () {

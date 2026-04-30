@@ -113,6 +113,22 @@ class MonitorApis extends Model
         return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->latestOfMany();
     }
 
+    public function latestScheduledResult(): HasOne
+    {
+        return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->ofMany(
+            ['created_at' => 'max', 'id' => 'max'],
+            fn ($query) => $query->where('is_on_demand', false),
+        );
+    }
+
+    public function latestDiagnosticResult(): HasOne
+    {
+        return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->ofMany(
+            ['created_at' => 'max', 'id' => 'max'],
+            fn ($query) => $query->where('is_on_demand', true),
+        );
+    }
+
     /**
      * Preview one assertion against the latest saved response body when
      * available. If no response body was saved for the latest run, execute a

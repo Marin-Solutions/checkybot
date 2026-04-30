@@ -78,9 +78,9 @@ class WebsiteInfolist
                             ->default('Not detected')
                             ->hint(fn (Website $record): ?string => static::detectedStaleHint($record->stale_at)),
                         TextEntry::make('latest_log_response_time')
-                            ->label('Last Response Time')
-                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->speed !== null
-                                ? "{$record->latestLogHistory->speed}ms"
+                            ->label('Latest Scheduled Response Time')
+                            ->state(fn (Website $record): ?string => $record->latestScheduledLogHistory?->speed !== null
+                                ? "{$record->latestScheduledLogHistory->speed}ms"
                                 : null)
                             ->default('-'),
                         TextEntry::make('average_response_time_24h')
@@ -113,38 +113,79 @@ class WebsiteInfolist
                                 default => "Every {$state} minutes",
                             }),
                         TextEntry::make('latest_log_http_code')
-                            ->label('Last HTTP Code')
-                            ->state(fn (Website $record): ?int => $record->latestLogHistory?->http_status_code)
+                            ->label('Latest Scheduled HTTP Code')
+                            ->state(fn (Website $record): ?int => $record->latestScheduledLogHistory?->http_status_code)
                             ->default('-')
                             ->badge()
                             ->color(fn (mixed $state): string => static::httpCodeColor(is_numeric($state) ? (int) $state : null)),
                         TextEntry::make('latest_log_status')
-                            ->label('Last Monitor Result')
-                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->status)
-                            ->default('No runs recorded')
+                            ->label('Latest Scheduled Result')
+                            ->state(fn (Website $record): ?string => $record->latestScheduledLogHistory?->status)
+                            ->default('No scheduled runs recorded')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'No runs recorded')
+                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'No scheduled runs recorded')
                             ->color(fn (?string $state): string => static::statusColor($state)),
                         TextEntry::make('latest_log_run_source')
-                            ->label('Last Run')
-                            ->state(fn (Website $record): mixed => $record->latestLogHistory?->run_source)
+                            ->label('Evidence Source')
+                            ->state(fn (Website $record): mixed => $record->latestScheduledLogHistory?->run_source)
                             ->badge()
                             ->formatStateUsing(fn (mixed $state): string => RunSource::tryCoerce($state)?->label() ?? '-')
                             ->color(fn (mixed $state): string => RunSource::tryCoerce($state)?->color() ?? 'gray'),
                         TextEntry::make('latest_log_summary')
-                            ->label('Last Monitor Summary')
-                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->summary)
+                            ->label('Latest Scheduled Summary')
+                            ->state(fn (Website $record): ?string => $record->latestScheduledLogHistory?->summary)
                             ->default('-')
                             ->columnSpanFull(),
                         TextEntry::make('latest_log_transport_error')
-                            ->label('Last Transport Error')
-                            ->state(fn (Website $record): ?string => static::transportErrorEvidence($record->latestLogHistory))
+                            ->label('Latest Scheduled Transport Error')
+                            ->state(fn (Website $record): ?string => static::transportErrorEvidence($record->latestScheduledLogHistory))
                             ->default('-')
                             ->badge()
-                            ->color(fn (Website $record): string => UptimeTransportError::color($record->latestLogHistory?->transport_error_type))
+                            ->color(fn (Website $record): string => UptimeTransportError::color($record->latestScheduledLogHistory?->transport_error_type))
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
+                Section::make('Latest Diagnostic Run')
+                    ->description('Manual run evidence is separate from scheduler-owned live status, dashboards, and alerts.')
+                    ->hidden(fn (Website $record): bool => $record->latestDiagnosticLogHistory === null)
+                    ->schema([
+                        TextEntry::make('latest_diagnostic_created_at')
+                            ->label('Observed At')
+                            ->state(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->created_at?->toDayDateTimeString())
+                            ->hint(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->created_at?->diffForHumans()),
+                        TextEntry::make('latest_diagnostic_status')
+                            ->label('Result')
+                            ->state(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->status)
+                            ->default('Unknown')
+                            ->badge()
+                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                            ->color(fn (?string $state): string => static::statusColor($state)),
+                        TextEntry::make('latest_diagnostic_http_code')
+                            ->label('HTTP Code')
+                            ->state(fn (Website $record): ?int => $record->latestDiagnosticLogHistory?->http_status_code)
+                            ->default('-')
+                            ->badge()
+                            ->color(fn (mixed $state): string => static::httpCodeColor(is_numeric($state) ? (int) $state : null)),
+                        TextEntry::make('latest_diagnostic_response_time')
+                            ->label('Response Time')
+                            ->state(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->speed !== null
+                                ? "{$record->latestDiagnosticLogHistory->speed}ms"
+                                : null)
+                            ->default('-'),
+                        TextEntry::make('latest_diagnostic_summary')
+                            ->label('Summary')
+                            ->state(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->summary)
+                            ->default('-')
+                            ->columnSpanFull(),
+                        TextEntry::make('latest_diagnostic_transport_error')
+                            ->label('Transport Error')
+                            ->state(fn (Website $record): ?string => static::transportErrorEvidence($record->latestDiagnosticLogHistory))
+                            ->default('-')
+                            ->badge()
+                            ->color(fn (Website $record): string => UptimeTransportError::color($record->latestDiagnosticLogHistory?->transport_error_type))
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(4),
                 Section::make('SSL Certificate')
                     ->description('Current SSL posture and expiry tracking.')
                     ->schema([

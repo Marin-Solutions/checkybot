@@ -51,6 +51,8 @@ class ViewWebsite extends ViewRecord
                         ->latest('id')
                         ->first();
 
+                    $this->record->load(['latestLogHistory', 'latestScheduledLogHistory', 'latestDiagnosticLogHistory']);
+
                     static::sendRunNowNotification($latestLog?->status, $latestLog);
                 }),
             Actions\EditAction::make(),

@@ -700,6 +700,8 @@ class WebsiteResource extends Resource
                 'globalNotifications:id,user_id,website_id,inspection',
                 'individualNotifications:id,website_id,inspection',
                 'latestLogHistory',
+                'latestScheduledLogHistory',
+                'latestDiagnosticLogHistory',
                 'latestSeoCheck:id,website_id,status,started_at,total_urls_crawled,total_crawlable_urls,progress',
             ])
             ->where('created_by', auth()->id())
