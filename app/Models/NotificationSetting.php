@@ -7,6 +7,7 @@ use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
 use App\Mail\EmailReminderSsl;
 use App\Mail\HealthStatusAlert;
+use App\Traits\ChecksWebhookResponses;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +17,7 @@ use Throwable;
 
 class NotificationSetting extends Model
 {
+    use ChecksWebhookResponses;
     use HasFactory;
 
     protected $table = 'notification_settings';
@@ -108,12 +110,13 @@ class NotificationSetting extends Model
                     'description' => $descriptionText,
                 ]);
 
-                $code = (int) ($response['code'] ?? 0);
-                if ($code >= 200 && $code < 300) {
+                if ($this->webhookResponseWasSuccessful($response)) {
                     Log::info('Webhook Notification successfully sent to '.$response['url']);
 
                     return true;
                 } else {
+                    $code = (int) ($response['code'] ?? 0);
+
                     Log::error('Webhook Notification failed sent', ['url' => $response['url'], 'code' => $code]);
 
                     return false;
@@ -261,7 +264,7 @@ class NotificationSetting extends Model
 
         $code = (int) ($response['code'] ?? 0);
 
-        if ($code >= 200 && $code < 300) {
+        if ($this->webhookResponseWasSuccessful($response)) {
             return [
                 'ok' => true,
                 'title' => 'Test webhook delivered',

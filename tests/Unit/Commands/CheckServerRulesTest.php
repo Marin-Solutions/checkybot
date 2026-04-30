@@ -1,8 +1,10 @@
 <?php
 
+use App\Models\NotificationChannels;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerRule;
+use Illuminate\Support\Facades\Http;
 
 test('command checks all active server rules', function () {
     $server = Server::factory()->create(['cpu_cores' => 4]);
@@ -95,4 +97,33 @@ test('command evaluates disk usage rule', function () {
 
     $this->artisan('server:check-rules')
         ->assertSuccessful();
+});
+
+test('command reports webhook notification failure when server rule destination returns non-2xx', function () {
+    Http::fake([
+        '*' => Http::response(['error' => 'unauthorized'], 401),
+    ]);
+
+    $server = Server::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/server-rule-webhook',
+    ]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+    ]);
+
+    ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $channel->id,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Rule condition met for server {$server->name}: ram_usage = 95")
+        ->expectsOutput("Webhook notification failed for server {$server->name} with response code 401")
+        ->assertSuccessful();
+
+    Http::assertSentCount(1);
 });
