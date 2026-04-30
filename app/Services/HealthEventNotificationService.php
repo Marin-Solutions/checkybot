@@ -194,10 +194,22 @@ class HealthEventNotificationService
                 $attempts++;
 
                 try {
-                    $channel->sendWebhookNotification([
+                    $response = $channel->sendWebhookNotification([
                         'message' => $message,
                         'description' => $summary,
                     ]);
+
+                    if (! $this->webhookResponseWasSuccessful($response)) {
+                        $failures++;
+
+                        Log::error('Failed to deliver health notification webhook; continuing with other channels', [
+                            'setting_id' => $setting->id,
+                            'event' => $event,
+                            'status' => $status,
+                            'response_code' => (int) ($response['code'] ?? 0),
+                            'response_body' => $response['body'] ?? null,
+                        ]);
+                    }
                 } catch (Throwable $exception) {
                     $failures++;
                     Log::error('Failed to deliver health notification webhook; continuing with other channels', [
@@ -273,5 +285,19 @@ class HealthEventNotificationService
         $label = $this->eventLabel($event, $status);
 
         return "[{$label}] {$name} {$event}";
+    }
+
+    /**
+     * sendWebhookNotification() returns real HTTP statuses for completed
+     * requests and curl errnos for caught network failures. Only HTTP 2xx
+     * confirms delivery.
+     *
+     * @param  array{code?: int|string}  $response
+     */
+    private function webhookResponseWasSuccessful(array $response): bool
+    {
+        $code = (int) ($response['code'] ?? 0);
+
+        return $code >= 200 && $code < 300;
     }
 }

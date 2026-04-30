@@ -50,10 +50,21 @@ class ProjectComponentNotificationService
                 }
 
                 try {
-                    $channel->sendWebhookNotification([
+                    $response = $channel->sendWebhookNotification([
                         'message' => $payload['message'],
                         'description' => $payload['details'],
                     ]);
+
+                    if (! $this->webhookResponseWasSuccessful($response)) {
+                        Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
+                            'setting_id' => $setting->id,
+                            'project_component_id' => $component->id,
+                            'event' => $event,
+                            'status' => $status,
+                            'response_code' => (int) ($response['code'] ?? 0),
+                            'response_body' => $response['body'] ?? null,
+                        ]);
+                    }
                 } catch (Throwable $exception) {
                     Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
                         'setting_id' => $setting->id,
@@ -102,5 +113,19 @@ class ProjectComponentNotificationService
             'message' => "{$component->project->name} / {$component->name} reported {$eventLabel}.",
             'details' => $component->summary ?? 'No additional summary was provided.',
         ];
+    }
+
+    /**
+     * sendWebhookNotification() returns real HTTP statuses for completed
+     * requests and curl errnos for caught network failures. Only HTTP 2xx
+     * confirms delivery.
+     *
+     * @param  array{code?: int|string}  $response
+     */
+    private function webhookResponseWasSuccessful(array $response): bool
+    {
+        $code = (int) ($response['code'] ?? 0);
+
+        return $code >= 200 && $code < 300;
     }
 }
