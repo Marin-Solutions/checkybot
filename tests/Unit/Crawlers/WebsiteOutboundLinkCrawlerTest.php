@@ -299,6 +299,41 @@ test('failed internal crawl preserves stale outbound links from unobserved pages
     ]);
 });
 
+test('failed internal crawl detection ignores host casing', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://EXAMPLE.com',
+        'created_by' => $this->user->id,
+    ]);
+    $crawler = new WebsiteOutboundLinkCrawler($website);
+
+    $existingLink = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'found_on' => 'https://example.com/blog',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+
+    $crawler->crawled(
+        new Uri('https://example.com'),
+        new Response(200),
+        null,
+        'Home',
+    );
+
+    $failedUrl = new Uri('https://example.com/blog');
+    $request = new Request('GET', $failedUrl);
+    $exception = new RequestException('cURL error 28: Operation timed out', $request);
+
+    $crawler->crawlFailed($failedUrl, $exception, new Uri('https://example.com'), 'Blog');
+    $crawler->finishedCrawling();
+
+    assertDatabaseHas('outbound_link', [
+        'id' => $existingLink->id,
+        'website_id' => $website->id,
+        'found_on' => 'https://example.com/blog',
+        'outgoing_url' => 'https://external.com/page',
+    ]);
+});
+
 test('failed internal crawl still refreshes observed outbound links', function () {
     $observedLink = OutboundLink::factory()->create([
         'website_id' => $this->website->id,

@@ -181,7 +181,12 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
     protected function isWebsiteUrl(UriInterface $url): bool
     {
-        return parse_url((string) $url, PHP_URL_HOST) === parse_url($this->website->getBaseURL(), PHP_URL_HOST);
+        $urlHost = parse_url((string) $url, PHP_URL_HOST);
+        $websiteHost = parse_url($this->website->getBaseURL(), PHP_URL_HOST);
+
+        return $urlHost !== null
+            && $websiteHost !== null
+            && strtolower($urlHost) === strtolower($websiteHost);
     }
 
     protected function sendErrorNotification(): void
