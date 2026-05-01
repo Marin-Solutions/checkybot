@@ -257,12 +257,14 @@ class ProjectsTable
                     $query
                         ->where('project_paused_uptime_check', true)
                         ->orWhere('project_paused_ssl_check', true)
+                        ->orWhere('project_paused_outbound_check', true)
                         ->orWhere(function (Builder $query): void {
                             $query
                                 ->where('uptime_check', false)
                                 ->where('ssl_check', false)
                                 ->where('project_paused_uptime_check', false)
-                                ->where('project_paused_ssl_check', false);
+                                ->where('project_paused_ssl_check', false)
+                                ->where('project_paused_outbound_check', false);
                         });
                 })
                 ->count();
@@ -273,6 +275,7 @@ class ProjectsTable
                 ->where('ssl_check', false)
                 ->where('project_paused_uptime_check', false)
                 ->where('project_paused_ssl_check', false)
+                ->where('project_paused_outbound_check', false)
                 ->update([
                     'uptime_check' => true,
                     'ssl_check' => true,
@@ -294,6 +297,14 @@ class ProjectsTable
                     'project_paused_ssl_check' => false,
                 ]);
 
+            Website::query()
+                ->whereIn('project_id', $projectIds)
+                ->where('project_paused_outbound_check', true)
+                ->update([
+                    'outbound_check' => true,
+                    'project_paused_outbound_check' => false,
+                ]);
+
             return $websitesChanged;
         }
 
@@ -302,7 +313,8 @@ class ProjectsTable
             ->where(function (Builder $query): void {
                 $query
                     ->where('uptime_check', true)
-                    ->orWhere('ssl_check', true);
+                    ->orWhere('ssl_check', true)
+                    ->orWhere('outbound_check', true);
             })
             ->count();
 
@@ -320,6 +332,14 @@ class ProjectsTable
             ->update([
                 'ssl_check' => false,
                 'project_paused_ssl_check' => true,
+            ]);
+
+        Website::query()
+            ->whereIn('project_id', $projectIds)
+            ->where('outbound_check', true)
+            ->update([
+                'outbound_check' => false,
+                'project_paused_outbound_check' => true,
             ]);
 
         return $websitesChanged;

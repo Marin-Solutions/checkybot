@@ -107,10 +107,12 @@ test('website project pause flags are not mass assignable', function () {
     $website->fill([
         'project_paused_uptime_check' => true,
         'project_paused_ssl_check' => true,
+        'project_paused_outbound_check' => true,
     ]);
 
     expect($website->project_paused_uptime_check)->toBeNull()
-        ->and($website->project_paused_ssl_check)->toBeNull();
+        ->and($website->project_paused_ssl_check)->toBeNull()
+        ->and($website->project_paused_outbound_check)->toBeNull();
 });
 
 test('extractHost returns the hostname from a full url', function () {

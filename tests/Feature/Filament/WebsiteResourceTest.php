@@ -651,13 +651,15 @@ test('super admin can toggle uptime_check inline from the websites table', funct
     $website = Website::factory()->create([
         'created_by' => $user->id,
         'uptime_check' => true,
+        'project_paused_uptime_check' => true,
     ]);
 
     Livewire::test(ListWebsites::class)
         ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false)
         ->assertNotified();
 
-    expect($website->refresh()->uptime_check)->toBeFalse();
+    expect($website->refresh()->uptime_check)->toBeFalse()
+        ->and($website->project_paused_uptime_check)->toBeFalse();
 
     Livewire::test(ListWebsites::class)
         ->call('updateTableColumnState', 'uptime_check', $website->getKey(), true)
@@ -672,7 +674,9 @@ test('super admin can toggle ssl_check and outbound_check inline from the websit
     $website = Website::factory()->create([
         'created_by' => $user->id,
         'ssl_check' => true,
+        'project_paused_ssl_check' => true,
         'outbound_check' => true,
+        'project_paused_outbound_check' => true,
     ]);
 
     // Disable both
@@ -685,7 +689,9 @@ test('super admin can toggle ssl_check and outbound_check inline from the websit
 
     $website->refresh();
     expect($website->ssl_check)->toBeFalse()
-        ->and($website->outbound_check)->toBeFalse();
+        ->and($website->project_paused_ssl_check)->toBeFalse()
+        ->and($website->outbound_check)->toBeFalse()
+        ->and($website->project_paused_outbound_check)->toBeFalse();
 
     // Re-enable both
     Livewire::test(ListWebsites::class)

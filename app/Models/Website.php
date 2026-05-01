@@ -53,6 +53,7 @@ class Website extends Model
         'ssl_check' => 'boolean',
         'project_paused_ssl_check' => 'boolean',
         'outbound_check' => 'boolean',
+        'project_paused_outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',
         'last_synced_at' => 'datetime',
@@ -60,6 +61,21 @@ class Website extends Model
         'stale_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Website $website): void {
+            foreach ([
+                'uptime_check' => 'project_paused_uptime_check',
+                'ssl_check' => 'project_paused_ssl_check',
+                'outbound_check' => 'project_paused_outbound_check',
+            ] as $check => $projectPausedFlag) {
+                if ($website->exists && $website->isDirty($check) && $website->{$check} === false && $website->{$projectPausedFlag}) {
+                    $website->{$projectPausedFlag} = false;
+                }
+            }
+        });
+    }
 
     /**
      * Check website exists with look up dns spatie library
