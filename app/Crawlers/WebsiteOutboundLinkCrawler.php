@@ -18,6 +18,8 @@ use Spatie\Crawler\CrawlObservers\CrawlObserver;
 
 class WebsiteOutboundLinkCrawler extends CrawlObserver
 {
+    private const OUTBOUND_LINK_WRITE_CHUNK_SIZE = 500;
+
     protected Website $website;
 
     protected array $crawledPages = [];
@@ -118,17 +120,24 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         }
 
         if ($currentPages->isNotEmpty()) {
-            OutboundLink::query()->upsert(
-                $currentPages->values()->all(),
-                ['website_id', 'found_on', 'outgoing_url'],
-                [
-                    'http_status_code',
-                    'transport_error_type',
-                    'transport_error_message',
-                    'transport_error_code',
-                    'last_checked_at',
-                ],
-            );
+            $currentPages
+                ->values()
+                ->chunk(self::OUTBOUND_LINK_WRITE_CHUNK_SIZE)
+                ->each(function ($pages): void {
+                    OutboundLink::query()->upsert(
+                        $pages->all(),
+                        ['website_id', 'found_on', 'outgoing_url'],
+                        [
+                            'found_on',
+                            'outgoing_url',
+                            'http_status_code',
+                            'transport_error_type',
+                            'transport_error_message',
+                            'transport_error_code',
+                            'last_checked_at',
+                        ],
+                    );
+                });
         }
 
         if (! $canPruneStaleLinks) {
@@ -157,7 +166,7 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ->whereNotNull('found_on')
             ->whereNotNull('outgoing_url')
             ->select(['id', 'website_id', 'found_on', 'outgoing_url'])
-            ->chunkById(500, function ($links) use ($currentPages): void {
+            ->chunkById(self::OUTBOUND_LINK_WRITE_CHUNK_SIZE, function ($links) use ($currentPages): void {
                 $staleLinkIds = $links
                     ->reject(fn (OutboundLink $link): bool => $currentPages->has(implode("\0", [
                         $link->website_id,
