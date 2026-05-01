@@ -447,6 +447,47 @@ test('job includes ssl context when http and ssl are both dangerous', function (
         ->and($website->status_summary)->toBe('Website heartbeat failed with HTTP status 500. SSL certificate expired 1 day(s) ago.');
 });
 
+test('job keeps http summary when ssl expiry is unavailable and http is dangerous', function () {
+    Http::fake([
+        '*' => Http::response('', 500),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andThrow(new RuntimeException('No certificate'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'current_status' => 'healthy',
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+    $website->refresh();
+
+    expect($history?->status)->toBe('danger')
+        ->and($history?->summary)->toBe('Website heartbeat failed with HTTP status 500.')
+        ->and($website->current_status)->toBe('danger')
+        ->and($website->status_summary)->toBe('Website heartbeat failed with HTTP status 500.');
+});
+
 test('job leaves uptime-only status based on http when ssl evidence is unavailable', function () {
     Http::fake([
         '*' => Http::response('', 200),
