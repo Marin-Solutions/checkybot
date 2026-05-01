@@ -37,7 +37,7 @@ class ProjectResource extends Resource
             ->withCount('components')
             ->with([
                 'activeComponents:id,project_id,current_status',
-                'uptimeEnabledWebsites:id,project_id,current_status',
+                'monitoredWebsites:id,project_id,current_status',
                 'enabledMonitorApis:id,project_id,current_status',
             ]);
     }

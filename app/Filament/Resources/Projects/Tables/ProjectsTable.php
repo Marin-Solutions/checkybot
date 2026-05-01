@@ -68,7 +68,7 @@ class ProjectsTable
                         }
 
                         // Mirror Project::application_status(): the project's status is
-                        // the worst active component, uptime-enabled website or enabled
+                        // the worst active component, monitored website, or enabled
                         // API monitor status. Warning and Healthy therefore require
                         // both a positive check and a negation of worse statuses.
                         return match ($value) {
@@ -103,7 +103,7 @@ class ProjectsTable
                         ->authorize(fn (): bool => static::userCanCascadeMonitoring())
                         ->requiresConfirmation()
                         ->modalHeading('Enable monitoring for selected applications')
-                        ->modalDescription('All websites and API monitors tied to these applications will resume scheduled checks. Archived components will be un-archived and start accepting heartbeats again.')
+                        ->modalDescription('All website checks and API monitors tied to these applications will resume scheduled checks. Archived components will be un-archived and start accepting heartbeats again.')
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
                             $summary = static::cascadeProjectState($records, true);
@@ -123,7 +123,7 @@ class ProjectsTable
                         ->authorize(fn (): bool => static::userCanCascadeMonitoring())
                         ->requiresConfirmation()
                         ->modalHeading('Disable monitoring for selected applications')
-                        ->modalDescription('Scheduled uptime checks, API checks, and heartbeat tracking will pause for every website, API monitor, and component in the selected applications. Use this during maintenance windows. History and configuration are preserved.')
+                        ->modalDescription('Scheduled website checks, API checks, and heartbeat tracking will pause for every website, API monitor, and component in the selected applications. Use this during maintenance windows. History and configuration are preserved.')
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
                             $summary = static::cascadeProjectState($records, false);
@@ -149,7 +149,7 @@ class ProjectsTable
         return $query->where(function (Builder $query) use ($statuses): void {
             $query
                 ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', $statuses))
-                ->orWhereHas('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
+                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses));
         });
     }
@@ -161,7 +161,7 @@ class ProjectsTable
     {
         return $query
             ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereIn('current_status', $statuses))
-            ->whereDoesntHave('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
+            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
             ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses));
     }
 
@@ -170,7 +170,7 @@ class ProjectsTable
         return $query->where(function (Builder $query): void {
             $query
                 ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
-                ->orWhereHas('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
         });
     }
@@ -179,7 +179,7 @@ class ProjectsTable
     {
         return $query
             ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
-            ->whereDoesntHave('uptimeEnabledWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
+            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
             ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
     }
 
@@ -220,8 +220,15 @@ class ProjectsTable
         return DB::transaction(function () use ($projectIds, $enable): array {
             $websitesChanged = Website::query()
                 ->whereIn('project_id', $projectIds)
-                ->where('uptime_check', ! $enable)
-                ->update(['uptime_check' => $enable]);
+                ->where(function (Builder $query) use ($enable): void {
+                    $query
+                        ->where('uptime_check', ! $enable)
+                        ->orWhere('ssl_check', ! $enable);
+                })
+                ->update([
+                    'uptime_check' => $enable,
+                    'ssl_check' => $enable,
+                ]);
 
             $apisChanged = MonitorApis::query()
                 ->whereIn('project_id', $projectIds)

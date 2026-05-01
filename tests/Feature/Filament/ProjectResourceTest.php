@@ -704,6 +704,15 @@ test('super admin can filter applications by current status', function () {
         'created_by' => $user->id,
     ]);
 
+    $sslOnlyDangerProject = Project::factory()->create(['name' => 'SSL Danger App', 'created_by' => $user->id]);
+    Website::factory()->create([
+        'project_id' => $sslOnlyDangerProject->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
     $apiWarningProject = Project::factory()->create(['name' => 'API Warning App', 'created_by' => $user->id]);
     MonitorApis::factory()->create([
         'project_id' => $apiWarningProject->id,
@@ -724,6 +733,7 @@ test('super admin can filter applications by current status', function () {
     Website::factory()->create([
         'project_id' => $disabledDangerProject->id,
         'uptime_check' => false,
+        'ssl_check' => false,
         'current_status' => 'danger',
         'created_by' => $user->id,
     ]);
@@ -751,23 +761,23 @@ test('super admin can filter applications by current status', function () {
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'danger')
-        ->assertCanSeeTableRecords([$dangerProject, $websiteDangerProject])
+        ->assertCanSeeTableRecords([$dangerProject, $websiteDangerProject, $sslOnlyDangerProject])
         ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $apiWarningProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'warning')
         ->assertCanSeeTableRecords([$warningProject, $apiWarningProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $websiteDangerProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'healthy')
         ->assertCanSeeTableRecords([$healthyProject, $websiteHealthyProject])
-        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $apiWarningProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'unknown')
         ->assertCanSeeTableRecords([$unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $websiteDangerProject, $apiWarningProject, $websiteHealthyProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject, $websiteHealthyProject]);
 });
 
 test('application status rolls up enabled websites and api monitors', function () {
@@ -788,6 +798,15 @@ test('application status rolls up enabled websites and api monitors', function (
         'current_status' => 'danger',
     ]);
 
+    $sslOnlyWarningProject = Project::factory()->create(['created_by' => $user->id]);
+    Website::factory()->create([
+        'project_id' => $sslOnlyWarningProject->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'current_status' => 'warning',
+    ]);
+
     $apiWarningProject = Project::factory()->create(['created_by' => $user->id]);
     MonitorApis::factory()->create([
         'project_id' => $apiWarningProject->id,
@@ -801,6 +820,7 @@ test('application status rolls up enabled websites and api monitors', function (
         'project_id' => $disabledDangerProject->id,
         'created_by' => $user->id,
         'uptime_check' => false,
+        'ssl_check' => false,
         'current_status' => 'danger',
     ]);
     MonitorApis::factory()->disabled()->create([
@@ -840,6 +860,7 @@ test('application status rolls up enabled websites and api monitors', function (
 
     expect($healthyProject->fresh()->application_status)->toBe('healthy')
         ->and($websiteDangerProject->fresh()->application_status)->toBe('danger')
+        ->and($sslOnlyWarningProject->fresh()->application_status)->toBe('warning')
         ->and($apiWarningProject->fresh()->application_status)->toBe('warning')
         ->and($disabledDangerProject->fresh()->application_status)->toBe('unknown')
         ->and($uncheckedWebsiteProject->fresh()->application_status)->toBe('unknown')
@@ -893,6 +914,15 @@ test('super admin can filter applications to only failing', function () {
         'created_by' => $user->id,
     ]);
 
+    $sslOnlyDangerProject = Project::factory()->create(['name' => 'SSL Danger App', 'created_by' => $user->id]);
+    Website::factory()->create([
+        'project_id' => $sslOnlyDangerProject->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
     $apiWarningProject = Project::factory()->create(['name' => 'API Warning App', 'created_by' => $user->id]);
     MonitorApis::factory()->create([
         'project_id' => $apiWarningProject->id,
@@ -905,6 +935,7 @@ test('super admin can filter applications to only failing', function () {
     Website::factory()->create([
         'project_id' => $disabledFailingProject->id,
         'uptime_check' => false,
+        'ssl_check' => false,
         'current_status' => 'danger',
         'created_by' => $user->id,
     ]);
@@ -916,7 +947,7 @@ test('super admin can filter applications to only failing', function () {
 
     Livewire::test(ListProjects::class)
         ->filterTable('only_failing', true)
-        ->assertCanSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $apiWarningProject])
+        ->assertCanSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject])
         ->assertCanNotSeeTableRecords([$healthyProject, $unknownProject, $archivedFailingProject, $disabledFailingProject]);
 });
 
@@ -1056,6 +1087,7 @@ test('super admin can bulk pause monitoring across selected applications', funct
         'project_id' => $project->id,
         'created_by' => $user->id,
         'uptime_check' => true,
+        'ssl_check' => true,
     ]);
 
     $monitor = MonitorApis::factory()->create([
@@ -1074,6 +1106,7 @@ test('super admin can bulk pause monitoring across selected applications', funct
         ->callTableBulkAction('disable', collect([$project]));
 
     expect($website->refresh()->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeFalse()
         ->and($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($component->refresh()->is_archived)->toBeTrue();
 });
@@ -1091,6 +1124,7 @@ test('super admin can bulk resume monitoring across selected applications', func
         'project_id' => $project->id,
         'created_by' => $user->id,
         'uptime_check' => false,
+        'ssl_check' => false,
     ]);
 
     $monitor = MonitorApis::factory()->disabled()->create([
@@ -1107,6 +1141,7 @@ test('super admin can bulk resume monitoring across selected applications', func
         ->callTableBulkAction('enable', collect([$project]));
 
     expect($website->refresh()->uptime_check)->toBeTrue()
+        ->and($website->ssl_check)->toBeTrue()
         ->and($monitor->refresh()->is_enabled)->toBeTrue()
         ->and($component->refresh()->is_archived)->toBeFalse();
 });
@@ -1171,6 +1206,7 @@ test('bulk disable on applications with nothing to pause reports no changes', fu
         'project_id' => $project->id,
         'created_by' => $user->id,
         'uptime_check' => false,
+        'ssl_check' => false,
     ]);
 
     $component = ProjectComponent::factory()->archived()->create([
@@ -1184,6 +1220,7 @@ test('bulk disable on applications with nothing to pause reports no changes', fu
 
     expect($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($website->refresh()->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeFalse()
         ->and($component->refresh()->is_archived)->toBeTrue();
 });
 
