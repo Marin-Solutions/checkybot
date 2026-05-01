@@ -56,7 +56,7 @@ class ApiHealthStatsWidget extends BaseWidget
 
         $uptimeAggregates = MonitorApiResult::query()
             ->whereIn('monitor_api_id', (clone $apiScope)->select('id'))
-            ->where('is_on_demand', false)
+            ->scheduled()
             ->where('created_at', '>=', now()->subDay())
             ->selectRaw('COUNT(*) as total_results')
             ->selectRaw('SUM(CASE WHEN is_success = 1 THEN 1 ELSE 0 END) as success_results')
