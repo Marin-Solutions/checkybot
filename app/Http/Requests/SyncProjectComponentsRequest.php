@@ -33,7 +33,7 @@ class SyncProjectComponentsRequest extends FormRequest
             'components.*.status' => ['required', 'in:healthy,warning,danger'],
             'components.*.summary' => ['nullable', 'string'],
             'components.*.metrics' => ['nullable', 'array'],
-            'components.*.observed_at' => ['required', 'date'],
+            'components.*.observed_at' => ['required', 'date', 'before_or_equal:now'],
         ];
     }
 
@@ -45,6 +45,7 @@ class SyncProjectComponentsRequest extends FormRequest
         return [
             'declared_components.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
             'components.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
+            'components.*.observed_at.before_or_equal' => 'The observed timestamp cannot be in the future.',
         ];
     }
 }
