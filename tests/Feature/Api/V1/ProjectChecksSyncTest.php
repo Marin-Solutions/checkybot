@@ -785,11 +785,14 @@ test('legacy sync stamps project and check sync metadata', function () {
 
     expect($this->project->refresh()->last_synced_at?->toISOString())->toBe($syncedAt->toISOString());
 
-    Website::query()
+    $websites = Website::query()
         ->where('project_id', $this->project->id)
         ->whereIn('package_name', ['uptime-1', 'ssl-1'])
-        ->get()
-        ->each(fn (Website $website) => expect($website->last_synced_at?->toISOString())->toBe($syncedAt->toISOString()));
+        ->get();
+
+    expect($websites)->toHaveCount(2);
+
+    $websites->each(fn (Website $website) => expect($website->last_synced_at?->toISOString())->toBe($syncedAt->toISOString()));
 
     expect(MonitorApis::query()
         ->where('project_id', $this->project->id)
