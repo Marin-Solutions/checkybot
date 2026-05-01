@@ -122,7 +122,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                 : null;
             $status = $sslStatus === null
                 ? $httpStatus
-                : $statusService->worstStatus($httpStatus, $sslStatus);
+                : $statusService->websiteStatusFromHttpAndSsl($http_status_code, $sslExpiryDate);
             $summary = $this->summaryForCombinedStatus(
                 $statusService,
                 $status,
@@ -185,10 +185,12 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         ?string $sslStatus,
         ?CarbonInterface $sslExpiryDate,
     ): string {
+        // SSL is the sole deciding factor, so lead with certificate evidence.
         if ($sslStatus !== null && $status === $sslStatus && $status !== $httpStatus) {
             return $statusService->summaryForSsl($sslExpiryDate);
         }
 
+        // HTTP and SSL share the same non-healthy status; show both when expiry evidence exists.
         if ($sslStatus !== null && $sslExpiryDate !== null && $status === $sslStatus && $status !== 'healthy') {
             return $httpSummary.' '.$statusService->summaryForSsl($sslExpiryDate);
         }
