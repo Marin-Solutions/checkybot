@@ -156,16 +156,24 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ->where('website_id', $this->website->id)
             ->whereNotNull('found_on')
             ->whereNotNull('outgoing_url')
-            ->whereNot(function ($query) use ($currentPages): void {
-                $currentPages->each(function (array $page) use ($query): void {
-                    $query->orWhere(function ($query) use ($page): void {
-                        $query
-                            ->where('found_on', $page['found_on'])
-                            ->where('outgoing_url', $page['outgoing_url']);
-                    });
-                });
-            })
-            ->delete();
+            ->select(['id', 'website_id', 'found_on', 'outgoing_url'])
+            ->chunkById(500, function ($links) use ($currentPages): void {
+                $staleLinkIds = $links
+                    ->reject(fn (OutboundLink $link): bool => $currentPages->has(implode("\0", [
+                        $link->website_id,
+                        $link->found_on,
+                        $link->outgoing_url,
+                    ])))
+                    ->modelKeys();
+
+                if ($staleLinkIds === []) {
+                    return;
+                }
+
+                OutboundLink::query()
+                    ->whereKey($staleLinkIds)
+                    ->delete();
+            });
     }
 
     /**

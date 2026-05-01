@@ -311,6 +311,38 @@ test('finished crawling prunes legacy outbound rows with nullable scan keys', fu
     ]);
 });
 
+test('finished crawling prunes stale outbound links without unbounded delete predicates', function () {
+    OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://stale.example/page',
+    ]);
+
+    foreach (range(1, 520) as $index) {
+        $this->crawler->crawled(
+            new Uri("https://external{$index}.example/page"),
+            new Response(200),
+            new Uri('https://example.com/source'),
+            'Current Link',
+        );
+    }
+
+    $this->crawler->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(520);
+
+    assertDatabaseMissing('outbound_link', [
+        'website_id' => $this->website->id,
+        'outgoing_url' => 'https://stale.example/page',
+    ]);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external520.example/page',
+    ]);
+});
+
 test('finished crawling removes existing outbound links when successful crawl finds no outbound links', function () {
     OutboundLink::factory()->create([
         'website_id' => $this->website->id,
