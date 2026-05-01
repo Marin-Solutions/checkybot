@@ -105,7 +105,11 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ->map(fn (array $page): array => array_merge($page, [
                 'last_checked_at' => $checkedAt,
             ]))
-            ->keyBy(fn (array $page): string => $this->linkKey($page['found_on'], $page['outgoing_url']));
+            ->keyBy(fn (array $page): string => hash('sha256', json_encode([
+                $page['website_id'],
+                $page['found_on'],
+                $page['outgoing_url'],
+            ])));
 
         $canPruneStaleLinks = $this->hasSuccessfulCrawl && ! $this->hasInternalCrawlFailure;
 
@@ -186,11 +190,6 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
                 : null,
             'transport_error_code' => $transportError['code'] ?? null,
         ];
-    }
-
-    protected function linkKey(?string $foundOn, ?string $outgoingUrl): string
-    {
-        return hash('sha256', json_encode([$this->website->id, $foundOn, $outgoingUrl]));
     }
 
     protected function isWebsiteUrl(UriInterface $url): bool
