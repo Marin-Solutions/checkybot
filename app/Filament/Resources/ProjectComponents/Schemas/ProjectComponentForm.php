@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ProjectComponents\Schemas;
 
 use App\Models\Project;
 use App\Models\ProjectComponent;
+use App\Support\HealthStatusLabel;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
@@ -49,12 +50,7 @@ class ProjectComponentForm
                             ->regex('/^([1-9]\d*[smhd]|every_[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$/'),
                         Select::make('current_status')
                             ->label('Status')
-                            ->options([
-                                'unknown' => 'Awaiting data',
-                                'healthy' => 'Healthy',
-                                'warning' => 'Warning',
-                                'danger' => 'Danger',
-                            ])
+                            ->options(HealthStatusLabel::options())
                             ->default('unknown')
                             ->required(),
                         Toggle::make('is_archived')

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
+use App\Support\HealthStatusLabel;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -22,7 +23,7 @@ class ComponentsRelationManager extends RelationManager
                     ->searchable(),
                 Tables\Columns\TextColumn::make('current_status')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => $state === 'unknown' ? 'Awaiting data' : ucfirst($state))
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => match ($state) {
                         'healthy' => 'success',
                         'warning' => 'warning',

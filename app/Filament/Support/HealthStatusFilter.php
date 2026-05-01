@@ -2,6 +2,7 @@
 
 namespace App\Filament\Support;
 
+use App\Support\HealthStatusLabel;
 use Closure;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -59,12 +60,7 @@ class HealthStatusFilter
     {
         return SelectFilter::make($column)
             ->label('Current Status')
-            ->options([
-                'unknown' => 'Awaiting data',
-                'healthy' => 'Healthy',
-                'warning' => 'Warning',
-                'danger' => 'Danger',
-            ])
+            ->options(HealthStatusLabel::options())
             ->query(function (Builder $query, array $data) use ($column): Builder {
                 $value = $data['value'] ?? null;
 
