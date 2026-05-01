@@ -217,20 +217,19 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
             ? Carbon::parse($this->website->ssl_expiry_date)
             : null;
 
+        $shouldResetReminder = $sslExpiryDate !== null
+            && $this->expiryDateChanged($currentExpiryDate, $sslExpiryDate);
+
         return [
             'ssl_expiry_date' => $sslExpiryDate,
-            'ssl_expiry_reminder_sent_at' => $this->expiryDateChanged($currentExpiryDate, $sslExpiryDate)
+            'ssl_expiry_reminder_sent_at' => $shouldResetReminder
                 ? null
                 : $this->website->ssl_expiry_reminder_sent_at,
         ];
     }
 
-    private function expiryDateChanged(?CarbonInterface $currentExpiryDate, ?CarbonInterface $newExpiryDate): bool
+    private function expiryDateChanged(?CarbonInterface $currentExpiryDate, CarbonInterface $newExpiryDate): bool
     {
-        if ($currentExpiryDate === null || $newExpiryDate === null) {
-            return $currentExpiryDate !== null || $newExpiryDate !== null;
-        }
-
-        return ! $currentExpiryDate->isSameDay($newExpiryDate);
+        return $currentExpiryDate === null || ! $currentExpiryDate->isSameDay($newExpiryDate);
     }
 }

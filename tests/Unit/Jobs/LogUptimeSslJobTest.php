@@ -471,12 +471,14 @@ test('scheduled job clears stale website ssl expiry date when certificate cannot
             ->andThrow(new RuntimeException('certificate unavailable'));
     });
 
+    $reminderSentAt = now()->subHour();
+
     $website = Website::factory()->create([
         'url' => 'https://example.com',
         'uptime_check' => true,
         'ssl_check' => true,
         'ssl_expiry_date' => Carbon::parse('2026-05-01'),
-        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+        'ssl_expiry_reminder_sent_at' => $reminderSentAt,
         'current_status' => 'healthy',
     ]);
 
@@ -490,7 +492,7 @@ test('scheduled job clears stale website ssl expiry date when certificate cannot
         ->and($history?->status)->toBe('danger')
         ->and($history?->summary)->toBe('SSL certificate check failed before an expiry date could be read.')
         ->and($website->ssl_expiry_date)->toBeNull()
-        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull()
+        ->and($website->ssl_expiry_reminder_sent_at?->equalTo($reminderSentAt))->toBeTrue()
         ->and($website->current_status)->toBe('danger')
         ->and($website->status_summary)->toBe('SSL certificate check failed before an expiry date could be read.');
 });
