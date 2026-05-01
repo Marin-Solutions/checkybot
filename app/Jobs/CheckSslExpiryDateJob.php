@@ -66,12 +66,15 @@ class CheckSslExpiryDateJob implements ShouldQueue
             ? Carbon::parse($this->website->ssl_expiry_date)
             : null;
 
-        $this->website->forceFill([
+        $attributes = [
             'ssl_expiry_date' => $newExpiryDate,
-            'ssl_expiry_reminder_sent_at' => $this->expiryDateChanged($currentExpiryDate, $newExpiryDate)
-                ? null
-                : $this->website->ssl_expiry_reminder_sent_at,
-        ])->save();
+        ];
+
+        if (SslCertificateService::expiryDateChanged($currentExpiryDate, $newExpiryDate)) {
+            $attributes['ssl_expiry_reminder_sent_at'] = null;
+        }
+
+        $this->website->forceFill($attributes)->save();
 
         $this->recordPackageHealth($newExpiryDate, $statusService, $notificationService);
 
@@ -135,11 +138,6 @@ class CheckSslExpiryDateJob implements ShouldQueue
         } else {
             Log::warning('User not found for website: '.$this->website->url);
         }
-    }
-
-    private function expiryDateChanged(?CarbonInterface $currentExpiryDate, CarbonInterface $newExpiryDate): bool
-    {
-        return $currentExpiryDate === null || ! $currentExpiryDate->isSameDay($newExpiryDate);
     }
 
     private function shouldSendReminder(CarbonInterface $expiryDate): bool

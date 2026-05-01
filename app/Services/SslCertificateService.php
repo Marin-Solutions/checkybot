@@ -25,6 +25,11 @@ class SslCertificateService
             ->expirationDate();
     }
 
+    public static function expiryDateChanged(?CarbonInterface $currentExpiryDate, CarbonInterface $newExpiryDate): bool
+    {
+        return $currentExpiryDate === null || ! $currentExpiryDate->isSameDay($newExpiryDate);
+    }
+
     private function formatHostForDownload(string $host, int $port): string
     {
         $formattedHost = filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false
