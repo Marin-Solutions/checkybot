@@ -9,6 +9,7 @@ use App\Support\ApiMonitorEvidenceRedactor;
 use App\Support\UptimeTransportError;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Psr\Http\Message\ResponseInterface;
@@ -20,6 +21,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
     protected Website $website;
 
     protected array $crawledPages = [];
+
+    protected bool $hasSuccessfulCrawl = false;
+
+    protected bool $hasInternalCrawlFailure = false;
 
     public function __construct(Website $website)
     {
@@ -40,25 +45,9 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl = null,
         ?string $linkText = null
     ): void {
-        if (! is_null($foundOnUrl)) {
-            $currentUrl = (string) $url;
-            $foundOnUrl = (string) $foundOnUrl;
-            $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
-            $foundOnUrlDomain = parse_url($foundOnUrl, PHP_URL_HOST);
+        $this->hasSuccessfulCrawl = true;
 
-            if ($currentDomain && $currentDomain !== $foundOnUrlDomain) {
-                $this->crawledPages[] = [
-                    'website_id' => $this->website->id,
-                    'outgoing_url' => $currentUrl,
-                    'found_on' => $foundOnUrl,
-                    'http_status_code' => $response->getStatusCode(),
-                    'transport_error_type' => null,
-                    'transport_error_message' => null,
-                    'transport_error_code' => null,
-                    'last_checked_at' => Carbon::now(),
-                ];
-            }
-        }
+        $this->recordOutboundLink($url, $foundOnUrl, $response->getStatusCode());
     }
 
     /*
@@ -70,27 +59,19 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         ?UriInterface $foundOnUrl = null,
         ?string $linkText = null,
     ): void {
-        if (! is_null($foundOnUrl)) {
-            $currentUrl = (string) $url;
-            $foundOnUrl = (string) $foundOnUrl;
-            $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
-            $foundOnUrlDomain = parse_url($foundOnUrl, PHP_URL_HOST);
-
-            if ($currentDomain && $currentDomain !== $foundOnUrlDomain) {
-                $transportError = UptimeTransportError::fromThrowable($requestException);
-
-                $this->crawledPages[] = [
-                    'website_id' => $this->website->id,
-                    'outgoing_url' => $currentUrl,
-                    'found_on' => $foundOnUrl,
-                    'http_status_code' => null,
-                    'transport_error_type' => $transportError['type']->value,
-                    'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($transportError['message']),
-                    'transport_error_code' => $transportError['code'],
-                    'last_checked_at' => Carbon::now(),
-                ];
-            }
+        if ($this->isWebsiteUrl($url)) {
+            $this->hasInternalCrawlFailure = true;
         }
+
+        $response = $requestException->getResponse();
+        $transportError = $response ? null : UptimeTransportError::fromThrowable($requestException);
+
+        $this->recordOutboundLink(
+            $url,
+            $foundOnUrl,
+            $response?->getStatusCode(),
+            $transportError,
+        );
 
         Log::warning('Crawl failed for URL: '.$url, [
             'website_id' => $this->website->id,
@@ -103,17 +84,112 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
      */
     public function finishedCrawling(): void
     {
-        if (! empty($this->crawledPages)) {
-            OutboundLink::query()->insert($this->crawledPages);
-        }
+        $checkedAt = Carbon::now();
 
-        $this->website->last_outbound_checked_at = Carbon::now();
-        $this->website->save();
+        DB::transaction(function () use ($checkedAt): void {
+            $this->refreshOutboundLinks($checkedAt);
+
+            $this->website->last_outbound_checked_at = $checkedAt;
+            $this->website->save();
+        });
 
         $this->sendErrorNotification();
 
         /* Create system log */
         Log::info('Outbound Links for website '.$this->website->url.' has been crawled.');
+    }
+
+    protected function refreshOutboundLinks(Carbon $checkedAt): void
+    {
+        $currentPages = collect($this->crawledPages)
+            ->map(fn (array $page): array => array_merge($page, [
+                'last_checked_at' => $checkedAt,
+            ]))
+            ->keyBy(fn (array $page): string => $this->linkKey($page['found_on'], $page['outgoing_url']));
+
+        $canPruneStaleLinks = $this->hasSuccessfulCrawl && ! $this->hasInternalCrawlFailure;
+
+        if ($currentPages->isEmpty() && ! $canPruneStaleLinks) {
+            return;
+        }
+
+        $matchedKeys = [];
+
+        OutboundLink::query()
+            ->where('website_id', $this->website->id)
+            ->get()
+            ->groupBy(fn (OutboundLink $link): string => $this->linkKey($link->found_on, $link->outgoing_url))
+            ->each(function ($links, string $key) use ($canPruneStaleLinks, $currentPages, &$matchedKeys): void {
+                if (! $currentPages->has($key)) {
+                    if ($canPruneStaleLinks) {
+                        $links->each->delete();
+                    }
+
+                    return;
+                }
+
+                $link = $links->first();
+
+                $link->fill($currentPages->get($key));
+                $link->save();
+
+                $links->slice(1)->each->delete();
+                $matchedKeys[] = $key;
+            });
+
+        $currentPages
+            ->except($matchedKeys)
+            ->each(fn (array $page): OutboundLink => OutboundLink::query()->create($page));
+    }
+
+    /**
+     * @param  array{type: \App\Enums\UptimeTransportErrorType, message: string, code: int|null}|null  $transportError
+     */
+    protected function recordOutboundLink(
+        UriInterface $url,
+        ?UriInterface $foundOnUrl,
+        ?int $statusCode,
+        ?array $transportError = null,
+    ): void {
+        if (is_null($foundOnUrl)) {
+            return;
+        }
+
+        $currentUrl = (string) $url;
+        $foundOnUrl = (string) $foundOnUrl;
+        $currentDomain = parse_url($currentUrl, PHP_URL_HOST);
+        $foundOnUrlDomain = parse_url($foundOnUrl, PHP_URL_HOST);
+
+        if (! $currentDomain || $currentDomain === $foundOnUrlDomain) {
+            return;
+        }
+
+        $this->crawledPages[] = [
+            'website_id' => $this->website->id,
+            'outgoing_url' => $currentUrl,
+            'found_on' => $foundOnUrl,
+            'http_status_code' => $statusCode,
+            'transport_error_type' => $transportError ? $transportError['type']->value : null,
+            'transport_error_message' => $transportError
+                ? ApiMonitorEvidenceRedactor::redactTransportErrorMessage($transportError['message'])
+                : null,
+            'transport_error_code' => $transportError['code'] ?? null,
+        ];
+    }
+
+    protected function linkKey(?string $foundOn, ?string $outgoingUrl): string
+    {
+        return hash('sha256', json_encode([$this->website->id, $foundOn, $outgoingUrl]));
+    }
+
+    protected function isWebsiteUrl(UriInterface $url): bool
+    {
+        $urlHost = parse_url((string) $url, PHP_URL_HOST);
+        $websiteHost = parse_url($this->website->getBaseURL(), PHP_URL_HOST);
+
+        return $urlHost !== null
+            && $websiteHost !== null
+            && strtolower($urlHost) === strtolower($websiteHost);
     }
 
     protected function sendErrorNotification(): void
