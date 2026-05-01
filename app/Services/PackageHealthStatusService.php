@@ -7,6 +7,12 @@ use Carbon\CarbonInterface;
 
 class PackageHealthStatusService
 {
+    private const STATUS_SEVERITY = [
+        'healthy' => 0,
+        'warning' => 1,
+        'danger' => 2,
+    ];
+
     public function websiteStatusFromHttpCode(?int $httpCode): string
     {
         return match (true) {
@@ -54,6 +60,31 @@ class PackageHealthStatusService
             'warning' => "Website heartbeat is degraded with HTTP status {$httpCode}.",
             default => "Website heartbeat succeeded with HTTP status {$httpCode}.",
         };
+    }
+
+    public function worstStatus(string ...$statuses): string
+    {
+        $worstStatus = 'healthy';
+        $worstSeverity = self::STATUS_SEVERITY[$worstStatus];
+
+        foreach ($statuses as $status) {
+            $severity = self::STATUS_SEVERITY[$status] ?? self::STATUS_SEVERITY['warning'];
+
+            if ($severity > $worstSeverity) {
+                $worstStatus = $status;
+                $worstSeverity = $severity;
+            }
+        }
+
+        return $worstStatus;
+    }
+
+    public function websiteStatusFromHttpAndSsl(?int $httpCode, ?CarbonInterface $sslExpiryDate): string
+    {
+        return $this->worstStatus(
+            $this->websiteStatusFromHttpCode($httpCode),
+            $this->sslStatusFromExpiryDate($sslExpiryDate),
+        );
     }
 
     public function sslStatusFromExpiryDate(?CarbonInterface $expiryDate): string

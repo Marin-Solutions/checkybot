@@ -61,6 +61,17 @@ test('ssl status treats certificates expired earlier today as danger', function 
         ->and($service->summaryForSsl(Carbon::parse('2026-04-24 09:00:00')))->toBe('SSL certificate expired today.');
 });
 
+test('combined website status uses the worst http or ssl state', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $service = app(PackageHealthStatusService::class);
+
+    expect($service->websiteStatusFromHttpAndSsl(200, Carbon::parse('2026-04-23')))->toBe('danger')
+        ->and($service->websiteStatusFromHttpAndSsl(200, Carbon::parse('2026-04-30')))->toBe('warning')
+        ->and($service->websiteStatusFromHttpAndSsl(500, Carbon::parse('2026-04-30')))->toBe('danger')
+        ->and($service->websiteStatusFromHttpAndSsl(404, Carbon::parse('2026-06-01')))->toBe('warning');
+});
+
 afterEach(function () {
     Carbon::setTestNow();
 });
