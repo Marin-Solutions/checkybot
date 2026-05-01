@@ -1214,6 +1214,45 @@ test('bulk resume restores only website checks paused by the project action', fu
         ->and($sslOnly->project_paused_ssl_check)->toBeFalse();
 });
 
+test('bulk resume restores fully paused websites from before project pause flags existed', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $legacyPaused = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'project_paused_uptime_check' => false,
+        'project_paused_ssl_check' => false,
+    ]);
+
+    $sslOnly = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'project_paused_uptime_check' => false,
+        'project_paused_ssl_check' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($legacyPaused->refresh()->uptime_check)->toBeTrue()
+        ->and($legacyPaused->ssl_check)->toBeTrue()
+        ->and($legacyPaused->project_paused_uptime_check)->toBeFalse()
+        ->and($legacyPaused->project_paused_ssl_check)->toBeFalse()
+        ->and($sslOnly->refresh()->uptime_check)->toBeFalse()
+        ->and($sslOnly->ssl_check)->toBeTrue()
+        ->and($sslOnly->project_paused_uptime_check)->toBeFalse()
+        ->and($sslOnly->project_paused_ssl_check)->toBeFalse();
+});
+
 test('bulk disable on already disabled components notifies that nothing changed', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');

@@ -254,9 +254,27 @@ class ProjectsTable
                 ->where(function (Builder $query): void {
                     $query
                         ->where('project_paused_uptime_check', true)
-                        ->orWhere('project_paused_ssl_check', true);
+                        ->orWhere('project_paused_ssl_check', true)
+                        ->orWhere(function (Builder $query): void {
+                            $query
+                                ->where('uptime_check', false)
+                                ->where('ssl_check', false)
+                                ->where('project_paused_uptime_check', false)
+                                ->where('project_paused_ssl_check', false);
+                        });
                 })
                 ->count();
+
+            Website::query()
+                ->whereIn('project_id', $projectIds)
+                ->where('uptime_check', false)
+                ->where('ssl_check', false)
+                ->where('project_paused_uptime_check', false)
+                ->where('project_paused_ssl_check', false)
+                ->update([
+                    'uptime_check' => true,
+                    'ssl_check' => true,
+                ]);
 
             Website::query()
                 ->whereIn('project_id', $projectIds)
