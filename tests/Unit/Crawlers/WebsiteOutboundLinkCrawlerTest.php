@@ -345,7 +345,7 @@ test('finished crawling chunks outbound link upserts', function () {
 
     $this->crawler->finishedCrawling();
 
-    expect($upsertQueries)->toHaveCount(2)
+    expect($upsertQueries)->toHaveCount(6)
         ->and(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(520);
 });
 

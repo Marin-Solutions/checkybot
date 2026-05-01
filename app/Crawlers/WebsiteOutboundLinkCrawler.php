@@ -18,7 +18,7 @@ use Spatie\Crawler\CrawlObservers\CrawlObserver;
 
 class WebsiteOutboundLinkCrawler extends CrawlObserver
 {
-    private const OUTBOUND_LINK_WRITE_CHUNK_SIZE = 500;
+    private const OUTBOUND_LINK_WRITE_CHUNK_SIZE = 100;
 
     protected Website $website;
 
