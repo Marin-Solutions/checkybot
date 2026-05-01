@@ -219,7 +219,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         }
 
         $shouldResetReminder = $sslExpiryDate !== null
-            && $this->expiryDateChanged($previousSslExpiryDate, $sslExpiryDate);
+            && SslCertificateService::expiryDateChanged($previousSslExpiryDate, $sslExpiryDate);
 
         return [
             'ssl_expiry_date' => $sslExpiryDate,
@@ -227,11 +227,6 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                 ? null
                 : $this->website->ssl_expiry_reminder_sent_at,
         ];
-    }
-
-    private function expiryDateChanged(?CarbonInterface $currentExpiryDate, CarbonInterface $newExpiryDate): bool
-    {
-        return $currentExpiryDate === null || ! $currentExpiryDate->isSameDay($newExpiryDate);
     }
 
     private function currentOrLatestKnownSslExpiryDate(): ?CarbonInterface
