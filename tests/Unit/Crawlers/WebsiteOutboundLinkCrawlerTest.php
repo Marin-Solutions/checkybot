@@ -211,6 +211,64 @@ test('finished crawling stores one row for duplicate observations in the same sc
     ]);
 });
 
+test('repeated successful scans replace the outbound link set instead of accumulating history', function () {
+    $this->crawler->crawled(
+        new Uri('https://external.com/current'),
+        new Response(404),
+        new Uri('https://example.com/source'),
+        'Current Link',
+    );
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/stale'),
+        new Response(500),
+        new Uri('https://example.com/source'),
+        'Stale Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    $nextScan = new WebsiteOutboundLinkCrawler($this->website);
+
+    $nextScan->crawled(
+        new Uri('https://external.com/current'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Current Link',
+    );
+
+    $nextScan->crawled(
+        new Uri('https://external.com/new'),
+        new Response(201),
+        new Uri('https://example.com/source'),
+        'New Link',
+    );
+
+    $nextScan->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(2);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/current',
+        'http_status_code' => 200,
+    ]);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/new',
+        'http_status_code' => 201,
+    ]);
+
+    assertDatabaseMissing('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/stale',
+    ]);
+});
+
 test('finished crawling removes existing outbound links when successful crawl finds no outbound links', function () {
     OutboundLink::factory()->create([
         'website_id' => $this->website->id,

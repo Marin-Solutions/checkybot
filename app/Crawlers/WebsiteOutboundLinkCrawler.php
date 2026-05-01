@@ -113,33 +113,44 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             return;
         }
 
-        $matchedKeys = [];
+        if ($currentPages->isNotEmpty()) {
+            OutboundLink::query()->upsert(
+                $currentPages->values()->all(),
+                ['website_id', 'found_on', 'outgoing_url'],
+                [
+                    'http_status_code',
+                    'transport_error_type',
+                    'transport_error_message',
+                    'transport_error_code',
+                    'last_checked_at',
+                ],
+            );
+        }
+
+        if (! $canPruneStaleLinks) {
+            return;
+        }
+
+        if ($currentPages->isEmpty()) {
+            OutboundLink::query()
+                ->where('website_id', $this->website->id)
+                ->delete();
+
+            return;
+        }
 
         OutboundLink::query()
             ->where('website_id', $this->website->id)
-            ->get()
-            ->groupBy(fn (OutboundLink $link): string => $this->linkKey($link->found_on, $link->outgoing_url))
-            ->each(function ($links, string $key) use ($canPruneStaleLinks, $currentPages, &$matchedKeys): void {
-                if (! $currentPages->has($key)) {
-                    if ($canPruneStaleLinks) {
-                        $links->each->delete();
-                    }
-
-                    return;
-                }
-
-                $link = $links->first();
-
-                $link->fill($currentPages->get($key));
-                $link->save();
-
-                $links->slice(1)->each->delete();
-                $matchedKeys[] = $key;
-            });
-
-        $currentPages
-            ->except($matchedKeys)
-            ->each(fn (array $page): OutboundLink => OutboundLink::query()->create($page));
+            ->whereNot(function ($query) use ($currentPages): void {
+                $currentPages->each(function (array $page) use ($query): void {
+                    $query->orWhere(function ($query) use ($page): void {
+                        $query
+                            ->where('found_on', $page['found_on'])
+                            ->where('outgoing_url', $page['outgoing_url']);
+                    });
+                });
+            })
+            ->delete();
     }
 
     /**
