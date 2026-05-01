@@ -6,6 +6,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\Website;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
@@ -14,17 +15,23 @@ class CheckSyncService
     public function syncChecks(Project $project, array $payload): array
     {
         return DB::transaction(function () use ($project, $payload) {
+            $syncedAt = now();
+
             $summary = [
-                'uptime_checks' => $this->syncUptimeChecks($project, $payload['uptime_checks'] ?? []),
-                'ssl_checks' => $this->syncSslChecks($project, $payload['ssl_checks'] ?? []),
-                'api_checks' => $this->syncApiChecks($project, $payload['api_checks'] ?? []),
+                'uptime_checks' => $this->syncUptimeChecks($project, $payload['uptime_checks'] ?? [], $syncedAt),
+                'ssl_checks' => $this->syncSslChecks($project, $payload['ssl_checks'] ?? [], $syncedAt),
+                'api_checks' => $this->syncApiChecks($project, $payload['api_checks'] ?? [], $syncedAt),
             ];
+
+            $project->forceFill([
+                'last_synced_at' => $syncedAt,
+            ])->save();
 
             return $summary;
         });
     }
 
-    protected function syncUptimeChecks(Project $project, array $checks): array
+    protected function syncUptimeChecks(Project $project, array $checks, Carbon $syncedAt): array
     {
         $created = 0;
         $updated = 0;
@@ -51,6 +58,7 @@ class CheckSyncService
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
                 'created_by' => $project->created_by,
+                'last_synced_at' => $syncedAt,
             ];
 
             if ($website) {
@@ -66,12 +74,12 @@ class CheckSyncService
             }
         }
 
-        $deleted = $this->pruneOrphanedWebsites($project, $checkNames, uptime: true);
+        $deleted = $this->pruneOrphanedWebsites($project, $checkNames, $syncedAt, uptime: true);
 
         return compact('created', 'updated', 'deleted');
     }
 
-    protected function syncSslChecks(Project $project, array $checks): array
+    protected function syncSslChecks(Project $project, array $checks, Carbon $syncedAt): array
     {
         $created = 0;
         $updated = 0;
@@ -100,6 +108,7 @@ class CheckSyncService
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
                 'created_by' => $project->created_by,
+                'last_synced_at' => $syncedAt,
             ];
 
             if ($website) {
@@ -115,12 +124,12 @@ class CheckSyncService
             }
         }
 
-        $deleted = $this->pruneOrphanedWebsites($project, $checkNames, ssl: true);
+        $deleted = $this->pruneOrphanedWebsites($project, $checkNames, $syncedAt, ssl: true);
 
         return compact('created', 'updated', 'deleted');
     }
 
-    protected function syncApiChecks(Project $project, array $checks): array
+    protected function syncApiChecks(Project $project, array $checks, Carbon $syncedAt): array
     {
         $created = 0;
         $updated = 0;
@@ -164,6 +173,7 @@ class CheckSyncService
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
                 'created_by' => $project->created_by,
+                'last_synced_at' => $syncedAt,
             ];
 
             if ($monitorApi) {
@@ -182,7 +192,7 @@ class CheckSyncService
             $this->syncAssertions($monitorApi, $check['assertions'] ?? []);
         }
 
-        $deleted = $this->pruneOrphanedApis($project, $checkNames);
+        $deleted = $this->pruneOrphanedApis($project, $checkNames, $syncedAt);
 
         return compact('created', 'updated', 'deleted');
     }
@@ -206,7 +216,7 @@ class CheckSyncService
         }
     }
 
-    protected function pruneOrphanedWebsites(Project $project, array $keepNames, bool $uptime = false, bool $ssl = false): int
+    protected function pruneOrphanedWebsites(Project $project, array $keepNames, Carbon $syncedAt, bool $uptime = false, bool $ssl = false): int
     {
         if ($uptime && $ssl) {
             throw new InvalidArgumentException('Package website pruning must target one check type at a time.');
@@ -230,11 +240,16 @@ class CheckSyncService
         if ($uptime) {
             (clone $query)
                 ->where('ssl_check', true)
-                ->update(['uptime_check' => false]);
+                ->update([
+                    'uptime_check' => false,
+                    'last_synced_at' => $syncedAt,
+                ]);
 
-            $deleted = (clone $query)
-                ->where('ssl_check', false)
-                ->delete();
+            $deleteQuery = (clone $query)->where('ssl_check', false);
+            $deleted = (clone $deleteQuery)->count();
+
+            (clone $deleteQuery)->update(['last_synced_at' => $syncedAt]);
+            $deleteQuery->delete();
 
             return $deleted;
         }
@@ -242,19 +257,29 @@ class CheckSyncService
         if ($ssl) {
             (clone $query)
                 ->where('uptime_check', true)
-                ->update(['ssl_check' => false]);
+                ->update([
+                    'ssl_check' => false,
+                    'last_synced_at' => $syncedAt,
+                ]);
 
-            $deleted = (clone $query)
-                ->where('uptime_check', false)
-                ->delete();
+            $deleteQuery = (clone $query)->where('uptime_check', false);
+            $deleted = (clone $deleteQuery)->count();
+
+            (clone $deleteQuery)->update(['last_synced_at' => $syncedAt]);
+            $deleteQuery->delete();
 
             return $deleted;
         }
 
-        return $query->delete();
+        $deleted = (clone $query)->count();
+
+        (clone $query)->update(['last_synced_at' => $syncedAt]);
+        $query->delete();
+
+        return $deleted;
     }
 
-    protected function pruneOrphanedApis(Project $project, array $keepNames): int
+    protected function pruneOrphanedApis(Project $project, array $keepNames, Carbon $syncedAt): int
     {
         $query = MonitorApis::where('project_id', $project->id)
             ->where('source', 'package');
@@ -263,6 +288,11 @@ class CheckSyncService
             $query->whereNotIn('package_name', $keepNames);
         }
 
-        return $query->delete();
+        $deleted = (clone $query)->count();
+
+        (clone $query)->update(['last_synced_at' => $syncedAt]);
+        $query->delete();
+
+        return $deleted;
     }
 }

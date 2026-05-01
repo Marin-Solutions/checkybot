@@ -265,7 +265,7 @@ class CheckybotImportService
                 'uptime_check' => $website->uptime_check,
                 'ssl_check' => $website->ssl_check,
             ],
-            'last_synced_at' => null,
+            'last_synced_at' => $website->last_synced_at?->toISOString(),
             'created_at' => $website->created_at?->toISOString(),
             'updated_at' => $website->updated_at?->toISOString(),
         ];
