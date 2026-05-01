@@ -145,6 +145,17 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
         OutboundLink::query()
             ->where('website_id', $this->website->id)
+            ->where(function ($query): void {
+                $query
+                    ->whereNull('found_on')
+                    ->orWhereNull('outgoing_url');
+            })
+            ->delete();
+
+        OutboundLink::query()
+            ->where('website_id', $this->website->id)
+            ->whereNotNull('found_on')
+            ->whereNotNull('outgoing_url')
             ->whereNot(function ($query) use ($currentPages): void {
                 $currentPages->each(function (array $page) use ($query): void {
                     $query->orWhere(function ($query) use ($page): void {
