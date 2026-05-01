@@ -226,6 +226,75 @@ test('declared package components await first heartbeat until data arrives', fun
     ]);
 });
 
+test('sync does not archive active components reported only by heartbeat payload', function () {
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'cache',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'old-cron',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'cache',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Queue workers are running',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.archived', 1)
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'queue',
+        'is_archived' => false,
+    ]);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'cache',
+        'is_archived' => false,
+    ]);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'old-cron',
+        'is_archived' => true,
+    ]);
+});
+
 test('component sync persists heartbeat state when webhook notification fails', function () {
     Log::spy();
 

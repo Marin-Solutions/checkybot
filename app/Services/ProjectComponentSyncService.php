@@ -29,7 +29,7 @@ class ProjectComponentSyncService
             $createdNames = [];
             $updatedNames = [];
             $recordedHeartbeats = 0;
-            $activeNames = [];
+            $activeNames = $componentNames;
             $componentsByName = collect();
 
             if ($componentNames !== []) {
@@ -41,8 +41,6 @@ class ProjectComponentSyncService
             }
 
             foreach ($declaredComponents as $declaration) {
-                $activeNames[] = $declaration['name'];
-
                 $component = $componentsByName->get($declaration['name']);
 
                 $attributes = [
