@@ -59,6 +59,10 @@ class EditWebsite extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        if (($data['outbound_check'] ?? null) === false && $this->getRecord()->project_paused_outbound_check) {
+            $data['project_paused_outbound_check'] = false;
+        }
+
         if (! $this->isUrlChanged()) {
             return $data;
         }

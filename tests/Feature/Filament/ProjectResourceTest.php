@@ -10,6 +10,7 @@ use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\ProjectResource;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
+use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
@@ -1307,6 +1308,46 @@ test('bulk resume restores only website checks paused by the project action', fu
         ->and($outboundOnly->project_paused_uptime_check)->toBeFalse()
         ->and($outboundOnly->project_paused_ssl_check)->toBeFalse()
         ->and($outboundOnly->project_paused_outbound_check)->toBeFalse();
+});
+
+test('bulk resume respects outbound checks manually disabled while project is paused', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'outbound_check' => true,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]));
+
+    expect($website->refresh()->outbound_check)->toBeFalse()
+        ->and($website->project_paused_outbound_check)->toBeTrue();
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm(['outbound_check' => false])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($website->refresh()->outbound_check)->toBeFalse()
+        ->and($website->project_paused_outbound_check)->toBeFalse();
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($website->refresh()->uptime_check)->toBeTrue()
+        ->and($website->ssl_check)->toBeTrue()
+        ->and($website->outbound_check)->toBeFalse()
+        ->and($website->project_paused_uptime_check)->toBeFalse()
+        ->and($website->project_paused_ssl_check)->toBeFalse()
+        ->and($website->project_paused_outbound_check)->toBeFalse();
 });
 
 test('bulk resume restores fully paused websites from before project pause flags existed', function () {
