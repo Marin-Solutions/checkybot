@@ -18,6 +18,8 @@ use Spatie\Crawler\CrawlObservers\CrawlObserver;
 
 class WebsiteOutboundLinkCrawler extends CrawlObserver
 {
+    private const OUTBOUND_LINK_WRITE_CHUNK_SIZE = 90;
+
     protected Website $website;
 
     protected array $crawledPages = [];
@@ -105,7 +107,11 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ->map(fn (array $page): array => array_merge($page, [
                 'last_checked_at' => $checkedAt,
             ]))
-            ->keyBy(fn (array $page): string => $this->linkKey($page['found_on'], $page['outgoing_url']));
+            ->keyBy(fn (array $page): string => implode("\0", [
+                $page['website_id'],
+                $page['found_on'],
+                $page['outgoing_url'],
+            ]));
 
         $canPruneStaleLinks = $this->hasSuccessfulCrawl && ! $this->hasInternalCrawlFailure;
 
@@ -113,33 +119,70 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             return;
         }
 
-        $matchedKeys = [];
+        if ($currentPages->isNotEmpty()) {
+            $currentPages
+                ->values()
+                ->chunk(self::OUTBOUND_LINK_WRITE_CHUNK_SIZE)
+                ->each(function ($pages): void {
+                    OutboundLink::query()->upsert(
+                        $pages->all(),
+                        ['website_id', 'found_on', 'outgoing_url'],
+                        [
+                            'found_on',
+                            'outgoing_url',
+                            'http_status_code',
+                            'transport_error_type',
+                            'transport_error_message',
+                            'transport_error_code',
+                            'last_checked_at',
+                        ],
+                    );
+                });
+        }
+
+        if (! $canPruneStaleLinks) {
+            return;
+        }
+
+        if ($currentPages->isEmpty()) {
+            OutboundLink::query()
+                ->where('website_id', $this->website->id)
+                ->delete();
+
+            return;
+        }
 
         OutboundLink::query()
             ->where('website_id', $this->website->id)
-            ->get()
-            ->groupBy(fn (OutboundLink $link): string => $this->linkKey($link->found_on, $link->outgoing_url))
-            ->each(function ($links, string $key) use ($canPruneStaleLinks, $currentPages, &$matchedKeys): void {
-                if (! $currentPages->has($key)) {
-                    if ($canPruneStaleLinks) {
-                        $links->each->delete();
-                    }
+            ->where(function ($query): void {
+                $query
+                    ->whereNull('found_on')
+                    ->orWhereNull('outgoing_url');
+            })
+            ->delete();
 
+        OutboundLink::query()
+            ->where('website_id', $this->website->id)
+            ->whereNotNull('found_on')
+            ->whereNotNull('outgoing_url')
+            ->select(['id', 'website_id', 'found_on', 'outgoing_url'])
+            ->chunkById(self::OUTBOUND_LINK_WRITE_CHUNK_SIZE, function ($links) use ($currentPages): void {
+                $staleLinkIds = $links
+                    ->reject(fn (OutboundLink $link): bool => $currentPages->has(implode("\0", [
+                        $link->website_id,
+                        $link->found_on,
+                        $link->outgoing_url,
+                    ])))
+                    ->modelKeys();
+
+                if ($staleLinkIds === []) {
                     return;
                 }
 
-                $link = $links->first();
-
-                $link->fill($currentPages->get($key));
-                $link->save();
-
-                $links->slice(1)->each->delete();
-                $matchedKeys[] = $key;
+                OutboundLink::query()
+                    ->whereKey($staleLinkIds)
+                    ->delete();
             });
-
-        $currentPages
-            ->except($matchedKeys)
-            ->each(fn (array $page): OutboundLink => OutboundLink::query()->create($page));
     }
 
     /**
@@ -175,11 +218,6 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
                 : null,
             'transport_error_code' => $transportError['code'] ?? null,
         ];
-    }
-
-    protected function linkKey(?string $foundOn, ?string $outgoingUrl): string
-    {
-        return hash('sha256', json_encode([$this->website->id, $foundOn, $outgoingUrl]));
     }
 
     protected function isWebsiteUrl(UriInterface $url): bool

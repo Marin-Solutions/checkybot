@@ -9,6 +9,8 @@ use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use GuzzleHttp\Psr7\Uri;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 
 beforeEach(function () {
@@ -208,6 +210,216 @@ test('finished crawling stores one row for duplicate observations in the same sc
         'found_on' => 'https://example.com/source',
         'outgoing_url' => 'https://external.com/page',
         'http_status_code' => 200,
+    ]);
+});
+
+test('repeated successful scans replace the outbound link set instead of accumulating history', function () {
+    $this->crawler->crawled(
+        new Uri('https://external.com/current'),
+        new Response(404),
+        new Uri('https://example.com/source'),
+        'Current Link',
+    );
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/stale'),
+        new Response(500),
+        new Uri('https://example.com/source'),
+        'Stale Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    $nextScan = new WebsiteOutboundLinkCrawler($this->website);
+
+    $nextScan->crawled(
+        new Uri('https://external.com/current'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Current Link',
+    );
+
+    $nextScan->crawled(
+        new Uri('https://external.com/new'),
+        new Response(201),
+        new Uri('https://example.com/source'),
+        'New Link',
+    );
+
+    $nextScan->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(2);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/current',
+        'http_status_code' => 200,
+    ]);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/new',
+        'http_status_code' => 201,
+    ]);
+
+    assertDatabaseMissing('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/stale',
+    ]);
+});
+
+test('upsert refreshes outbound link scan key casing on conflict', function () {
+    $upsertQueries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$upsertQueries): void {
+        if (str_contains($query->sql, 'outbound_link') && str_contains($query->sql, 'insert')) {
+            $upsertQueries[] = $query->sql;
+        }
+    });
+
+    $this->crawler->crawled(
+        new Uri('https://External.com/Current'),
+        new Response(200),
+        new Uri('https://Example.com/Source'),
+        'Current Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    expect(implode("\n", $upsertQueries))
+        ->toContain('"found_on" = "excluded"."found_on"')
+        ->toContain('"outgoing_url" = "excluded"."outgoing_url"');
+});
+
+test('repeated successful scans keep observed link when url casing changes', function () {
+    $this->crawler->crawled(
+        new Uri('https://External.com/Current'),
+        new Response(404),
+        new Uri('https://Example.com/Source'),
+        'Current Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    $nextScan = new WebsiteOutboundLinkCrawler($this->website);
+
+    $nextScan->crawled(
+        new Uri('https://external.com/current'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Current Link',
+    );
+
+    $nextScan->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(1);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/current',
+        'http_status_code' => 200,
+    ]);
+});
+
+test('finished crawling chunks outbound link upserts', function () {
+    $upsertQueries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$upsertQueries): void {
+        if (str_contains($query->sql, 'outbound_link') && str_contains($query->sql, 'insert')) {
+            $upsertQueries[] = $query->sql;
+        }
+    });
+
+    foreach (range(1, 520) as $index) {
+        $this->crawler->crawled(
+            new Uri("https://external{$index}.example/page"),
+            new Response(200),
+            new Uri('https://example.com/source'),
+            'Current Link',
+        );
+    }
+
+    $this->crawler->finishedCrawling();
+
+    expect($upsertQueries)->toHaveCount(6)
+        ->and(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(520);
+});
+
+test('finished crawling prunes legacy outbound rows with nullable scan keys', function () {
+    OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => null,
+        'outgoing_url' => 'https://legacy.example/page',
+    ]);
+
+    OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => null,
+    ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/current'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Current Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(1);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/current',
+    ]);
+
+    assertDatabaseMissing('outbound_link', [
+        'website_id' => $this->website->id,
+        'outgoing_url' => 'https://legacy.example/page',
+    ]);
+
+    assertDatabaseMissing('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => null,
+    ]);
+});
+
+test('finished crawling prunes stale outbound links without unbounded delete predicates', function () {
+    OutboundLink::factory()->create([
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://stale.example/page',
+    ]);
+
+    foreach (range(1, 520) as $index) {
+        $this->crawler->crawled(
+            new Uri("https://external{$index}.example/page"),
+            new Response(200),
+            new Uri('https://example.com/source'),
+            'Current Link',
+        );
+    }
+
+    $this->crawler->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(520);
+
+    assertDatabaseMissing('outbound_link', [
+        'website_id' => $this->website->id,
+        'outgoing_url' => 'https://stale.example/page',
+    ]);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external520.example/page',
     ]);
 });
 
