@@ -132,6 +132,9 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                 $sslExpiryDate,
             );
             $previousStatus = $this->website->current_status;
+            $previousSslExpiryDate = $this->isOnDemand() || ! $this->website->ssl_check
+                ? null
+                : $this->currentOrLatestKnownSslExpiryDate();
 
             WebsiteLogHistory::create([
                 'website_id' => $this->website->id,
@@ -154,7 +157,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                     'last_heartbeat_at' => now(),
                     'stale_at' => null,
                     'status_summary' => $summary,
-                    ...$this->scheduledSslExpiryAttributes($sslExpiryDate),
+                    ...$this->scheduledSslExpiryAttributes($sslExpiryDate, $previousSslExpiryDate),
                 ])->save();
 
                 if (
@@ -207,18 +210,16 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
      *
      * @return array<string, mixed>
      */
-    private function scheduledSslExpiryAttributes(?CarbonInterface $sslExpiryDate): array
-    {
+    private function scheduledSslExpiryAttributes(
+        ?CarbonInterface $sslExpiryDate,
+        ?CarbonInterface $previousSslExpiryDate,
+    ): array {
         if (! $this->website->ssl_check) {
             return [];
         }
 
-        $currentExpiryDate = $this->website->ssl_expiry_date
-            ? Carbon::parse($this->website->ssl_expiry_date)
-            : null;
-
         $shouldResetReminder = $sslExpiryDate !== null
-            && $this->expiryDateChanged($currentExpiryDate, $sslExpiryDate);
+            && $this->expiryDateChanged($previousSslExpiryDate, $sslExpiryDate);
 
         return [
             'ssl_expiry_date' => $sslExpiryDate,
@@ -231,5 +232,24 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
     private function expiryDateChanged(?CarbonInterface $currentExpiryDate, CarbonInterface $newExpiryDate): bool
     {
         return $currentExpiryDate === null || ! $currentExpiryDate->isSameDay($newExpiryDate);
+    }
+
+    private function currentOrLatestKnownSslExpiryDate(): ?CarbonInterface
+    {
+        if ($this->website->ssl_expiry_date) {
+            return Carbon::parse($this->website->ssl_expiry_date);
+        }
+
+        $latestKnownExpiryDate = $this->website->logHistory()
+            ->whereNotNull('ssl_expiry_date')
+            ->where(function ($query): void {
+                $query->where('is_on_demand', false)
+                    ->orWhereNull('is_on_demand');
+            })
+            ->latest('created_at')
+            ->latest('id')
+            ->value('ssl_expiry_date');
+
+        return $latestKnownExpiryDate ? Carbon::parse($latestKnownExpiryDate) : null;
     }
 }
