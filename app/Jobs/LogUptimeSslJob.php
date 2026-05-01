@@ -189,6 +189,10 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
             return $statusService->summaryForSsl($sslExpiryDate);
         }
 
+        if ($sslStatus !== null && $sslExpiryDate !== null && $status === $sslStatus && $status !== 'healthy') {
+            return $httpSummary.' '.$statusService->summaryForSsl($sslExpiryDate);
+        }
+
         return $httpSummary;
     }
 }

@@ -2,6 +2,7 @@
 
 use App\Services\PackageHealthStatusService;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 test('api status treats matching expected 404 as healthy', function () {
     $service = app(PackageHealthStatusService::class);
@@ -70,6 +71,20 @@ test('combined website status uses the worst http or ssl state', function () {
         ->and($service->websiteStatusFromHttpAndSsl(200, Carbon::parse('2026-04-30')))->toBe('warning')
         ->and($service->websiteStatusFromHttpAndSsl(500, Carbon::parse('2026-04-30')))->toBe('danger')
         ->and($service->websiteStatusFromHttpAndSsl(404, Carbon::parse('2026-06-01')))->toBe('warning');
+});
+
+test('worst status logs unknown status values', function () {
+    Log::spy();
+
+    $service = app(PackageHealthStatusService::class);
+
+    expect($service->worstStatus('healthy', 'degraded'))->toBe('warning');
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->with('Unknown package health status encountered.', [
+            'status' => 'degraded',
+        ]);
 });
 
 afterEach(function () {

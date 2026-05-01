@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Support\UptimeTransportError;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Log;
 
 class PackageHealthStatusService
 {
@@ -68,7 +69,15 @@ class PackageHealthStatusService
         $worstSeverity = self::STATUS_SEVERITY[$worstStatus];
 
         foreach ($statuses as $status) {
-            $severity = self::STATUS_SEVERITY[$status] ?? self::STATUS_SEVERITY['warning'];
+            if (! array_key_exists($status, self::STATUS_SEVERITY)) {
+                Log::warning('Unknown package health status encountered.', [
+                    'status' => $status,
+                ]);
+
+                $status = 'warning';
+            }
+
+            $severity = self::STATUS_SEVERITY[$status];
 
             if ($severity > $worstSeverity) {
                 $worstStatus = $status;
