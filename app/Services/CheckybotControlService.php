@@ -233,7 +233,7 @@ class CheckybotControlService
     public function latestFailures(User $user, ?Project $project = null, int $limit = 25): array
     {
         $query = $this->resultQuery($user)
-            ->where('is_on_demand', false)
+            ->scheduled()
             ->where(function (Builder $resultQuery): void {
                 $resultQuery->where('is_success', false)
                     ->orWhereIn('status', ['warning', 'danger']);

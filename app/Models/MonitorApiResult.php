@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\RunSource;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -60,6 +61,11 @@ class MonitorApiResult extends Model
     public function monitorApi(): BelongsTo
     {
         return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
+    }
+
+    public function scopeScheduled(Builder $query): Builder
+    {
+        return $query->where('is_on_demand', false);
     }
 
     public static function recordResult(

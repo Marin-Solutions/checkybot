@@ -117,7 +117,7 @@ class MonitorApis extends Model
     {
         return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->ofMany(
             ['created_at' => 'max', 'id' => 'max'],
-            fn ($query) => $query->where('is_on_demand', false),
+            fn ($query) => $query->scheduled(),
         );
     }
 

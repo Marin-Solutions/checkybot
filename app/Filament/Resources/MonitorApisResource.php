@@ -48,7 +48,7 @@ class MonitorApisResource extends Resource
         return parent::getEloquentQuery()
             ->where('created_by', auth()->id())
             ->withAvg([
-                'results as avg_response_time' => fn (Builder $query): Builder => $query->where('is_on_demand', false),
+                'results as avg_response_time' => fn (Builder $query): Builder => $query->scheduled(),
             ], 'response_time_ms')
             ->with(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult'])
             ->withoutGlobalScopes([
