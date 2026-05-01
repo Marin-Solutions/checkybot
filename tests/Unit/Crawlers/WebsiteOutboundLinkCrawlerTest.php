@@ -294,6 +294,37 @@ test('upsert refreshes outbound link scan key casing on conflict', function () {
         ->toContain('"outgoing_url" = "excluded"."outgoing_url"');
 });
 
+test('repeated successful scans keep observed link when url casing changes', function () {
+    $this->crawler->crawled(
+        new Uri('https://External.com/Current'),
+        new Response(404),
+        new Uri('https://Example.com/Source'),
+        'Current Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    $nextScan = new WebsiteOutboundLinkCrawler($this->website);
+
+    $nextScan->crawled(
+        new Uri('https://external.com/current'),
+        new Response(200),
+        new Uri('https://example.com/source'),
+        'Current Link',
+    );
+
+    $nextScan->finishedCrawling();
+
+    expect(OutboundLink::query()->where('website_id', $this->website->id)->count())->toBe(1);
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $this->website->id,
+        'found_on' => 'https://example.com/source',
+        'outgoing_url' => 'https://external.com/current',
+        'http_status_code' => 200,
+    ]);
+});
+
 test('finished crawling chunks outbound link upserts', function () {
     $upsertQueries = [];
 
