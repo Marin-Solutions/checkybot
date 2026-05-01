@@ -105,11 +105,11 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
             ->map(fn (array $page): array => array_merge($page, [
                 'last_checked_at' => $checkedAt,
             ]))
-            ->keyBy(fn (array $page): string => hash('sha256', json_encode([
+            ->keyBy(fn (array $page): string => implode("\0", [
                 $page['website_id'],
                 $page['found_on'],
                 $page['outgoing_url'],
-            ])));
+            ]));
 
         $canPruneStaleLinks = $this->hasSuccessfulCrawl && ! $this->hasInternalCrawlFailure;
 
