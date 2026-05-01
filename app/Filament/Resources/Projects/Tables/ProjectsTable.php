@@ -242,9 +242,10 @@ class ProjectsTable
     }
 
     /**
-     * Resume only the website check types that the project pause action disabled.
+     * Pause website checks while preserving which check types should resume.
      *
      * @param  array<int, int>  $projectIds
+     * @return int Number of website rows changed.
      */
     protected static function cascadeWebsiteChecks(array $projectIds, bool $enable): int
     {
