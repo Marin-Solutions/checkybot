@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\RunSource;
+use App\Filament\Resources\MonitorApisResource;
 use App\Filament\Resources\MonitorApisResource\Pages\CreateMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ListMonitorApis;
@@ -259,6 +260,33 @@ test('api monitor list shows enabled state', function () {
     Livewire::test(ListMonitorApis::class)
         ->assertCanSeeTableRecords([$enabledMonitor, $disabledMonitor])
         ->assertTableColumnExists('is_enabled');
+});
+
+test('api monitor list average response time excludes on demand diagnostic runs', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_time_ms' => 100,
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_time_ms' => 300,
+    ]);
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $monitor->id,
+        'response_time_ms' => 3000,
+    ]);
+
+    $listedMonitor = MonitorApisResource::getEloquentQuery()->findOrFail($monitor->id);
+
+    expect((float) $listedMonitor->avg_response_time)->toBe(200.0);
 });
 
 test('api monitor list shows effective polling interval', function () {
