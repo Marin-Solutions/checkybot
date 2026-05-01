@@ -131,6 +131,25 @@ describe('ProjectHealthOverviewWidget', function () {
             ->and($counts['stale'])->toBe(0);
     });
 
+    it('counts explicit component warning or danger as failing before awaiting heartbeat state', function () {
+        ProjectComponent::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'current_status' => 'danger',
+            'last_heartbeat_at' => null,
+            'is_stale' => false,
+        ]);
+
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
+
+        expect($counts['tracked'])->toBe(1)
+            ->and($counts['failing'])->toBe(1)
+            ->and($counts['failing_components'])->toBe(1)
+            ->and($counts['no_data'])->toBe(0);
+    });
+
     it('treats package websites with detected stale_at as stale even when current_status is healthy', function () {
         Website::factory()->create([
             'project_id' => $this->project->id,
