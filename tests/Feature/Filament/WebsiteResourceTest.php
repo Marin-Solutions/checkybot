@@ -574,6 +574,43 @@ test('super admin can bulk enable uptime checks on websites', function () {
     }
 });
 
+test('super admin can bulk change the uptime interval of websites', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_interval' => 5,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('changeUptimeInterval', $websites, data: [
+            'uptime_interval' => 15,
+        ]);
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_interval)->toBe(15);
+    }
+});
+
+test('bulk change uptime interval on websites already at the target interval notifies that nothing changed', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_interval' => 15,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('changeUptimeInterval', $websites, data: [
+            'uptime_interval' => 15,
+        ])
+        ->assertNotified('Nothing to update');
+
+    foreach ($websites as $website) {
+        expect($website->refresh()->uptime_interval)->toBe(15);
+    }
+});
+
 test('bulk disable on already disabled websites notifies that nothing changed', function () {
     $user = $this->actingAsSuperAdmin();
 
@@ -672,12 +709,13 @@ test('user without Update:Website permission cannot toggle website columns inlin
     $website = Website::factory()->create([
         'created_by' => $user->id,
         'uptime_check' => true,
+        'uptime_interval' => 15,
         'ssl_check' => true,
         'outbound_check' => true,
     ]);
 
-    // Each toggle column should report itself as disabled for this user, and
-    // any attempted Livewire toggle should be a no-op. We deliberately do not
+    // Each editable column should report itself as disabled for this user, and
+    // any attempted Livewire update should be a no-op. We deliberately do not
     // call assertForbidden() here: Filament's updateTableColumnState
     // short-circuits to null when the column is disabled, before
     // beforeStateUpdated ever runs, so the Livewire response is 200, not 403.
@@ -692,8 +730,16 @@ test('user without Update:Website permission cannot toggle website columns inlin
         );
     }
 
+    $page->assertTableColumnExists(
+        'uptime_interval',
+        fn (\Filament\Tables\Columns\SelectColumn $col): bool => $col->isDisabled(),
+        $website,
+    );
+
     Livewire::test(ListWebsites::class)
         ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false);
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'uptime_interval', $website->getKey(), 60);
     Livewire::test(ListWebsites::class)
         ->call('updateTableColumnState', 'ssl_check', $website->getKey(), false);
     Livewire::test(ListWebsites::class)
@@ -701,6 +747,7 @@ test('user without Update:Website permission cannot toggle website columns inlin
 
     $website->refresh();
     expect($website->uptime_check)->toBeTrue()
+        ->and($website->uptime_interval)->toBe(15)
         ->and($website->ssl_check)->toBeTrue()
         ->and($website->outbound_check)->toBeTrue();
 });
@@ -718,7 +765,8 @@ test('user without Update:Website permission cannot see website bulk actions', f
 
     Livewire::test(ListWebsites::class)
         ->assertTableBulkActionHidden('enableUptimeCheck')
-        ->assertTableBulkActionHidden('disableUptimeCheck');
+        ->assertTableBulkActionHidden('disableUptimeCheck')
+        ->assertTableBulkActionHidden('changeUptimeInterval');
 });
 
 test('soft-deleted websites are not counted in bulk uptime disable notification', function () {
@@ -773,6 +821,35 @@ test('soft-deleted websites are not counted in bulk uptime enable notification',
     }
 
     expect(Website::withTrashed()->find($trashed->id)->uptime_check)->toBeFalse();
+});
+
+test('soft-deleted websites are not counted in bulk uptime interval notification', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $active = Website::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'uptime_interval' => 5,
+    ]);
+
+    $trashed = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_interval' => 5,
+    ]);
+    $trashed->delete();
+
+    $selection = $active->toBase()->concat([$trashed]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('changeUptimeInterval', $selection, data: [
+            'uptime_interval' => 15,
+        ])
+        ->assertNotified('2 websites updated');
+
+    foreach ($active as $website) {
+        expect($website->refresh()->uptime_interval)->toBe(15);
+    }
+
+    expect(Website::withTrashed()->find($trashed->id)->uptime_interval)->toBe(5);
 });
 
 test('super admin can render view page with infolist sections', function () {
