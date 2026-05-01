@@ -18,7 +18,6 @@ class ProjectComponentStaleService
         $components = ProjectComponent::query()
             ->where('is_archived', false)
             ->where('is_stale', false)
-            ->whereNotNull('last_heartbeat_at')
             ->with('project')
             ->get();
 
@@ -58,11 +57,17 @@ class ProjectComponentStaleService
 
     public function staleThresholdAt(ProjectComponent $component): ?Carbon
     {
-        if ($component->last_heartbeat_at === null || $component->interval_minutes === null) {
+        if ($component->interval_minutes === null) {
             return null;
         }
 
-        return $component->last_heartbeat_at
+        $anchorAt = $component->last_heartbeat_at ?? $component->created_at;
+
+        if ($anchorAt === null) {
+            return null;
+        }
+
+        return $anchorAt
             ->copy()
             ->addMinutes($component->interval_minutes + $this->staleGraceMinutes());
     }

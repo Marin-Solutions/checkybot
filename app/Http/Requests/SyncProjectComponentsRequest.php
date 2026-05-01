@@ -27,7 +27,7 @@ class SyncProjectComponentsRequest extends FormRequest
             'declared_components.*.name' => ['required', 'string', 'max:255'],
             'declared_components.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
 
-            'components' => ['required', 'array', 'max:100'],
+            'components' => ['present', 'array', 'max:100'],
             'components.*.name' => ['required', 'string', 'max:255'],
             'components.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
             'components.*.status' => ['required', 'in:healthy,warning,danger'],

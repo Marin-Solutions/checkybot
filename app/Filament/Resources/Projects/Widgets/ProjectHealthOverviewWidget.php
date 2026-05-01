@@ -116,7 +116,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
         $components = ProjectComponent::query()
             ->where('project_id', $project->getKey())
             ->where('is_archived', false)
-            ->get(['current_status', 'is_stale']);
+            ->get(['current_status', 'is_stale', 'last_heartbeat_at']);
 
         $websites = Website::query()
             ->where('project_id', $project->getKey())
@@ -159,6 +159,8 @@ class ProjectHealthOverviewWidget extends BaseWidget
             (bool) $component->is_stale => 'stale',
             $component->current_status === 'healthy' => 'healthy',
             in_array($component->current_status, ['warning', 'danger'], true) => 'failing',
+            $component->last_heartbeat_at === null => 'no_data',
+            $component->current_status === 'unknown' => 'no_data',
             default => 'no_data',
         };
     }

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Support;
 
+use App\Support\HealthStatusLabel;
 use Closure;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
@@ -52,19 +53,14 @@ class HealthStatusFilter
 
     /**
      * Build a SelectFilter for a non-nullable `current_status` column
-     * (project_components). The Unknown option is omitted because the column
-     * is constrained NOT NULL and no code path writes the 'unknown' literal,
-     * so offering it would surface a filter that can never return records.
+     * (project_components). "Unknown" is used for components awaiting their
+     * first heartbeat.
      */
     public static function makeForNonNullableColumn(string $column = 'current_status'): SelectFilter
     {
         return SelectFilter::make($column)
             ->label('Current Status')
-            ->options([
-                'healthy' => 'Healthy',
-                'warning' => 'Warning',
-                'danger' => 'Danger',
-            ])
+            ->options(HealthStatusLabel::options())
             ->query(function (Builder $query, array $data) use ($column): Builder {
                 $value = $data['value'] ?? null;
 

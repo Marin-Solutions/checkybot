@@ -19,6 +19,7 @@ class CreateProjectComponent extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $this->validateProjectOwnership($data['project_id'] ?? null);
+        $this->validateInitialStatus($data['current_status'] ?? null);
 
         $interval = IntervalParser::normalizeOrFail($data['declared_interval'] ?? null, 'declared_interval');
 
@@ -26,7 +27,8 @@ class CreateProjectComponent extends CreateRecord
         $data['source'] = 'manual';
         $data['declared_interval'] = $interval;
         $data['interval_minutes'] = IntervalParser::toMinutes($interval);
-        $data['last_reported_status'] = $data['current_status'];
+        $data['last_reported_status'] = 'unknown';
+        $data['summary'] = 'Awaiting first heartbeat';
         $data['metrics'] = [];
         $data['is_stale'] = false;
         $data['stale_detected_at'] = null;
@@ -47,5 +49,16 @@ class CreateProjectComponent extends CreateRecord
                 'project_id' => ['Choose one of your applications.'],
             ]);
         }
+    }
+
+    private function validateInitialStatus(mixed $status): void
+    {
+        if ($status === 'unknown') {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'current_status' => ['New components must await their first heartbeat before they can be marked healthy, warning, or danger.'],
+        ]);
     }
 }

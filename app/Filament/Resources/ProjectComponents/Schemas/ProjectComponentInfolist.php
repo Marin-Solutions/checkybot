@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ProjectComponents\Schemas;
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
 use App\Services\ProjectComponentStaleService;
+use App\Support\HealthStatusLabel;
 use App\Support\MetricsPayloadFormatter;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -27,6 +28,7 @@ class ProjectComponentInfolist
                             ->label('Application'),
                         TextEntry::make('current_status')
                             ->badge()
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                             ->color(fn (?string $state): string => match ($state) {
                                 'healthy' => 'success',
                                 'warning' => 'warning',
@@ -61,11 +63,13 @@ class ProjectComponentInfolist
                             ->state(fn (ProjectComponent $record): string => match (true) {
                                 $record->is_archived => 'Archived',
                                 $record->is_stale => 'Stale',
+                                $record->last_heartbeat_at === null => 'Awaiting first heartbeat',
                                 default => 'Receiving heartbeats',
                             })
                             ->badge()
                             ->color(fn (string $state): string => match ($state) {
                                 'Receiving heartbeats' => 'success',
+                                'Awaiting first heartbeat' => 'warning',
                                 'Stale' => 'danger',
                                 default => 'gray',
                             }),

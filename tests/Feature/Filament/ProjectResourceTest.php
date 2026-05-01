@@ -32,7 +32,6 @@ test('operator can create a manual application component', function () {
             'project_id' => $project->id,
             'name' => 'queue:payments',
             'declared_interval' => 'every_5_minutes',
-            'current_status' => 'healthy',
             'is_archived' => false,
         ])
         ->call('create')
@@ -47,11 +46,35 @@ test('operator can create a manual application component', function () {
         ->and($component->source)->toBe('manual')
         ->and($component->declared_interval)->toBe('5m')
         ->and($component->interval_minutes)->toBe(5)
-        ->and($component->current_status)->toBe('healthy')
-        ->and($component->last_reported_status)->toBe('healthy')
+        ->and($component->current_status)->toBe('unknown')
+        ->and($component->last_reported_status)->toBe('unknown')
+        ->and($component->summary)->toBe('Awaiting first heartbeat')
+        ->and($component->last_heartbeat_at)->toBeNull()
         ->and($component->metrics)->toBe([])
         ->and($component->is_archived)->toBeFalse()
         ->and($component->archived_at)->toBeNull();
+});
+
+test('operator cannot create a manual component with an explicit non-awaiting status', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(CreateProjectComponent::class)
+        ->fillForm([
+            'project_id' => $project->id,
+            'name' => 'queue:reports',
+            'declared_interval' => '5m',
+            'current_status' => 'danger',
+            'is_archived' => false,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['current_status']);
+
+    expect(ProjectComponent::query()->where('name', 'queue:reports')->exists())->toBeFalse();
 });
 
 test('operator can update manual component status interval and archive state', function () {
@@ -95,6 +118,36 @@ test('operator can update manual component status interval and archive state', f
         ->and($component->last_reported_status)->toBe('warning')
         ->and($component->is_archived)->toBeTrue()
         ->and($component->archived_at)->not->toBeNull();
+});
+
+test('operator cannot reset a reporting component to awaiting data', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'source' => 'manual',
+        'name' => 'worker:reports',
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->id])
+        ->fillForm([
+            'current_status' => 'unknown',
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['current_status']);
+
+    $component->refresh();
+
+    expect($component->current_status)->toBe('healthy')
+        ->and($component->last_reported_status)->toBe('healthy');
 });
 
 test('operator cannot save a manual component with an invalid interval', function () {
