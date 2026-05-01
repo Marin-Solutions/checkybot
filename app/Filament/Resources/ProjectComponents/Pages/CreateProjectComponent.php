@@ -27,8 +27,7 @@ class CreateProjectComponent extends CreateRecord
         $data['source'] = 'manual';
         $data['declared_interval'] = $interval;
         $data['interval_minutes'] = IntervalParser::toMinutes($interval);
-        $data['current_status'] ??= 'unknown';
-        $data['last_reported_status'] = $data['current_status'];
+        $data['last_reported_status'] = 'unknown';
         $data['summary'] = 'Awaiting first heartbeat';
         $data['metrics'] = [];
         $data['is_stale'] = false;
@@ -54,7 +53,7 @@ class CreateProjectComponent extends CreateRecord
 
     private function validateInitialStatus(mixed $status): void
     {
-        if ($status === null || $status === 'unknown') {
+        if ($status === 'unknown') {
             return;
         }
 
