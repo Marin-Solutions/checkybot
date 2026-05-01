@@ -27,8 +27,8 @@ class CreateProjectComponent extends CreateRecord
         $data['source'] = 'manual';
         $data['declared_interval'] = $interval;
         $data['interval_minutes'] = IntervalParser::toMinutes($interval);
-        $data['current_status'] = 'unknown';
-        $data['last_reported_status'] = 'unknown';
+        $data['current_status'] ??= 'unknown';
+        $data['last_reported_status'] = $data['current_status'];
         $data['summary'] = 'Awaiting first heartbeat';
         $data['metrics'] = [];
         $data['is_stale'] = false;
