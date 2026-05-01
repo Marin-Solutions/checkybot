@@ -55,6 +55,28 @@ test('operator can create a manual application component', function () {
         ->and($component->archived_at)->toBeNull();
 });
 
+test('operator cannot create a manual component with an explicit non-awaiting status', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(CreateProjectComponent::class)
+        ->fillForm([
+            'project_id' => $project->id,
+            'name' => 'queue:reports',
+            'declared_interval' => '5m',
+            'current_status' => 'danger',
+            'is_archived' => false,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['current_status']);
+
+    expect(ProjectComponent::query()->where('name', 'queue:reports')->exists())->toBeFalse();
+});
+
 test('operator can update manual component status interval and archive state', function () {
     $this->createResourcePermissions('ProjectComponent');
 
