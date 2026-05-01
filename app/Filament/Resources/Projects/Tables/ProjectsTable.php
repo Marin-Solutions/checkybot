@@ -262,7 +262,6 @@ class ProjectsTable
                             $query
                                 ->where('uptime_check', false)
                                 ->where('ssl_check', false)
-                                ->where('outbound_check', false)
                                 ->where('project_paused_uptime_check', false)
                                 ->where('project_paused_ssl_check', false)
                                 ->where('project_paused_outbound_check', false);
@@ -274,7 +273,6 @@ class ProjectsTable
                 ->whereIn('project_id', $projectIds)
                 ->where('uptime_check', false)
                 ->where('ssl_check', false)
-                ->where('outbound_check', false)
                 ->where('project_paused_uptime_check', false)
                 ->where('project_paused_ssl_check', false)
                 ->where('project_paused_outbound_check', false)

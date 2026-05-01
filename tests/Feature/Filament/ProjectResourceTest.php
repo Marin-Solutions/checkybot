@@ -1328,6 +1328,17 @@ test('bulk resume restores fully paused websites from before project pause flags
         'project_paused_outbound_check' => false,
     ]);
 
+    $legacyPausedWithOutboundEnabled = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'outbound_check' => true,
+        'project_paused_uptime_check' => false,
+        'project_paused_ssl_check' => false,
+        'project_paused_outbound_check' => false,
+    ]);
+
     $sslOnly = Website::factory()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
@@ -1348,6 +1359,12 @@ test('bulk resume restores fully paused websites from before project pause flags
         ->and($legacyPaused->project_paused_uptime_check)->toBeFalse()
         ->and($legacyPaused->project_paused_ssl_check)->toBeFalse()
         ->and($legacyPaused->project_paused_outbound_check)->toBeFalse()
+        ->and($legacyPausedWithOutboundEnabled->refresh()->uptime_check)->toBeTrue()
+        ->and($legacyPausedWithOutboundEnabled->ssl_check)->toBeTrue()
+        ->and($legacyPausedWithOutboundEnabled->outbound_check)->toBeTrue()
+        ->and($legacyPausedWithOutboundEnabled->project_paused_uptime_check)->toBeFalse()
+        ->and($legacyPausedWithOutboundEnabled->project_paused_ssl_check)->toBeFalse()
+        ->and($legacyPausedWithOutboundEnabled->project_paused_outbound_check)->toBeFalse()
         ->and($sslOnly->refresh()->uptime_check)->toBeFalse()
         ->and($sslOnly->ssl_check)->toBeTrue()
         ->and($sslOnly->outbound_check)->toBeFalse()
