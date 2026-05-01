@@ -85,17 +85,7 @@ class WebsiteResource extends Resource
                                                     ->required(),
                                                 \Filament\Forms\Components\Hidden::make('created_by'),
                                                 \Filament\Forms\Components\Select::make('uptime_interval')
-                                                    ->options([
-                                                        1 => 'Every minute',
-                                                        5 => 'Every 5 minutes',
-                                                        10 => 'Every 10 minutes',
-                                                        15 => 'Every 15 minutes',
-                                                        30 => 'Every 30 minutes',
-                                                        60 => 'Every hour',
-                                                        360 => 'Every 6 hours',
-                                                        720 => 'Every 12 hours',
-                                                        1440 => 'Every 24 hours',
-                                                    ])
+                                                    ->options(static::uptimeIntervalOptions())
                                                     ->translateLabel()
                                                     ->required(),
                                             ])->columns(2)->columnSpan(1),
@@ -266,17 +256,7 @@ class WebsiteResource extends Resource
                 ),
                 Tables\Columns\SelectColumn::make('uptime_interval')
                     ->translateLabel()
-                    ->options([
-                        1 => 'Every minute',
-                        5 => 'Every 5 minutes',
-                        10 => 'Every 10 minutes',
-                        15 => 'Every 15 minutes',
-                        30 => 'Every 30 minutes',
-                        60 => 'Every hour',
-                        360 => 'Every 6 hours',
-                        720 => 'Every 12 hours',
-                        1440 => 'Every 24 hours',
-                    ])
+                    ->options(static::uptimeIntervalOptions())
                     ->sortable(),
                 static::authorizeWebsiteToggle(
                     Tables\Columns\ToggleColumn::make('ssl_check')
@@ -593,6 +573,44 @@ class WebsiteResource extends Resource
                                 ->send();
                         })
                         ->deselectRecordsAfterCompletion(),
+                    \Filament\Actions\BulkAction::make('changeUptimeInterval')
+                        ->label('Change check interval')
+                        ->icon('heroicon-o-clock')
+                        ->color('gray')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                        ->modalHeading('Change website uptime interval')
+                        ->modalDescription('Set how often the selected websites should be checked for uptime. The scheduler wakes up every minute, but each website only runs when its own interval is due.')
+                        ->modalSubmitActionLabel('Apply')
+                        ->schema([
+                            \Filament\Forms\Components\Select::make('uptime_interval')
+                                ->label('Interval')
+                                ->options(static::uptimeIntervalOptions())
+                                ->required()
+                                ->native(false),
+                        ])
+                        ->action(function (Collection $records, array $data): void {
+                            $interval = (int) $data['uptime_interval'];
+                            $ids = $records
+                                ->reject(fn (Website $website): bool => $website->uptime_interval === $interval)
+                                ->pluck('id');
+
+                            $count = $ids->isEmpty()
+                                ? 0
+                                : Website::query()->whereIn('id', $ids)->update(['uptime_interval' => $interval]);
+
+                            $intervalLabel = static::uptimeIntervalOptions()[$interval] ?? "{$interval} minutes";
+
+                            Notification::make()
+                                ->title($count === 0
+                                    ? 'Nothing to update'
+                                    : ($count === 1 ? '1 website updated' : "{$count} websites updated"))
+                                ->body($count === 0
+                                    ? "All selected websites already run {$intervalLabel}."
+                                    : "New uptime interval: {$intervalLabel}.")
+                                ->success()
+                                ->send();
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     \Filament\Actions\BulkAction::make('snooze')
                         ->label('Snooze notifications')
                         ->icon('heroicon-o-bell-slash')
@@ -670,6 +688,21 @@ class WebsiteResource extends Resource
     public static function infolist(Schema $schema): Schema
     {
         return WebsiteInfolist::configure($schema);
+    }
+
+    protected static function uptimeIntervalOptions(): array
+    {
+        return [
+            1 => 'Every minute',
+            5 => 'Every 5 minutes',
+            10 => 'Every 10 minutes',
+            15 => 'Every 15 minutes',
+            30 => 'Every 30 minutes',
+            60 => 'Every hour',
+            360 => 'Every 6 hours',
+            720 => 'Every 12 hours',
+            1440 => 'Every 24 hours',
+        ];
     }
 
     public static function getRelations(): array
