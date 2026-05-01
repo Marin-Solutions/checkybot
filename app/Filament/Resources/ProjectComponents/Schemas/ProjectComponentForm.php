@@ -50,11 +50,12 @@ class ProjectComponentForm
                         Select::make('current_status')
                             ->label('Status')
                             ->options([
+                                'unknown' => 'Awaiting data',
                                 'healthy' => 'Healthy',
                                 'warning' => 'Warning',
                                 'danger' => 'Danger',
                             ])
-                            ->default('healthy')
+                            ->default('unknown')
                             ->required(),
                         Toggle::make('is_archived')
                             ->label('Archived')

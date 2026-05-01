@@ -29,7 +29,7 @@ class ProjectComponentsTable
                     ->searchable(),
                 TextColumn::make('current_status')
                     ->badge()
-                    ->formatStateUsing(fn (string $state): string => ucfirst($state))
+                    ->formatStateUsing(fn (string $state): string => $state === 'unknown' ? 'Awaiting data' : ucfirst($state))
                     ->color(fn (?string $state): string => match ($state) {
                         'healthy' => 'success',
                         'warning' => 'warning',

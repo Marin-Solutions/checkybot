@@ -32,7 +32,6 @@ test('operator can create a manual application component', function () {
             'project_id' => $project->id,
             'name' => 'queue:payments',
             'declared_interval' => 'every_5_minutes',
-            'current_status' => 'healthy',
             'is_archived' => false,
         ])
         ->call('create')
@@ -47,8 +46,10 @@ test('operator can create a manual application component', function () {
         ->and($component->source)->toBe('manual')
         ->and($component->declared_interval)->toBe('5m')
         ->and($component->interval_minutes)->toBe(5)
-        ->and($component->current_status)->toBe('healthy')
-        ->and($component->last_reported_status)->toBe('healthy')
+        ->and($component->current_status)->toBe('unknown')
+        ->and($component->last_reported_status)->toBe('unknown')
+        ->and($component->summary)->toBe('Awaiting first heartbeat')
+        ->and($component->last_heartbeat_at)->toBeNull()
         ->and($component->metrics)->toBe([])
         ->and($component->is_archived)->toBeFalse()
         ->and($component->archived_at)->toBeNull();

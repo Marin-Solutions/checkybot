@@ -198,6 +198,34 @@ test('warning and danger component events use existing notification settings', f
     Http::assertSentCount(1);
 });
 
+test('declared package components await first heartbeat until data arrives', function () {
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'scheduler',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.created', 1)
+        ->assertJsonPath('summary.heartbeats.recorded', 0);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'scheduler',
+        'current_status' => 'unknown',
+        'last_reported_status' => 'unknown',
+        'summary' => 'Awaiting first heartbeat',
+        'last_heartbeat_at' => null,
+    ]);
+});
+
 test('component sync persists heartbeat state when webhook notification fails', function () {
     Log::spy();
 

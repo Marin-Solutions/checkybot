@@ -70,8 +70,9 @@ class ProjectComponentSyncService
                     }
                 } else {
                     $component = ProjectComponent::create($attributes + [
-                        'current_status' => 'healthy',
-                        'last_reported_status' => 'healthy',
+                        'current_status' => 'unknown',
+                        'last_reported_status' => 'unknown',
+                        'summary' => 'Awaiting first heartbeat',
                         'metrics' => [],
                     ]);
                     $componentsByName->put($component->name, $component);
