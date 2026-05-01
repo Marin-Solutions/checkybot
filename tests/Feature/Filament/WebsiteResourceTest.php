@@ -709,12 +709,13 @@ test('user without Update:Website permission cannot toggle website columns inlin
     $website = Website::factory()->create([
         'created_by' => $user->id,
         'uptime_check' => true,
+        'uptime_interval' => 15,
         'ssl_check' => true,
         'outbound_check' => true,
     ]);
 
-    // Each toggle column should report itself as disabled for this user, and
-    // any attempted Livewire toggle should be a no-op. We deliberately do not
+    // Each editable column should report itself as disabled for this user, and
+    // any attempted Livewire update should be a no-op. We deliberately do not
     // call assertForbidden() here: Filament's updateTableColumnState
     // short-circuits to null when the column is disabled, before
     // beforeStateUpdated ever runs, so the Livewire response is 200, not 403.
@@ -729,8 +730,16 @@ test('user without Update:Website permission cannot toggle website columns inlin
         );
     }
 
+    $page->assertTableColumnExists(
+        'uptime_interval',
+        fn (\Filament\Tables\Columns\SelectColumn $col): bool => $col->isDisabled(),
+        $website,
+    );
+
     Livewire::test(ListWebsites::class)
         ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false);
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'uptime_interval', $website->getKey(), 60);
     Livewire::test(ListWebsites::class)
         ->call('updateTableColumnState', 'ssl_check', $website->getKey(), false);
     Livewire::test(ListWebsites::class)
@@ -738,6 +747,7 @@ test('user without Update:Website permission cannot toggle website columns inlin
 
     $website->refresh();
     expect($website->uptime_check)->toBeTrue()
+        ->and($website->uptime_interval)->toBe(15)
         ->and($website->ssl_check)->toBeTrue()
         ->and($website->outbound_check)->toBeTrue();
 });

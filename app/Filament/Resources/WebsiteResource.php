@@ -257,6 +257,13 @@ class WebsiteResource extends Resource
                 Tables\Columns\SelectColumn::make('uptime_interval')
                     ->translateLabel()
                     ->options(static::uptimeIntervalOptions())
+                    ->tooltip(fn (): string => auth()->user()?->can('Update:Website')
+                        ? 'Change how often uptime checks run for this website.'
+                        : 'You need the Update:Website permission to change this.')
+                    ->disabled(fn (): bool => ! (auth()->user()?->can('Update:Website') ?? false))
+                    ->beforeStateUpdated(function (): void {
+                        abort_unless(auth()->user()?->can('Update:Website') ?? false, 403);
+                    })
                     ->sortable(),
                 static::authorizeWebsiteToggle(
                     Tables\Columns\ToggleColumn::make('ssl_check')
