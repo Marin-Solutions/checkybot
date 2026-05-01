@@ -66,12 +66,15 @@ class CheckSslExpiryDateJob implements ShouldQueue
             ? Carbon::parse($this->website->ssl_expiry_date)
             : null;
 
-        $this->website->forceFill([
+        $attributes = [
             'ssl_expiry_date' => $newExpiryDate,
-            'ssl_expiry_reminder_sent_at' => SslCertificateService::expiryDateChanged($currentExpiryDate, $newExpiryDate)
-                ? null
-                : $this->website->ssl_expiry_reminder_sent_at,
-        ])->save();
+        ];
+
+        if (SslCertificateService::expiryDateChanged($currentExpiryDate, $newExpiryDate)) {
+            $attributes['ssl_expiry_reminder_sent_at'] = null;
+        }
+
+        $this->website->forceFill($attributes)->save();
 
         $this->recordPackageHealth($newExpiryDate, $statusService, $notificationService);
 
