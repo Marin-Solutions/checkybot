@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\CheckSyncService;
+use Illuminate\Support\Carbon;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -759,6 +760,46 @@ test('syncs multiple check types atomically', function () {
     $this->assertDatabaseHas('websites', ['package_name' => 'uptime-1', 'uptime_check' => true]);
     $this->assertDatabaseHas('websites', ['package_name' => 'ssl-1', 'ssl_check' => true]);
     $this->assertDatabaseHas('monitor_apis', ['package_name' => 'api-1']);
+});
+
+test('legacy sync stamps project and check sync metadata', function () {
+    $syncedAt = Carbon::parse('2026-05-01 12:00:00');
+
+    Carbon::setTestNow($syncedAt);
+
+    try {
+        $this->syncService->syncChecks($this->project, [
+            'uptime_checks' => [
+                ['name' => 'uptime-1', 'url' => 'https://uptime-example.com', 'interval' => '5m'],
+            ],
+            'ssl_checks' => [
+                ['name' => 'ssl-1', 'url' => 'https://ssl-example.com', 'interval' => '1d'],
+            ],
+            'api_checks' => [
+                ['name' => 'api-1', 'url' => 'https://api.example.com', 'interval' => '5m'],
+            ],
+        ]);
+    } finally {
+        Carbon::setTestNow();
+    }
+
+    expect($this->project->refresh()->last_synced_at?->toISOString())->toBe($syncedAt->toISOString());
+
+    $websites = Website::query()
+        ->where('project_id', $this->project->id)
+        ->whereIn('package_name', ['uptime-1', 'ssl-1'])
+        ->get();
+
+    expect($websites)->toHaveCount(2);
+
+    $websites->each(fn (Website $website) => expect($website->last_synced_at?->toISOString())->toBe($syncedAt->toISOString()));
+
+    expect(MonitorApis::query()
+        ->where('project_id', $this->project->id)
+        ->where('package_name', 'api-1')
+        ->first()
+        ?->last_synced_at
+        ?->toISOString())->toBe($syncedAt->toISOString());
 });
 
 test('syncs uptime and ssl package checks with the same url', function () {

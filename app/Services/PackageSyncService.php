@@ -24,8 +24,8 @@ class PackageSyncService
             $syncedAt = now();
             $project = $this->upsertProject($user, $payload, $syncedAt);
             $apiSummary = $this->syncApiChecks($project, $payload, $syncedAt);
-            $uptimeSummary = $this->syncWebsiteChecks($project, $payload, 'uptime');
-            $sslSummary = $this->syncWebsiteChecks($project, $payload, 'ssl');
+            $uptimeSummary = $this->syncWebsiteChecks($project, $payload, 'uptime', $syncedAt);
+            $sslSummary = $this->syncWebsiteChecks($project, $payload, 'ssl', $syncedAt);
             $this->recalculateUptimeOnlyPackageIntervals($project);
             $this->resetStatusForFullyDisabledWebsites($project);
 
@@ -164,7 +164,7 @@ class PackageSyncService
      * @param  array<string, mixed>  $payload
      * @return array{created: int, updated: int, disabled_missing: int}
      */
-    private function syncWebsiteChecks(Project $project, array $payload, string $type): array
+    private function syncWebsiteChecks(Project $project, array $payload, string $type, Carbon $syncedAt): array
     {
         $created = 0;
         $updated = 0;
@@ -207,6 +207,7 @@ class PackageSyncService
                 'description' => '',
                 'source' => 'package',
                 'package_name' => $check['key'],
+                'last_synced_at' => $syncedAt,
             ];
 
             if ($type === 'uptime') {
@@ -237,7 +238,7 @@ class PackageSyncService
             }
         }
 
-        $disabledMissing = $this->disableMissingWebsiteChecks($project, $activeKeys, $type);
+        $disabledMissing = $this->disableMissingWebsiteChecks($project, $activeKeys, $type, $syncedAt);
 
         return [
             'created' => $created,
@@ -310,7 +311,7 @@ class PackageSyncService
     /**
      * @param  array<int, string>  $activeKeys
      */
-    private function disableMissingWebsiteChecks(Project $project, array $activeKeys, string $type): int
+    private function disableMissingWebsiteChecks(Project $project, array $activeKeys, string $type, Carbon $syncedAt): int
     {
         $query = Website::query()
             ->where('project_id', $project->id)
@@ -323,6 +324,7 @@ class PackageSyncService
 
         return $query->update([
             $type === 'uptime' ? 'uptime_check' : 'ssl_check' => false,
+            'last_synced_at' => $syncedAt,
         ]);
     }
 
