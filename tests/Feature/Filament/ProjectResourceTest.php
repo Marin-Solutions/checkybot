@@ -1334,6 +1334,14 @@ test('bulk resume respects outbound checks manually disabled while project is pa
         ->and($website->project_paused_outbound_check)->toBeTrue();
 
     Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm(['outbound_check' => true])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($website->refresh()->outbound_check)->toBeTrue()
+        ->and($website->project_paused_outbound_check)->toBeTrue();
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
         ->fillForm(['outbound_check' => false])
         ->call('save')
         ->assertHasNoFormErrors();

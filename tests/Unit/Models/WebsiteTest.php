@@ -101,7 +101,7 @@ test('website ssl reminder throttle timestamp is not mass assignable', function 
     expect($website->ssl_expiry_reminder_sent_at)->toBeNull();
 });
 
-test('website project pause flags are mass assignable', function () {
+test('website project pause flags are not mass assignable', function () {
     $website = new Website;
 
     $website->fill([
@@ -110,9 +110,9 @@ test('website project pause flags are mass assignable', function () {
         'project_paused_outbound_check' => true,
     ]);
 
-    expect($website->project_paused_uptime_check)->toBeTrue()
-        ->and($website->project_paused_ssl_check)->toBeTrue()
-        ->and($website->project_paused_outbound_check)->toBeTrue();
+    expect($website->project_paused_uptime_check)->toBeNull()
+        ->and($website->project_paused_ssl_check)->toBeNull()
+        ->and($website->project_paused_outbound_check)->toBeNull();
 });
 
 test('extractHost returns the hostname from a full url', function () {

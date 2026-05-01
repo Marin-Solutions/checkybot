@@ -51,7 +51,7 @@ class WebsiteController extends Controller
             if ($website->exists) {
                 return response()->json(['message' => __('The website is already stored in the database, try again')], 409);
             } else {
-                $resources = new WebsiteResource(Website::create($request->all()));
+                $resources = new WebsiteResource(Website::create($request->validated()));
 
                 return response()->json($resources, 200);
             }
