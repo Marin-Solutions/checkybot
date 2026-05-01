@@ -404,6 +404,140 @@ test('job rolls expired ssl certificate into live website status', function () {
     });
 });
 
+test('scheduled job syncs ssl expiry date to website when certificate is read', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andReturn(Carbon::parse('2026-06-01 09:00:00'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => Carbon::parse('2026-05-01'),
+        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+    $website->refresh();
+
+    expect($history?->ssl_expiry_date?->isSameDay('2026-06-01'))->toBeTrue()
+        ->and(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-06-01'))->toBeTrue()
+        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull();
+});
+
+test('scheduled job clears stale website ssl expiry date when certificate cannot be read', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andThrow(new RuntimeException('certificate unavailable'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => Carbon::parse('2026-05-01'),
+        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+        'current_status' => 'healthy',
+    ]);
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+    $website->refresh();
+
+    expect($history?->ssl_expiry_date)->toBeNull()
+        ->and($history?->status)->toBe('danger')
+        ->and($history?->summary)->toBe('SSL certificate check failed before an expiry date could be read.')
+        ->and($website->ssl_expiry_date)->toBeNull()
+        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull()
+        ->and($website->current_status)->toBe('danger')
+        ->and($website->status_summary)->toBe('SSL certificate check failed before an expiry date could be read.');
+});
+
+test('on-demand job does not sync ssl expiry date to website', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andReturn(Carbon::parse('2026-06-01 09:00:00'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => Carbon::parse('2026-05-01'),
+        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+    ]);
+
+    $job = new LogUptimeSslJob($website, onDemand: true);
+    $job->handle(app(SslCertificateService::class));
+
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+    $website->refresh();
+
+    expect($history?->ssl_expiry_date?->isSameDay('2026-06-01'))->toBeTrue()
+        ->and(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-05-01'))->toBeTrue()
+        ->and($website->ssl_expiry_reminder_sent_at)->not->toBeNull();
+});
+
 test('job includes ssl context when http and ssl are both dangerous', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 

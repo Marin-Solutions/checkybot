@@ -154,6 +154,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                     'last_heartbeat_at' => now(),
                     'stale_at' => null,
                     'status_summary' => $summary,
+                    ...$this->scheduledSslExpiryAttributes($sslExpiryDate),
                 ])->save();
 
                 if (
@@ -196,5 +197,40 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         }
 
         return $httpSummary;
+    }
+
+    /**
+     * Scheduled combined runs own the website-level SSL expiry snapshot for
+     * SSL-enabled monitors. A null expiry means the latest scheduled run could
+     * not read a certificate, so the detail page should show Unknown instead
+     * of a stale date from an older successful run.
+     *
+     * @return array<string, mixed>
+     */
+    private function scheduledSslExpiryAttributes(?CarbonInterface $sslExpiryDate): array
+    {
+        if (! $this->website->ssl_check) {
+            return [];
+        }
+
+        $currentExpiryDate = $this->website->ssl_expiry_date
+            ? Carbon::parse($this->website->ssl_expiry_date)
+            : null;
+
+        return [
+            'ssl_expiry_date' => $sslExpiryDate,
+            'ssl_expiry_reminder_sent_at' => $this->expiryDateChanged($currentExpiryDate, $sslExpiryDate)
+                ? null
+                : $this->website->ssl_expiry_reminder_sent_at,
+        ];
+    }
+
+    private function expiryDateChanged(?CarbonInterface $currentExpiryDate, ?CarbonInterface $newExpiryDate): bool
+    {
+        if ($currentExpiryDate === null || $newExpiryDate === null) {
+            return $currentExpiryDate !== null || $newExpiryDate !== null;
+        }
+
+        return ! $currentExpiryDate->isSameDay($newExpiryDate);
     }
 }
