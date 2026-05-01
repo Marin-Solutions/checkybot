@@ -155,6 +155,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
             $component->last_heartbeat_at === null => 'no_data',
             $component->current_status === 'healthy' => 'healthy',
             in_array($component->current_status, ['warning', 'danger'], true) => 'failing',
+            $component->current_status === 'unknown' => 'no_data',
             default => 'no_data',
         };
     }
