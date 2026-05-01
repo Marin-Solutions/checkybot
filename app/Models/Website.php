@@ -53,6 +53,7 @@ class Website extends Model
         'ssl_check' => 'boolean',
         'project_paused_ssl_check' => 'boolean',
         'outbound_check' => 'boolean',
+        'project_paused_outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',
         'last_synced_at' => 'datetime',

@@ -78,6 +78,10 @@ class Project extends Model
         return $this->hasMany(ProjectComponent::class)->where('is_archived', false);
     }
 
+    /**
+     * Application status uses website current_status, which is maintained by
+     * uptime checks and package-managed SSL checks, not outbound-only scans.
+     */
     public function monitoredWebsites(): HasMany
     {
         return $this->hasMany(Website::class)

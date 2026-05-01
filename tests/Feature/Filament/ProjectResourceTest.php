@@ -1141,6 +1141,7 @@ test('super admin can bulk pause monitoring across selected applications', funct
         'created_by' => $user->id,
         'uptime_check' => true,
         'ssl_check' => true,
+        'outbound_check' => true,
     ]);
 
     $monitor = MonitorApis::factory()->create([
@@ -1160,8 +1161,10 @@ test('super admin can bulk pause monitoring across selected applications', funct
 
     expect($website->refresh()->uptime_check)->toBeFalse()
         ->and($website->ssl_check)->toBeFalse()
+        ->and($website->outbound_check)->toBeFalse()
         ->and($website->project_paused_uptime_check)->toBeTrue()
         ->and($website->project_paused_ssl_check)->toBeTrue()
+        ->and($website->project_paused_outbound_check)->toBeTrue()
         ->and($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($component->refresh()->is_archived)->toBeTrue();
 });
@@ -1182,6 +1185,8 @@ test('super admin can bulk resume monitoring across selected applications', func
         'project_paused_uptime_check' => true,
         'ssl_check' => false,
         'project_paused_ssl_check' => true,
+        'outbound_check' => false,
+        'project_paused_outbound_check' => true,
     ]);
 
     $monitor = MonitorApis::factory()->disabled()->create([
@@ -1199,8 +1204,10 @@ test('super admin can bulk resume monitoring across selected applications', func
 
     expect($website->refresh()->uptime_check)->toBeTrue()
         ->and($website->ssl_check)->toBeTrue()
+        ->and($website->outbound_check)->toBeTrue()
         ->and($website->project_paused_uptime_check)->toBeFalse()
         ->and($website->project_paused_ssl_check)->toBeFalse()
+        ->and($website->project_paused_outbound_check)->toBeFalse()
         ->and($monitor->refresh()->is_enabled)->toBeTrue()
         ->and($component->refresh()->is_archived)->toBeFalse();
 });
@@ -1218,6 +1225,7 @@ test('bulk resume restores only website checks paused by the project action', fu
         'created_by' => $user->id,
         'uptime_check' => true,
         'ssl_check' => true,
+        'outbound_check' => true,
     ]);
 
     $uptimeOnly = Website::factory()->create([
@@ -1225,6 +1233,7 @@ test('bulk resume restores only website checks paused by the project action', fu
         'created_by' => $user->id,
         'uptime_check' => true,
         'ssl_check' => false,
+        'outbound_check' => false,
     ]);
 
     $sslOnly = Website::factory()->create([
@@ -1232,6 +1241,15 @@ test('bulk resume restores only website checks paused by the project action', fu
         'created_by' => $user->id,
         'uptime_check' => false,
         'ssl_check' => true,
+        'outbound_check' => false,
+    ]);
+
+    $outboundOnly = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'outbound_check' => true,
     ]);
 
     Livewire::test(ListProjects::class)
@@ -1239,32 +1257,56 @@ test('bulk resume restores only website checks paused by the project action', fu
 
     expect($bothChecks->refresh()->uptime_check)->toBeFalse()
         ->and($bothChecks->ssl_check)->toBeFalse()
+        ->and($bothChecks->outbound_check)->toBeFalse()
         ->and($bothChecks->project_paused_uptime_check)->toBeTrue()
         ->and($bothChecks->project_paused_ssl_check)->toBeTrue()
+        ->and($bothChecks->project_paused_outbound_check)->toBeTrue()
         ->and($uptimeOnly->refresh()->uptime_check)->toBeFalse()
         ->and($uptimeOnly->ssl_check)->toBeFalse()
+        ->and($uptimeOnly->outbound_check)->toBeFalse()
         ->and($uptimeOnly->project_paused_uptime_check)->toBeTrue()
         ->and($uptimeOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($uptimeOnly->project_paused_outbound_check)->toBeFalse()
         ->and($sslOnly->refresh()->uptime_check)->toBeFalse()
         ->and($sslOnly->ssl_check)->toBeFalse()
+        ->and($sslOnly->outbound_check)->toBeFalse()
         ->and($sslOnly->project_paused_uptime_check)->toBeFalse()
-        ->and($sslOnly->project_paused_ssl_check)->toBeTrue();
+        ->and($sslOnly->project_paused_ssl_check)->toBeTrue()
+        ->and($sslOnly->project_paused_outbound_check)->toBeFalse()
+        ->and($outboundOnly->refresh()->uptime_check)->toBeFalse()
+        ->and($outboundOnly->ssl_check)->toBeFalse()
+        ->and($outboundOnly->outbound_check)->toBeFalse()
+        ->and($outboundOnly->project_paused_uptime_check)->toBeFalse()
+        ->and($outboundOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($outboundOnly->project_paused_outbound_check)->toBeTrue();
 
     Livewire::test(ListProjects::class)
         ->callTableBulkAction('enable', collect([$project]));
 
     expect($bothChecks->refresh()->uptime_check)->toBeTrue()
         ->and($bothChecks->ssl_check)->toBeTrue()
+        ->and($bothChecks->outbound_check)->toBeTrue()
         ->and($bothChecks->project_paused_uptime_check)->toBeFalse()
         ->and($bothChecks->project_paused_ssl_check)->toBeFalse()
+        ->and($bothChecks->project_paused_outbound_check)->toBeFalse()
         ->and($uptimeOnly->refresh()->uptime_check)->toBeTrue()
         ->and($uptimeOnly->ssl_check)->toBeFalse()
+        ->and($uptimeOnly->outbound_check)->toBeFalse()
         ->and($uptimeOnly->project_paused_uptime_check)->toBeFalse()
         ->and($uptimeOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($uptimeOnly->project_paused_outbound_check)->toBeFalse()
         ->and($sslOnly->refresh()->uptime_check)->toBeFalse()
         ->and($sslOnly->ssl_check)->toBeTrue()
+        ->and($sslOnly->outbound_check)->toBeFalse()
         ->and($sslOnly->project_paused_uptime_check)->toBeFalse()
-        ->and($sslOnly->project_paused_ssl_check)->toBeFalse();
+        ->and($sslOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($sslOnly->project_paused_outbound_check)->toBeFalse()
+        ->and($outboundOnly->refresh()->uptime_check)->toBeFalse()
+        ->and($outboundOnly->ssl_check)->toBeFalse()
+        ->and($outboundOnly->outbound_check)->toBeTrue()
+        ->and($outboundOnly->project_paused_uptime_check)->toBeFalse()
+        ->and($outboundOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($outboundOnly->project_paused_outbound_check)->toBeFalse();
 });
 
 test('bulk resume restores fully paused websites from before project pause flags existed', function () {
@@ -1280,8 +1322,10 @@ test('bulk resume restores fully paused websites from before project pause flags
         'created_by' => $user->id,
         'uptime_check' => false,
         'ssl_check' => false,
+        'outbound_check' => false,
         'project_paused_uptime_check' => false,
         'project_paused_ssl_check' => false,
+        'project_paused_outbound_check' => false,
     ]);
 
     $sslOnly = Website::factory()->create([
@@ -1289,8 +1333,10 @@ test('bulk resume restores fully paused websites from before project pause flags
         'created_by' => $user->id,
         'uptime_check' => false,
         'ssl_check' => true,
+        'outbound_check' => false,
         'project_paused_uptime_check' => false,
         'project_paused_ssl_check' => false,
+        'project_paused_outbound_check' => false,
     ]);
 
     Livewire::test(ListProjects::class)
@@ -1298,12 +1344,16 @@ test('bulk resume restores fully paused websites from before project pause flags
 
     expect($legacyPaused->refresh()->uptime_check)->toBeTrue()
         ->and($legacyPaused->ssl_check)->toBeTrue()
+        ->and($legacyPaused->outbound_check)->toBeFalse()
         ->and($legacyPaused->project_paused_uptime_check)->toBeFalse()
         ->and($legacyPaused->project_paused_ssl_check)->toBeFalse()
+        ->and($legacyPaused->project_paused_outbound_check)->toBeFalse()
         ->and($sslOnly->refresh()->uptime_check)->toBeFalse()
         ->and($sslOnly->ssl_check)->toBeTrue()
+        ->and($sslOnly->outbound_check)->toBeFalse()
         ->and($sslOnly->project_paused_uptime_check)->toBeFalse()
-        ->and($sslOnly->project_paused_ssl_check)->toBeFalse();
+        ->and($sslOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($sslOnly->project_paused_outbound_check)->toBeFalse();
 });
 
 test('bulk disable on already disabled components notifies that nothing changed', function () {
@@ -1367,6 +1417,7 @@ test('bulk disable on applications with nothing to pause reports no changes', fu
         'created_by' => $user->id,
         'uptime_check' => false,
         'ssl_check' => false,
+        'outbound_check' => false,
     ]);
 
     $component = ProjectComponent::factory()->archived()->create([
@@ -1381,6 +1432,7 @@ test('bulk disable on applications with nothing to pause reports no changes', fu
     expect($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($website->refresh()->uptime_check)->toBeFalse()
         ->and($website->ssl_check)->toBeFalse()
+        ->and($website->outbound_check)->toBeFalse()
         ->and($component->refresh()->is_archived)->toBeTrue();
 });
 
@@ -1402,6 +1454,8 @@ test('bulk enable on applications with nothing to resume reports no changes', fu
         'project_id' => $project->id,
         'created_by' => $user->id,
         'uptime_check' => true,
+        'ssl_check' => true,
+        'outbound_check' => true,
     ]);
 
     $component = ProjectComponent::factory()->create([
@@ -1416,6 +1470,8 @@ test('bulk enable on applications with nothing to resume reports no changes', fu
 
     expect($monitor->refresh()->is_enabled)->toBeTrue()
         ->and($website->refresh()->uptime_check)->toBeTrue()
+        ->and($website->ssl_check)->toBeTrue()
+        ->and($website->outbound_check)->toBeTrue()
         ->and($component->refresh()->is_archived)->toBeFalse();
 });
 
