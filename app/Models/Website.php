@@ -30,8 +30,10 @@ class Website extends Model
         'created_by',
         'project_id',
         'uptime_check',
+        'project_paused_uptime_check',
         'uptime_interval',
         'ssl_check',
+        'project_paused_ssl_check',
         'ssl_expiry_date',
         'outbound_check',
         'last_outbound_checked_at',
@@ -48,8 +50,10 @@ class Website extends Model
 
     protected $casts = [
         'uptime_check' => 'boolean',
+        'project_paused_uptime_check' => 'boolean',
         'uptime_interval' => 'integer',
         'ssl_check' => 'boolean',
+        'project_paused_ssl_check' => 'boolean',
         'outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',

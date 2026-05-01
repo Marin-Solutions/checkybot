@@ -218,17 +218,7 @@ class ProjectsTable
         }
 
         return DB::transaction(function () use ($projectIds, $enable): array {
-            $websitesChanged = Website::query()
-                ->whereIn('project_id', $projectIds)
-                ->where(function (Builder $query) use ($enable): void {
-                    $query
-                        ->where('uptime_check', ! $enable)
-                        ->orWhere('ssl_check', ! $enable);
-                })
-                ->update([
-                    'uptime_check' => $enable,
-                    'ssl_check' => $enable,
-                ]);
+            $websitesChanged = static::cascadeWebsiteChecks($projectIds, $enable);
 
             $apisChanged = MonitorApis::query()
                 ->whereIn('project_id', $projectIds)
@@ -249,6 +239,70 @@ class ProjectsTable
                 'components' => $componentsChanged,
             ];
         });
+    }
+
+    /**
+     * Resume only the website check types that the project pause action disabled.
+     *
+     * @param  array<int, int>  $projectIds
+     */
+    protected static function cascadeWebsiteChecks(array $projectIds, bool $enable): int
+    {
+        if ($enable) {
+            $websitesChanged = Website::query()
+                ->whereIn('project_id', $projectIds)
+                ->where(function (Builder $query): void {
+                    $query
+                        ->where('project_paused_uptime_check', true)
+                        ->orWhere('project_paused_ssl_check', true);
+                })
+                ->count();
+
+            Website::query()
+                ->whereIn('project_id', $projectIds)
+                ->where('project_paused_uptime_check', true)
+                ->update([
+                    'uptime_check' => true,
+                    'project_paused_uptime_check' => false,
+                ]);
+
+            Website::query()
+                ->whereIn('project_id', $projectIds)
+                ->where('project_paused_ssl_check', true)
+                ->update([
+                    'ssl_check' => true,
+                    'project_paused_ssl_check' => false,
+                ]);
+
+            return $websitesChanged;
+        }
+
+        $websitesChanged = Website::query()
+            ->whereIn('project_id', $projectIds)
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('uptime_check', true)
+                    ->orWhere('ssl_check', true);
+            })
+            ->count();
+
+        Website::query()
+            ->whereIn('project_id', $projectIds)
+            ->where('uptime_check', true)
+            ->update([
+                'uptime_check' => false,
+                'project_paused_uptime_check' => true,
+            ]);
+
+        Website::query()
+            ->whereIn('project_id', $projectIds)
+            ->where('ssl_check', true)
+            ->update([
+                'ssl_check' => false,
+                'project_paused_ssl_check' => true,
+            ]);
+
+        return $websitesChanged;
     }
 
     protected static function summaryTitle(int $projectCount, bool $enable, int $totalChanged): string

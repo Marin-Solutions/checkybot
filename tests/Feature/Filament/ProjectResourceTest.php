@@ -1107,6 +1107,8 @@ test('super admin can bulk pause monitoring across selected applications', funct
 
     expect($website->refresh()->uptime_check)->toBeFalse()
         ->and($website->ssl_check)->toBeFalse()
+        ->and($website->project_paused_uptime_check)->toBeTrue()
+        ->and($website->project_paused_ssl_check)->toBeTrue()
         ->and($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($component->refresh()->is_archived)->toBeTrue();
 });
@@ -1124,7 +1126,9 @@ test('super admin can bulk resume monitoring across selected applications', func
         'project_id' => $project->id,
         'created_by' => $user->id,
         'uptime_check' => false,
+        'project_paused_uptime_check' => true,
         'ssl_check' => false,
+        'project_paused_ssl_check' => true,
     ]);
 
     $monitor = MonitorApis::factory()->disabled()->create([
@@ -1142,8 +1146,72 @@ test('super admin can bulk resume monitoring across selected applications', func
 
     expect($website->refresh()->uptime_check)->toBeTrue()
         ->and($website->ssl_check)->toBeTrue()
+        ->and($website->project_paused_uptime_check)->toBeFalse()
+        ->and($website->project_paused_ssl_check)->toBeFalse()
         ->and($monitor->refresh()->is_enabled)->toBeTrue()
         ->and($component->refresh()->is_archived)->toBeFalse();
+});
+
+test('bulk resume restores only website checks paused by the project action', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $bothChecks = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    $uptimeOnly = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+
+    $sslOnly = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]));
+
+    expect($bothChecks->refresh()->uptime_check)->toBeFalse()
+        ->and($bothChecks->ssl_check)->toBeFalse()
+        ->and($bothChecks->project_paused_uptime_check)->toBeTrue()
+        ->and($bothChecks->project_paused_ssl_check)->toBeTrue()
+        ->and($uptimeOnly->refresh()->uptime_check)->toBeFalse()
+        ->and($uptimeOnly->ssl_check)->toBeFalse()
+        ->and($uptimeOnly->project_paused_uptime_check)->toBeTrue()
+        ->and($uptimeOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($sslOnly->refresh()->uptime_check)->toBeFalse()
+        ->and($sslOnly->ssl_check)->toBeFalse()
+        ->and($sslOnly->project_paused_uptime_check)->toBeFalse()
+        ->and($sslOnly->project_paused_ssl_check)->toBeTrue();
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($bothChecks->refresh()->uptime_check)->toBeTrue()
+        ->and($bothChecks->ssl_check)->toBeTrue()
+        ->and($bothChecks->project_paused_uptime_check)->toBeFalse()
+        ->and($bothChecks->project_paused_ssl_check)->toBeFalse()
+        ->and($uptimeOnly->refresh()->uptime_check)->toBeTrue()
+        ->and($uptimeOnly->ssl_check)->toBeFalse()
+        ->and($uptimeOnly->project_paused_uptime_check)->toBeFalse()
+        ->and($uptimeOnly->project_paused_ssl_check)->toBeFalse()
+        ->and($sslOnly->refresh()->uptime_check)->toBeFalse()
+        ->and($sslOnly->ssl_check)->toBeTrue()
+        ->and($sslOnly->project_paused_uptime_check)->toBeFalse()
+        ->and($sslOnly->project_paused_ssl_check)->toBeFalse();
 });
 
 test('bulk disable on already disabled components notifies that nothing changed', function () {
