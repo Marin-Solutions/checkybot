@@ -23,7 +23,7 @@ class CheckSyncService
                 'api_checks' => $this->syncApiChecks($project, $payload['api_checks'] ?? [], $syncedAt),
             ];
 
-            $project->forceFill([
+            $project->fill([
                 'last_synced_at' => $syncedAt,
             ])->save();
 
