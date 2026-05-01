@@ -78,9 +78,14 @@ class Project extends Model
         return $this->hasMany(ProjectComponent::class)->where('is_archived', false);
     }
 
-    public function uptimeEnabledWebsites(): HasMany
+    public function monitoredWebsites(): HasMany
     {
-        return $this->hasMany(Website::class)->where('uptime_check', true);
+        return $this->hasMany(Website::class)
+            ->where(function ($query): void {
+                $query
+                    ->where('uptime_check', true)
+                    ->orWhere('ssl_check', true);
+            });
     }
 
     public function enabledMonitorApis(): HasMany
@@ -121,7 +126,7 @@ class Project extends Model
     {
         return collect()
             ->merge($this->loadedOrQueriedStatuses('activeComponents'))
-            ->merge($this->loadedOrQueriedStatuses('uptimeEnabledWebsites'))
+            ->merge($this->loadedOrQueriedStatuses('monitoredWebsites'))
             ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'))
             ->filter(fn (?string $status): bool => in_array($status, self::KNOWN_APPLICATION_STATUSES, true));
     }

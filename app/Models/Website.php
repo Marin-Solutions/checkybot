@@ -48,8 +48,10 @@ class Website extends Model
 
     protected $casts = [
         'uptime_check' => 'boolean',
+        'project_paused_uptime_check' => 'boolean',
         'uptime_interval' => 'integer',
         'ssl_check' => 'boolean',
+        'project_paused_ssl_check' => 'boolean',
         'outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',

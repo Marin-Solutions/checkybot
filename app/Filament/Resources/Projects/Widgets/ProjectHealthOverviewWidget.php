@@ -17,9 +17,10 @@ use Illuminate\Support\Collection;
  * websites, enabled monitor APIs) are failing, healthy, stale or still
  * waiting on data.
  *
- * Paused websites (uptime_check = false), disabled monitor APIs
- * (is_enabled = false) and archived components are excluded so the
- * counts only reflect surfaces the user has actually opted in to.
+ * Websites with uptime or SSL checks enabled are included. Fully paused
+ * websites, disabled monitor APIs (is_enabled = false) and archived
+ * components are excluded so the counts only reflect surfaces the user has
+ * actually opted in to.
  *
  * "Failing" means current_status of warning/danger but excludes stale
  * rows; stale is reported separately and "no data" rolls up everything
@@ -119,7 +120,11 @@ class ProjectHealthOverviewWidget extends BaseWidget
 
         $websites = Website::query()
             ->where('project_id', $project->getKey())
-            ->where('uptime_check', true)
+            ->where(function ($query): void {
+                $query
+                    ->where('uptime_check', true)
+                    ->orWhere('ssl_check', true);
+            })
             ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at']);
 
         $apis = MonitorApis::query()

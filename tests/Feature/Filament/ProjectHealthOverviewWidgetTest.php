@@ -209,6 +209,7 @@ describe('ProjectHealthOverviewWidget', function () {
             'created_by' => $this->user->id,
             'source' => 'package',
             'uptime_check' => false,
+            'ssl_check' => false,
             'current_status' => 'danger',
             'stale_at' => now()->subHour(),
         ]);
@@ -221,6 +222,26 @@ describe('ProjectHealthOverviewWidget', function () {
             ->and($counts['failing'])->toBe(0)
             ->and($counts['stale'])->toBe(0)
             ->and($counts['healthy'])->toBe(1);
+    });
+
+    it('includes ssl-only websites in the project health counts', function () {
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => false,
+            'ssl_check' => true,
+            'current_status' => 'warning',
+            'stale_at' => null,
+        ]);
+
+        $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->instance()
+            ->collectCounts();
+
+        expect($counts['tracked'])->toBe(1)
+            ->and($counts['failing'])->toBe(1)
+            ->and($counts['failing_websites'])->toBe(1);
     });
 
     it('excludes disabled API monitors from the failing and stale counts', function () {
