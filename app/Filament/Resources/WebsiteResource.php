@@ -294,10 +294,6 @@ class WebsiteResource extends Resource
                         ->label('Outbound check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
-                            if (! $state && $record->project_paused_outbound_check) {
-                                $record->forceFill(['project_paused_outbound_check' => false])->saveQuietly();
-                            }
-
                             $notification = Notification::make()
                                 ->title($state
                                     ? "Outbound checks enabled for {$record->name}"

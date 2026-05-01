@@ -65,6 +65,21 @@ class Website extends Model
         'silenced_until' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (Website $website): void {
+            foreach ([
+                'uptime_check' => 'project_paused_uptime_check',
+                'ssl_check' => 'project_paused_ssl_check',
+                'outbound_check' => 'project_paused_outbound_check',
+            ] as $check => $projectPausedFlag) {
+                if ($website->exists && $website->isDirty($check) && $website->{$check} === false && $website->{$projectPausedFlag}) {
+                    $website->{$projectPausedFlag} = false;
+                }
+            }
+        });
+    }
+
     /**
      * Check website exists with look up dns spatie library
      *

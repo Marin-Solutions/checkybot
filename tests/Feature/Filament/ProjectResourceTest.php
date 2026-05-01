@@ -1329,6 +1329,8 @@ test('bulk resume respects outbound checks manually disabled while project is pa
         ->callTableBulkAction('disable', collect([$project]));
 
     expect($website->refresh()->outbound_check)->toBeFalse()
+        ->and($website->project_paused_uptime_check)->toBeTrue()
+        ->and($website->project_paused_ssl_check)->toBeTrue()
         ->and($website->project_paused_outbound_check)->toBeTrue();
 
     Livewire::test(EditWebsite::class, ['record' => $website->id])
@@ -1337,6 +1339,8 @@ test('bulk resume respects outbound checks manually disabled while project is pa
         ->assertHasNoFormErrors();
 
     expect($website->refresh()->outbound_check)->toBeFalse()
+        ->and($website->project_paused_uptime_check)->toBeTrue()
+        ->and($website->project_paused_ssl_check)->toBeTrue()
         ->and($website->project_paused_outbound_check)->toBeFalse();
 
     Livewire::test(ListProjects::class)
