@@ -7,6 +7,7 @@ class HealthStatusLabel
     public static function format(?string $status): string
     {
         return match ($status) {
+            null => 'Unknown',
             'unknown' => 'Awaiting data',
             'healthy' => 'Healthy',
             'warning' => 'Warning',

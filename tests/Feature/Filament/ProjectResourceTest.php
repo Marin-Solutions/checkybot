@@ -98,6 +98,36 @@ test('operator can update manual component status interval and archive state', f
         ->and($component->archived_at)->not->toBeNull();
 });
 
+test('operator cannot reset a reporting component to awaiting data', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'source' => 'manual',
+        'name' => 'worker:reports',
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->id])
+        ->fillForm([
+            'current_status' => 'unknown',
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['current_status']);
+
+    $component->refresh();
+
+    expect($component->current_status)->toBe('healthy')
+        ->and($component->last_reported_status)->toBe('healthy');
+});
+
 test('operator cannot save a manual component with an invalid interval', function () {
     $this->createResourcePermissions('ProjectComponent');
 

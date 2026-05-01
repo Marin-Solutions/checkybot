@@ -50,7 +50,9 @@ class ProjectComponentForm
                             ->regex('/^([1-9]\d*[smhd]|every_[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$/'),
                         Select::make('current_status')
                             ->label('Status')
-                            ->options(HealthStatusLabel::options())
+                            ->options(fn (?ProjectComponent $record): array => HealthStatusLabel::options(
+                                includeUnknown: $record === null || $record->last_heartbeat_at === null,
+                            ))
                             ->default('unknown')
                             ->required(),
                         Toggle::make('is_archived')

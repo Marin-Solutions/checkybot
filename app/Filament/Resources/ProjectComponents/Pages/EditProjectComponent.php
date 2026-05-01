@@ -29,6 +29,7 @@ class EditProjectComponent extends EditRecord
     protected function mutateFormDataBeforeSave(array $data): array
     {
         $this->validateProjectOwnership($data['project_id'] ?? null);
+        $this->validateReportedComponentStatus($data['current_status'] ?? null);
 
         $interval = IntervalParser::normalizeOrFail($data['declared_interval'] ?? null, 'declared_interval');
 
@@ -54,5 +55,16 @@ class EditProjectComponent extends EditRecord
                 'project_id' => ['Choose one of your applications.'],
             ]);
         }
+    }
+
+    private function validateReportedComponentStatus(mixed $status): void
+    {
+        if ($status !== 'unknown' || $this->record->last_heartbeat_at === null) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'current_status' => ['Components with heartbeat data cannot be reset to awaiting data.'],
+        ]);
     }
 }
