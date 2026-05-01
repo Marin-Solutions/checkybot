@@ -9,6 +9,8 @@ use App\Services\HealthEventNotificationService;
 use App\Services\PackageHealthStatusService;
 use App\Services\SslCertificateService;
 use App\Support\UptimeTransportError;
+use Carbon\Carbon;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -108,10 +110,27 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                 $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
             }
 
-            $status = $statusService->websiteStatusFromHttpCode($http_status_code);
-            $summary = $transportError
+            $httpStatus = $statusService->websiteStatusFromHttpCode($http_status_code);
+            $httpSummary = $transportError
                 ? UptimeTransportError::summary($transportError['type'])
                 : $statusService->summaryForWebsite($http_status_code);
+            $sslExpiryDate = $this->website->ssl_check && $ssl_expiry_date !== null
+                ? Carbon::parse($ssl_expiry_date)
+                : null;
+            $sslStatus = $this->website->ssl_check
+                ? $statusService->sslStatusFromExpiryDate($sslExpiryDate)
+                : null;
+            $status = $sslStatus === null
+                ? $httpStatus
+                : $statusService->websiteStatusFromHttpAndSsl($http_status_code, $sslExpiryDate);
+            $summary = $this->summaryForCombinedStatus(
+                $statusService,
+                $status,
+                $httpStatus,
+                $httpSummary,
+                $sslStatus,
+                $sslExpiryDate,
+            );
             $previousStatus = $this->website->current_status;
 
             WebsiteLogHistory::create([
@@ -156,5 +175,26 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
             Log::error('Error creating log for website '.$this->website->url.': '.$e->getMessage());
             throw $e;
         }
+    }
+
+    private function summaryForCombinedStatus(
+        PackageHealthStatusService $statusService,
+        string $status,
+        string $httpStatus,
+        string $httpSummary,
+        ?string $sslStatus,
+        ?CarbonInterface $sslExpiryDate,
+    ): string {
+        // SSL is the sole deciding factor, so lead with certificate evidence.
+        if ($sslStatus !== null && $status === $sslStatus && $status !== $httpStatus) {
+            return $statusService->summaryForSsl($sslExpiryDate);
+        }
+
+        // HTTP and SSL share the same non-healthy status; show both when expiry evidence exists.
+        if ($sslStatus !== null && $sslExpiryDate !== null && $status === $sslStatus && $status !== 'healthy') {
+            return $httpSummary.' '.$statusService->summaryForSsl($sslExpiryDate);
+        }
+
+        return $httpSummary;
     }
 }
