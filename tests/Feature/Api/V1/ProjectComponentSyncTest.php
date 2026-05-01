@@ -331,29 +331,33 @@ test('component sync rejects zero intervals at the request boundary', function (
 test('component sync rejects future observed timestamps at the request boundary', function () {
     Carbon::setTestNow('2026-03-21 12:00:00');
 
-    $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'database',
-                    'interval' => '5m',
+    try {
+        $this->withToken($this->apiKey->key)->postJson(
+            "/api/v1/projects/{$this->project->id}/components/sync",
+            [
+                'declared_components' => [
+                    [
+                        'name' => 'database',
+                        'interval' => '5m',
+                    ],
                 ],
-            ],
-            'components' => [
-                [
-                    'name' => 'database',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Primary database is healthy',
-                    'observed_at' => '2026-03-21T12:01:00Z',
+                'components' => [
+                    [
+                        'name' => 'database',
+                        'interval' => '5m',
+                        'status' => 'healthy',
+                        'summary' => 'Primary database is healthy',
+                        'observed_at' => '2026-03-21T12:01:00Z',
+                    ],
                 ],
-            ],
-        ]
-    )->assertStatus(422)
-        ->assertJsonValidationErrors([
-            'components.0.observed_at',
-        ]);
+            ]
+        )->assertStatus(422)
+            ->assertJsonValidationErrors([
+                'components.0.observed_at',
+            ]);
 
-    expect(ProjectComponent::query()->where('project_id', $this->project->id)->exists())->toBeFalse();
+        expect(ProjectComponent::query()->where('project_id', $this->project->id)->exists())->toBeFalse();
+    } finally {
+        Carbon::setTestNow();
+    }
 });
