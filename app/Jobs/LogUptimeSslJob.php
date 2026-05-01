@@ -152,12 +152,13 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 
             // On-demand runs keep scheduler-owned live status and notification state unchanged.
             if (! $this->isOnDemand()) {
+                $this->syncScheduledSslExpirySnapshot($sslExpiryDate, $previousSslExpiryDate);
+
                 $this->website->forceFill([
                     'current_status' => $status,
                     'last_heartbeat_at' => now(),
                     'stale_at' => null,
                     'status_summary' => $summary,
-                    ...$this->scheduledSslExpiryAttributes($sslExpiryDate, $previousSslExpiryDate),
                 ])->save();
 
                 if (
@@ -202,31 +203,38 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         return $httpSummary;
     }
 
-    /**
-     * Scheduled combined runs own the website-level SSL expiry snapshot for
-     * SSL-enabled monitors. A null expiry means the latest scheduled run could
-     * not read a certificate, so the detail page should show Unknown instead
-     * of a stale date from an older successful run.
-     *
-     * @return array<string, mixed>
-     */
-    private function scheduledSslExpiryAttributes(
+    private function syncScheduledSslExpirySnapshot(
         ?CarbonInterface $sslExpiryDate,
         ?CarbonInterface $previousSslExpiryDate,
-    ): array {
+    ): void {
         if (! $this->website->ssl_check) {
-            return [];
+            return;
         }
 
-        $shouldResetReminder = $sslExpiryDate !== null
-            && SslCertificateService::expiryDateChanged($previousSslExpiryDate, $sslExpiryDate);
-
-        return [
+        $attributes = [
             'ssl_expiry_date' => $sslExpiryDate,
-            'ssl_expiry_reminder_sent_at' => $shouldResetReminder
-                ? null
-                : $this->website->ssl_expiry_reminder_sent_at,
         ];
+
+        if (
+            $sslExpiryDate !== null
+            && SslCertificateService::expiryDateChanged($previousSslExpiryDate, $sslExpiryDate)
+        ) {
+            $attributes['ssl_expiry_reminder_sent_at'] = null;
+        }
+
+        $query = Website::query()
+            ->whereKey($this->website->getKey())
+            ->where('updated_at', $this->website->getRawOriginal('updated_at'));
+
+        $loadedSslExpiryDate = $this->website->getRawOriginal('ssl_expiry_date');
+
+        if ($loadedSslExpiryDate === null) {
+            $query->whereNull('ssl_expiry_date');
+        } else {
+            $query->where('ssl_expiry_date', $loadedSslExpiryDate);
+        }
+
+        $query->update($attributes);
     }
 
     private function currentOrLatestKnownSslExpiryDate(): ?CarbonInterface
