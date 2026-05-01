@@ -205,8 +205,6 @@ test('sync does not archive active components reported only by heartbeat payload
         'name' => 'queue',
         'source' => 'package',
         'is_archived' => false,
-        'declared_interval' => '5m',
-        'interval_minutes' => 5,
     ]);
 
     ProjectComponent::factory()->create([
@@ -215,8 +213,6 @@ test('sync does not archive active components reported only by heartbeat payload
         'name' => 'cache',
         'source' => 'package',
         'is_archived' => false,
-        'declared_interval' => '5m',
-        'interval_minutes' => 5,
     ]);
 
     ProjectComponent::factory()->create([
@@ -225,8 +221,6 @@ test('sync does not archive active components reported only by heartbeat payload
         'name' => 'old-cron',
         'source' => 'package',
         'is_archived' => false,
-        'declared_interval' => '5m',
-        'interval_minutes' => 5,
     ]);
 
     $response = $this->withToken($this->apiKey->key)->postJson(
