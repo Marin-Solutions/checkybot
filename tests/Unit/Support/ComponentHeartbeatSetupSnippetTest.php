@@ -17,6 +17,7 @@ test('component api snippet shell quotes component names and avoids expandable h
     $snippet = ComponentHeartbeatSetupSnippet::componentCurl($component);
 
     expect($snippet)
+        ->toContain('Requires jq for safe JSON quoting.')
         ->toContain("COMPONENT_NAME='queue $(touch /tmp/checkybot-owned)'")
         ->toContain('DECLARED_COMPONENTS_JSON=')
         ->toContain('jq -n')

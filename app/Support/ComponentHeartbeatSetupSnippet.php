@@ -60,6 +60,7 @@ class ComponentHeartbeatSetupSnippet
         ));
 
         return implode(PHP_EOL, [
+            '# Requires jq for safe JSON quoting.',
             "COMPONENT_NAME={$componentName}",
             "COMPONENT_INTERVAL={$interval}",
             "DECLARED_COMPONENTS_JSON={$declaredComponents}",
