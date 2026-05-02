@@ -198,13 +198,17 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         return $this->isOnDemand() && (bool) $this->website->ssl_check;
     }
 
+    /**
+     * Resolve the recorded status from whichever checks produced evidence.
+     *
+     * Returns warning only for legacy or malformed payloads where no enabled check
+     * produced evidence, keeping the result non-green so operators know it needs review.
+     */
     private function statusForEnabledChecks(
         PackageHealthStatusService $statusService,
         ?string $httpStatus,
         ?string $sslStatus,
     ): string {
-        // The fallback should only be reached by legacy or malformed payloads where no enabled
-        // check produced evidence; keep the result non-green so operators know it needs review.
         return match (true) {
             $httpStatus !== null && $sslStatus !== null => $statusService->worstStatus($httpStatus, $sslStatus),
             $sslStatus !== null => $sslStatus,

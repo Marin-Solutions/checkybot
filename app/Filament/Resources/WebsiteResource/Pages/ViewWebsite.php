@@ -99,7 +99,7 @@ class ViewWebsite extends ViewRecord
         $code = (int) ($log->http_status_code ?? 0);
         $codeLine = match (true) {
             $log->http_status_code === null && $log->ssl_expiry_date !== null => 'SSL certificate checked',
-            $log->http_status_code === null => 'SSL certificate check completed',
+            $log->http_status_code === null && $log->ssl_expiry_date === null => 'SSL certificate check completed',
             $code > 0 => "HTTP {$code}",
             default => 'No HTTP response',
         };
