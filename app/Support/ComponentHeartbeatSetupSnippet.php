@@ -19,6 +19,7 @@ class ComponentHeartbeatSetupSnippet
             '',
             "Checkybot::component('scheduled-jobs')",
             '    ->everyFiveMinutes()',
+            '    // Replace this cache key with your scheduler or job success signal.',
             "    ->metric('last_successful_run_minutes_ago', fn (): int => now()->diffInMinutes(cache('checkybot:last_successful_scheduled_run', now())))",
             "    ->warningWhen('>=', 10)",
             "    ->dangerWhen('>=', 30);",
@@ -50,34 +51,33 @@ class ComponentHeartbeatSetupSnippet
     {
         $project = $component->project;
         $apiKey ??= 'replace-with-your-api-key';
-        $payload = [
-            'declared_components' => [
-                [
-                    'name' => $component->name,
-                    'interval' => self::interval($component),
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => $component->name,
-                    'interval' => self::interval($component),
-                    'status' => 'healthy',
-                    'summary' => "{$component->name} heartbeat completed",
-                    'metrics' => [
-                        'value' => 0,
-                    ],
-                    'observed_at' => '$(date -u +%Y-%m-%dT%H:%M:%SZ)',
-                ],
-            ],
-        ];
+        $componentName = self::shellSingleQuote($component->name);
+        $interval = self::shellSingleQuote(self::interval($component));
 
         return implode(PHP_EOL, [
+            "COMPONENT_NAME={$componentName}",
+            "COMPONENT_INTERVAL={$interval}",
+            'OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"',
+            '',
             'curl -fsS -X POST "'.self::checkybotUrl().'/api/v1/projects/'.$project->getKey().'/components/sync" \\',
             '  -H "Authorization: Bearer '.$apiKey.'" \\',
             '  -H "Content-Type: application/json" \\',
-            '  --data-binary @- <<JSON',
-            json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES),
-            'JSON',
+            '  --data-binary "$(jq -n \\',
+            '    --arg name "$COMPONENT_NAME" \\',
+            '    --arg interval "$COMPONENT_INTERVAL" \\',
+            '    --arg observed_at "$OBSERVED_AT" \\',
+            "    '{",
+            '      declared_components: [{ name: $name, interval: $interval }],',
+            '      components: [{',
+            '        name: $name,',
+            '        interval: $interval,',
+            '        status: "healthy",',
+            '        summary: ($name + " heartbeat completed"),',
+            '        metrics: { value: 0 },',
+            '        observed_at: $observed_at',
+            '      }]',
+            "    }'",
+            '  )"',
         ]);
     }
 
@@ -91,24 +91,29 @@ class ComponentHeartbeatSetupSnippet
         ]);
     }
 
-    private static function interval(ProjectComponent $component): string
-    {
-        if (filled($component->declared_interval)) {
-            return $component->declared_interval;
-        }
-
-        return max(1, $component->interval_minutes ?: 5).'m';
-    }
-
-    private static function checkybotUrl(): string
+    public static function checkybotUrl(): string
     {
         $checkybotUrl = rtrim((string) config('app.url', 'https://checkybot.com'), '/');
 
         return $checkybotUrl !== '' ? $checkybotUrl : 'https://checkybot.com';
     }
 
+    private static function interval(ProjectComponent $component): string
+    {
+        if (filled($component->declared_interval)) {
+            return $component->declared_interval;
+        }
+
+        return max(1, $component->interval_minutes ?? 5).'m';
+    }
+
     private static function escapeSingleQuoted(string $value): string
     {
         return str_replace(['\\', "'"], ['\\\\', "\\'"], $value);
+    }
+
+    private static function shellSingleQuote(string $value): string
+    {
+        return "'".str_replace("'", "'\"'\"'", $value)."'";
     }
 }
