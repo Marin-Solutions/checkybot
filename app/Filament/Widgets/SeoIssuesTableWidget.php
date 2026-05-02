@@ -220,6 +220,14 @@ class SeoIssuesTableWidget extends BaseWidget
                         'title_too_long' => 'Long Titles',
                         'too_few_internal_links' => 'Few Internal Links',
                         'too_many_internal_links' => 'Too Many Internal Links',
+                        'redirect_chain' => 'Legacy: Redirect Chains',
+                        'canonical_issue' => 'Legacy: Canonical Issues',
+                        'https_issue' => 'Legacy: HTTPS Issues',
+                        'duplicate_content' => 'Legacy: Duplicate Content',
+                        'image_missing_alt' => 'Legacy: Missing Alt Text',
+                        'short_title' => 'Legacy: Short Titles',
+                        'long_title' => 'Legacy: Long Titles',
+                        'few_internal_links' => 'Legacy: Few Internal Links',
                     ])
                     ->placeholder('All issue types')
                     ->searchable(),
