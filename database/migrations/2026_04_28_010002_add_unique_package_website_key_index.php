@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -12,15 +13,11 @@ return new class extends Migration
         $this->deduplicatePackageWebsites();
         $this->ensureProjectForeignKeyIndex();
 
-        Schema::table('websites', function (Blueprint $table) {
-            if ($this->indexExists('websites', 'idx_websites_project_source_name')) {
-                $table->dropIndex('idx_websites_project_source_name');
-            }
-        });
-
         if (! $this->indexExists('websites', 'websites_project_source_package_unique')) {
             $this->createUniquePackageIndex();
         }
+
+        $this->dropIndexIfSafe('idx_websites_project_source_name');
     }
 
     public function down(): void
@@ -35,14 +32,12 @@ return new class extends Migration
             }
         });
 
-        Schema::table('websites', function (Blueprint $table) {
-            if (
-                $this->indexExists('websites', 'idx_websites_project_id')
-                && $this->indexExists('websites', 'idx_websites_project_source_name')
-            ) {
-                $table->dropIndex('idx_websites_project_id');
-            }
-        });
+        if (
+            $this->indexExists('websites', 'idx_websites_project_id')
+            && $this->indexExists('websites', 'idx_websites_project_source_name')
+        ) {
+            $this->dropIndexIfSafe('idx_websites_project_id');
+        }
     }
 
     protected function ensureProjectForeignKeyIndex(): void
@@ -207,6 +202,29 @@ return new class extends Migration
                 $table->dropUnique('websites_project_source_package_unique');
             }
         });
+    }
+
+    protected function dropIndexIfSafe(string $index): void
+    {
+        if (! $this->indexExists('websites', $index)) {
+            return;
+        }
+
+        try {
+            Schema::table('websites', function (Blueprint $table) use ($index) {
+                $table->dropIndex($index);
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isForeignKeyIndexDependencyError($exception)) {
+                throw $exception;
+            }
+        }
+    }
+
+    protected function isForeignKeyIndexDependencyError(QueryException $exception): bool
+    {
+        return DB::connection()->getDriverName() === 'mysql'
+            && (int) ($exception->errorInfo[1] ?? 0) === 1553;
     }
 
     protected function supportsFilteredIndexes(): bool
