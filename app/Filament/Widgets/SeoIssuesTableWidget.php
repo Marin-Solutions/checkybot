@@ -2,6 +2,12 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\SeoIssue;
+use Filament\Actions\Action;
+use Filament\Infolists\Components\KeyValueEntry;
+use Filament\Infolists\Components\RepeatableEntry;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Schemas\Components\Section;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
@@ -70,7 +76,7 @@ class SeoIssuesTableWidget extends BaseWidget
 
         // Set up query - use empty query if no record found
         $query = $record
-            ? $record->seoIssues()->getQuery()
+            ? $record->seoIssues()->with('seoCrawlResult')->getQuery()
             : \App\Models\SeoIssue::query()->whereRaw('1 = 0');
 
         return $table
@@ -78,12 +84,7 @@ class SeoIssuesTableWidget extends BaseWidget
             ->columns([
                 TextColumn::make('severity')
                     ->badge()
-                    ->color(fn ($state): string => match ($state->value) {
-                        'error' => 'danger',
-                        'warning' => 'warning',
-                        'notice' => 'info',
-                        default => 'gray',
-                    })
+                    ->color(fn (SeoIssue $record): string => $record->getSeverityColor())
                     ->formatStateUsing(fn ($state): string => strtoupper($state->value))
                     ->sortable(),
                 TextColumn::make('type')
@@ -109,6 +110,87 @@ class SeoIssuesTableWidget extends BaseWidget
                     ->searchable()
                     ->sortable(),
             ])
+            ->recordActions([
+                Action::make('view_issue_details')
+                    ->label('View Details')
+                    ->icon('heroicon-o-document-magnifying-glass')
+                    ->modalHeading(fn (SeoIssue $record): string => $record->title)
+                    ->modalDescription('Evidence, affected URLs, stored data, and practical fix guidance for this SEO issue.')
+                    ->modalWidth('5xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->schema([
+                        Section::make('Issue Overview')
+                            ->schema([
+                                TextEntry::make('severity')
+                                    ->badge()
+                                    ->formatStateUsing(fn ($state): string => strtoupper($state->value))
+                                    ->color(fn (SeoIssue $record): string => $record->getSeverityColor()),
+                                TextEntry::make('type')
+                                    ->label('Issue Type')
+                                    ->badge()
+                                    ->color('gray')
+                                    ->formatStateUsing(fn (?string $state): string => $state ? ucwords(str_replace('_', ' ', $state)) : '-'),
+                                TextEntry::make('url')
+                                    ->label('Flagged URL')
+                                    ->copyable()
+                                    ->columnSpanFull(),
+                                TextEntry::make('description')
+                                    ->columnSpanFull(),
+                            ])
+                            ->columns(2),
+                        Section::make('Fix Guidance')
+                            ->schema([
+                                TextEntry::make('fix_guidance')
+                                    ->label('')
+                                    ->state(fn (SeoIssue $record): array => $record->getFixGuidance())
+                                    ->bulleted()
+                                    ->columnSpanFull(),
+                            ]),
+                        Section::make('Evidence')
+                            ->schema([
+                                RepeatableEntry::make('evidence_items')
+                                    ->label('')
+                                    ->state(fn (SeoIssue $record): array => $record->getEvidenceItems())
+                                    ->schema([
+                                        TextEntry::make('label')
+                                            ->badge()
+                                            ->color('gray'),
+                                        TextEntry::make('value')
+                                            ->copyable()
+                                            ->columnSpanFull(),
+                                    ])
+                                    ->contained(false)
+                                    ->columns(1),
+                            ]),
+                        Section::make('Affected URLs')
+                            ->schema([
+                                RepeatableEntry::make('affected_urls')
+                                    ->label('')
+                                    ->state(fn (SeoIssue $record): array => $record->getAffectedUrls())
+                                    ->schema([
+                                        TextEntry::make('label')
+                                            ->badge()
+                                            ->color('gray'),
+                                        TextEntry::make('url')
+                                            ->copyable()
+                                            ->url(fn (?string $state): ?string => $state)
+                                            ->openUrlInNewTab()
+                                            ->columnSpanFull(),
+                                    ])
+                                    ->contained(false)
+                                    ->columns(1),
+                            ]),
+                        Section::make('Stored Data')
+                            ->hidden(fn (SeoIssue $record): bool => blank($record->data))
+                            ->schema([
+                                KeyValueEntry::make('data')
+                                    ->label('')
+                                    ->state(fn (SeoIssue $record): array => $record->getStoredDataForDisplay())
+                                    ->columnSpanFull(),
+                            ]),
+                    ]),
+            ])
             ->filters([
                 SelectFilter::make('severity')
                     ->options([
@@ -120,21 +202,32 @@ class SeoIssuesTableWidget extends BaseWidget
                 SelectFilter::make('type')
                     ->options([
                         'broken_internal_link' => 'Broken Internal Links',
-                        'redirect_chain' => 'Redirect Chains',
-                        'canonical_issue' => 'Canonical Issues',
-                        'https_issue' => 'HTTPS Issues',
+                        'redirect_loop' => 'Redirect Loops',
+                        'canonical_error' => 'Canonical Errors',
+                        'mixed_content' => 'Mixed Content',
+                        'http_not_redirected' => 'HTTP Not Redirected',
                         'orphaned_page' => 'Orphaned Pages',
-                        'duplicate_content' => 'Duplicate Content',
+                        'duplicate_title' => 'Duplicate Titles',
                         'duplicate_meta_description' => 'Duplicate Meta Descriptions',
                         'missing_meta_description' => 'Missing Meta Descriptions',
+                        'missing_title' => 'Missing Titles',
                         'missing_h1' => 'Missing H1 Tags',
                         'duplicate_h1' => 'Duplicate H1 Tags',
                         'large_images' => 'Large Images',
                         'slow_response' => 'Slow Response Times',
                         'missing_alt_text' => 'Missing Alt Text',
-                        'short_title' => 'Short Titles',
-                        'long_title' => 'Long Titles',
-                        'few_internal_links' => 'Few Internal Links',
+                        'title_too_short' => 'Short Titles',
+                        'title_too_long' => 'Long Titles',
+                        'too_few_internal_links' => 'Few Internal Links',
+                        'too_many_internal_links' => 'Too Many Internal Links',
+                        'redirect_chain' => 'Legacy: Redirect Chains',
+                        'canonical_issue' => 'Legacy: Canonical Issues',
+                        'https_issue' => 'Legacy: HTTPS Issues',
+                        'duplicate_content' => 'Legacy: Duplicate Content',
+                        'image_missing_alt' => 'Legacy: Missing Alt Text',
+                        'short_title' => 'Legacy: Short Titles',
+                        'long_title' => 'Legacy: Long Titles',
+                        'few_internal_links' => 'Legacy: Few Internal Links',
                     ])
                     ->placeholder('All issue types')
                     ->searchable(),
