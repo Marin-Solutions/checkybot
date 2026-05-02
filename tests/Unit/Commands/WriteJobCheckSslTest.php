@@ -186,6 +186,63 @@ test('command dispatches package ssl-only checks for arbitrary valid hour interv
     Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
 });
 
+test('command dispatches package ssl-only checks for legacy scheduler-style intervals', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => 'every_5_minutes',
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
+test('command honors legacy scheduler-style intervals before dispatching package ssl-only checks', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => 'every_2_hours',
+        'last_heartbeat_at' => now()->subMinutes(90),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(CheckSslExpiryDateJob::class);
+});
+
+test('command dispatches legacy seconds package ssl-only intervals on the same cadence as interval parser', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => 'every_30_seconds',
+        'last_heartbeat_at' => now()->subMinute(),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
 test('command honors arbitrary valid day intervals before dispatching package ssl-only checks', function () {
     Queue::fake();
 
