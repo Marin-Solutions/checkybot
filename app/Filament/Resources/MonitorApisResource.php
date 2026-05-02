@@ -9,8 +9,9 @@ use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Support\HealthStatusFilter;
 use App\Models\MonitorApis;
+use App\Services\ApiMonitorExecutionService;
 use App\Services\IntervalParser;
-use App\Support\ApiMonitorTestNotification;
+use App\Support\ApiMonitorRunNotification;
 use App\Support\PackageCheckTableEvidence;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -24,6 +25,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\Log;
 
 class MonitorApisResource extends Resource
 {
@@ -316,26 +318,38 @@ class MonitorApisResource extends Resource
                             ->success()
                             ->send();
                     }),
-                \Filament\Actions\Action::make('test')
-                    ->label('Test API')
-                    ->color('warning')
-                    ->icon('heroicon-o-play')
+                \Filament\Actions\Action::make('run_now')
+                    ->label('Run check now')
+                    ->color('primary')
+                    ->icon('heroicon-o-bolt')
+                    ->requiresConfirmation()
+                    ->modalIcon('heroicon-o-bolt')
+                    ->modalHeading('Run API monitor now')
+                    ->modalDescription('Checkybot will execute a real heartbeat against this endpoint immediately and append the result to its run history. The monitor\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalSubmitActionLabel('Run now')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                    ->visible(fn (MonitorApis $record): bool => (bool) $record->is_enabled)
                     ->action(function (MonitorApis $record): void {
-                        $result = MonitorApis::testApi([
-                            'id' => $record->id,
-                            'url' => $record->url,
-                            'method' => $record->http_method,
-                            'data_path' => $record->data_path,
-                            'headers' => $record->headers,
-                            'request_body_type' => $record->request_body_type,
-                            'request_body' => $record->request_body,
-                            'expected_status' => $record->expected_status,
-                            'timeout_seconds' => $record->timeout_seconds,
-                            'title' => $record->title,
-                        ]);
+                        try {
+                            $outcome = app(ApiMonitorExecutionService::class)->execute($record, onDemand: true);
+                        } catch (\Throwable $e) {
+                            Log::error('Run Now API monitor check failed from table action', [
+                                'monitor_api_id' => $record->id,
+                                'exception' => $e,
+                            ]);
 
-                        ApiMonitorTestNotification::fromResult($result, $record->expected_status)
-                            ->send();
+                            Notification::make()
+                                ->title('Run failed')
+                                ->body('Checkybot could not complete the on-demand check. Check the application logs for details.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $record->load(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult']);
+
+                        ApiMonitorRunNotification::send($outcome);
                     }),
             ])
             ->bulkActions([

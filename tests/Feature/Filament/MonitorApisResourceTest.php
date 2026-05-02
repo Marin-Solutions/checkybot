@@ -262,6 +262,23 @@ test('api monitor list shows enabled state', function () {
         ->assertTableColumnExists('is_enabled');
 });
 
+test('api monitor list relabels the table diagnostic action', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertTableActionExists('run_now', null, $monitor)
+        ->assertTableActionDoesNotExist('test', null, $monitor)
+        ->assertTableActionHasLabel('run_now', 'Run check now', $monitor)
+        ->assertTableActionHasIcon('run_now', 'heroicon-o-bolt', $monitor);
+});
+
 test('api monitor list average response time excludes on demand diagnostic runs', function () {
     $this->createResourcePermissions('MonitorApis');
 
@@ -397,13 +414,13 @@ test('user without Update:MonitorApis permission cannot toggle is_enabled inline
     expect($monitor->refresh()->is_enabled)->toBeTrue();
 });
 
-test('list test action uses stored execution settings', function () {
+test('list run now action uses stored execution settings and persists diagnostic evidence', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
     Http::fake([
-        'https://example.com/*' => Http::response('', 204),
+        'https://example.com/*' => Http::response(['data' => ['status' => 'ok']], 200),
     ]);
 
     $monitor = MonitorApis::factory()->create([
@@ -411,7 +428,7 @@ test('list test action uses stored execution settings', function () {
         'title' => 'POST health',
         'url' => 'https://example.com/health',
         'http_method' => 'POST',
-        'expected_status' => 204,
+        'expected_status' => 200,
         'timeout_seconds' => 30,
         'data_path' => 'data.status',
         'request_body_type' => 'json',
@@ -419,14 +436,22 @@ test('list test action uses stored execution settings', function () {
     ]);
 
     Livewire::test(ListMonitorApis::class)
-        ->callTableAction('test', $monitor);
+        ->callTableAction('run_now', $monitor)
+        ->assertNotified('On-demand run succeeded');
 
     Http::assertSent(fn ($request) => $request->method() === 'POST'
         && $request->url() === 'https://example.com/health'
         && $request->data() === ['probe' => true]);
+
+    $monitor->refresh();
+
+    expect($monitor->results()->count())->toBe(1)
+        ->and($monitor->results()->latest('id')->first()->status)->toBe('healthy')
+        ->and($monitor->results()->latest('id')->first()->run_source)->toBe(RunSource::OnDemand)
+        ->and($monitor->results()->latest('id')->first()->is_on_demand)->toBeTrue();
 });
 
-test('list test action flashes success notification with status code and response time', function () {
+test('list run now action records success without moving live status', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
@@ -442,14 +467,26 @@ test('list test action flashes success notification with status code and respons
         'http_method' => 'GET',
         'expected_status' => 200,
         'data_path' => 'data.status',
+        'current_status' => null,
+        'last_heartbeat_at' => null,
+        'status_summary' => null,
     ]);
 
     Livewire::test(ListMonitorApis::class)
-        ->callTableAction('test', $monitor)
-        ->assertNotified('API response received');
+        ->callTableAction('run_now', $monitor)
+        ->assertNotified('On-demand run succeeded');
+
+    $monitor->refresh();
+
+    expect($monitor->results()->count())->toBe(1)
+        ->and($monitor->results()->first()->status)->toBe('healthy')
+        ->and($monitor->results()->first()->run_source)->toBe(RunSource::OnDemand)
+        ->and($monitor->current_status)->toBeNull()
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->status_summary)->toBeNull();
 });
 
-test('list test action flashes danger notification when the upstream returns a server error', function () {
+test('list run now action records failure evidence without moving live status', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
@@ -464,14 +501,30 @@ test('list test action flashes danger notification when the upstream returns a s
         'url' => 'https://example.com/broken',
         'http_method' => 'GET',
         'expected_status' => 200,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'status_summary' => 'API responded as expected.',
     ]);
 
+    $heartbeatBefore = $monitor->last_heartbeat_at;
+
     Livewire::test(ListMonitorApis::class)
-        ->callTableAction('test', $monitor)
-        ->assertNotified('API request failed');
+        ->callTableAction('run_now', $monitor)
+        ->assertNotified('On-demand run failed');
+
+    $monitor->refresh();
+
+    expect($monitor->results()->count())->toBe(1)
+        ->and($monitor->results()->first()->http_code)->toBe(500)
+        ->and($monitor->results()->first()->status)->toBe('danger')
+        ->and($monitor->results()->first()->run_source)->toBe(RunSource::OnDemand)
+        ->and($monitor->results()->first()->is_on_demand)->toBeTrue()
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($monitor->status_summary)->toBe('API responded as expected.');
 });
 
-test('list test action flashes warning notification when an assertion fails', function () {
+test('list run now action records degraded assertion evidence', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
@@ -490,8 +543,15 @@ test('list test action flashes warning notification when an assertion fails', fu
     ]);
 
     Livewire::test(ListMonitorApis::class)
-        ->callTableAction('test', $monitor)
-        ->assertNotified('Some API assertions failed');
+        ->callTableAction('run_now', $monitor)
+        ->assertNotified('On-demand run is degraded');
+
+    $result = $monitor->results()->first();
+
+    expect($result)->not->toBeNull()
+        ->and($result->status)->toBe('warning')
+        ->and($result->run_source)->toBe(RunSource::OnDemand)
+        ->and($result->failed_assertions)->toHaveCount(1);
 });
 
 test('check api action treats configured non-200 expected status as success', function () {
