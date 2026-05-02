@@ -10,7 +10,7 @@ class ApiMonitorRunNotification
     /**
      * @param  array{result: MonitorApiResult, status: string, summary: string, previous_status: string|null}  $outcome
      */
-    public static function send(array $outcome): void
+    public static function fromOutcome(array $outcome): Notification
     {
         $result = $outcome['result'];
         $status = $outcome['status'];
@@ -47,12 +47,18 @@ class ApiMonitorRunNotification
             ->title($title)
             ->body($body);
 
-        match ($status) {
+        return match ($status) {
             'danger' => $notification->danger(),
             'warning' => $notification->warning(),
             default => $notification->success(),
         };
+    }
 
-        $notification->send();
+    /**
+     * @param  array{result: MonitorApiResult, status: string, summary: string, previous_status: string|null}  $outcome
+     */
+    public static function send(array $outcome): void
+    {
+        self::fromOutcome($outcome)->send();
     }
 }
