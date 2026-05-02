@@ -84,12 +84,7 @@ class SeoIssuesTableWidget extends BaseWidget
             ->columns([
                 TextColumn::make('severity')
                     ->badge()
-                    ->color(fn ($state): string => match ($state->value) {
-                        'error' => 'danger',
-                        'warning' => 'warning',
-                        'notice' => 'info',
-                        default => 'gray',
-                    })
+                    ->color(fn (SeoIssue $record): string => $record->getSeverityColor())
                     ->formatStateUsing(fn ($state): string => strtoupper($state->value))
                     ->sortable(),
                 TextColumn::make('type')
@@ -130,12 +125,7 @@ class SeoIssuesTableWidget extends BaseWidget
                                 TextEntry::make('severity')
                                     ->badge()
                                     ->formatStateUsing(fn ($state): string => strtoupper($state->value))
-                                    ->color(fn ($state): string => match ($state->value) {
-                                        'error' => 'danger',
-                                        'warning' => 'warning',
-                                        'notice' => 'info',
-                                        default => 'gray',
-                                    }),
+                                    ->color(fn (SeoIssue $record): string => $record->getSeverityColor()),
                                 TextEntry::make('type')
                                     ->label('Issue Type')
                                     ->badge()
@@ -212,21 +202,24 @@ class SeoIssuesTableWidget extends BaseWidget
                 SelectFilter::make('type')
                     ->options([
                         'broken_internal_link' => 'Broken Internal Links',
-                        'redirect_chain' => 'Redirect Chains',
-                        'canonical_issue' => 'Canonical Issues',
-                        'https_issue' => 'HTTPS Issues',
+                        'redirect_loop' => 'Redirect Loops',
+                        'canonical_error' => 'Canonical Errors',
+                        'mixed_content' => 'Mixed Content',
+                        'http_not_redirected' => 'HTTP Not Redirected',
                         'orphaned_page' => 'Orphaned Pages',
-                        'duplicate_content' => 'Duplicate Content',
+                        'duplicate_title' => 'Duplicate Titles',
                         'duplicate_meta_description' => 'Duplicate Meta Descriptions',
                         'missing_meta_description' => 'Missing Meta Descriptions',
+                        'missing_title' => 'Missing Titles',
                         'missing_h1' => 'Missing H1 Tags',
                         'duplicate_h1' => 'Duplicate H1 Tags',
                         'large_images' => 'Large Images',
                         'slow_response' => 'Slow Response Times',
                         'missing_alt_text' => 'Missing Alt Text',
-                        'short_title' => 'Short Titles',
-                        'long_title' => 'Long Titles',
-                        'few_internal_links' => 'Few Internal Links',
+                        'title_too_short' => 'Short Titles',
+                        'title_too_long' => 'Long Titles',
+                        'too_few_internal_links' => 'Few Internal Links',
+                        'too_many_internal_links' => 'Too Many Internal Links',
                     ])
                     ->placeholder('All issue types')
                     ->searchable(),

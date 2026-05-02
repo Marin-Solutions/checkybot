@@ -167,7 +167,7 @@ class SeoIssue extends Model
                 'If the target should exist, restore it or add a redirect to the correct destination.',
                 'Run the SEO check again after the target returns a successful HTTP status.',
             ],
-            'redirect_loop' => [
+            'redirect_loop', 'redirect_chain' => [
                 'Fix the redirect rule so the source URL resolves to a different final URL.',
                 'Check CMS, web server, and CDN redirect rules for circular matches.',
             ],
@@ -175,7 +175,7 @@ class SeoIssue extends Model
                 'Point the canonical tag at a crawlable 200 URL.',
                 'Use an absolute canonical URL and keep it consistent with the preferred page version.',
             ],
-            'mixed_content' => [
+            'mixed_content', 'https_issue' => [
                 'Load every image, script, and stylesheet on this HTTPS page over HTTPS.',
                 'Replace hard-coded http:// asset URLs or proxy assets through a secure host.',
             ],
@@ -203,7 +203,7 @@ class SeoIssue extends Model
                 'Profile backend, cache, and database work for this URL.',
                 'Reduce time to first byte with page caching, query optimization, or infrastructure tuning.',
             ],
-            'missing_alt_text' => [
+            'missing_alt_text', 'image_missing_alt' => [
                 'Add useful alt text to meaningful images.',
                 'Use empty alt text only for decorative images that should be ignored by assistive technology.',
             ],
@@ -211,15 +211,15 @@ class SeoIssue extends Model
                 'Add a unique title tag to the page.',
                 'Put the most specific page topic near the start of the title.',
             ],
-            'title_too_short' => [
+            'title_too_short', 'short_title' => [
                 'Rewrite the title with enough context to distinguish the page.',
                 'Aim for a clear, specific title in the recommended 30-60 character range.',
             ],
-            'title_too_long' => [
+            'title_too_long', 'long_title' => [
                 'Shorten the title so the most important words are not truncated in search results.',
                 'Aim for a clear, specific title in the recommended 30-60 character range.',
             ],
-            'too_few_internal_links' => [
+            'too_few_internal_links', 'few_internal_links' => [
                 'Add relevant internal links from this page to related pages.',
                 'Use descriptive anchor text that helps users and crawlers understand the destination.',
             ],
@@ -227,7 +227,7 @@ class SeoIssue extends Model
                 'Remove low-value navigation or repeated links from this page.',
                 'Group links into clearer sections so crawlers and users can identify the most important destinations.',
             ],
-            'duplicate_title' => [
+            'duplicate_title', 'duplicate_content' => [
                 'Give each affected page a unique title that reflects its specific content.',
                 'Check templates or CMS defaults that may be applying the same title broadly.',
             ],

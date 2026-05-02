@@ -74,6 +74,48 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
         ->mountTableAction('view_issue_details', $issue)
         ->assertHasNoTableActionErrors()
         ->assertSchemaStateSet([
+            'evidence_items' => [
+                [
+                    'label' => 'Issue',
+                    'value' => 'Broken Internal Link',
+                ],
+                [
+                    'label' => 'Description',
+                    'value' => 'Internal link to docs/missing returns 404 error',
+                ],
+                [
+                    'label' => 'HTTP status',
+                    'value' => 200,
+                ],
+                [
+                    'label' => 'Response time',
+                    'value' => '143.25ms',
+                ],
+                [
+                    'label' => 'Page title',
+                    'value' => 'Docs',
+                ],
+                [
+                    'label' => 'Meta description',
+                    'value' => 'Missing',
+                ],
+                [
+                    'label' => 'Internal links',
+                    'value' => 2,
+                ],
+                [
+                    'label' => 'Broken Url',
+                    'value' => 'https://example.com/docs/missing',
+                ],
+                [
+                    'label' => 'Status Code',
+                    'value' => '404',
+                ],
+                [
+                    'label' => 'Link Text',
+                    'value' => 'Missing docs',
+                ],
+            ],
             'fix_guidance' => [
                 'Update or remove the link on the flagged page.',
                 'If the target should exist, restore it or add a redirect to the correct destination.',
