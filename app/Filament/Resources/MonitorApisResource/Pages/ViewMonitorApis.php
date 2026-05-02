@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MonitorApisResource\Pages;
 
 use App\Filament\Resources\MonitorApisResource;
+use App\Models\MonitorApiResult;
 use App\Services\ApiMonitorExecutionService;
 use App\Support\ApiMonitorRunNotification;
 use Filament\Actions;
