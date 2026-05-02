@@ -61,68 +61,75 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
      */
     public function handle(SslCertificateService $sslCertificateService): void
     {
-        if (! $this->website->uptime_check) {
+        if (! $this->shouldRunForWebsite()) {
             return;
         }
 
         $statusService = app(PackageHealthStatusService::class);
         $notificationService = app(HealthEventNotificationService::class);
+        $shouldRunUptime = (bool) $this->website->uptime_check;
+        $shouldRunSsl = (bool) $this->website->ssl_check;
 
         $ssl_expiry_date = null;
         $http_status_code = null;
         $speed = null;
         $transportError = null;
-        $host = $sslCertificateService->extractHost($this->website->url);
-        $port = $sslCertificateService->extractPort($this->website->url);
 
         try {
-            if (blank($host)) {
-                Log::warning('Could not determine SSL host for '.$this->website->url);
-            } else {
-                try {
-                    $ssl_expiry_date = $sslCertificateService->getExpirationDateForHost($host, $port);
-                } catch (\Exception $sslException) {
-                    Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
+            if ($shouldRunSsl) {
+                $host = $sslCertificateService->extractHost($this->website->url);
+                $port = $sslCertificateService->extractPort($this->website->url);
+
+                if (blank($host)) {
+                    Log::warning('Could not determine SSL host for '.$this->website->url);
+                } else {
+                    try {
+                        $ssl_expiry_date = $sslCertificateService->getExpirationDateForHost($host, $port);
+                    } catch (\Exception $sslException) {
+                        Log::warning('Could not retrieve SSL certificate for '.$this->website->url.': '.$sslException->getMessage());
+                    }
                 }
             }
 
-            $responseTimeStart = microtime(true);
+            if ($shouldRunUptime) {
+                $responseTimeStart = microtime(true);
 
-            try {
-                $response = Http::timeout(10)
-                    ->retry(2, 1000, throw: false)
-                    ->connectTimeout(5)
-                    ->withoutVerifying()
-                    ->get($this->website->url);
+                try {
+                    $response = Http::timeout(10)
+                        ->retry(2, 1000, throw: false)
+                        ->connectTimeout(5)
+                        ->withoutVerifying()
+                        ->get($this->website->url);
 
-                $responseTimeEnd = microtime(true);
-                $http_status_code = $response->status();
-                $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
-            } catch (ConnectionException $e) {
-                $transportError = UptimeTransportError::fromThrowable($e);
-                Log::warning('Transport error for website '.$this->website->url.': '.$e->getMessage(), [
-                    'transport_error_type' => $transportError['type']->value,
-                    'transport_error_code' => $transportError['code'],
-                ]);
-                $responseTimeEnd = microtime(true);
+                    $responseTimeEnd = microtime(true);
+                    $http_status_code = $response->status();
+                    $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
+                } catch (ConnectionException $e) {
+                    $transportError = UptimeTransportError::fromThrowable($e);
+                    Log::warning('Transport error for website '.$this->website->url.': '.$e->getMessage(), [
+                        'transport_error_type' => $transportError['type']->value,
+                        'transport_error_code' => $transportError['code'],
+                    ]);
+                    $responseTimeEnd = microtime(true);
 
-                $http_status_code = 0;
-                $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
+                    $http_status_code = 0;
+                    $speed = round(($responseTimeEnd - $responseTimeStart) * 1000);
+                }
             }
 
-            $httpStatus = $statusService->websiteStatusFromHttpCode($http_status_code);
-            $httpSummary = $transportError
-                ? UptimeTransportError::summary($transportError['type'])
-                : $statusService->summaryForWebsite($http_status_code);
-            $sslExpiryDate = $this->website->ssl_check && $ssl_expiry_date !== null
+            $httpStatus = $shouldRunUptime ? $statusService->websiteStatusFromHttpCode($http_status_code) : null;
+            $httpSummary = $shouldRunUptime
+                ? ($transportError
+                    ? UptimeTransportError::summary($transportError['type'])
+                    : $statusService->summaryForWebsite($http_status_code))
+                : null;
+            $sslExpiryDate = $shouldRunSsl && $ssl_expiry_date !== null
                 ? Carbon::parse($ssl_expiry_date)
                 : null;
-            $sslStatus = $this->website->ssl_check
+            $sslStatus = $shouldRunSsl
                 ? $statusService->sslStatusFromExpiryDate($sslExpiryDate)
                 : null;
-            $status = $sslStatus === null
-                ? $httpStatus
-                : $statusService->websiteStatusFromHttpAndSsl($http_status_code, $sslExpiryDate);
+            $status = $this->statusForEnabledChecks($statusService, $httpStatus, $sslStatus);
             $summary = $this->summaryForCombinedStatus(
                 $statusService,
                 $status,
@@ -182,14 +189,39 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         }
     }
 
+    private function shouldRunForWebsite(): bool
+    {
+        if ((bool) $this->website->uptime_check) {
+            return true;
+        }
+
+        return $this->isOnDemand() && (bool) $this->website->ssl_check;
+    }
+
+    private function statusForEnabledChecks(
+        PackageHealthStatusService $statusService,
+        ?string $httpStatus,
+        ?string $sslStatus,
+    ): string {
+        return match (true) {
+            $httpStatus !== null && $sslStatus !== null => $statusService->worstStatus($httpStatus, $sslStatus),
+            $sslStatus !== null => $sslStatus,
+            default => $httpStatus ?? 'warning',
+        };
+    }
+
     private function summaryForCombinedStatus(
         PackageHealthStatusService $statusService,
         string $status,
-        string $httpStatus,
-        string $httpSummary,
+        ?string $httpStatus,
+        ?string $httpSummary,
         ?string $sslStatus,
         ?CarbonInterface $sslExpiryDate,
     ): string {
+        if ($httpStatus === null) {
+            return $statusService->summaryForSsl($sslExpiryDate);
+        }
+
         // SSL is the sole deciding factor, so lead with certificate evidence.
         if ($sslStatus !== null && $status === $sslStatus && $status !== $httpStatus) {
             return $statusService->summaryForSsl($sslExpiryDate);
@@ -200,7 +232,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
             return $httpSummary.' '.$statusService->summaryForSsl($sslExpiryDate);
         }
 
-        return $httpSummary;
+        return $httpSummary ?? 'Website diagnostics completed.';
     }
 
     private function syncScheduledSslExpirySnapshot(

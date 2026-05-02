@@ -17,9 +17,11 @@ use App\Models\OutboundLink;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
+use Mockery\MockInterface;
 use Spatie\Dns\Dns;
 
 afterEach(function () {
@@ -1000,11 +1002,67 @@ test('view page run now action surfaces failure when target returns server error
         ->and($website->status_summary)->toBe('Heartbeat received successfully.');
 });
 
-test('view page hides run now action when uptime check is disabled', function () {
+test('view page run now action records ssl-only diagnostic evidence', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'current_status' => null,
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+    ]);
+
+    Http::preventStrayRequests();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andReturn(Carbon::parse('2026-05-24 09:00:00'));
+    });
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionVisible('run_now')
+        ->callAction('run_now')
+        ->assertNotified('On-demand check succeeded');
+
+    $website->refresh();
+    $history = $website->logHistory()->first();
+
+    expect($website->logHistory()->count())->toBe(1)
+        ->and($history->status)->toBe('healthy')
+        ->and($history->summary)->toBe('SSL certificate is valid for 30 day(s).')
+        ->and($history->ssl_expiry_date?->isSameDay('2026-05-24'))->toBeTrue()
+        ->and($history->http_status_code)->toBeNull()
+        ->and($history->speed)->toBeNull()
+        ->and($history->run_source)->toBe(RunSource::OnDemand)
+        ->and($history->is_on_demand)->toBeTrue()
+        ->and($website->current_status)->toBeNull()
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->status_summary)->toBeNull();
+});
+
+test('view page hides run now action when uptime and ssl checks are disabled', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
         'created_by' => $user->id,
         'uptime_check' => false,
+        'ssl_check' => false,
     ]);
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])

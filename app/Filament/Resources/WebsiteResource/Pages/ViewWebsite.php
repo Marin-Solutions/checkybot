@@ -23,11 +23,11 @@ class ViewWebsite extends ViewRecord
                 ->color('primary')
                 ->requiresConfirmation()
                 ->modalIcon('heroicon-o-bolt')
-                ->modalHeading('Run uptime + SSL check now')
-                ->modalDescription('Checkybot will run a real heartbeat against this website right now and append the result to its log history. The website\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
+                ->modalHeading('Run website diagnostics now')
+                ->modalDescription('Checkybot will run the enabled diagnostics for this website right now and append the result to its log history. The website\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
-                ->visible(fn (): bool => (bool) $this->record->uptime_check)
+                ->visible(fn (): bool => (bool) $this->record->uptime_check || (bool) $this->record->ssl_check)
                 ->action(function (): void {
                     try {
                         LogUptimeSslJob::dispatchSync($this->record, onDemand: true);
@@ -72,9 +72,14 @@ class ViewWebsite extends ViewRecord
 
         if ($log !== null) {
             $code = (int) ($log->http_status_code ?? 0);
-            $codeLine = $code > 0 ? "HTTP {$code}" : 'No HTTP response';
+            $codeLine = match (true) {
+                $log->http_status_code === null && $log->ssl_expiry_date !== null => 'SSL certificate checked',
+                $log->http_status_code === null => 'SSL certificate check completed',
+                $code > 0 => "HTTP {$code}",
+                default => 'No HTTP response',
+            };
             $speed = (int) ($log->speed ?? 0);
-            $lines[] = "{$codeLine} • {$speed}ms";
+            $lines[] = $log->speed === null ? $codeLine : "{$codeLine} • {$speed}ms";
 
             if (filled($log->summary)) {
                 $lines[] = (string) $log->summary;
