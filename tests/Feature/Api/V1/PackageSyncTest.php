@@ -10,6 +10,7 @@ use App\Models\WebsiteLogHistory;
 use App\Services\PackageSyncService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -613,6 +614,20 @@ test('package website key migration keeps active duplicates and reassigns histor
     expect(Website::withTrashed()->find($deletedWebsite->id))->toBeNull()
         ->and(Website::find($activeWebsite->id))->not->toBeNull()
         ->and($history->fresh()->website_id)->toBe($activeWebsite->id);
+});
+
+test('package website key migration keeps a project foreign key index before replacing composite index', function () {
+    $migration = require database_path('migrations/2026_04_28_010002_add_unique_package_website_key_index.php');
+    $migration->down();
+
+    expect(Schema::hasIndex('websites', 'idx_websites_project_source_name'))->toBeTrue()
+        ->and(Schema::hasIndex('websites', 'idx_websites_project_id'))->toBeFalse();
+
+    $migration->up();
+
+    expect(Schema::hasIndex('websites', 'idx_websites_project_id'))->toBeTrue()
+        ->and(Schema::hasIndex('websites', 'idx_websites_project_source_name'))->toBeFalse()
+        ->and(Schema::hasIndex('websites', 'websites_project_source_package_unique'))->toBeTrue();
 });
 
 test('package website key migration merges split duplicate check flags', function () {
