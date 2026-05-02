@@ -76,7 +76,7 @@ class ProjectComponentInfolist
                             }),
                     ])->columns(2),
                 Section::make('Heartbeat Setup')
-                    ->description('Copy a Laravel package definition or direct API heartbeat for this component.')
+                    ->description('Copy a Laravel package definition or direct API heartbeat template for this component. Replace the API key before sending direct heartbeats.')
                     ->schema([
                         TextEntry::make('package_setup_snippet')
                             ->label('Package Definition')
@@ -178,7 +178,7 @@ class ProjectComponentInfolist
     private static function codeBlock(string $state): HtmlString
     {
         return new HtmlString(
-            '<pre class="overflow-x-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 text-sm text-white">'
+            '<pre class="overflow-x-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 text-sm text-gray-100 dark:bg-gray-900 dark:text-gray-100">'
             .e($state)
             .'</pre>'
         );

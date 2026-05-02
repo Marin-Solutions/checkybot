@@ -91,6 +91,11 @@ class ComponentHeartbeatSetupSnippet
         ]);
     }
 
+    /**
+     * Use the app URL as the Checkybot endpoint shown in setup snippets.
+     * Empty app URLs fall back to the hosted Checkybot domain so copied
+     * snippets are still runnable in new or partially-configured installs.
+     */
     public static function checkybotUrl(): string
     {
         $checkybotUrl = rtrim((string) config('app.url', 'https://checkybot.com'), '/');
