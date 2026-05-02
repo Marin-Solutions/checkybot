@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ComponentHeartbeatSetupSnippet;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -183,6 +184,8 @@ class Project extends Model
             "CHECKYBOT_ENVIRONMENT={$this->environment}",
             'CHECKYBOT_IDENTITY_ENDPOINT="${APP_URL}"',
             'EOF',
+            '',
+            ComponentHeartbeatSetupSnippet::projectComponentAppendCommand(),
             '',
             '# routes/console.php',
             "Schedule::command('checkybot:sync')->everyMinute();",

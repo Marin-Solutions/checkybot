@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ProjectComponents\Schemas;
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
 use App\Services\ProjectComponentStaleService;
+use App\Support\ComponentHeartbeatSetupSnippet;
 use App\Support\HealthStatusLabel;
 use App\Support\MetricsPayloadFormatter;
 use Filament\Infolists\Components\KeyValueEntry;
@@ -74,6 +75,26 @@ class ProjectComponentInfolist
                                 default => 'gray',
                             }),
                     ])->columns(2),
+                Section::make('Heartbeat Setup')
+                    ->description('Copy a Laravel package definition or direct API heartbeat for this component.')
+                    ->schema([
+                        TextEntry::make('package_setup_snippet')
+                            ->label('Package Definition')
+                            ->state(fn (ProjectComponent $record): string => ComponentHeartbeatSetupSnippet::componentPackageDefinition($record))
+                            ->formatStateUsing(fn (string $state): HtmlString => static::codeBlock($state))
+                            ->html()
+                            ->copyable()
+                            ->copyMessage('Package snippet copied')
+                            ->columnSpanFull(),
+                        TextEntry::make('direct_api_snippet')
+                            ->label('Direct API Heartbeat')
+                            ->state(fn (ProjectComponent $record): string => ComponentHeartbeatSetupSnippet::componentCurl($record))
+                            ->formatStateUsing(fn (string $state): HtmlString => static::codeBlock($state))
+                            ->html()
+                            ->copyable()
+                            ->copyMessage('API heartbeat snippet copied')
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Current Metrics')
                     ->hidden(fn (ProjectComponent $record): bool => blank($record->metrics))
                     ->schema([
@@ -152,5 +173,14 @@ class ProjectComponentInfolist
         }
 
         return "Includes {$graceMinutes}-minute grace. {$thresholdHint}";
+    }
+
+    private static function codeBlock(string $state): HtmlString
+    {
+        return new HtmlString(
+            '<pre class="overflow-x-auto whitespace-pre-wrap rounded-lg bg-gray-950 p-4 text-sm text-white">'
+            .e($state)
+            .'</pre>'
+        );
     }
 }

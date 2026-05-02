@@ -56,6 +56,9 @@ test('application view shows the guided Laravel setup snippet with pairing data'
         ->toContain('CHECKYBOT_API_KEY=replace-with-your-api-key')
         ->toContain("CHECKYBOT_APP_ID={$project->getKey()}")
         ->toContain('CHECKYBOT_APPLICATION_NAME="Checkout App"')
+        ->toContain("Checkybot::component('queue')")
+        ->toContain("->metric('pending_jobs', fn (): int => \\Illuminate\\Support\\Facades\\Queue::size('default'))")
+        ->toContain("Checkybot::component('scheduled-jobs')")
         ->toContain('Schedule::command(\'checkybot:sync\')->everyMinute();');
 });
 
