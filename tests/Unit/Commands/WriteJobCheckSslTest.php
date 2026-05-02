@@ -16,7 +16,7 @@ test('command dispatches jobs for websites with ssl expiring in 14 days', functi
 
     Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(14),
+        'ssl_expiry_date' => today()->addDays(14)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -30,7 +30,7 @@ test('command dispatches jobs for websites with ssl expiring in 7 days', functio
 
     Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(7),
+        'ssl_expiry_date' => today()->addDays(7)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -44,7 +44,7 @@ test('command dispatches jobs for websites with ssl expiring in 3 days', functio
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(3),
+        'ssl_expiry_date' => today()->addDays(3)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -58,7 +58,7 @@ test('command dispatches jobs for websites with ssl expiring in 2 days', functio
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(2),
+        'ssl_expiry_date' => today()->addDays(2)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -72,7 +72,7 @@ test('command dispatches jobs for websites with ssl expiring in 1 day', function
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(1),
+        'ssl_expiry_date' => today()->addDays(1)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -86,7 +86,7 @@ test('command dispatches jobs for websites with expired ssl', function () {
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->subDays(1),
+        'ssl_expiry_date' => today()->subDays(1)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -101,7 +101,7 @@ test('command does not dispatch jobs for ssl expiring in non reminder days', fun
     // SSL expires in 5 days (not a reminder day)
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(5),
+        'ssl_expiry_date' => today()->addDays(5)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -120,7 +120,7 @@ test('command dispatches package ssl-only checks when package interval is due', 
         'package_name' => 'certificate',
         'package_interval' => '1d',
         'last_heartbeat_at' => now()->subDay(),
-        'ssl_expiry_date' => today()->addDays(45),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -139,7 +139,7 @@ test('command does not dispatch package ssl-only checks before package interval 
         'package_name' => 'certificate',
         'package_interval' => '1d',
         'last_heartbeat_at' => now()->subHours(12),
-        'ssl_expiry_date' => today()->addDays(45),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -158,13 +158,70 @@ test('command does not dispatch package ssl-only reminder checks before package 
         'package_name' => 'certificate',
         'package_interval' => '1d',
         'last_heartbeat_at' => now()->subHours(12),
-        'ssl_expiry_date' => today()->addDays(14),
+        'ssl_expiry_date' => today()->addDays(14)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
 
     Queue::assertNotPushed(CheckSslExpiryDateJob::class);
+});
+
+test('command dispatches package ssl-only checks for arbitrary valid hour intervals', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => '2h',
+        'last_heartbeat_at' => now()->subHours(2),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
+test('command honors arbitrary valid day intervals before dispatching package ssl-only checks', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => '3d',
+        'last_heartbeat_at' => now()->subDays(2),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(CheckSslExpiryDateJob::class);
+});
+
+test('command dispatches package ssl-only checks once when package interval and reminder day are both due', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => '2h',
+        'last_heartbeat_at' => now()->subHours(3),
+        'ssl_expiry_date' => today()->addDays(14)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
 });
 
 test('command dispatches jobs for websites without ssl expiry date', function () {
@@ -186,7 +243,7 @@ test('command does not dispatch jobs for websites with ssl check disabled', func
 
     $website = Website::factory()->create([
         'ssl_check' => false,
-        'ssl_expiry_date' => today()->addDays(7),
+        'ssl_expiry_date' => today()->addDays(7)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -200,7 +257,7 @@ test('command dispatches jobs to correct queue', function () {
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(7),
+        'ssl_expiry_date' => today()->addDays(7)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -214,17 +271,17 @@ test('command dispatches jobs for multiple websites matching criteria', function
 
     Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(14),
+        'ssl_expiry_date' => today()->addDays(14)->toDateString(),
     ]);
 
     Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(7),
+        'ssl_expiry_date' => today()->addDays(7)->toDateString(),
     ]);
 
     Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(1),
+        'ssl_expiry_date' => today()->addDays(1)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -238,7 +295,7 @@ test('command dispatches correct website to job', function () {
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(7),
+        'ssl_expiry_date' => today()->addDays(7)->toDateString(),
         'url' => 'https://example.com',
     ]);
 
@@ -266,7 +323,7 @@ test('command filters correctly by reminder days', function () {
     foreach ($reminderDays as $day) {
         Website::factory()->create([
             'ssl_check' => true,
-            'ssl_expiry_date' => today()->addDays($day),
+            'ssl_expiry_date' => today()->addDays($day)->toDateString(),
         ]);
     }
 
@@ -275,7 +332,7 @@ test('command filters correctly by reminder days', function () {
     foreach ($nonReminderDays as $day) {
         Website::factory()->create([
             'ssl_check' => true,
-            'ssl_expiry_date' => today()->addDays($day),
+            'ssl_expiry_date' => today()->addDays($day)->toDateString(),
         ]);
     }
 
@@ -291,7 +348,7 @@ test('command handles ssl expired multiple days ago', function () {
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->subDays(10),
+        'ssl_expiry_date' => today()->subDays(10)->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -305,7 +362,7 @@ test('command still dispatches jobs for ssl reminders sent in the last day so ex
 
     Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->subDays(10),
+        'ssl_expiry_date' => today()->subDays(10)->toDateString(),
         'ssl_expiry_reminder_sent_at' => now()->subHours(12),
     ]);
 
@@ -320,7 +377,7 @@ test('command handles ssl expiring today', function () {
 
     $website = Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today(),
+        'ssl_expiry_date' => today()->toDateString(),
     ]);
 
     $this->artisan('ssl:check')
@@ -346,13 +403,13 @@ test('command only checks websites with ssl check enabled', function () {
     // Enabled with matching expiry
     Website::factory()->create([
         'ssl_check' => true,
-        'ssl_expiry_date' => today()->addDays(7),
+        'ssl_expiry_date' => today()->addDays(7)->toDateString(),
     ]);
 
     // Disabled with matching expiry
     Website::factory()->create([
         'ssl_check' => false,
-        'ssl_expiry_date' => today()->addDays(7),
+        'ssl_expiry_date' => today()->addDays(7)->toDateString(),
     ]);
 
     // Enabled without expiry
@@ -374,7 +431,7 @@ test('command handles large number of websites across chunks', function () {
     for ($i = 0; $i < 101; $i++) {
         Website::factory()->create([
             'ssl_check' => true,
-            'ssl_expiry_date' => today()->addDays(7),
+            'ssl_expiry_date' => today()->addDays(7)->toDateString(),
         ]);
     }
 

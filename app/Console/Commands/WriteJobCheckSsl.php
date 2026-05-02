@@ -12,18 +12,6 @@ class WriteJobCheckSsl extends Command
 {
     private const CHUNK_SIZE = 100;
 
-    private const PACKAGE_INTERVALS = [
-        '1m' => 1,
-        '5m' => 5,
-        '10m' => 10,
-        '15m' => 15,
-        '30m' => 30,
-        '1h' => 60,
-        '6h' => 360,
-        '12h' => 720,
-        '1d' => 1440,
-    ];
-
     private const REMINDER_DAYS = [14, 7, 3, 2, 1, 0];
 
     /**
@@ -90,14 +78,7 @@ class WriteJobCheckSsl extends Command
                 ->orWhereIn(
                     'ssl_expiry_date',
                     collect(self::REMINDER_DAYS)
-                        ->flatMap(function (int $days) use ($today): array {
-                            $date = $today->copy()->addDays($days);
-
-                            return [
-                                $date->toDateString(),
-                                $date->startOfDay()->toDateTimeString(),
-                            ];
-                        })
+                        ->map(fn (int $days): string => $today->copy()->addDays($days)->toDateString())
                         ->unique()
                         ->all()
                 );
@@ -126,20 +107,45 @@ class WriteJobCheckSsl extends Command
 
     private function wherePackageSslCheckIsDue(Builder $query): void
     {
-        $now = now();
+        [$intervalDueSql, $bindings] = $this->packageIntervalDueExpression();
 
-        $query->where(function (Builder $query) use ($now): void {
+        $query->where(function (Builder $query) use ($intervalDueSql, $bindings): void {
             $query
                 ->whereNull('last_heartbeat_at')
-                ->orWhere(function (Builder $query) use ($now): void {
-                    foreach (self::PACKAGE_INTERVALS as $interval => $minutes) {
-                        $query->orWhere(function (Builder $query) use ($interval, $minutes, $now): void {
-                            $query
-                                ->where('package_interval', $interval)
-                                ->where('last_heartbeat_at', '<=', $now->copy()->subMinutes($minutes)->toDateTimeString());
-                        });
-                    }
-                });
+                ->orWhereRaw($intervalDueSql, $bindings);
         });
+    }
+
+    /**
+     * @return array{0: string, 1: array<int, string>}
+     */
+    private function packageIntervalDueExpression(): array
+    {
+        $now = now()->toDateTimeString();
+
+        return match (Website::query()->getConnection()->getDriverName()) {
+            'sqlite' => [
+                "package_interval GLOB '[1-9]*[mhd]'"
+                    ." AND substr(package_interval, 1, length(package_interval) - 1) NOT GLOB '*[^0-9]*'"
+                    ." AND datetime(last_heartbeat_at, '+' || (CAST(substr(package_interval, 1, length(package_interval) - 1) AS INTEGER) * CASE substr(package_interval, -1) WHEN 'm' THEN 1 WHEN 'h' THEN 60 WHEN 'd' THEN 1440 END) || ' minutes') <= ?",
+                [$now],
+            ],
+            'pgsql' => [
+                "package_interval ~ '^[1-9][0-9]*[mhd]$'"
+                    ." AND date_trunc('second', last_heartbeat_at) + ((substring(package_interval from 1 for char_length(package_interval) - 1)::integer * CASE right(package_interval, 1) WHEN 'm' THEN 1 WHEN 'h' THEN 60 WHEN 'd' THEN 1440 END) * interval '1 minute') <= ?",
+                [$now],
+            ],
+            'sqlsrv' => [
+                "package_interval LIKE '[1-9]%[mhd]'"
+                    .' AND PATINDEX(\'%[^0-9]%\', LEFT(package_interval, LEN(package_interval) - 1)) = 0'
+                    ." AND DATEADD(minute, CAST(LEFT(package_interval, LEN(package_interval) - 1) AS int) * CASE RIGHT(package_interval, 1) WHEN 'm' THEN 1 WHEN 'h' THEN 60 WHEN 'd' THEN 1440 END, last_heartbeat_at) <= ?",
+                [$now],
+            ],
+            default => [
+                "package_interval REGEXP '^[1-9][0-9]*[mhd]$'"
+                    ." AND TIMESTAMPADD(MINUTE, CAST(SUBSTRING(package_interval, 1, CHAR_LENGTH(package_interval) - 1) AS UNSIGNED) * CASE RIGHT(package_interval, 1) WHEN 'm' THEN 1 WHEN 'h' THEN 60 WHEN 'd' THEN 1440 END, last_heartbeat_at) <= ?",
+                [$now],
+            ],
+        };
     }
 }
