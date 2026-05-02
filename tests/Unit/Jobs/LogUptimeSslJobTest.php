@@ -767,27 +767,10 @@ test('job keeps http summary when ssl expiry is unavailable and http is dangerou
         ->and($website->status_summary)->toBe('Website heartbeat failed with HTTP status 500.');
 });
 
-test('job leaves uptime-only status based on http when ssl evidence is unavailable', function () {
+test('job leaves uptime-only status based on http when ssl check is disabled', function () {
     Http::fake([
         '*' => Http::response('', 200),
     ]);
-
-    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
-        $mock->shouldReceive('extractHost')
-            ->once()
-            ->with('https://example.com')
-            ->andReturn('example.com');
-
-        $mock->shouldReceive('extractPort')
-            ->once()
-            ->with('https://example.com')
-            ->andReturn(443);
-
-        $mock->shouldReceive('getExpirationDateForHost')
-            ->once()
-            ->with('example.com', 443)
-            ->andThrow(new RuntimeException('No certificate'));
-    });
 
     $website = Website::factory()->create([
         'url' => 'https://example.com',
@@ -982,6 +965,56 @@ test('job skips websites with uptime check disabled', function () {
     assertDatabaseMissing('website_log_history', [
         'website_id' => $website->id,
     ]);
+});
+
+test('on-demand job records ssl-only evidence when uptime check is disabled', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+    Http::preventStrayRequests();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andReturn(Carbon::parse('2026-05-08 09:00:00'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subHour(),
+        'status_summary' => 'Scheduler-owned status.',
+    ]);
+
+    $heartbeatBefore = $website->last_heartbeat_at;
+
+    $job = new LogUptimeSslJob($website, onDemand: true);
+    $job->handle(app(SslCertificateService::class));
+
+    $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
+    $website->refresh();
+
+    expect($history?->status)->toBe('warning')
+        ->and($history?->summary)->toBe('SSL certificate expires in 14 day(s).')
+        ->and($history?->ssl_expiry_date?->isSameDay('2026-05-08'))->toBeTrue()
+        ->and($history?->http_status_code)->toBeNull()
+        ->and($history?->speed)->toBeNull()
+        ->and($history?->run_source)->toBe(RunSource::OnDemand)
+        ->and($history?->is_on_demand)->toBeTrue()
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->status_summary)->toBe('Scheduler-owned status.');
 });
 
 test('job resolves the host before looking up the ssl certificate', function () {
