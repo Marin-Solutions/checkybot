@@ -141,3 +141,42 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
             ],
         ]);
 });
+
+test('seo issue details keep affected url roles when values match', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+    ]);
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+    ]);
+    $issue = SeoIssue::factory()->create([
+        'seo_check_id' => $seoCheck->id,
+        'seo_crawl_result_id' => null,
+        'type' => 'redirect_loop',
+        'url' => 'https://example.com/loop',
+        'title' => 'Redirect Loop Detected',
+        'description' => 'Page redirects to itself, creating an infinite loop',
+        'data' => [
+            'redirect_to' => 'https://example.com/loop',
+            'status_code' => 301,
+        ],
+    ]);
+
+    Livewire::test(SeoIssuesTableWidget::class, ['recordId' => $seoCheck->id])
+        ->mountTableAction('view_issue_details', $issue)
+        ->assertHasNoTableActionErrors()
+        ->assertSchemaStateSet([
+            'affected_urls' => [
+                [
+                    'label' => 'Flagged page',
+                    'url' => 'https://example.com/loop',
+                ],
+                [
+                    'label' => 'Redirect target',
+                    'url' => 'https://example.com/loop',
+                ],
+            ],
+        ]);
+});

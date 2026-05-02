@@ -110,7 +110,7 @@ class SeoIssue extends Model
         }
 
         return collect($urls)
-            ->unique('url')
+            ->unique(fn (array $item): string => $item['label'].'|'.$item['url'])
             ->values()
             ->all();
     }
