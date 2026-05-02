@@ -54,10 +54,15 @@ class ComponentHeartbeatSetupSnippet
         $apiKey ??= 'replace-with-your-api-key';
         $componentName = self::shellSingleQuote($component->name);
         $interval = self::shellSingleQuote(self::interval($component));
+        $declaredComponents = self::shellSingleQuote(json_encode(
+            self::declaredComponents($component),
+            JSON_UNESCAPED_SLASHES
+        ));
 
         return implode(PHP_EOL, [
             "COMPONENT_NAME={$componentName}",
             "COMPONENT_INTERVAL={$interval}",
+            "DECLARED_COMPONENTS_JSON={$declaredComponents}",
             'OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"',
             '',
             'curl -fsS -X POST "'.self::checkybotUrl().'/api/v1/projects/'.$project->getKey().'/components/sync" \\',
@@ -67,8 +72,9 @@ class ComponentHeartbeatSetupSnippet
             '    --arg name "$COMPONENT_NAME" \\',
             '    --arg interval "$COMPONENT_INTERVAL" \\',
             '    --arg observed_at "$OBSERVED_AT" \\',
+            '    --argjson declared_components "$DECLARED_COMPONENTS_JSON" \\',
             "    '{",
-            '      declared_components: [{ name: $name, interval: $interval }],',
+            '      declared_components: $declared_components,',
             '      components: [{',
             '        name: $name,',
             '        interval: $interval,',
@@ -115,6 +121,31 @@ class ComponentHeartbeatSetupSnippet
         }
 
         return IntervalParser::fromMinutes(max(1, $component->interval_minutes ?? 5));
+    }
+
+    /**
+     * @return array<int, array{name: string, interval: string}>
+     */
+    private static function declaredComponents(ProjectComponent $component): array
+    {
+        $components = $component->project
+            ->components()
+            ->where('source', 'package')
+            ->where('is_archived', false)
+            ->orderBy('name')
+            ->get();
+
+        if (! $components->contains(fn (ProjectComponent $declared): bool => $declared->name === $component->name)) {
+            $components->push($component);
+        }
+
+        return $components
+            ->map(fn (ProjectComponent $declared): array => [
+                'name' => $declared->name,
+                'interval' => self::interval($declared),
+            ])
+            ->values()
+            ->all();
     }
 
     private static function escapeSingleQuoted(string $value): string
