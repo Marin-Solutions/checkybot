@@ -75,13 +75,19 @@ class WriteJobCheckSsl extends Command
             $query
                 ->whereNull('ssl_expiry_date')
                 ->orWhere('ssl_expiry_date', '<', $today->toDateString())
-                ->orWhereIn(
-                    'ssl_expiry_date',
+                ->orWhere(function (Builder $query) use ($today): void {
                     collect(self::REMINDER_DAYS)
-                        ->map(fn (int $days): string => $today->copy()->addDays($days)->toDateString())
                         ->unique()
-                        ->all()
-                );
+                        ->each(function (int $days) use ($query, $today): void {
+                            $reminderDate = $today->copy()->addDays($days);
+
+                            $query->orWhere(function (Builder $query) use ($reminderDate): void {
+                                $query
+                                    ->where('ssl_expiry_date', '>=', $reminderDate->toDateString())
+                                    ->where('ssl_expiry_date', '<', $reminderDate->copy()->addDay()->toDateString());
+                            });
+                        });
+                });
         });
     }
 
@@ -123,6 +129,8 @@ class WriteJobCheckSsl extends Command
     {
         $now = now()->toDateTimeString();
 
+        // PackageSyncRequest rejects seconds for uptime and SSL checks, so package SSL-only
+        // schedules persisted through the API are normalized to minute/hour/day intervals.
         return match (Website::query()->getConnection()->getDriverName()) {
             'sqlite' => [
                 "package_interval GLOB '[1-9]*[mhd]'"

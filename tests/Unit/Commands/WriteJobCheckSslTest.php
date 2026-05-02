@@ -386,6 +386,20 @@ test('command handles ssl expiring today', function () {
     Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
 });
 
+test('command dispatches jobs for datetime-formatted ssl expiry reminder days', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'ssl_expiry_date' => today()->addDays(7)->setTime(15, 30)->toDateTimeString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
 test('command displays success message', function () {
     $this->artisan('ssl:check')
         ->expectsOutput('SSL check completed successfully.')
