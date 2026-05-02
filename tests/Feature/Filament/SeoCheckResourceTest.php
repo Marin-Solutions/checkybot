@@ -65,6 +65,7 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
             'broken_url' => 'https://example.com/docs/missing',
             'status_code' => 404,
             'link_text' => 'Missing docs',
+            'recommendation' => 'Repair the broken link or remove it.',
         ],
     ]);
 
@@ -85,7 +86,7 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
                 ],
                 [
                     'label' => 'HTTP status',
-                    'value' => 200,
+                    'value' => '200',
                 ],
                 [
                     'label' => 'Response time',
@@ -101,7 +102,7 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
                 ],
                 [
                     'label' => 'Internal links',
-                    'value' => 2,
+                    'value' => '2',
                 ],
                 [
                     'label' => 'Broken Url',
@@ -117,6 +118,7 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
                 ],
             ],
             'fix_guidance' => [
+                'Repair the broken link or remove it.',
                 'Update or remove the link on the flagged page.',
                 'If the target should exist, restore it or add a redirect to the correct destination.',
                 'Run the SEO check again after the target returns a successful HTTP status.',
@@ -135,6 +137,7 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
                 'broken_url' => 'https://example.com/docs/missing',
                 'status_code' => '404',
                 'link_text' => 'Missing docs',
+                'recommendation' => 'Repair the broken link or remove it.',
             ],
         ]);
 });

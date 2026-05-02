@@ -126,11 +126,11 @@ class SeoIssue extends Model
         ];
 
         if ($crawlResult) {
-            $items[] = ['label' => 'HTTP status', 'value' => $crawlResult->status_code ?: 'Not captured'];
+            $items[] = ['label' => 'HTTP status', 'value' => $crawlResult->status_code !== null ? (string) $crawlResult->status_code : 'Not captured'];
             $items[] = ['label' => 'Response time', 'value' => $crawlResult->response_time_ms !== null ? "{$crawlResult->response_time_ms}ms" : 'Not captured'];
             $items[] = ['label' => 'Page title', 'value' => $crawlResult->title ?: 'Missing'];
             $items[] = ['label' => 'Meta description', 'value' => $crawlResult->meta_description ?: 'Missing'];
-            $items[] = ['label' => 'Internal links', 'value' => $crawlResult->internal_link_count ?? 'Not captured'];
+            $items[] = ['label' => 'Internal links', 'value' => $crawlResult->internal_link_count !== null ? (string) $crawlResult->internal_link_count : 'Not captured'];
         }
 
         foreach ($data as $key => $value) {
@@ -169,7 +169,7 @@ class SeoIssue extends Model
             ],
             'redirect_loop', 'redirect_chain' => [
                 'Fix the redirect rule so the source URL resolves to a different final URL.',
-                'Check CMS, web server, and CDN redirect rules for circular matches.',
+                'Check CMS, web server, and CDN redirect rules for circular or unnecessarily chained matches.',
             ],
             'canonical_error', 'canonical_issue' => [
                 'Point the canonical tag at a crawlable 200 URL.',
@@ -227,9 +227,13 @@ class SeoIssue extends Model
                 'Remove low-value navigation or repeated links from this page.',
                 'Group links into clearer sections so crawlers and users can identify the most important destinations.',
             ],
-            'duplicate_title', 'duplicate_content' => [
+            'duplicate_title' => [
                 'Give each affected page a unique title that reflects its specific content.',
                 'Check templates or CMS defaults that may be applying the same title broadly.',
+            ],
+            'duplicate_content' => [
+                'Differentiate the affected pages with unique, useful body content.',
+                'If the pages are intentionally similar, consolidate them or canonicalize to the preferred URL.',
             ],
             'duplicate_meta_description' => [
                 'Write a unique meta description for each affected URL.',
