@@ -28,6 +28,13 @@ test('component api snippet shell quotes component names and avoids expandable h
         ->not->toContain('<<\'JSON\'');
 });
 
+test('checkybot url falls back to generated application root before hosted production', function () {
+    config(['app.url' => '']);
+
+    expect(ComponentHeartbeatSetupSnippet::checkybotUrl())
+        ->toBe('http://localhost');
+});
+
 test('component snippets floor zero interval minutes at one minute', function () {
     $project = Project::factory()->create();
     $component = ProjectComponent::factory()->make([

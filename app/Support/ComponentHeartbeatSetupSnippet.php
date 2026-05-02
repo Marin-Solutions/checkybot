@@ -101,14 +101,21 @@ class ComponentHeartbeatSetupSnippet
 
     /**
      * Use the app URL as the Checkybot endpoint shown in setup snippets.
-     * Empty app URLs fall back to the hosted Checkybot domain so copied
-     * snippets are still runnable in new or partially-configured installs.
+     * Empty app URLs fall back to Laravel's generated root URL before the
+     * hosted Checkybot domain to avoid production URLs in non-production
+     * instances with incomplete APP_URL configuration.
      */
     public static function checkybotUrl(): string
     {
-        $checkybotUrl = rtrim((string) config('app.url', 'https://checkybot.com'), '/');
+        $checkybotUrl = rtrim((string) config('app.url'), '/');
 
-        return $checkybotUrl !== '' ? $checkybotUrl : 'https://checkybot.com';
+        if ($checkybotUrl !== '') {
+            return $checkybotUrl;
+        }
+
+        $generatedUrl = rtrim(url('/'), '/');
+
+        return $generatedUrl !== '' ? $generatedUrl : 'https://checkybot.com';
     }
 
     private static function interval(ProjectComponent $component): string
