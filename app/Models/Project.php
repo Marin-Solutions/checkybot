@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ComponentHeartbeatSetupSnippet;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -162,12 +163,6 @@ class Project extends Model
 
     public function guidedSetupSnippet(?string $apiKey = null): string
     {
-        $checkybotUrl = rtrim((string) config('app.url', 'https://checkybot.com'), '/');
-
-        if ($checkybotUrl === '') {
-            $checkybotUrl = 'https://checkybot.com';
-        }
-
         $apiKey ??= 'replace-with-your-api-key';
 
         return implode(PHP_EOL, [
@@ -177,12 +172,14 @@ class Project extends Model
             '',
             "cat <<'EOF' >> .env",
             "CHECKYBOT_API_KEY={$apiKey}",
-            "CHECKYBOT_URL={$checkybotUrl}",
+            'CHECKYBOT_URL='.ComponentHeartbeatSetupSnippet::checkybotUrl(),
             "CHECKYBOT_APP_ID={$this->getKey()}",
             'CHECKYBOT_APPLICATION_NAME="'.$this->escapeEnvDoubleQuotedValue($this->name).'"',
             "CHECKYBOT_ENVIRONMENT={$this->environment}",
             'CHECKYBOT_IDENTITY_ENDPOINT="${APP_URL}"',
             'EOF',
+            '',
+            ComponentHeartbeatSetupSnippet::projectComponentAppendCommand(),
             '',
             '# routes/console.php',
             "Schedule::command('checkybot:sync')->everyMinute();",
