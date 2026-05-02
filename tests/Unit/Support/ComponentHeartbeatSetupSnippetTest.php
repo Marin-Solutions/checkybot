@@ -87,6 +87,29 @@ test('component api snippet declares active sibling package components', functio
         ->not->toContain('"name":"retired"');
 });
 
+test('component api snippet keeps manual components out of declarations', function () {
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'manual-cron',
+        'source' => 'manual',
+        'declared_interval' => '5m',
+    ]);
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'package-worker',
+        'source' => 'package',
+        'declared_interval' => '1m',
+    ]);
+
+    $snippet = ComponentHeartbeatSetupSnippet::componentCurl($component);
+
+    expect($snippet)
+        ->toContain("COMPONENT_NAME='manual-cron'")
+        ->toContain('"name":"package-worker"')
+        ->not->toContain('"name":"manual-cron"');
+});
+
 test('guided setup component definitions identify placeholder scheduler signal', function () {
     expect(ComponentHeartbeatSetupSnippet::projectPackageDefinitions())
         ->toContain('Replace this cache key with your scheduler or job success signal.');

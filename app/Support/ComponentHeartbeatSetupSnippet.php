@@ -116,7 +116,7 @@ class ComponentHeartbeatSetupSnippet
             try {
                 return IntervalParser::fromMinutes(IntervalParser::toMinutes($component->declared_interval));
             } catch (\InvalidArgumentException) {
-                //
+                // Legacy invalid intervals fall through to the stored minute floor.
             }
         }
 
@@ -135,7 +135,10 @@ class ComponentHeartbeatSetupSnippet
             ->orderBy('name')
             ->get();
 
-        if (! $components->contains(fn (ProjectComponent $declared): bool => $declared->name === $component->name)) {
+        if (
+            $component->source === 'package'
+            && ! $components->contains(fn (ProjectComponent $declared): bool => $declared->name === $component->name)
+        ) {
             $components->push($component);
         }
 
