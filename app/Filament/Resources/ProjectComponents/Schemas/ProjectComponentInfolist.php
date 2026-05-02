@@ -178,7 +178,7 @@ class ProjectComponentInfolist
     private static function codeBlock(string $state): HtmlString
     {
         return new HtmlString(
-            '<pre class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-transparent bg-gray-950 p-4 text-sm text-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-100">'
+            '<pre class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-transparent bg-gray-950 p-4 text-sm text-gray-100 dark:border-gray-300 dark:bg-gray-100 dark:text-gray-950">'
             .e($state)
             .'</pre>'
         );
