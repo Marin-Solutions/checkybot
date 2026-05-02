@@ -10,6 +10,7 @@ return new class extends Migration
     public function up(): void
     {
         $this->deduplicatePackageWebsites();
+        $this->ensureProjectForeignKeyIndex();
 
         Schema::table('websites', function (Blueprint $table) {
             if ($this->indexExists('websites', 'idx_websites_project_source_name')) {
@@ -32,6 +33,26 @@ return new class extends Migration
             if (! $this->indexExists('websites', 'idx_websites_project_source_name')) {
                 $table->index(['project_id', 'source', 'package_name'], 'idx_websites_project_source_name');
             }
+        });
+
+        Schema::table('websites', function (Blueprint $table) {
+            if (
+                $this->indexExists('websites', 'idx_websites_project_id')
+                && $this->indexExists('websites', 'idx_websites_project_source_name')
+            ) {
+                $table->dropIndex('idx_websites_project_id');
+            }
+        });
+    }
+
+    protected function ensureProjectForeignKeyIndex(): void
+    {
+        if ($this->indexExists('websites', 'idx_websites_project_id')) {
+            return;
+        }
+
+        Schema::table('websites', function (Blueprint $table) {
+            $table->index('project_id', 'idx_websites_project_id');
         });
     }
 
