@@ -368,10 +368,10 @@ test('command only checks websites with ssl check enabled', function () {
     Queue::assertPushed(CheckSslExpiryDateJob::class, 2);
 });
 
-test('command handles large number of websites', function () {
+test('command handles large number of websites across chunks', function () {
     Queue::fake();
 
-    for ($i = 0; $i < 100; $i++) {
+    for ($i = 0; $i < 101; $i++) {
         Website::factory()->create([
             'ssl_check' => true,
             'ssl_expiry_date' => today()->addDays(7),
@@ -381,5 +381,5 @@ test('command handles large number of websites', function () {
     $this->artisan('ssl:check')
         ->assertSuccessful();
 
-    Queue::assertPushed(CheckSslExpiryDateJob::class, 100);
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 101);
 });
