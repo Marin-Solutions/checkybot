@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\ProjectComponent;
+use App\Services\IntervalParser;
 
 class ComponentHeartbeatSetupSnippet
 {
@@ -106,10 +107,14 @@ class ComponentHeartbeatSetupSnippet
     private static function interval(ProjectComponent $component): string
     {
         if (filled($component->declared_interval)) {
-            return $component->declared_interval;
+            try {
+                return IntervalParser::fromMinutes(IntervalParser::toMinutes($component->declared_interval));
+            } catch (\InvalidArgumentException) {
+                //
+            }
         }
 
-        return max(1, $component->interval_minutes ?? 5).'m';
+        return IntervalParser::fromMinutes(max(1, $component->interval_minutes ?? 5));
     }
 
     private static function escapeSingleQuoted(string $value): string

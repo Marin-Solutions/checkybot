@@ -41,6 +41,24 @@ test('component snippets floor zero interval minutes at one minute', function ()
         ->toContain("COMPONENT_INTERVAL='1m'");
 });
 
+test('component snippets do not emit legacy zero declared intervals', function () {
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->make([
+        'project_id' => $project->id,
+        'declared_interval' => '0m',
+        'interval_minutes' => 0,
+    ]);
+    $component->setRelation('project', $project);
+
+    expect(ComponentHeartbeatSetupSnippet::componentPackageDefinition($component))
+        ->toContain("->every('1m')")
+        ->not->toContain("->every('0m')");
+
+    expect(ComponentHeartbeatSetupSnippet::componentCurl($component))
+        ->toContain("COMPONENT_INTERVAL='1m'")
+        ->not->toContain("COMPONENT_INTERVAL='0m'");
+});
+
 test('guided setup component definitions identify placeholder scheduler signal', function () {
     expect(ComponentHeartbeatSetupSnippet::projectPackageDefinitions())
         ->toContain('Replace this cache key with your scheduler or job success signal.');
