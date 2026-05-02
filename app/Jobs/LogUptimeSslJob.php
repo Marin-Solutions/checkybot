@@ -203,6 +203,8 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         ?string $httpStatus,
         ?string $sslStatus,
     ): string {
+        // The fallback should only be reached by legacy or malformed payloads where no enabled
+        // check produced evidence; keep the result non-green so operators know it needs review.
         return match (true) {
             $httpStatus !== null && $sslStatus !== null => $statusService->worstStatus($httpStatus, $sslStatus),
             $sslStatus !== null => $sslStatus,

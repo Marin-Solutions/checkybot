@@ -71,15 +71,7 @@ class ViewWebsite extends ViewRecord
         $lines = ['Recorded to log history.'];
 
         if ($log !== null) {
-            $code = (int) ($log->http_status_code ?? 0);
-            $codeLine = match (true) {
-                $log->http_status_code === null && $log->ssl_expiry_date !== null => 'SSL certificate checked',
-                $log->http_status_code === null => 'SSL certificate check completed',
-                $code > 0 => "HTTP {$code}",
-                default => 'No HTTP response',
-            };
-            $speed = (int) ($log->speed ?? 0);
-            $lines[] = $log->speed === null ? $codeLine : "{$codeLine} • {$speed}ms";
+            $lines[] = static::formatRunNowEvidenceLine($log);
 
             if (filled($log->summary)) {
                 $lines[] = (string) $log->summary;
@@ -100,5 +92,20 @@ class ViewWebsite extends ViewRecord
         };
 
         $notification->send();
+    }
+
+    private static function formatRunNowEvidenceLine(WebsiteLogHistory $log): string
+    {
+        $code = (int) ($log->http_status_code ?? 0);
+        $codeLine = match (true) {
+            $log->http_status_code === null && $log->ssl_expiry_date !== null => 'SSL certificate checked',
+            $log->http_status_code === null => 'SSL certificate check completed',
+            $code > 0 => "HTTP {$code}",
+            default => 'No HTTP response',
+        };
+
+        return $log->speed === null
+            ? $codeLine
+            : "{$codeLine} • ".((int) $log->speed).'ms';
     }
 }
