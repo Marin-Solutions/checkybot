@@ -74,6 +74,15 @@ class MonitorApisResource extends Resource
                             ->helperText('Disable this monitor to keep its configuration without running scheduled checks.')
                             ->default(true)
                             ->columnSpanFull(),
+                        Forms\Components\Select::make('package_interval')
+                            ->label('Polling Interval')
+                            ->options(static::pollingIntervalOptions())
+                            ->default('5m')
+                            ->required()
+                            ->native(false)
+                            ->disabled(fn (?MonitorApis $record): bool => $record?->source === 'package')
+                            ->dehydrated(fn (?MonitorApis $record): bool => $record?->source !== 'package')
+                            ->helperText('Checkybot evaluates due monitors every minute. Pick the intended polling cadence so new manual monitors do not fall back to every-minute scheduling.'),
                         Forms\Components\TextInput::make('url')
                             ->required()
                             ->url()
@@ -202,9 +211,9 @@ class MonitorApisResource extends Resource
                     }),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')
+                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => PackageCheckTableEvidence::displayInterval($state) ?? 'Every minute')
-                    ->description(fn (MonitorApis $record): string => static::scheduledIntervalDescription($record))
+                    ->description(fn (MonitorApis $record): string => PackageCheckTableEvidence::dueDescription($record))
                     ->color('gray'),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
@@ -417,17 +426,7 @@ class MonitorApisResource extends Resource
                         ->schema([
                             Forms\Components\Select::make('interval')
                                 ->label('Interval')
-                                ->options([
-                                    '1m' => 'Every minute',
-                                    '5m' => 'Every 5 minutes',
-                                    '10m' => 'Every 10 minutes',
-                                    '15m' => 'Every 15 minutes',
-                                    '30m' => 'Every 30 minutes',
-                                    '1h' => 'Every hour',
-                                    '6h' => 'Every 6 hours',
-                                    '12h' => 'Every 12 hours',
-                                    '1d' => 'Every 24 hours',
-                                ])
+                                ->options(static::pollingIntervalOptions())
                                 ->required()
                                 ->native(false),
                         ])
@@ -530,23 +529,19 @@ class MonitorApisResource extends Resource
         return MonitorApiInfolist::configure($schema);
     }
 
-    protected static function scheduledIntervalDescription(MonitorApis $record): string
+    protected static function pollingIntervalOptions(): array
     {
-        if (! $record->is_enabled) {
-            return 'Paused';
-        }
-
-        if (blank($record->package_interval)) {
-            return 'Runs every minute';
-        }
-
-        try {
-            $interval = IntervalParser::fromMinutes(IntervalParser::toMinutes($record->package_interval));
-        } catch (\InvalidArgumentException) {
-            return 'Runs every minute';
-        }
-
-        return "Expected heartbeat every {$interval}; scheduler still runs every minute";
+        return [
+            '1m' => 'Every minute',
+            '5m' => 'Every 5 minutes',
+            '10m' => 'Every 10 minutes',
+            '15m' => 'Every 15 minutes',
+            '30m' => 'Every 30 minutes',
+            '1h' => 'Every hour',
+            '6h' => 'Every 6 hours',
+            '12h' => 'Every 12 hours',
+            '1d' => 'Every 24 hours',
+        ];
     }
 
     public static function getRelations(): array

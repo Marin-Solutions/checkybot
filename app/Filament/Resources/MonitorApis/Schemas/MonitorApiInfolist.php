@@ -5,6 +5,7 @@ namespace App\Filament\Resources\MonitorApis\Schemas;
 use App\Enums\RunSource;
 use App\Models\MonitorApis;
 use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\PackageCheckTableEvidence;
 use App\Support\UptimeTransportError;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -57,6 +58,22 @@ class MonitorApiInfolist
                             ->state(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
                             ->default('-')
                             ->hint(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->diffForHumans()),
+                        TextEntry::make('package_interval')
+                            ->label('Polling Interval')
+                            ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')
+                            ->badge()
+                            ->color('gray')
+                            ->hint('The scheduler wakes up every minute and runs this monitor when its interval is due.'),
+                        TextEntry::make('schedule_due_state')
+                            ->label('Schedule State')
+                            ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::dueState($record))
+                            ->badge()
+                            ->color(fn (string $state): string => PackageCheckTableEvidence::dueStateColor($state)),
+                        TextEntry::make('next_scheduled_run')
+                            ->label('Next Scheduled Run')
+                            ->state(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::staleThresholdAt($record)?->toDayDateTimeString())
+                            ->default('Next scheduler pass')
+                            ->hint(fn (MonitorApis $record): string => PackageCheckTableEvidence::dueDescription($record)),
                     ])
                     ->columns(3),
                 Section::make('Request Configuration')

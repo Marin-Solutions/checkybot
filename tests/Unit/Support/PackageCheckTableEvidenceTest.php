@@ -86,6 +86,31 @@ test('freshness evidence stays fresh at the exact stale boundary until backend s
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toContain('Expires');
 });
 
+test('due description flags missing schedules as risky legacy behavior', function () {
+    $record = (object) [
+        'is_enabled' => true,
+        'package_interval' => null,
+        'last_heartbeat_at' => now(),
+        'stale_at' => null,
+    ];
+
+    expect(PackageCheckTableEvidence::dueState($record))->toBe('Schedule required')
+        ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('No polling interval is configured');
+});
+
+test('due description marks overdue monitors as due now', function () {
+    $record = (object) [
+        'is_enabled' => true,
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(7),
+        'stale_at' => null,
+    ];
+
+    expect(PackageCheckTableEvidence::dueState($record))->toBe('Due now')
+        ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Overdue')
+        ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Expected every 5m');
+});
+
 afterEach(function () {
     Carbon::setTestNow();
 });
