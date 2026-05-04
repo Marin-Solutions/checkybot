@@ -17,6 +17,18 @@ class PackageCheckTableEvidence
 
     public const STATE_SCHEDULE_UNKNOWN = 'Schedule unknown';
 
+    public const DUE_STATE_DISABLED = 'Paused';
+
+    public const DUE_STATE_MISSING = 'Schedule required';
+
+    public const DUE_STATE_INVALID = 'Schedule invalid';
+
+    public const DUE_STATE_AWAITING_FIRST_RUN = 'Awaiting first run';
+
+    public const DUE_STATE_DUE = 'Due now';
+
+    public const DUE_STATE_SCHEDULED = 'Scheduled';
+
     public static function freshnessState(object $record): string
     {
         if (static::isMonitoringDisabled($record)) {
@@ -98,6 +110,72 @@ class PackageCheckTableEvidence
         } catch (\InvalidArgumentException) {
             return null;
         }
+    }
+
+    public static function dueState(object $record): string
+    {
+        if (static::isMonitoringDisabled($record)) {
+            return self::DUE_STATE_DISABLED;
+        }
+
+        if (blank($record->package_interval)) {
+            return self::DUE_STATE_MISSING;
+        }
+
+        if ($record->last_heartbeat_at === null) {
+            return self::DUE_STATE_AWAITING_FIRST_RUN;
+        }
+
+        $nextDueAt = static::staleThresholdAt($record);
+
+        if ($nextDueAt === null) {
+            return self::DUE_STATE_INVALID;
+        }
+
+        return $nextDueAt->lte(now())
+            ? self::DUE_STATE_DUE
+            : self::DUE_STATE_SCHEDULED;
+    }
+
+    public static function dueStateColor(string $state): string
+    {
+        return match ($state) {
+            self::DUE_STATE_SCHEDULED => 'success',
+            self::DUE_STATE_DUE,
+            self::DUE_STATE_AWAITING_FIRST_RUN => 'warning',
+            self::DUE_STATE_MISSING,
+            self::DUE_STATE_INVALID => 'danger',
+            default => 'gray',
+        };
+    }
+
+    public static function dueDescription(object $record): string
+    {
+        if (static::isMonitoringDisabled($record)) {
+            return 'Scheduled checks are paused until this monitor is re-enabled.';
+        }
+
+        if (blank($record->package_interval)) {
+            return 'No polling interval is configured. Legacy monitors without a schedule can run on every scheduler minute.';
+        }
+
+        $interval = static::displayInterval($record->package_interval) ?? $record->package_interval;
+
+        if ($record->last_heartbeat_at === null) {
+            return "First scheduled run will happen on the next scheduler pass, then continue every {$interval}.";
+        }
+
+        $nextDueAt = static::staleThresholdAt($record);
+
+        if ($nextDueAt === null) {
+            return "Schedule value {$record->package_interval} cannot be evaluated. This monitor may run on every scheduler minute until fixed.";
+        }
+
+        if ($nextDueAt->lte(now())) {
+            return "Overdue {$nextDueAt->diffForHumans()}. Expected every {$interval}.";
+        }
+
+        return "Next scheduled run {$nextDueAt->diffForHumans()}. Expected every {$interval}.";
     }
 
     public static function displayInterval(?string $interval): ?string

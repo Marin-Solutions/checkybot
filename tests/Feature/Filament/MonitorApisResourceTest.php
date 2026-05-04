@@ -47,6 +47,7 @@ test('super admin can create api monitor with execution settings', function () {
         ->and($monitor->http_method)->toBe('POST')
         ->and($monitor->expected_status)->toBe(204)
         ->and($monitor->timeout_seconds)->toBe(45)
+        ->and($monitor->package_interval)->toBe('5m')
         ->and($monitor->is_enabled)->toBeFalse()
         ->and($monitor->data_path)->toBe('data.status')
         ->and($monitor->headers)->toBe(['Authorization' => 'Bearer secret'])
@@ -75,6 +76,7 @@ test('super admin can update api monitor execution settings', function () {
             'http_method' => 'PATCH',
             'expected_status' => 202,
             'timeout_seconds' => 30,
+            'package_interval' => '15m',
             'is_enabled' => false,
             'request_body_type' => 'raw',
             'request_body' => 'status=active',
@@ -89,6 +91,7 @@ test('super admin can update api monitor execution settings', function () {
     expect($monitor->http_method)->toBe('PATCH')
         ->and($monitor->expected_status)->toBe(202)
         ->and($monitor->timeout_seconds)->toBe(30)
+        ->and($monitor->package_interval)->toBe('15m')
         ->and($monitor->is_enabled)->toBeFalse()
         ->and($monitor->request_body_type)->toBe('raw')
         ->and($monitor->request_body)->toBe('status=active')
@@ -103,6 +106,7 @@ test('clearing request body type clears the stored request body', function () {
         'created_by' => $user->id,
         'request_body_type' => 'json',
         'request_body' => '{"probe":true}',
+        'package_interval' => '5m',
     ]);
 
     Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
@@ -127,6 +131,7 @@ test('hidden request body is not persisted when body type is cleared', function 
         'created_by' => $user->id,
         'request_body_type' => 'json',
         'request_body' => '{"probe":true}',
+        'package_interval' => '5m',
     ]);
 
     Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
@@ -322,7 +327,8 @@ test('api monitor list shows effective polling interval', function () {
         ->assertCanSeeTableRecords([$monitor])
         ->assertTableColumnExists('package_interval')
         ->assertSee('15m')
-        ->assertSee('Expected heartbeat every 15m');
+        ->assertSee('Next scheduled run')
+        ->assertSee('Expected every 15m');
 });
 
 test('api monitor list shows scheduler-rounded cadence for second-based intervals', function () {
@@ -341,7 +347,7 @@ test('api monitor list shows scheduler-rounded cadence for second-based interval
         ->assertCanSeeTableRecords([$monitor])
         ->assertTableColumnExists('package_interval')
         ->assertSee('2m')
-        ->assertSee('Expected heartbeat every 2m');
+        ->assertSee('Expected every 2m');
 });
 
 test('api monitor list shows default cadence when polling interval is invalid', function () {
@@ -359,7 +365,25 @@ test('api monitor list shows default cadence when polling interval is invalid', 
     Livewire::test(ListMonitorApis::class)
         ->assertCanSeeTableRecords([$monitor])
         ->assertSee('bad_value')
-        ->assertSee('Runs every minute');
+        ->assertSee('Schedule value bad_value cannot be evaluated');
+});
+
+test('api monitor list flags missing legacy polling intervals instead of implying every-minute scheduling is intentional', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Legacy API',
+        'package_interval' => null,
+        'last_heartbeat_at' => now(),
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertCanSeeTableRecords([$monitor])
+        ->assertSee('Missing')
+        ->assertSee('No polling interval is configured');
 });
 
 test('super admin can toggle is_enabled inline from the api monitors table', function () {
@@ -784,6 +808,27 @@ test('api monitor view shows evidence rich latest run overview', function () {
         ->assertSee('[redacted]')
         ->assertSee('x-request-id')
         ->assertSee('trace-123');
+});
+
+test('api monitor view shows polling interval and due-state messaging', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $lastHeartbeatAt = \Illuminate\Support\Carbon::parse('2026-05-04 12:00:00');
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'package_interval' => '15m',
+        'last_heartbeat_at' => $lastHeartbeatAt,
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('Polling Interval')
+        ->assertSee('Schedule State')
+        ->assertSee('Next Scheduled Run')
+        ->assertSee('15m')
+        ->assertSee($lastHeartbeatAt->copy()->addMinutes(15)->toDayDateTimeString());
 });
 
 test('api monitor view separates scheduled latest evidence from newer diagnostics', function () {
