@@ -98,7 +98,7 @@ Both Ploi sites should deploy the Laravel app by calling the checked-in script:
 bash scripts/deploy/ploi.sh
 ```
 
-That script pulls from `origin master`, installs Composer and npm dependencies from the committed lockfiles, builds frontend assets, caches framework metadata, runs migrations with `--force`, prunes Telescope data, and restarts queue/Horizon workers.
+That script pulls from `origin master`, installs Composer dependencies from the committed lockfile, clears frontend `node_modules` before reinstalling them with `npm install --legacy-peer-deps`, builds frontend assets, caches framework metadata, runs migrations with `--force`, prunes Telescope data, and restarts queue/Horizon workers.
 
 Do not use `composer update` in Ploi deploy scripts. This repository commits `composer.lock`, and production/staging deploys must stay deterministic.
 
