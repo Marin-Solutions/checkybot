@@ -108,6 +108,8 @@ class ProjectComponentInfolist
                         RepeatableEntry::make('recent_heartbeat_evidence')
                             ->label('')
                             ->state(fn (ProjectComponent $record): array => $record->heartbeats()
+                                ->orderByDesc('observed_at')
+                                ->orderByDesc('id')
                                 ->limit(5)
                                 ->get()
                                 ->map(fn (ProjectComponentHeartbeat $heartbeat): array => [
