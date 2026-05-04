@@ -46,6 +46,20 @@ class ProjectInfolist
                             ->columnSpanFull()
                             ->default('-'),
                     ])->columns(2),
+                Section::make('Setup Verification')
+                    ->description('Shows whether the guided Laravel setup has registered successfully and delivered its first package sync yet.')
+                    ->schema([
+                        View::make('filament.resources.projects.setup-verification-panel')
+                            ->key('setup_verification_panel')
+                            ->viewData(fn (Project $record): array => [
+                                'label' => $record->setupVerificationLabel(),
+                                'tone' => $record->setupVerificationTone(),
+                                'summary' => $record->setupVerificationSummary(),
+                                'action' => $record->setupVerificationAction(),
+                                'steps' => $record->setupVerificationSteps(),
+                            ])
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Package Sync Status')
                     ->description('Latest package sync metadata for diagnosing stale or incomplete application integrations.')
                     ->visible(fn (Project $record): bool => filled($record->package_key) || filled($record->package_version))

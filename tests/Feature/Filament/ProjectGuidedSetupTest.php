@@ -49,6 +49,10 @@ test('application view shows the guided Laravel setup snippet with pairing data'
     Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
         ->assertSuccessful()
         ->assertSee('Guided Laravel Setup')
+        ->assertSee('Setup Verification')
+        ->assertSee('Waiting for registration')
+        ->assertSee('Laravel package registration')
+        ->assertSee('First package sync')
         ->assertSee('Create API Key')
         ->assertSee('Manage API Keys');
 
@@ -60,6 +64,55 @@ test('application view shows the guided Laravel setup snippet with pairing data'
         ->toContain("->metric('pending_jobs', fn (): int => \\Illuminate\\Support\\Facades\\Queue::size('default'))")
         ->toContain("Checkybot::component('scheduled-jobs')")
         ->toContain('Schedule::command(\'checkybot:sync\')->everyMinute();');
+});
+
+test('application view shows waiting for first sync after registration arrives', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create([
+        'name' => 'Registered App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+        'package_key' => null,
+        'last_synced_at' => null,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Waiting for first sync')
+        ->assertSee('Registration received from https://checkout.example.com.')
+        ->assertSee('Waiting for the package to send checks, components, and package metadata.')
+        ->assertSee('Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.');
+});
+
+test('application view shows synced setup verification after first package sync', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create([
+        'name' => 'Synced App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+        'package_key' => 'synced-app',
+        'base_url' => 'https://checkout.example.com',
+        'last_synced_at' => now()->subMinutes(5),
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Synced')
+        ->assertSee('Checkybot has received both the Laravel package registration and the first package sync payload for this application.')
+        ->assertSee('First sync received')
+        ->assertSee('Complete');
 });
 
 test('application view can create an api key inline and update the guided setup snippet', function () {

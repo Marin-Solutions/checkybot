@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
 
 class Project extends Model
 {
@@ -196,5 +197,102 @@ class Project extends Model
             ['\\\\', '\\"'],
             $value,
         );
+    }
+
+    public function hasCompletedPackageRegistration(): bool
+    {
+        if ($this->hasReceivedFirstPackageSync()) {
+            return true;
+        }
+
+        return filled($this->identity_endpoint)
+            || filled($this->package_version)
+            || Str::lower((string) $this->technology) === 'laravel';
+    }
+
+    public function hasReceivedFirstPackageSync(): bool
+    {
+        return filled($this->package_key)
+            || filled($this->base_url)
+            || filled($this->repository)
+            || $this->last_synced_at !== null;
+    }
+
+    public function setupVerificationState(): string
+    {
+        if ($this->hasReceivedFirstPackageSync()) {
+            return 'synced';
+        }
+
+        if ($this->hasCompletedPackageRegistration()) {
+            return 'waiting_for_first_sync';
+        }
+
+        return 'waiting_for_registration';
+    }
+
+    public function setupVerificationLabel(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'synced' => 'Synced',
+            'waiting_for_first_sync' => 'Waiting for first sync',
+            default => 'Waiting for registration',
+        };
+    }
+
+    public function setupVerificationTone(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'synced' => 'success',
+            'waiting_for_first_sync' => 'info',
+            default => 'warning',
+        };
+    }
+
+    public function setupVerificationSummary(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'synced' => 'Checkybot has received both the Laravel package registration and the first package sync payload for this application.',
+            'waiting_for_first_sync' => 'Checkybot has seen the Laravel package register this application, but the first package sync has not arrived yet.',
+            default => 'Checkybot has not received a Laravel package registration for this application yet.',
+        };
+    }
+
+    public function setupVerificationAction(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'synced' => 'Continue in the monitored checks and components tables if expected package-managed monitors are still missing.',
+            'waiting_for_first_sync' => 'Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.',
+            default => 'Copy the guided install snippet into the Laravel app, then run `php artisan checkybot:sync` once to trigger registration.',
+        };
+    }
+
+    /**
+     * @return array<int, array{title: string, status: string, description: string}>
+     */
+    public function setupVerificationSteps(): array
+    {
+        return [
+            [
+                'title' => 'Laravel package registration',
+                'status' => $this->hasCompletedPackageRegistration() ? 'complete' : 'pending',
+                'description' => $this->hasCompletedPackageRegistration()
+                    ? sprintf(
+                        'Registration received%s.',
+                        filled($this->identity_endpoint) ? " from {$this->identity_endpoint}" : ''
+                    )
+                    : 'Waiting for the package to register this application with Checkybot.',
+            ],
+            [
+                'title' => 'First package sync',
+                'status' => $this->hasReceivedFirstPackageSync() ? 'complete' : 'pending',
+                'description' => $this->hasReceivedFirstPackageSync()
+                    ? sprintf(
+                        'First sync received%s.',
+                        $this->last_synced_at ? ' '.$this->last_synced_at->diffForHumans() : ''
+                    )
+                    : 'Waiting for the package to send checks, components, and package metadata.',
+            ],
+        ];
     }
 }
