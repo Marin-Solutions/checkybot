@@ -59,9 +59,10 @@ bash scripts/deploy/ploi.sh
 That script intentionally uses:
 
 - `composer install --no-interaction --prefer-dist --optimize-autoloader`
-- `npm ci --legacy-peer-deps`
+- `rm -rf node_modules`
+- `npm install --legacy-peer-deps`
 
-and intentionally does not use `composer update`, because update-time dependency churn can break autoload generation mid-deploy and produce an unreproducible production release.
+and intentionally does not use `composer update`, because update-time dependency churn can break autoload generation mid-deploy and produce an unreproducible production release. The clean npm install is a server-specific workaround for Rollup optional dependency resolution failures seen on `checkybot-main`, while still preserving the committed `package-lock.json`.
 
 ## Database Safety
 
