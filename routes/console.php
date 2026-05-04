@@ -11,7 +11,9 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('ssl:check')->everyMinute();
 Schedule::command('website:log-uptime-ssl')->everyMinute();
 Schedule::command('website:scan-outbound-check')->daily();
-Schedule::command('telescope:prune --hours=24')->hourly();
+if (config('telescope.enabled')) {
+    Schedule::command('telescope:prune --hours=24')->hourly();
+}
 Schedule::command('server:check-rules')->everyMinute();
 Schedule::command('monitor:check-apis')->everyMinute()->withoutOverlapping();
 Schedule::command('seo:run-scheduled')->everyMinute()->withoutOverlapping();

@@ -9,7 +9,7 @@ cd "${ROOT_DIR}"
 git reset --hard
 git pull origin master
 
-composer install --no-interaction --prefer-dist --optimize-autoloader
+composer install --no-interaction --no-dev --prefer-dist --optimize-autoloader
 
 # npm ci has been unreliable on the Ploi host because Rollup's optional
 # native package can be skipped; reinstalling dependencies keeps the
@@ -18,12 +18,11 @@ rm -rf node_modules
 npm install --legacy-peer-deps
 npm run build
 
+php artisan optimize:clear
 php artisan config:cache
 php artisan route:cache
-php artisan view:clear
 php artisan migrate --force
 sudo service php8.3-fpm reload
-php artisan telescope:prune
 php artisan queue:restart
 php artisan horizon:terminate
 
