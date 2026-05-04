@@ -398,10 +398,17 @@ test('project component detail shows newest heartbeat evidence first', function 
 
     $html = $componentPage->html();
 
-    expect($html)->toContain('Heartbeat 6');
-    expect($html)->toContain('Heartbeat 2');
+    $visibleSummaries = ['Heartbeat 6', 'Heartbeat 5', 'Heartbeat 4', 'Heartbeat 3', 'Heartbeat 2'];
+    $positions = array_map(
+        static fn (string $summary): int|false => strpos($html, $summary),
+        $visibleSummaries,
+    );
+    $sortedPositions = $positions;
+    sort($sortedPositions);
+
     expect($html)->not->toContain('Heartbeat 1');
-    expect(strpos($html, 'Heartbeat 6'))->toBeLessThan(strpos($html, 'Heartbeat 2'));
+    expect($positions)->each->not->toBeFalse();
+    expect($positions)->toBe($sortedPositions);
 });
 
 test('project component detail shows stale threshold with configured grace window', function () {
