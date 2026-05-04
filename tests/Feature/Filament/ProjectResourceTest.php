@@ -359,6 +359,58 @@ test('project component detail shows heartbeat history', function () {
         ->assertSee('17');
 });
 
+test('project component detail shows newest heartbeat evidence first', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Evidence Ordering App',
+        'created_by' => $user->id,
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'queue-worker',
+        'created_by' => $user->id,
+    ]);
+
+    collect(range(1, 6))->each(function (int $minute) use ($component): void {
+        ProjectComponentHeartbeat::factory()->create([
+            'project_component_id' => $component->id,
+            'component_name' => $component->name,
+            'status' => 'healthy',
+            'event' => 'heartbeat',
+            'summary' => "Heartbeat {$minute}",
+            'observed_at' => now()->subMinutes(7 - $minute),
+        ]);
+    });
+
+    $componentPage = Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Recent Event Evidence')
+        ->assertSee('Heartbeat 6')
+        ->assertSee('Heartbeat 5')
+        ->assertSee('Heartbeat 4')
+        ->assertSee('Heartbeat 3')
+        ->assertSee('Heartbeat 2')
+        ->assertDontSee('Heartbeat 1');
+
+    $html = $componentPage->html();
+
+    $visibleSummaries = ['Heartbeat 6', 'Heartbeat 5', 'Heartbeat 4', 'Heartbeat 3', 'Heartbeat 2'];
+    $positions = array_map(
+        static fn (string $summary): int|false => strpos($html, $summary),
+        $visibleSummaries,
+    );
+    $sortedPositions = $positions;
+    sort($sortedPositions);
+
+    expect($html)->not->toContain('Heartbeat 1');
+    expect($positions)->each->not->toBeFalse();
+    expect($positions)->toBe($sortedPositions);
+});
+
 test('project component detail shows stale threshold with configured grace window', function () {
     config(['monitor.project_component_stale_grace_minutes' => 2]);
     $this->travelTo('2026-04-27 12:00:00');
