@@ -1316,6 +1316,53 @@ test('log history relation manager renders transport error evidence', function (
         ->assertSee('SSL certificate problem');
 });
 
+test('log history relation manager exposes website run evidence modal for transport failures', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $log = WebsiteLogHistory::factory()->transportError('tls')->create([
+        'website_id' => $website->id,
+        'transport_error_message' => 'cURL error 60: SSL certificate problem.',
+        'transport_error_code' => 60,
+    ]);
+
+    Livewire::test(LogHistoryRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertTableActionExists('view', null, $log)
+        ->assertSee('View Evidence')
+        ->mountTableAction('view', $log)
+        ->assertHasNoTableActionErrors();
+});
+
+test('log history relation manager exposes website run evidence modal for ssl-only diagnostics', function () {
+    Carbon::setTestNow('2026-05-04 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+    ]);
+
+    $log = WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'http_status_code' => null,
+        'speed' => null,
+        'status' => 'healthy',
+        'summary' => 'SSL certificate is valid for 30 day(s).',
+        'ssl_expiry_date' => '2026-06-03',
+    ]);
+
+    Livewire::test(LogHistoryRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->mountTableAction('view', $log)
+        ->assertHasNoTableActionErrors();
+});
+
 test('outbound links relation manager is registered on website resource', function () {
     expect(\App\Filament\Resources\WebsiteResource::getRelations())
         ->toContain(OutboundLinksRelationManager::class);
