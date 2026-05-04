@@ -17,19 +17,22 @@ Keep this file up to date when deployment environments, Ploi site ids, database 
 2. Run the relevant local checks before deploying:
    - `composer test` if available, otherwise `vendor/bin/pest`
    - `npm run build`
-3. Deploy staging first through Ploi MCP:
+3. Keep the Ploi site deploy commands aligned with the repo script:
+   - `bash scripts/deploy/ploi.sh`
+   - Do not run `composer update` in staging or production deploys. This repository commits `composer.lock`, and deployment must use `composer install` so the vendor tree matches the reviewed lockfile.
+4. Deploy staging first through Ploi MCP:
    - server id: `79201`
    - site id: `313325`
-4. After staging deployment completes, verify the staging site:
+5. After staging deployment completes, verify the staging site:
    - Load `https://staging.checkybot.com`.
    - Check the specific user flows affected by the change.
    - Check deployment logs if Ploi reports a non-success status.
    - If subagents are available, use an independent verification pass for browser checks or focused regression testing.
-5. Ask for explicit approval before deploying production.
-6. Deploy production through Ploi MCP only after approval:
+6. Ask for explicit approval before deploying production.
+7. Deploy production through Ploi MCP only after approval:
    - server id: `79201`
    - site id: `244469`
-7. After production deployment completes, verify `https://checkybot.com` and check logs if anything looks unhealthy.
+8. After production deployment completes, verify `https://checkybot.com` and check logs if anything looks unhealthy.
 
 ## Ploi MCP Commands
 
@@ -44,6 +47,21 @@ Use these Ploi MCP operations when available:
 Do not deploy production automatically when the user asks for a generic deploy. Generic deploy requests should go to staging first unless the user explicitly says production.
 
 Keep Ploi webhook tokens out of repository files.
+
+## Canonical Ploi Deploy Script
+
+The canonical site deploy command for both staging and production should be:
+
+```bash
+bash scripts/deploy/ploi.sh
+```
+
+That script intentionally uses:
+
+- `composer install --no-interaction --prefer-dist --optimize-autoloader`
+- `npm ci --legacy-peer-deps`
+
+and intentionally does not use `composer update`, because update-time dependency churn can break autoload generation mid-deploy and produce an unreproducible production release.
 
 ## Database Safety
 

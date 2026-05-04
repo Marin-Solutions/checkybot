@@ -92,7 +92,15 @@ The Ploi deploy scripts restart queue processing with:
 
 ## Deployment Commands In Ploi
 
-Both Ploi sites deploy the Laravel app by pulling from `origin master`, installing Composer and npm dependencies, building frontend assets, caching framework metadata, running migrations with `--force`, pruning Telescope data, and restarting queue/Horizon workers.
+Both Ploi sites should deploy the Laravel app by calling the checked-in script:
+
+```bash
+bash scripts/deploy/ploi.sh
+```
+
+That script pulls from `origin master`, installs Composer and npm dependencies from the committed lockfiles, builds frontend assets, caches framework metadata, runs migrations with `--force`, prunes Telescope data, and restarts queue/Horizon workers.
+
+Do not use `composer update` in Ploi deploy scripts. This repository commits `composer.lock`, and production/staging deploys must stay deterministic.
 
 The Ploi webhook URLs are intentionally not stored in this repository. Use the Ploi MCP site ids in `DEPLOY.md` instead.
 
