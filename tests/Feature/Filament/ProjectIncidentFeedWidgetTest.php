@@ -62,6 +62,47 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertDontSee('Other project incident');
     });
 
+    it('shows only project-scoped transition rows and suppresses duplicate unhealthy runs', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Project transition homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'summary' => 'Project baseline healthy',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'warning',
+            'summary' => 'Project first warning',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'warning',
+            'summary' => 'Project duplicate warning',
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Project escalated to danger',
+            'created_at' => now()->subMinutes(2),
+        ]);
+
+        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->assertSee('Project first warning')
+            ->assertSee('Project escalated to danger')
+            ->assertDontSee('Project duplicate warning');
+    });
+
     it('includes project-scoped API monitor failures and hides others', function () {
         $myApi = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
