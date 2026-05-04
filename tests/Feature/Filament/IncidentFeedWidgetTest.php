@@ -98,6 +98,32 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('Duplicate danger run');
     });
 
+    it('does not treat an already-open incident from before the feed window as a new incident', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Long-running outage homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Outage started last week',
+            'created_at' => now()->subDays(8),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Outage still active today',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertDontSee('Outage started last week')
+            ->assertDontSee('Outage still active today')
+            ->assertSee('All clear');
+    });
+
     it('excludes on-demand website diagnostics from the incident feed', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
