@@ -1,4 +1,5 @@
 {
+    "name": "checkybot",
     "private": true,
     "type": "module",
     "scripts": {
@@ -20,5 +21,8 @@
         "playwright": "^1.57.0",
         "pusher-js": "^8.4.0",
         "tailwind-scrollbar-hide": "^2.0.0"
+    },
+    "optionalDependencies": {
+        "@rollup/rollup-linux-arm64-gnu": "4.52.3"
     }
 }
