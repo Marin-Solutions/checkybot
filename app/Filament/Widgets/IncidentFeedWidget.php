@@ -14,6 +14,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -213,10 +214,9 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.summary, ''), project_component_heartbeats.event) as summary")
             ->selectRaw('project_component_heartbeats.observed_at as occurred_at');
 
-        $runs = $websiteRuns
-            ->toBase()
-            ->unionAll($apiRuns->toBase())
-            ->unionAll($componentRuns->toBase());
+        $runs = self::limitRunsToFeedWindow($websiteRuns->toBase(), $since)
+            ->unionAll(self::limitRunsToFeedWindow($apiRuns->toBase(), $since))
+            ->unionAll(self::limitRunsToFeedWindow($componentRuns->toBase(), $since));
 
         $rankedRuns = DB::query()
             ->fromSub($runs, 'runs')
@@ -238,11 +238,37 @@ class IncidentFeedWidget extends BaseWidget
             ->fromSub($rankedRuns, 'incidents')
             ->whereIn('status', self::INCIDENT_STATUSES)
             ->where('occurred_at', '>=', $since)
-            ->where(function (Builder $query): void {
-                $query->whereNull('previous_status')
+            ->where(function (Builder $transitionQuery): void {
+                $transitionQuery->whereNull('previous_status')
                     ->orWhereIn('previous_status', self::NON_INCIDENT_STATUSES)
                     ->orWhereColumn('previous_status', '!=', 'status');
             });
+    }
+
+    /**
+     * Keep the full feed window plus each subject's latest pre-window row so
+     * transition ranking has the prior state context without scanning all history.
+     */
+    protected static function limitRunsToFeedWindow(QueryBuilder $baseRuns, \Carbon\CarbonInterface $since): QueryBuilder
+    {
+        $windowRuns = DB::query()
+            ->fromSub(clone $baseRuns, 'window_runs')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->where('occurred_at', '>=', $since);
+
+        $latestPriorRuns = DB::query()
+            ->fromSub(
+                DB::query()
+                    ->fromSub(clone $baseRuns, 'prior_runs')
+                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+                    ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
+                    ->where('occurred_at', '<', $since),
+                'ranked_prior_runs'
+            )
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->where('prior_rank', 1);
+
+        return $windowRuns->unionAll($latestPriorRuns);
     }
 
     protected function resolveTargetUrl(Incident $record): ?string
