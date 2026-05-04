@@ -15,6 +15,7 @@ use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 
 class IncidentFeedWidget extends BaseWidget
 {
@@ -29,6 +30,8 @@ class IncidentFeedWidget extends BaseWidget
     protected ?string $pollingInterval = '30s';
 
     protected const INCIDENT_STATUSES = ['warning', 'danger'];
+
+    protected const NON_INCIDENT_STATUSES = ['healthy', 'unknown'];
 
     public function table(Table $table): Table
     {
@@ -152,17 +155,17 @@ class IncidentFeedWidget extends BaseWidget
      */
     public static function buildIncidentsQueryFor(int $userId, \Carbon\CarbonInterface $since, ?int $projectId = null): Builder
     {
-        $websiteQuery = WebsiteLogHistory::query()
+        $websiteRuns = WebsiteLogHistory::query()
             ->join('websites', 'websites.id', '=', 'website_log_history.website_id')
             ->whereNull('websites.deleted_at')
-            ->whereIn('website_log_history.status', self::INCIDENT_STATUSES)
             ->where('website_log_history.is_on_demand', false)
             ->where('websites.created_by', $userId)
-            ->where('website_log_history.created_at', '>=', $since)
             ->when($projectId !== null, fn (Builder $query): Builder => $query->where('websites.project_id', $projectId))
             ->selectRaw("CONCAT('website_log-', website_log_history.id) as id")
+            ->selectRaw('website_log_history.id as source_row_id')
             ->selectRaw("'website' as source")
-            ->selectRaw('website_log_history.status as status')
+            ->selectRaw('website_log_history.website_id as source_subject_id')
+            ->selectRaw("COALESCE(NULLIF(website_log_history.status, ''), 'unknown') as normalized_status")
             ->selectRaw('websites.name as subject')
             ->selectRaw('website_log_history.website_id as subject_id')
             ->selectRaw("COALESCE(NULLIF(website_log_history.summary, ''), CONCAT('HTTP ', COALESCE(website_log_history.http_status_code, 0))) as summary")
@@ -171,47 +174,75 @@ class IncidentFeedWidget extends BaseWidget
         // API results use a stricter severity definition than websites or components:
         // older rows written before the `status` column existed still need to surface
         // as incidents, so we also pick up any failed result (`is_success = false`)
-        // even when `status` is null/empty. The SELECT below coalesces that case to
-        // 'danger' so the severity badge always has a value.
-        $apiQuery = MonitorApiResult::query()
+        // even when `status` is null/empty. The normalized status expression below
+        // preserves that behavior while still letting the feed compare each row
+        // against its previous scheduled status.
+        $apiRuns = MonitorApiResult::query()
             ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
-            ->where(function (Builder $builder): void {
-                $builder->whereIn('monitor_api_results.status', self::INCIDENT_STATUSES)
-                    ->orWhere('monitor_api_results.is_success', false);
-            })
             ->where('monitor_apis.created_by', $userId)
             ->whereNull('monitor_apis.deleted_at')
             ->where('monitor_api_results.is_on_demand', false)
-            ->where('monitor_api_results.created_at', '>=', $since)
             ->when($projectId !== null, fn (Builder $query): Builder => $query->where('monitor_apis.project_id', $projectId))
             ->selectRaw("CONCAT('api_result-', monitor_api_results.id) as id")
+            ->selectRaw('monitor_api_results.id as source_row_id')
             ->selectRaw("'api' as source")
-            ->selectRaw("COALESCE(NULLIF(monitor_api_results.status, ''), 'danger') as status")
+            ->selectRaw('monitor_api_results.monitor_api_id as source_subject_id')
+            ->selectRaw("
+                CASE
+                    WHEN NULLIF(monitor_api_results.status, '') IS NOT NULL THEN monitor_api_results.status
+                    WHEN monitor_api_results.is_success = 0 THEN 'danger'
+                    ELSE 'healthy'
+                END as normalized_status
+            ")
             ->selectRaw('monitor_apis.title as subject')
             ->selectRaw('monitor_api_results.monitor_api_id as subject_id')
             ->selectRaw("COALESCE(NULLIF(monitor_api_results.summary, ''), CONCAT('HTTP ', COALESCE(monitor_api_results.http_code, 0))) as summary")
             ->selectRaw('monitor_api_results.created_at as occurred_at');
 
-        $componentQuery = ProjectComponentHeartbeat::query()
+        $componentRuns = ProjectComponentHeartbeat::query()
             ->join('project_components', 'project_components.id', '=', 'project_component_heartbeats.project_component_id')
-            ->whereIn('project_component_heartbeats.status', self::INCIDENT_STATUSES)
             ->where('project_components.created_by', $userId)
-            ->where('project_component_heartbeats.observed_at', '>=', $since)
             ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_components.project_id', $projectId))
             ->selectRaw("CONCAT('component_heartbeat-', project_component_heartbeats.id) as id")
+            ->selectRaw('project_component_heartbeats.id as source_row_id')
             ->selectRaw("'component' as source")
-            ->selectRaw('project_component_heartbeats.status as status')
+            ->selectRaw('project_component_heartbeats.project_component_id as source_subject_id')
+            ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.status, ''), 'unknown') as normalized_status")
             ->selectRaw('project_component_heartbeats.component_name as subject')
             ->selectRaw('project_component_heartbeats.project_component_id as subject_id')
             ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.summary, ''), project_component_heartbeats.event) as summary")
             ->selectRaw('project_component_heartbeats.observed_at as occurred_at');
 
-        $union = $websiteQuery
+        $runs = $websiteRuns
             ->toBase()
-            ->unionAll($apiQuery->toBase())
-            ->unionAll($componentQuery->toBase());
+            ->unionAll($apiRuns->toBase())
+            ->unionAll($componentRuns->toBase());
 
-        return Incident::query()->fromSub($union, 'incidents');
+        $rankedRuns = DB::query()
+            ->fromSub($runs, 'runs')
+            ->selectRaw('id')
+            ->selectRaw('source')
+            ->selectRaw('normalized_status as status')
+            ->selectRaw('subject')
+            ->selectRaw('subject_id')
+            ->selectRaw('summary')
+            ->selectRaw('occurred_at')
+            ->selectRaw('
+                LAG(normalized_status) OVER (
+                    PARTITION BY source, source_subject_id
+                    ORDER BY occurred_at, source_row_id
+                ) as previous_status
+            ');
+
+        return Incident::query()
+            ->fromSub($rankedRuns, 'incidents')
+            ->whereIn('status', self::INCIDENT_STATUSES)
+            ->where('occurred_at', '>=', $since)
+            ->where(function (Builder $query): void {
+                $query->whereNull('previous_status')
+                    ->orWhereIn('previous_status', self::NON_INCIDENT_STATUSES)
+                    ->orWhereColumn('previous_status', '!=', 'status');
+            });
     }
 
     protected function resolveTargetUrl(Incident $record): ?string

@@ -50,6 +50,54 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('All good');
     });
 
+    it('suppresses duplicate unhealthy rows until the severity changes', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Transition homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'summary' => 'Baseline healthy',
+            'created_at' => now()->subMinutes(6),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'warning',
+            'summary' => 'First warning transition',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'warning',
+            'summary' => 'Duplicate warning run',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Escalated to danger',
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Duplicate danger run',
+            'created_at' => now()->subMinutes(2),
+        ]);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('First warning transition')
+            ->assertSee('Escalated to danger')
+            ->assertDontSee('Duplicate warning run')
+            ->assertDontSee('Duplicate danger run');
+    });
+
     it('excludes on-demand website diagnostics from the incident feed', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
@@ -91,6 +139,38 @@ describe('IncidentFeedWidget', function () {
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('Billing webhook')
             ->assertSee('Billing webhook returned 500');
+    });
+
+    it('does not create a new api incident row for repeated failed runs without a status change', function () {
+        $api = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Duplicate API failures',
+        ]);
+
+        MonitorApiResult::factory()->successful()->create([
+            'monitor_api_id' => $api->id,
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $api->id,
+            'status' => null,
+            'summary' => 'First failed API transition',
+            'http_code' => 500,
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $api->id,
+            'status' => null,
+            'summary' => 'Repeated failed API run',
+            'http_code' => 500,
+            'created_at' => now()->subMinutes(2),
+        ]);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('First failed API transition')
+            ->assertDontSee('Repeated failed API run');
     });
 
     it('excludes on-demand API diagnostics from the incident feed', function () {
