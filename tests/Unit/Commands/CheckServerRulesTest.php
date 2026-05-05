@@ -161,6 +161,7 @@ test('command sends server rule notification only when threshold transitions to 
 
     $server = Server::factory()->create();
     $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
         'url' => 'https://example.com/server-rule-webhook',
     ]);
 
@@ -199,6 +200,7 @@ test('command resets server rule state when threshold recovers', function () {
 
     $server = Server::factory()->create();
     $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
         'url' => 'https://example.com/server-rule-webhook',
     ]);
 
@@ -235,6 +237,7 @@ test('command sends server rule notification again after recovery and new breach
 
     $server = Server::factory()->create();
     $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
         'url' => 'https://example.com/server-rule-webhook',
     ]);
 
@@ -281,6 +284,7 @@ test('command sends server rule notification when re-enabled rule is still breac
 
     $server = Server::factory()->create();
     $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
         'url' => 'https://example.com/server-rule-webhook',
     ]);
 
