@@ -1,12 +1,77 @@
 <?php
 
 use App\Filament\Resources\SeoCheckResource\Pages\ViewSeoCheck;
+use App\Filament\Resources\WebsiteSeoCheckResource\Pages\ListWebsiteSeoChecks;
 use App\Filament\Widgets\SeoIssuesTableWidget;
+use App\Jobs\SeoHealthCheckJob;
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
 use App\Models\SeoIssue;
 use App\Models\Website;
+use App\Services\RobotsSitemapService;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+
+test('website seo checks list includes websites without previous checks', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $firstRunWebsite = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'First run site',
+        'url' => 'https://first-run.example.com',
+    ]);
+    $previouslyCheckedWebsite = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Checked site',
+        'url' => 'https://checked.example.com',
+    ]);
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $previouslyCheckedWebsite->id,
+    ]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->assertCanSeeTableRecords([$firstRunWebsite, $previouslyCheckedWebsite])
+        ->assertTableActionVisible('run_seo_check', $firstRunWebsite)
+        ->assertTableActionHidden('view_latest_progress', $firstRunWebsite);
+});
+
+test('website seo checks list can start the first seo check for a website', function () {
+    Queue::fake();
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'First crawl site',
+        'url' => 'https://first-crawl.example.com',
+    ]);
+
+    $robotsService = $this->mock(RobotsSitemapService::class);
+    $robotsService->shouldReceive('getCrawlableUrls')
+        ->once()
+        ->with($website->url)
+        ->andReturn([$website->url]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->callTableAction('run_seo_check', $website)
+        ->assertHasNoTableActionErrors();
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->sole();
+
+    expect($seoCheck->status)->toBe(SeoCheck::STATUS_PENDING)
+        ->and($seoCheck->total_crawlable_urls)->toBe(1);
+
+    Queue::assertPushed(SeoHealthCheckJob::class);
+});
+
+test('website seo checks list does not show the invalid create action', function () {
+    $this->actingAsSuperAdmin();
+
+    $page = Livewire::test(ListWebsiteSeoChecks::class)->instance();
+    $reflection = new ReflectionMethod($page, 'getHeaderActions');
+    $reflection->setAccessible(true);
+
+    expect($reflection->invoke($page))->toBe([]);
+});
 
 test('view seo check page shows failure details for failed checks', function () {
     $user = $this->actingAsSuperAdmin();
