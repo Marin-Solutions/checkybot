@@ -15,7 +15,7 @@ composer install --no-interaction --no-dev --prefer-dist --optimize-autoloader
 # native package can be skipped; reinstalling dependencies keeps the
 # committed lockfile while avoiding the broken node_modules state.
 rm -rf node_modules
-npm install --legacy-peer-deps
+npm install --include=dev --legacy-peer-deps
 npm run build
 
 php artisan optimize:clear

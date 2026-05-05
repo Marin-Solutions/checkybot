@@ -60,9 +60,9 @@ That script intentionally uses:
 
 - `composer install --no-interaction --prefer-dist --optimize-autoloader`
 - `rm -rf node_modules`
-- `npm install --legacy-peer-deps`
+- `npm install --include=dev --legacy-peer-deps`
 
-and intentionally does not use `composer update`, because update-time dependency churn can break autoload generation mid-deploy and produce an unreproducible production release. The clean npm install is a server-specific workaround for Rollup optional dependency resolution failures seen on `checkybot-main`, while still preserving the committed `package-lock.json`.
+and intentionally does not use `composer update`, because update-time dependency churn can break autoload generation mid-deploy and produce an unreproducible production release. The clean npm install is a server-specific workaround for Rollup optional dependency resolution failures seen on `checkybot-main`, while still preserving the committed `package-lock.json`. It includes dev dependencies because Vite and the production asset build toolchain are declared as npm dev dependencies and are required during deployment.
 
 ## Database Safety
 
