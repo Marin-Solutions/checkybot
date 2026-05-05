@@ -48,6 +48,23 @@ class NotificationSettingsRelationManager extends RelationManager
                 Forms\Components\Select::make('notification_channel_id')
                     ->label('Notification Channel')
                     ->options(fn (): array => $this->getOwnerRecord()->user?->webhookChannels()?->pluck('title', 'id')->all() ?? [])
+                    ->rules([
+                        fn (Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
+                            if ($get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->value || blank($value)) {
+                                return;
+                            }
+
+                            $owned = $this->getOwnerRecord()
+                                ->user
+                                ?->webhookChannels()
+                                ->whereKey($value)
+                                ->exists() ?? false;
+
+                            if (! $owned) {
+                                $fail('Select one of this website owner\'s webhook channels.');
+                            }
+                        },
+                    ])
                     ->required(fn (Get $get): bool => $get('channel_type') === NotificationChannelTypesEnum::WEBHOOK->value)
                     ->hidden(fn (Get $get): bool => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->value),
                 Forms\Components\Toggle::make('flag_active')
