@@ -60,6 +60,22 @@ test('server rule can be inactive', function () {
     expect($rule->is_active)->toBeFalse();
 });
 
+test('server rule clears transition state when deactivated', function () {
+    $rule = ServerRule::factory()->create([
+        'is_triggered' => true,
+        'triggered_at' => now()->subMinutes(5),
+        'recovered_at' => now()->subMinute(),
+    ]);
+
+    $rule->update(['is_active' => false]);
+    $rule->refresh();
+
+    expect($rule->is_active)->toBeFalse();
+    expect($rule->is_triggered)->toBeFalse();
+    expect($rule->triggered_at)->toBeNull();
+    expect($rule->recovered_at)->toBeNull();
+});
+
 test('server rule supports cpu usage metric', function () {
     $rule = ServerRule::factory()->cpuUsage()->create();
 

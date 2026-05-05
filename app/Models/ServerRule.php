@@ -27,6 +27,17 @@ class ServerRule extends Model
         'recovered_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        static::saving(function (ServerRule $rule) {
+            if ($rule->isDirty('is_active') && ! $rule->is_active) {
+                $rule->is_triggered = false;
+                $rule->triggered_at = null;
+                $rule->recovered_at = null;
+            }
+        });
+    }
+
     public function server(): BelongsTo
     {
         return $this->belongsTo(Server::class);
