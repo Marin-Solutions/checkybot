@@ -51,7 +51,23 @@ class RulesRelationManager extends RelationManager
                             ->options(function () {
                                 return NotificationChannels::where('created_by', auth()->id())
                                     ->pluck('title', 'id');
-                            }),
+                            })
+                            ->rules([
+                                fn (): \Closure => function (string $attribute, $value, \Closure $fail): void {
+                                    if (blank($value)) {
+                                        return;
+                                    }
+
+                                    $owned = NotificationChannels::query()
+                                        ->where('created_by', auth()->id())
+                                        ->whereKey($value)
+                                        ->exists();
+
+                                    if (! $owned) {
+                                        $fail('Select one of your webhook channels.');
+                                    }
+                                },
+                            ]),
                     ]),
                 Forms\Components\Toggle::make('is_active')
                     ->label('Active')
@@ -82,7 +98,11 @@ class RulesRelationManager extends RelationManager
                     ->badge()
                     ->color('success')
                     ->formatStateUsing(function ($state) {
-                        return NotificationChannels::find($state)?->title ?? $state;
+                        $ownerId = $this->getOwnerRecord()?->created_by ?? auth()->id();
+
+                        return NotificationChannels::query()
+                            ->where('created_by', $ownerId)
+                            ->find($state)?->title ?? $state;
                     }),
                 Tables\Columns\ToggleColumn::make('is_active')
                     ->label('Active'),

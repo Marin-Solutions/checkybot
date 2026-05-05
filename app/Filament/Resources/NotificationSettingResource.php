@@ -80,6 +80,22 @@ class NotificationSettingResource extends Resource
                             ->label('Notification Channel')
                             ->required()
                             ->options(fn () => auth()->user()->webhookChannels()->pluck('title', 'id'))
+                            ->rules([
+                                fn (callable $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get): void {
+                                    if ($get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->value || blank($value)) {
+                                        return;
+                                    }
+
+                                    $owned = auth()->user()
+                                        ?->webhookChannels()
+                                        ->whereKey($value)
+                                        ->exists() ?? false;
+
+                                    if (! $owned) {
+                                        $fail('Select one of your webhook channels.');
+                                    }
+                                },
+                            ])
                             ->hidden(fn ($get) => $get('channel_type') !== NotificationChannelTypesEnum::WEBHOOK->value),
                     ])->columns(2),
             ]);

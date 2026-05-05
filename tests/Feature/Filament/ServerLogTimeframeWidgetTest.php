@@ -7,6 +7,7 @@ use App\Filament\Resources\ServerResource\Widgets\DiskUsedChart;
 use App\Filament\Resources\ServerResource\Widgets\RamUsedChart;
 use App\Filament\Resources\ServerResource\Widgets\ServerLogTimeframe;
 use App\Models\Server;
+use App\Models\ServerInformationHistory;
 use Livewire\Livewire;
 
 describe('ServerLogTimeframe Widget', function () {
@@ -83,6 +84,24 @@ describe('Chart Widgets', function () {
         it('cpu chart renders with record', function () {
             Livewire::test(CpuLoadChart::class, ['record' => $this->server])
                 ->assertSuccessful();
+        });
+
+        it('cpu chart normalizes load average by cpu cores', function () {
+            $this->server->update(['cpu_cores' => 4]);
+
+            ServerInformationHistory::factory()->create([
+                'server_id' => $this->server->id,
+                'cpu_load' => 3.0,
+                'created_at' => now(),
+            ]);
+
+            $component = Livewire::test(CpuLoadChart::class, ['record' => $this->server->refresh()])
+                ->assertSuccessful()
+                ->instance();
+
+            $data = (fn () => $this->getData())->call($component);
+
+            expect($data['datasets'][0]['data'])->toBe([75.0]);
         });
 
         it('ram chart renders with record', function () {

@@ -13,6 +13,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
 
 class NotificationChannelsResource extends Resource
@@ -26,6 +27,12 @@ class NotificationChannelsResource extends Resource
     protected static ?int $navigationSort = 4;
 
     protected static string $urlPattern = "/(?:\{message\}.*\{description\}|\{description\}.*\{message\})/";
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->where('created_by', auth()->id());
+    }
 
     public static function form(Schema $schema): Schema
     {

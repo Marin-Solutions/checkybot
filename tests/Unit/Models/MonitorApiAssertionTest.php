@@ -317,3 +317,17 @@ test('regex failure captures actual value and pattern', function () {
         ->and($result['actual'])->toBe('Hello123')
         ->and($result['expected'])->toBe('/^[a-z]+$/');
 });
+
+test('regex match with invalid pattern fails cleanly', function () {
+    $assertion = MonitorApiAssertion::factory()->create([
+        'assertion_type' => 'regex_match',
+        'regex_pattern' => '/[unterminated/',
+    ]);
+
+    $result = $assertion->validateResponse('hello');
+
+    expect($result['passed'])->toBeFalse()
+        ->and($result['message'])->toBe('Regex pattern is invalid')
+        ->and($result['actual'])->toBe('/[unterminated/')
+        ->and($result['expected'])->toBe('valid regex pattern');
+});
