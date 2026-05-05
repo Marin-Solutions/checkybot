@@ -18,6 +18,9 @@ test('server rule has fillable attributes', function () {
         'value' => 80.5,
         'channel' => 'email',
         'is_active' => true,
+        'is_triggered' => true,
+        'triggered_at' => now(),
+        'recovered_at' => now(),
     ]);
 
     expect($rule->metric)->toBe('cpu_usage');
@@ -25,6 +28,9 @@ test('server rule has fillable attributes', function () {
     expect($rule->value)->toBe(80.5);
     expect($rule->channel)->toBe('email');
     expect($rule->is_active)->toBeTrue();
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->triggered_at)->not->toBeNull();
+    expect($rule->recovered_at)->not->toBeNull();
 });
 
 test('server rule casts value to float', function () {
@@ -39,6 +45,19 @@ test('server rule casts is active to boolean', function () {
 
     expect($rule->is_active)->toBeBool();
     expect($rule->is_active)->toBeTrue();
+});
+
+test('server rule casts transition state', function () {
+    $rule = ServerRule::factory()->create([
+        'is_triggered' => 1,
+        'triggered_at' => now(),
+        'recovered_at' => now(),
+    ]);
+
+    expect($rule->is_triggered)->toBeBool();
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->triggered_at)->toBeInstanceOf(Illuminate\Support\Carbon::class);
+    expect($rule->recovered_at)->toBeInstanceOf(Illuminate\Support\Carbon::class);
 });
 
 test('server rule can be inactive', function () {

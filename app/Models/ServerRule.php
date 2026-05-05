@@ -17,11 +17,17 @@ class ServerRule extends Model
         'value',      // percentage value
         'channel',    // notification channel (email, slack, etc)
         'is_active',
+        'is_triggered',
+        'triggered_at',
+        'recovered_at',
     ];
 
     protected $casts = [
         'value' => 'float',
         'is_active' => 'boolean',
+        'is_triggered' => 'boolean',
+        'triggered_at' => 'datetime',
+        'recovered_at' => 'datetime',
     ];
 
     public function server(): BelongsTo

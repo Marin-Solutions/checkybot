@@ -45,9 +45,26 @@ class CheckServerRules extends Command
                     continue;
                 }
 
-                if ($this->isConditionMet($currentValue, $rule->operator, $rule->value)) {
+                $conditionIsMet = $this->isConditionMet($currentValue, $rule->operator, $rule->value);
+
+                if ($conditionIsMet && ! $rule->is_triggered) {
                     $this->info("Rule condition met for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
                     $this->sendNotification($rule->server, $rule, $currentValue);
+
+                    $rule->forceFill([
+                        'is_triggered' => true,
+                        'triggered_at' => now(),
+                        'recovered_at' => null,
+                    ])->save();
+                }
+
+                if (! $conditionIsMet && $rule->is_triggered) {
+                    $rule->forceFill([
+                        'is_triggered' => false,
+                        'recovered_at' => now(),
+                    ])->save();
+
+                    $this->info("Rule recovered for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
                 }
             } catch (\Exception $e) {
                 $this->error('Error processing rule: '.$e->getMessage());

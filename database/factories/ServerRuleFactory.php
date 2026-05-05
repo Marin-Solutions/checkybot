@@ -19,6 +19,9 @@ class ServerRuleFactory extends Factory
             'value' => fake()->numberBetween(50, 95),
             'channel' => fake()->randomElement(['email', 'webhook']),
             'is_active' => true,
+            'is_triggered' => false,
+            'triggered_at' => null,
+            'recovered_at' => null,
         ];
     }
 
