@@ -1101,6 +1101,61 @@ test('api assertion preview action shows actual versus expected from saved respo
         ]);
 });
 
+test('api assertion form rejects invalid regex patterns before saving', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(AssertionsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->callTableAction('create', data: [
+            'data_path' => 'data.status',
+            'assertion_type' => 'regex_match',
+            'regex_pattern' => '/[unterminated/',
+            'is_active' => true,
+            'sort_order' => 0,
+        ])
+        ->assertHasTableActionErrors(['regex_pattern']);
+
+    expect($monitor->assertions()->count())->toBe(0);
+});
+
+test('api assertion form saves valid regex patterns', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(AssertionsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->callTableAction('create', data: [
+            'data_path' => 'data.status',
+            'assertion_type' => 'regex_match',
+            'regex_pattern' => '/^active|pending$/',
+            'is_active' => true,
+            'sort_order' => 0,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('monitor_api_assertions', [
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'regex_match',
+        'regex_pattern' => '/^active|pending$/',
+    ]);
+});
+
 test('super admin can filter api monitors by current status', function () {
     $this->createResourcePermissions('MonitorApis');
 

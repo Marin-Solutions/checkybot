@@ -32,6 +32,15 @@ class MonitorApiAssertion extends Model
         return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
     }
 
+    public static function hasValidRegexPattern(?string $pattern): bool
+    {
+        if ($pattern === null || $pattern === '') {
+            return false;
+        }
+
+        return @preg_match($pattern, '') !== false;
+    }
+
     /**
      * @return array{passed: bool, message: string, actual: mixed, expected: mixed}
      */
@@ -90,6 +99,13 @@ class MonitorApiAssertion extends Model
                 break;
 
             case 'regex_match':
+                if (! self::hasValidRegexPattern($this->regex_pattern)) {
+                    $result['message'] = 'Regex pattern is invalid';
+                    $result['actual'] = $this->regex_pattern;
+                    $result['expected'] = 'valid regex pattern';
+                    break;
+                }
+
                 if (! is_string($value)) {
                     $result['message'] = 'Value is not a string';
                     $result['actual'] = $this->getValueType($value);

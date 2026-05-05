@@ -15,6 +15,8 @@ use Filament\Forms;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -54,7 +56,7 @@ class AssertionsRelationManager extends RelationManager
                         'regex_match' => 'Regex Match',
                     ])
                     ->reactive()
-                    ->afterStateUpdated(fn ($state, Forms\Set $set) => $set('comparison_operator', null)),
+                    ->afterStateUpdated(fn ($state, Set $set) => $set('comparison_operator', null)),
 
                 Forms\Components\Select::make('expected_type')
                     ->options([
@@ -66,8 +68,8 @@ class AssertionsRelationManager extends RelationManager
                         'float' => 'Float',
                         'null' => 'Null',
                     ])
-                    ->required(fn (Forms\Get $get) => $get('assertion_type') === 'type_check')
-                    ->visible(fn (Forms\Get $get) => $get('assertion_type') === 'type_check'),
+                    ->required(fn (Get $get) => $get('assertion_type') === 'type_check')
+                    ->visible(fn (Get $get) => $get('assertion_type') === 'type_check'),
 
                 Forms\Components\Select::make('comparison_operator')
                     ->options([
@@ -79,17 +81,26 @@ class AssertionsRelationManager extends RelationManager
                         '<=' => 'Less Than or Equal',
                         'contains' => 'Contains',
                     ])
-                    ->required(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->visible(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length'])),
+                    ->required(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
+                    ->visible(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length'])),
 
                 Forms\Components\TextInput::make('expected_value')
-                    ->required(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->visible(fn (Forms\Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->label(fn (Forms\Get $get) => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value'),
+                    ->required(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
+                    ->visible(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
+                    ->label(fn (Get $get) => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value'),
 
                 Forms\Components\TextInput::make('regex_pattern')
-                    ->required(fn (Forms\Get $get) => $get('assertion_type') === 'regex_match')
-                    ->visible(fn (Forms\Get $get) => $get('assertion_type') === 'regex_match')
+                    ->required(fn (Get $get) => $get('assertion_type') === 'regex_match')
+                    ->visible(fn (Get $get) => $get('assertion_type') === 'regex_match')
+                    ->rules(fn (Get $get): array => $get('assertion_type') === 'regex_match'
+                        ? [
+                            function (string $attribute, mixed $value, \Closure $fail): void {
+                                if (! is_string($value) || ! MonitorApiAssertion::hasValidRegexPattern($value)) {
+                                    $fail('Enter a valid regular expression pattern, including delimiters such as /pattern/.');
+                                }
+                            },
+                        ]
+                        : [])
                     ->helperText('Regular expression pattern (e.g. /^[0-9]+$/)')
                     ->placeholder('/pattern/'),
 
