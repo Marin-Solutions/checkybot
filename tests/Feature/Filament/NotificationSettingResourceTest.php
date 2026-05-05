@@ -224,6 +224,27 @@ test('super admin can create a global webhook notification rule', function () {
     ]);
 });
 
+test('global webhook notification rule cannot reuse another users channel', function () {
+    $this->actingAsSuperAdmin();
+
+    $otherChannel = NotificationChannels::factory()->create([
+        'title' => 'External Hook',
+    ]);
+
+    Livewire::test(CreateNotificationSetting::class)
+        ->fillForm([
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $otherChannel->id,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['notification_channel_id']);
+
+    $this->assertDatabaseMissing('notification_settings', [
+        'notification_channel_id' => $otherChannel->id,
+    ]);
+});
+
 test('super admin can edit a global notification rule from webhook to email without stale channel data', function () {
     $user = $this->actingAsSuperAdmin();
     $channel = NotificationChannels::factory()->create([

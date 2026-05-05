@@ -82,7 +82,9 @@ class CheckServerRules extends Command
     private function sendNotification($server, $rule, $currentValue)
     {
         try {
-            $channel = NotificationChannels::find($rule->channel);
+            $channel = NotificationChannels::query()
+                ->where('created_by', $server->created_by)
+                ->find($rule->channel);
             if (! $channel) {
                 $this->warn("Notification channel not found for rule on server {$server->name}");
 

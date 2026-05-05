@@ -106,6 +106,7 @@ test('command reports webhook notification failure when server rule destination 
 
     $server = Server::factory()->create();
     $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
         'url' => 'https://example.com/server-rule-webhook',
     ]);
 
@@ -126,4 +127,33 @@ test('command reports webhook notification failure when server rule destination 
         ->assertSuccessful();
 
     Http::assertSentCount(1);
+});
+
+test('command does not send server rule notifications to another users webhook channel', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $otherChannel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/other-user-webhook',
+    ]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+    ]);
+
+    ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $otherChannel->id,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Rule condition met for server {$server->name}: ram_usage = 95")
+        ->expectsOutput("Notification channel not found for rule on server {$server->name}")
+        ->assertSuccessful();
+
+    Http::assertNothingSent();
 });

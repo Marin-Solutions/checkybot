@@ -267,6 +267,49 @@ test('super admin can create website-scoped webhook notification from website pa
     ]);
 });
 
+test('website-scoped webhook notification cannot reuse another users channel', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $otherChannel = NotificationChannels::factory()->create([
+        'title' => 'External Hook',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $otherChannel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasTableActionErrors(['notification_channel_id']);
+
+    $this->assertDatabaseMissing('notification_settings', [
+        'website_id' => $website->id,
+        'notification_channel_id' => $otherChannel->id,
+    ]);
+});
+
+test('website-scoped webhook validation handles a missing website owner', function () {
+    $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => 999999]);
+    $channel = NotificationChannels::factory()->create();
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $channel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasTableActionErrors(['notification_channel_id']);
+});
+
 test('super admin can update website-scoped webhook notification from website page', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
