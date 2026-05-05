@@ -43,7 +43,10 @@ class CpuLoadChart extends ChartWidget
         return [
             'datasets' => [[
                 'label' => ' CPU Usage',
-                'data' => $data->pluck('avg_value')->map(fn ($v) => round((float) $v, 2))->toArray(),
+                'data' => $data->pluck('avg_value')->map(fn ($v) => round(
+                    max(0, min(100, $this->record->cpuLoadToUsagePercentage($v))),
+                    2
+                ))->toArray(),
                 'borderColor' => 'rgba(75, 192, 192, 1)',
                 'backgroundColor' => 'rgba(75, 192, 192, 0.2)',
                 'borderWidth' => 2,

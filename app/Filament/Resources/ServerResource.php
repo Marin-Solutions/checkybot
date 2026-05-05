@@ -198,8 +198,7 @@ class ServerResource extends Resource
                             return 0;
                         }
 
-                        // Get CPU usage directly from CPU_LOAD
-                        $cpuUsage = (float) str_replace(',', '.', $latestInfo['cpu_usage']);
+                        $cpuUsage = $record->cpuLoadToUsagePercentage($latestInfo['cpu_usage']);
 
                         return max(0, min(100, $cpuUsage));
                     })
@@ -210,8 +209,7 @@ class ServerResource extends Resource
                             return 'gray';
                         }
 
-                        // Get CPU usage directly from CPU_LOAD
-                        $cpuUsage = (float) str_replace(',', '.', $latestInfo['cpu_usage']);
+                        $cpuUsage = $record->cpuLoadToUsagePercentage($latestInfo['cpu_usage']);
 
                         return match (true) {
                             $cpuUsage >= 90 => 'danger',
