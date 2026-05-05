@@ -239,7 +239,6 @@ class WebsiteSeoCheckResource extends Resource
                     ]);
                 },
             ])
-            ->has('seoChecks') // Only show websites that have SEO checks
             ->orderBy('created_at', 'desc');
     }
 }
