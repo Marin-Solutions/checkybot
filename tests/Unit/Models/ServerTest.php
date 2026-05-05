@@ -63,3 +63,15 @@ test('server tracks cpu cores', function () {
 
     expect($server->cpu_cores)->toBe(8);
 });
+
+test('server normalizes cpu load to usage percentage by core count', function () {
+    $server = Server::factory()->create(['cpu_cores' => 4]);
+
+    expect($server->cpuLoadToUsagePercentage(3.0))->toBe(75.0);
+});
+
+test('server falls back to one core when normalizing cpu load without core count', function () {
+    $server = Server::factory()->create(['cpu_cores' => null]);
+
+    expect($server->cpuLoadToUsagePercentage('0,75'))->toBe(75.0);
+});

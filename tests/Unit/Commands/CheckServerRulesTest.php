@@ -62,6 +62,26 @@ test('command evaluates cpu usage rule', function () {
     ]);
 
     $this->artisan('server:check-rules')
+        ->expectsOutput("Rule condition met for server {$server->name}: cpu_usage = 87.5")
+        ->assertSuccessful();
+});
+
+test('command compares cpu usage thresholds against normalized cpu load', function () {
+    $server = Server::factory()->create(['cpu_cores' => 4]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'cpu_load' => 2.8, // 70% usage
+    ]);
+
+    ServerRule::factory()->cpuUsage()->create([
+        'server_id' => $server->id,
+        'value' => 80,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->doesntExpectOutput("Rule condition met for server {$server->name}: cpu_usage = 2.8")
+        ->doesntExpectOutput("Rule condition met for server {$server->name}: cpu_usage = 70")
         ->assertSuccessful();
 });
 

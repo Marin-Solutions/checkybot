@@ -37,7 +37,7 @@ class ServerHealthStatsWidget extends BaseWidget
 
                 $info = $server->parseLatestServerHistoryInfo($server->latest_server_history_info);
 
-                $cpuUsage = isset($info['cpu_usage']) ? (float) str_replace(',', '.', $info['cpu_usage']) : 0;
+                $cpuUsage = isset($info['cpu_usage']) ? $server->cpuLoadToUsagePercentage($info['cpu_usage']) : 0;
                 $ramFree = isset($info['ram_usage']) ? (float) str_replace(['%', ' '], '', $info['ram_usage']) : 100;
                 $diskFree = isset($info['disk_usage']) ? (float) str_replace(['%', ' '], '', $info['disk_usage']) : 100;
 

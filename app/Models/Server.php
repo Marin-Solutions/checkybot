@@ -55,6 +55,14 @@ class Server extends Model
         return $result;
     }
 
+    public function cpuLoadToUsagePercentage(string|float|int|null $cpuLoad): float
+    {
+        $load = (float) str_replace(',', '.', (string) $cpuLoad);
+        $cores = max(1, (int) ($this->cpu_cores ?? 1));
+
+        return ($load / $cores) * 100;
+    }
+
     public function ploiServer(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(PloiServers::class, 'ploi_server_id', 'id');

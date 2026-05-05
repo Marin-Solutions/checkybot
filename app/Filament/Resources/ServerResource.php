@@ -184,7 +184,14 @@ class ServerResource extends Resource
                     ->sortable(query: function (Builder $query, string $direction): Builder {
                         return $query
                             ->orderBy(
-                                ServerInformationHistory::select('cpu_load')
+                                ServerInformationHistory::selectRaw("
+                                    (CAST(REPLACE(cpu_load, ',', '.') AS DECIMAL(10, 4)) /
+                                        CASE
+                                            WHEN servers.cpu_cores IS NULL OR servers.cpu_cores < 1 THEN 1
+                                            ELSE servers.cpu_cores
+                                        END
+                                    ) * 100
+                                ")
                                     ->whereColumn('server_id', 'servers.id')
                                     ->latest()
                                     ->take(1),
@@ -198,8 +205,7 @@ class ServerResource extends Resource
                             return 0;
                         }
 
-                        // Get CPU usage directly from CPU_LOAD
-                        $cpuUsage = (float) str_replace(',', '.', $latestInfo['cpu_usage']);
+                        $cpuUsage = $record->cpuLoadToUsagePercentage($latestInfo['cpu_usage']);
 
                         return max(0, min(100, $cpuUsage));
                     })
@@ -210,8 +216,7 @@ class ServerResource extends Resource
                             return 'gray';
                         }
 
-                        // Get CPU usage directly from CPU_LOAD
-                        $cpuUsage = (float) str_replace(',', '.', $latestInfo['cpu_usage']);
+                        $cpuUsage = $record->cpuLoadToUsagePercentage($latestInfo['cpu_usage']);
 
                         return match (true) {
                             $cpuUsage >= 90 => 'danger',

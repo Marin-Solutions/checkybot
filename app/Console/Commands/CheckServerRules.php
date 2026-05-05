@@ -37,7 +37,7 @@ class CheckServerRules extends Command
                     continue;
                 }
 
-                $currentValue = $this->getCurrentValue($latestInfo, $rule->metric);
+                $currentValue = $this->getCurrentValue($latestInfo, $rule->metric, $rule->server);
 
                 if ($currentValue === null) {
                     $this->warn("Could not get current value for {$rule->metric} on server {$rule->server->name}");
@@ -59,10 +59,10 @@ class CheckServerRules extends Command
         return Command::SUCCESS;
     }
 
-    private function getCurrentValue($latestInfo, $metric)
+    private function getCurrentValue($latestInfo, $metric, Server $server)
     {
         return match ($metric) {
-            'cpu_usage' => (float) str_replace(',', '.', $latestInfo->cpu_load),
+            'cpu_usage' => $server->cpuLoadToUsagePercentage($latestInfo->cpu_load),
             'ram_usage' => 100 - (float) str_replace(['%', ' '], '', $latestInfo->ram_free_percentage),
             'disk_usage' => 100 - (float) str_replace(['%', ' '], '', $latestInfo->disk_free_percentage),
             default => null,
