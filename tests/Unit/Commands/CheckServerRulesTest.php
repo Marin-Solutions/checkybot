@@ -135,7 +135,7 @@ test('command reports webhook notification failure when server rule destination 
         'ram_free_percentage' => 5,
     ]);
 
-    ServerRule::factory()->ramUsage()->create([
+    $rule = ServerRule::factory()->ramUsage()->create([
         'server_id' => $server->id,
         'value' => 90,
         'channel' => (string) $channel->id,
@@ -147,6 +147,174 @@ test('command reports webhook notification failure when server rule destination 
         ->assertSuccessful();
 
     Http::assertSentCount(1);
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeFalse();
+    expect($rule->triggered_at)->toBeNull();
+});
+
+test('command sends server rule notification only when threshold transitions to triggered', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
+        'url' => 'https://example.com/server-rule-webhook',
+    ]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+    ]);
+
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $channel->id,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Rule condition met for server {$server->name}: ram_usage = 95")
+        ->expectsOutput("Notification sent for server {$server->name}")
+        ->assertSuccessful();
+
+    $this->artisan('server:check-rules')
+        ->assertSuccessful();
+
+    Http::assertSentCount(1);
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->triggered_at)->not->toBeNull();
+    expect($rule->recovered_at)->toBeNull();
+});
+
+test('command resets server rule state when threshold recovers', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
+        'url' => 'https://example.com/server-rule-webhook',
+    ]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 20,
+    ]);
+
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $channel->id,
+        'is_triggered' => true,
+        'triggered_at' => now()->subMinutes(5),
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Rule recovered for server {$server->name}: ram_usage = 80")
+        ->assertSuccessful();
+
+    Http::assertSentCount(0);
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeFalse();
+    expect($rule->triggered_at)->not->toBeNull();
+    expect($rule->recovered_at)->not->toBeNull();
+});
+
+test('command sends server rule notification again after recovery and new breach', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
+        'url' => 'https://example.com/server-rule-webhook',
+    ]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $channel->id,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->assertSuccessful();
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 20,
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->assertSuccessful();
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+        'created_at' => now(),
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->assertSuccessful();
+
+    Http::assertSentCount(2);
+});
+
+test('command sends server rule notification when re-enabled rule is still breached', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
+        'url' => 'https://example.com/server-rule-webhook',
+    ]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+    ]);
+
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $channel->id,
+        'is_triggered' => true,
+        'triggered_at' => now()->subMinutes(5),
+    ]);
+
+    $rule->update(['is_active' => false]);
+    $rule->update(['is_active' => true]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Rule condition met for server {$server->name}: ram_usage = 95")
+        ->expectsOutput("Notification sent for server {$server->name}")
+        ->assertSuccessful();
+
+    Http::assertSentCount(1);
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->triggered_at)->not->toBeNull();
 });
 
 test('command does not send server rule notifications to another users webhook channel', function () {

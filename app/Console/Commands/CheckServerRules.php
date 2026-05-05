@@ -45,9 +45,27 @@ class CheckServerRules extends Command
                     continue;
                 }
 
-                if ($this->isConditionMet($currentValue, $rule->operator, $rule->value)) {
+                $conditionIsMet = $this->isConditionMet($currentValue, $rule->operator, $rule->value);
+
+                if ($conditionIsMet && ! $rule->is_triggered) {
                     $this->info("Rule condition met for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
-                    $this->sendNotification($rule->server, $rule, $currentValue);
+
+                    if ($this->sendNotification($rule->server, $rule, $currentValue)) {
+                        $rule->forceFill([
+                            'is_triggered' => true,
+                            'triggered_at' => now(),
+                            'recovered_at' => null,
+                        ])->save();
+                    }
+                }
+
+                if (! $conditionIsMet && $rule->is_triggered) {
+                    $rule->forceFill([
+                        'is_triggered' => false,
+                        'recovered_at' => now(),
+                    ])->save();
+
+                    $this->info("Rule recovered for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
                 }
             } catch (\Exception $e) {
                 $this->error('Error processing rule: '.$e->getMessage());
@@ -79,7 +97,7 @@ class CheckServerRules extends Command
         };
     }
 
-    private function sendNotification($server, $rule, $currentValue)
+    private function sendNotification($server, $rule, $currentValue): bool
     {
         try {
             $channel = NotificationChannels::query()
@@ -88,7 +106,7 @@ class CheckServerRules extends Command
             if (! $channel) {
                 $this->warn("Notification channel not found for rule on server {$server->name}");
 
-                return;
+                return false;
             }
 
             $message = "Alert for {$server->name} ({$server->ip})\n";
@@ -104,12 +122,16 @@ class CheckServerRules extends Command
 
                 $this->error("Webhook notification failed for server {$server->name} with response code {$code}");
 
-                return;
+                return false;
             }
 
             $this->info("Notification sent for server {$server->name}");
+
+            return true;
         } catch (\Exception $e) {
             $this->error('Failed to send notification: '.$e->getMessage());
+
+            return false;
         }
     }
 }

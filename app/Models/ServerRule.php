@@ -22,7 +22,21 @@ class ServerRule extends Model
     protected $casts = [
         'value' => 'float',
         'is_active' => 'boolean',
+        'is_triggered' => 'boolean',
+        'triggered_at' => 'datetime',
+        'recovered_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (ServerRule $rule) {
+            if ($rule->isDirty('is_active') && ! $rule->is_active) {
+                $rule->is_triggered = false;
+                $rule->triggered_at = null;
+                $rule->recovered_at = null;
+            }
+        });
+    }
 
     public function server(): BelongsTo
     {

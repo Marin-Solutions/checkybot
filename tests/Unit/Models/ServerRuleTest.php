@@ -41,10 +41,39 @@ test('server rule casts is active to boolean', function () {
     expect($rule->is_active)->toBeTrue();
 });
 
+test('server rule casts transition state', function () {
+    $rule = ServerRule::factory()->create([
+        'is_triggered' => 1,
+        'triggered_at' => now(),
+        'recovered_at' => now(),
+    ]);
+
+    expect($rule->is_triggered)->toBeBool();
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->triggered_at)->toBeInstanceOf(Illuminate\Support\Carbon::class);
+    expect($rule->recovered_at)->toBeInstanceOf(Illuminate\Support\Carbon::class);
+});
+
 test('server rule can be inactive', function () {
     $rule = ServerRule::factory()->create(['is_active' => false]);
 
     expect($rule->is_active)->toBeFalse();
+});
+
+test('server rule clears transition state when deactivated', function () {
+    $rule = ServerRule::factory()->create([
+        'is_triggered' => true,
+        'triggered_at' => now()->subMinutes(5),
+        'recovered_at' => now()->subMinute(),
+    ]);
+
+    $rule->update(['is_active' => false]);
+    $rule->refresh();
+
+    expect($rule->is_active)->toBeFalse();
+    expect($rule->is_triggered)->toBeFalse();
+    expect($rule->triggered_at)->toBeNull();
+    expect($rule->recovered_at)->toBeNull();
 });
 
 test('server rule supports cpu usage metric', function () {
