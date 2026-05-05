@@ -98,7 +98,11 @@ class RulesRelationManager extends RelationManager
                     ->badge()
                     ->color('success')
                     ->formatStateUsing(function ($state) {
-                        return NotificationChannels::find($state)?->title ?? $state;
+                        $ownerId = $this->getOwnerRecord()?->created_by ?? auth()->id();
+
+                        return NotificationChannels::query()
+                            ->where('created_by', $ownerId)
+                            ->find($state)?->title ?? $state;
                     }),
                 Tables\Columns\ToggleColumn::make('is_active')
                     ->label('Active'),

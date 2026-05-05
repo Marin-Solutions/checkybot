@@ -54,11 +54,11 @@ class NotificationSettingsRelationManager extends RelationManager
                                 return;
                             }
 
-                            $owned = $this->getOwnerRecord()
-                                ->user
-                                ?->webhookChannels()
-                                ->whereKey($value)
-                                ->exists() ?? false;
+                            $owner = $this->getOwnerRecord()->user;
+                            $owned = $owner !== null
+                                && $owner->webhookChannels()
+                                    ->whereKey($value)
+                                    ->exists();
 
                             if (! $owned) {
                                 $fail('Select one of this website owner\'s webhook channels.');
