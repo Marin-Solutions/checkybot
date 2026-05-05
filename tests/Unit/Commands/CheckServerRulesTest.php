@@ -114,7 +114,7 @@ test('command reports webhook notification failure when server rule destination 
         'ram_free_percentage' => 5,
     ]);
 
-    ServerRule::factory()->ramUsage()->create([
+    $rule = ServerRule::factory()->ramUsage()->create([
         'server_id' => $server->id,
         'value' => 90,
         'channel' => (string) $channel->id,
@@ -126,6 +126,11 @@ test('command reports webhook notification failure when server rule destination 
         ->assertSuccessful();
 
     Http::assertSentCount(1);
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeFalse();
+    expect($rule->triggered_at)->toBeNull();
 });
 
 test('command sends server rule notification only when threshold transitions to triggered', function () {

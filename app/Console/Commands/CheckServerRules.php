@@ -49,13 +49,14 @@ class CheckServerRules extends Command
 
                 if ($conditionIsMet && ! $rule->is_triggered) {
                     $this->info("Rule condition met for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
-                    $this->sendNotification($rule->server, $rule, $currentValue);
 
-                    $rule->forceFill([
-                        'is_triggered' => true,
-                        'triggered_at' => now(),
-                        'recovered_at' => null,
-                    ])->save();
+                    if ($this->sendNotification($rule->server, $rule, $currentValue)) {
+                        $rule->forceFill([
+                            'is_triggered' => true,
+                            'triggered_at' => now(),
+                            'recovered_at' => null,
+                        ])->save();
+                    }
                 }
 
                 if (! $conditionIsMet && $rule->is_triggered) {
@@ -96,14 +97,14 @@ class CheckServerRules extends Command
         };
     }
 
-    private function sendNotification($server, $rule, $currentValue)
+    private function sendNotification($server, $rule, $currentValue): bool
     {
         try {
             $channel = NotificationChannels::find($rule->channel);
             if (! $channel) {
                 $this->warn("Notification channel not found for rule on server {$server->name}");
 
-                return;
+                return false;
             }
 
             $message = "Alert for {$server->name} ({$server->ip})\n";
@@ -119,12 +120,16 @@ class CheckServerRules extends Command
 
                 $this->error("Webhook notification failed for server {$server->name} with response code {$code}");
 
-                return;
+                return false;
             }
 
             $this->info("Notification sent for server {$server->name}");
+
+            return true;
         } catch (\Exception $e) {
             $this->error('Failed to send notification: '.$e->getMessage());
+
+            return false;
         }
     }
 }
