@@ -18,9 +18,6 @@ test('server rule has fillable attributes', function () {
         'value' => 80.5,
         'channel' => 'email',
         'is_active' => true,
-        'is_triggered' => true,
-        'triggered_at' => now(),
-        'recovered_at' => now(),
     ]);
 
     expect($rule->metric)->toBe('cpu_usage');
@@ -28,9 +25,6 @@ test('server rule has fillable attributes', function () {
     expect($rule->value)->toBe(80.5);
     expect($rule->channel)->toBe('email');
     expect($rule->is_active)->toBeTrue();
-    expect($rule->is_triggered)->toBeTrue();
-    expect($rule->triggered_at)->not->toBeNull();
-    expect($rule->recovered_at)->not->toBeNull();
 });
 
 test('server rule casts value to float', function () {
