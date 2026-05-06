@@ -6,11 +6,15 @@ use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
 use App\Services\IntervalParser;
+use App\Support\ValidatesMonitorApiRegexAssertions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpsertControlCheckRequest extends FormRequest
 {
+    use ValidatesMonitorApiRegexAssertions;
+
     public function authorize(): bool
     {
         return (bool) $this->user();
@@ -55,5 +59,18 @@ class UpsertControlCheckRequest extends FormRequest
             }],
             'enabled' => ['nullable', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $assertions = $this->input('assertions', []);
+
+            if (! is_array($assertions)) {
+                return;
+            }
+
+            $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');
+        });
     }
 }

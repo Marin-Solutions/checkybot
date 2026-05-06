@@ -9,16 +9,20 @@ use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
 use App\Services\CheckybotControlService;
 use App\Services\IntervalParser;
+use App\Support\ValidatesMonitorApiRegexAssertions;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Validator as ValidationValidator;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class CheckybotMcpController extends Controller
 {
+    use ValidatesMonitorApiRegexAssertions;
+
     public function __construct(
         private readonly CheckybotControlService $control,
     ) {}
@@ -170,7 +174,7 @@ class CheckybotMcpController extends Controller
      */
     private function validateCheckArguments(array $arguments): array
     {
-        return Validator::make($arguments, [
+        $validator = Validator::make($arguments, [
             'key' => ['required', 'string', 'alpha_dash', 'max:150'],
             'type' => ['nullable', Rule::in(['api'])],
             'name' => ['required', 'string', 'max:255'],
@@ -207,7 +211,19 @@ class CheckybotMcpController extends Controller
                 }
             }],
             'enabled' => ['nullable', 'boolean'],
-        ])->validate();
+        ]);
+
+        $validator->after(function (ValidationValidator $validator) use ($arguments): void {
+            $assertions = $arguments['assertions'] ?? [];
+
+            if (! is_array($assertions)) {
+                return;
+            }
+
+            $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');
+        });
+
+        return $validator->validate();
     }
 
     /**

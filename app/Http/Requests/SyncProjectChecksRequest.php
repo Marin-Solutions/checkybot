@@ -5,10 +5,14 @@ namespace App\Http\Requests;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
+use App\Support\ValidatesMonitorApiRegexAssertions;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class SyncProjectChecksRequest extends FormRequest
 {
+    use ValidatesMonitorApiRegexAssertions;
+
     public function authorize(): bool
     {
         $project = $this->route('project');
@@ -85,6 +89,30 @@ class SyncProjectChecksRequest extends FormRequest
             'ssl_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
             'api_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $apiChecks = $this->input('api_checks', []);
+
+            if (! is_array($apiChecks)) {
+                return;
+            }
+
+            foreach ($apiChecks as $checkIndex => $check) {
+                if (! is_array($check) || ! is_array($check['assertions'] ?? null)) {
+                    continue;
+                }
+
+                $this->addRegexAssertionValidationErrors(
+                    $validator,
+                    $check['assertions'],
+                    "api_checks.{$checkIndex}.assertions",
+                    'assertion_type'
+                );
+            }
+        });
     }
 
     /**
