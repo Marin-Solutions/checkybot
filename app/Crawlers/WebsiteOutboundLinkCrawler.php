@@ -2,16 +2,16 @@
 
 namespace App\Crawlers;
 
-use App\Mail\EmailErrorOutgoingUrl;
 use App\Models\OutboundLink;
 use App\Models\Website;
+use App\Services\HealthEventNotificationService;
 use App\Support\ApiMonitorEvidenceRedactor;
 use App\Support\UptimeTransportError;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\UriInterface;
 use Spatie\Crawler\CrawlObservers\CrawlObserver;
@@ -27,6 +27,8 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
     protected bool $hasSuccessfulCrawl = false;
 
     protected bool $hasInternalCrawlFailure = false;
+
+    protected array $newlyBrokenOutboundLinks = [];
 
     public function __construct(Website $website)
     {
@@ -89,7 +91,11 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         $checkedAt = Carbon::now();
 
         DB::transaction(function () use ($checkedAt): void {
-            $this->refreshOutboundLinks($checkedAt);
+            $currentPages = $this->currentOutboundPages($checkedAt);
+
+            $this->newlyBrokenOutboundLinks = $this->findNewlyBrokenOutboundLinks($currentPages);
+
+            $this->refreshOutboundLinks($currentPages);
 
             $this->website->last_outbound_checked_at = $checkedAt;
             $this->website->save();
@@ -101,9 +107,9 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
         Log::info('Outbound Links for website '.$this->website->url.' has been crawled.');
     }
 
-    protected function refreshOutboundLinks(Carbon $checkedAt): void
+    protected function currentOutboundPages(Carbon $checkedAt): Collection
     {
-        $currentPages = collect($this->crawledPages)
+        return collect($this->crawledPages)
             ->map(fn (array $page): array => array_merge($page, [
                 'last_checked_at' => $checkedAt,
             ]))
@@ -112,7 +118,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
                 $page['found_on'],
                 $page['outgoing_url'],
             ]));
+    }
 
+    protected function refreshOutboundLinks(Collection $currentPages): void
+    {
         $canPruneStaleLinks = $this->hasSuccessfulCrawl && ! $this->hasInternalCrawlFailure;
 
         if ($currentPages->isEmpty() && ! $canPruneStaleLinks) {
@@ -232,16 +241,69 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
     protected function sendErrorNotification(): void
     {
-        $user = $this->website->user;
-
-        if (! $user) {
+        if ($this->newlyBrokenOutboundLinks === []) {
             return;
         }
 
-        foreach ($this->crawledPages as $page) {
-            if ($page['http_status_code'] === 404 || $page['http_status_code'] === 500) {
-                Mail::to($user)->send(new EmailErrorOutgoingUrl(array_merge(['user' => $user], $page)));
-            }
+        app(HealthEventNotificationService::class)->notifyWebsite(
+            $this->website,
+            'outbound_link_broken',
+            'danger',
+            $this->brokenOutboundLinksSummary($this->newlyBrokenOutboundLinks),
+        );
+    }
+
+    protected function findNewlyBrokenOutboundLinks(Collection $currentPages): array
+    {
+        $brokenPages = $currentPages
+            ->filter(fn (array $page): bool => $this->isBrokenOutboundLink($page));
+
+        if ($brokenPages->isEmpty()) {
+            return [];
         }
+
+        $existingBrokenKeys = OutboundLink::query()
+            ->where('website_id', $this->website->id)
+            ->whereIn('http_status_code', [404, 500])
+            ->get(['website_id', 'found_on', 'outgoing_url'])
+            ->mapWithKeys(fn (OutboundLink $link): array => [
+                $this->outboundLinkKey($link->website_id, $link->found_on, $link->outgoing_url) => true,
+            ]);
+
+        return $brokenPages
+            ->reject(fn (array $page): bool => $existingBrokenKeys->has(
+                $this->outboundLinkKey($page['website_id'], $page['found_on'], $page['outgoing_url'])
+            ))
+            ->values()
+            ->all();
+    }
+
+    protected function isBrokenOutboundLink(array $page): bool
+    {
+        return in_array($page['http_status_code'], [404, 500], true);
+    }
+
+    protected function outboundLinkKey(int $websiteId, ?string $foundOn, ?string $outgoingUrl): string
+    {
+        return implode("\0", [$websiteId, $foundOn, $outgoingUrl]);
+    }
+
+    protected function brokenOutboundLinksSummary(array $links): string
+    {
+        $count = count($links);
+        $headline = $count === 1
+            ? 'Outbound link check found 1 newly broken external link.'
+            : "Outbound link check found {$count} newly broken external links.";
+
+        $examples = collect($links)
+            ->take(5)
+            ->map(fn (array $link): string => "{$link['outgoing_url']} returned HTTP {$link['http_status_code']} from {$link['found_on']}")
+            ->implode("\n");
+
+        if ($count > 5) {
+            $examples .= "\n+".($count - 5).' more newly broken links.';
+        }
+
+        return $headline."\n\n".$examples;
     }
 }
