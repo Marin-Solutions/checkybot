@@ -170,7 +170,7 @@ class CheckybotMcpController extends Controller
      */
     private function validateCheckArguments(array $arguments): array
     {
-        return Validator::make($arguments, [
+        $data = Validator::make($arguments, [
             'key' => ['required', 'string', 'alpha_dash', 'max:150'],
             'type' => ['nullable', Rule::in(['api'])],
             'name' => ['required', 'string', 'max:255'],
@@ -208,6 +208,12 @@ class CheckybotMcpController extends Controller
             }],
             'enabled' => ['nullable', 'boolean'],
         ])->validate();
+
+        if (array_key_exists('schedule', $arguments) && blank($data['schedule'] ?? null)) {
+            $data['schedule'] = IntervalParser::DEFAULT_API_INTERVAL;
+        }
+
+        return $data;
     }
 
     /**
@@ -235,7 +241,7 @@ class CheckybotMcpController extends Controller
                 'request_body' => ['description' => 'JSON object/array for json or form body types, or a string for raw bodies.'],
                 'expected_status' => ['type' => 'integer', 'default' => 200],
                 'timeout_seconds' => ['type' => 'integer'],
-                'schedule' => ['type' => 'string'],
+                'schedule' => ['type' => 'string', 'default' => IntervalParser::DEFAULT_API_INTERVAL],
                 'enabled' => ['type' => 'boolean'],
                 'assertions' => ['type' => 'array', 'items' => ['type' => 'object']],
             ], ['project', 'key', 'name', 'url']),

@@ -19,6 +19,31 @@ class PackageSyncRequest extends FormRequest
         return (bool) $this->user();
     }
 
+    protected function prepareForValidation(): void
+    {
+        $checks = $this->input('checks');
+
+        if (! is_array($checks)) {
+            return;
+        }
+
+        foreach ($checks as $index => $check) {
+            if (! is_array($check) || ($check['type'] ?? null) !== 'api') {
+                continue;
+            }
+
+            if (
+                ! array_key_exists('schedule', $check)
+                || $check['schedule'] === null
+                || (is_string($check['schedule']) && blank($check['schedule']))
+            ) {
+                $checks[$index]['schedule'] = IntervalParser::DEFAULT_API_INTERVAL;
+            }
+        }
+
+        $this->merge(['checks' => $checks]);
+    }
+
     public function rules(): array
     {
         return [
