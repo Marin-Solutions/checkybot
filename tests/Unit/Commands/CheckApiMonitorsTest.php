@@ -92,6 +92,39 @@ test('command only checks api monitors when their polling interval is due', func
     Http::assertSentCount(1);
 });
 
+test('command does not hydrate enabled api monitors before their polling interval is due', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $dueMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/due-query-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(16),
+    ]);
+
+    $skippedMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/skipped-query-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $retrievedMonitorIds = [];
+    MonitorApis::retrieved(function (MonitorApis $monitor) use (&$retrievedMonitorIds): void {
+        $retrievedMonitorIds[] = $monitor->id;
+    });
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 1 API monitors.')
+        ->assertSuccessful();
+
+    expect($retrievedMonitorIds)
+        ->toContain($dueMonitor->id)
+        ->not->toContain($skippedMonitor->id);
+
+    Http::assertSentCount(1);
+});
+
 test('command checks interval monitors without a prior heartbeat immediately', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
