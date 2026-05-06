@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\URL;
@@ -47,6 +48,11 @@ class Backup extends Model
     public function interval(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(BackupIntervalOption::class, 'interval_id', 'id');
+    }
+
+    public function histories(): HasMany
+    {
+        return $this->hasMany(BackupHistory::class);
     }
 
     public static function copyCommand(Backup $backup): string
