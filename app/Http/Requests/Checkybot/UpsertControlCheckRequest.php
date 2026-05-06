@@ -20,6 +20,15 @@ class UpsertControlCheckRequest extends FormRequest
         return (bool) $this->user();
     }
 
+    protected function prepareForValidation(): void
+    {
+        $schedule = $this->input('schedule');
+
+        if ($this->has('schedule') && ($schedule === null || (is_string($schedule) && blank($schedule)))) {
+            $this->merge(['schedule' => IntervalParser::DEFAULT_API_INTERVAL]);
+        }
+    }
+
     public function rules(): array
     {
         return [

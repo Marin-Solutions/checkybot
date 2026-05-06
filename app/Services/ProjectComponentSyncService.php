@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Facades\DB;
 
 class ProjectComponentSyncService
@@ -82,9 +81,23 @@ class ProjectComponentSyncService
                 $component = $componentsByName->get($payload['name']);
 
                 if (! $component) {
-                    $exception = new ModelNotFoundException;
-                    $exception->setModel(ProjectComponent::class, [$payload['name']]);
-                    throw $exception;
+                    $component = ProjectComponent::create([
+                        'project_id' => $project->id,
+                        'name' => $payload['name'],
+                        'source' => 'package',
+                        'is_archived' => false,
+                        'archived_at' => null,
+                        'declared_interval' => $payload['interval'],
+                        'interval_minutes' => IntervalParser::toMinutes($payload['interval']),
+                        'current_status' => 'unknown',
+                        'last_reported_status' => 'unknown',
+                        'summary' => 'Awaiting first heartbeat',
+                        'metrics' => [],
+                        'created_by' => $project->created_by,
+                    ]);
+
+                    $componentsByName->put($component->name, $component);
+                    $createdNames[] = $component->name;
                 }
 
                 $previousStatus = $component->current_status;

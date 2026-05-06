@@ -223,7 +223,13 @@ class CheckybotMcpController extends Controller
             $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');
         });
 
-        return $validator->validate();
+        $data = $validator->validate();
+
+        if (array_key_exists('schedule', $arguments) && blank($data['schedule'] ?? null)) {
+            $data['schedule'] = IntervalParser::DEFAULT_API_INTERVAL;
+        }
+
+        return $data;
     }
 
     /**
@@ -251,7 +257,7 @@ class CheckybotMcpController extends Controller
                 'request_body' => ['description' => 'JSON object/array for json or form body types, or a string for raw bodies.'],
                 'expected_status' => ['type' => 'integer', 'default' => 200],
                 'timeout_seconds' => ['type' => 'integer'],
-                'schedule' => ['type' => 'string'],
+                'schedule' => ['type' => 'string', 'default' => IntervalParser::DEFAULT_API_INTERVAL],
                 'enabled' => ['type' => 'boolean'],
                 'assertions' => ['type' => 'array', 'items' => ['type' => 'object']],
             ], ['project', 'key', 'name', 'url']),

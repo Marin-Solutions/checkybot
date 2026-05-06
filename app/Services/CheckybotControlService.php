@@ -120,7 +120,8 @@ class CheckybotControlService
                 $check->restore();
             }
 
-            $normalizedSchedule = IntervalParser::normalizeOrFail($data['schedule'] ?? null, 'schedule');
+            $schedule = $this->effectiveSchedule($data['schedule'] ?? null, $check);
+            $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
 
             $check->fill([
                 'project_id' => $project->id,
@@ -135,7 +136,7 @@ class CheckybotControlService
                 'request_body' => $data['request_body'] ?? null,
                 'expected_status' => $data['expected_status'] ?? 200,
                 'timeout_seconds' => $data['timeout_seconds'] ?? null,
-                'package_schedule' => $data['schedule'] ?? null,
+                'package_schedule' => $schedule,
                 // Stale detection reads package_interval, so persist the compact normalized form there.
                 'package_interval' => $normalizedSchedule,
                 'is_enabled' => $data['enabled'] ?? true,
@@ -451,6 +452,27 @@ class CheckybotControlService
         }
 
         return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
+    }
+
+    private function effectiveSchedule(mixed $schedule, MonitorApis $check): string
+    {
+        if (is_string($schedule) && filled($schedule)) {
+            return $schedule;
+        }
+
+        if ($schedule !== null && ! is_string($schedule)) {
+            throw ValidationException::withMessages([
+                'schedule' => ['The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.'],
+            ]);
+        }
+
+        foreach ([$check->package_schedule, $check->package_interval] as $existingSchedule) {
+            if (is_string($existingSchedule) && filled($existingSchedule) && IntervalParser::isValid($existingSchedule)) {
+                return $existingSchedule;
+            }
+        }
+
+        return IntervalParser::DEFAULT_API_INTERVAL;
     }
 
     /**
