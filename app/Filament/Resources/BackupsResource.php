@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\BackupsResource\Pages;
+use App\Filament\Resources\BackupsResource\RelationManagers\HistoriesRelationManager;
 use App\Models\Backup;
 use Filament\Forms;
 use Filament\Resources\Resource;
@@ -103,7 +104,7 @@ class BackupsResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            HistoriesRelationManager::class,
         ];
     }
 
