@@ -7,6 +7,7 @@ use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
 use App\Services\IntervalParser;
+use App\Support\ValidatesMonitorApiRegexAssertions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -14,6 +15,8 @@ use Illuminate\Validation\Validator;
 
 class PackageSyncRequest extends FormRequest
 {
+    use ValidatesMonitorApiRegexAssertions;
+
     public function authorize(): bool
     {
         return (bool) $this->user();
@@ -123,6 +126,14 @@ class PackageSyncRequest extends FormRequest
             foreach ($checks as $index => $check) {
                 if (! is_array($check)) {
                     continue;
+                }
+
+                if (is_array($check['assertions'] ?? null)) {
+                    $this->addRegexAssertionValidationErrors(
+                        $validator,
+                        $check['assertions'],
+                        "checks.{$index}.assertions"
+                    );
                 }
 
                 $type = $check['type'] ?? null;

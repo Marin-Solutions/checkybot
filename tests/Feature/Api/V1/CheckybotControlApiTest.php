@@ -171,6 +171,27 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         ->and($storedRequestBody)->toBe('{"email":"monitor@example.com","password":"body-secret","filters":{}}');
 });
 
+test('control api rejects invalid regex assertion patterns', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/regex-health', [
+            'name' => 'Regex health',
+            'url' => '/health',
+            'assertions' => [
+                [
+                    'type' => 'regex_match',
+                    'path' => '$.status',
+                    'regex_pattern' => '/[unterminated/',
+                ],
+            ],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['assertions.0.regex_pattern']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'regex-health',
+    ]);
+});
+
 test('control api defaults missing api schedules to the safe polling interval', function () {
     $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/search-health', [
@@ -997,6 +1018,40 @@ test('mcp endpoint rejects invalid schedules with a field validation error', fun
         ->assertOk()
         ->assertJsonPath('error.code', -32602)
         ->assertJsonPath('error.data.errors.schedule.0', 'The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
+});
+
+test('mcp endpoint rejects invalid regex assertion patterns', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 4,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'regex-health',
+                    'name' => 'Regex health',
+                    'url' => '/health',
+                    'assertions' => [
+                        [
+                            'type' => 'regex_match',
+                            'path' => '$.status',
+                            'regex_pattern' => '/[unterminated/',
+                        ],
+                    ],
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602);
+
+    expect($response->json('error.data.errors')['assertions.0.regex_pattern'][0])
+        ->toBe('The regex pattern must be a valid PHP regular expression.');
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'regex-health',
+    ]);
 });
 
 test('mcp endpoint requires body type when request body is provided', function () {

@@ -589,6 +589,35 @@ test('validates assertion types', function () {
         ->assertJsonValidationErrors(['api_checks.0.assertions.0.assertion_type']);
 });
 
+test('validates regex assertion patterns before syncing api checks', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'regex-health',
+                    'url' => 'https://api.example.com/health',
+                    'interval' => '5m',
+                    'assertions' => [
+                        [
+                            'data_path' => 'status',
+                            'assertion_type' => 'regex_match',
+                            'regex_pattern' => '/[unterminated/',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['api_checks.0.assertions.0.regex_pattern']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'regex-health',
+    ]);
+});
+
 test('validates api check execution settings', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [

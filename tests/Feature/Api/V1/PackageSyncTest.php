@@ -126,6 +126,35 @@ test('package sync creates a project and api check definitions', function () {
         ->and($monitor->assertions->first()->data_path)->toBe('data');
 });
 
+test('package sync rejects invalid regex assertion patterns', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'regex-health',
+                    'type' => 'api',
+                    'name' => 'Regex health',
+                    'method' => 'GET',
+                    'url' => '/health',
+                    'assertions' => [
+                        [
+                            'type' => 'regex_match',
+                            'path' => '$.status',
+                            'regex_pattern' => '/[unterminated/',
+                        ],
+                    ],
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['checks.0.assertions.0.regex_pattern']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'regex-health',
+    ]);
+});
+
 test('package sync defaults missing api schedules to the safe polling interval', function () {
     $payload = packageSyncPayload();
     unset($payload['checks'][0]['schedule']);
