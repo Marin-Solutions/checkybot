@@ -4,6 +4,7 @@ use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 
 test('command marks overdue package-managed checks as stale danger and notifies once', function () {
@@ -86,6 +87,89 @@ test('command treats scheduler style package intervals as stale thresholds', fun
         ->and($api->fresh()->status_summary)->toContain('5m');
 });
 
+test('command treats zero-padded package intervals as stale thresholds', function () {
+    $website = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '05m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => 'every_05_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($website->fresh()->stale_at)->not->toBeNull()
+        ->and($api->fresh()->stale_at)->not->toBeNull()
+        ->and($website->fresh()->status_summary)->toContain('5m')
+        ->and($api->fresh()->status_summary)->toContain('5m');
+});
+
+test('command skips all-zero package intervals', function () {
+    $website = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '00m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => 'every_00_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($website->fresh()->stale_at)->toBeNull()
+        ->and($api->fresh()->stale_at)->toBeNull();
+});
+
+test('command skips oversized package intervals without aborting valid stale checks', function () {
+    $oversizedWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-oversized',
+        'package_interval' => '5000000000m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $oversizedApi = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-oversized',
+        'package_interval' => 'every_5000000000_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $validWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-valid',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($oversizedWebsite->fresh()->stale_at)->toBeNull()
+        ->and($oversizedApi->fresh()->stale_at)->toBeNull()
+        ->and($validWebsite->fresh()->stale_at)->not->toBeNull();
+});
+
 test('command skips invalid legacy intervals without aborting valid stale checks', function () {
     $invalidWebsite = Website::factory()->create([
         'source' => 'package',
@@ -147,4 +231,74 @@ test('command skips disabled package-managed api checks when marking stale', fun
     ]);
 
     Mail::assertNothingSent();
+});
+
+test('command only marks checks after the package interval is overdue', function () {
+    $this->travelTo(Carbon::parse('2026-05-06 12:00:00'));
+
+    $boundaryWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-boundary',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $overdueWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-overdue',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5)->subSecond(),
+    ]);
+
+    $boundaryApi = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-boundary',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $overdueApi = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-overdue',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5)->subSecond(),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($boundaryWebsite->fresh()->stale_at)->toBeNull()
+        ->and($boundaryApi->fresh()->stale_at)->toBeNull()
+        ->and($overdueWebsite->fresh()->stale_at)->not->toBeNull()
+        ->and($overdueApi->fresh()->stale_at)->not->toBeNull();
+});
+
+test('command processes overdue package websites beyond one chunk', function () {
+    Website::factory()
+        ->count(501)
+        ->create([
+            'source' => 'package',
+            'package_name' => 'homepage',
+            'package_interval' => '5m',
+            'current_status' => 'healthy',
+            'last_heartbeat_at' => now()->subMinutes(6),
+        ]);
+
+    Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-fresh',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now(),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect(Website::query()->where('source', 'package')->whereNotNull('stale_at')->count())->toBe(501)
+        ->and(Website::query()->where('package_name', 'homepage-fresh')->value('stale_at'))->toBeNull();
 });
