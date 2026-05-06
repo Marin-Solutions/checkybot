@@ -11,6 +11,7 @@ use App\Filament\Resources\WebsiteResource\Pages\ViewWebsite;
 use App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelationManager;
+use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\OutboundLink;
@@ -20,6 +21,7 @@ use App\Models\WebsiteLogHistory;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Mockery\MockInterface;
 use Spatie\Dns\Dns;
@@ -1409,6 +1411,64 @@ test('log history relation manager exposes website run evidence modal for ssl-on
 test('outbound links relation manager is registered on website resource', function () {
     expect(\App\Filament\Resources\WebsiteResource::getRelations())
         ->toContain(OutboundLinksRelationManager::class);
+});
+
+test('outbound links relation manager can queue an on demand outbound scan', function () {
+    Queue::fake();
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'outbound_check' => true,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertTableActionExists('run_outbound_scan')
+        ->assertTableActionVisible('run_outbound_scan')
+        ->assertTableActionHasLabel('run_outbound_scan', 'Run outbound scan now')
+        ->callTableAction('run_outbound_scan')
+        ->assertNotified('Outbound scan queued');
+
+    Queue::assertPushedOn(
+        'log-website',
+        WebsiteCheckOutboundLinkJob::class,
+        fn (WebsiteCheckOutboundLinkJob $job): bool => $job->website->is($website),
+    );
+});
+
+test('outbound links relation manager hides on demand scan action when outbound check is disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'outbound_check' => false,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertTableActionHidden('run_outbound_scan');
+});
+
+test('outbound links relation manager hides on demand scan action for users without update permission', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Website', 'View:Website']);
+    $this->actingAs($user);
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'outbound_check' => true,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertTableActionHidden('run_outbound_scan');
 });
 
 test('outbound links relation manager only shows links for the current website', function () {

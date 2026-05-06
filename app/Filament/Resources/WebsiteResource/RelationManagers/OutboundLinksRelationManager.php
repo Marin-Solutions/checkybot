@@ -2,8 +2,11 @@
 
 namespace App\Filament\Resources\WebsiteResource\RelationManagers;
 
+use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\OutboundLink;
 use App\Support\UptimeTransportError;
+use Filament\Actions\Action;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
@@ -101,7 +104,28 @@ class OutboundLinksRelationManager extends RelationManager
                     }),
             ])
             ->defaultSort('last_checked_at', 'desc')
-            ->headerActions([])
+            ->headerActions([
+                Action::make('run_outbound_scan')
+                    ->label('Run outbound scan now')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('primary')
+                    ->requiresConfirmation()
+                    ->modalIcon('heroicon-o-arrow-path')
+                    ->modalHeading('Run outbound scan now')
+                    ->modalDescription('Checkybot will queue a fresh outbound link scan for this website. Use this after fixing broken links to refresh the evidence without waiting for the daily scheduler.')
+                    ->modalSubmitActionLabel('Queue scan')
+                    ->authorize(fn (): bool => auth()->user()?->can('update', $this->ownerRecord) ?? false)
+                    ->visible(fn (): bool => (bool) $this->ownerRecord->outbound_check)
+                    ->action(function (): void {
+                        WebsiteCheckOutboundLinkJob::dispatch($this->ownerRecord)->onQueue('log-website');
+
+                        Notification::make()
+                            ->title('Outbound scan queued')
+                            ->body('Checkybot will refresh this website\'s outbound link evidence shortly.')
+                            ->success()
+                            ->send();
+                    }),
+            ])
             ->recordActions([])
             ->toolbarActions([])
             ->emptyStateHeading('No outbound links recorded yet')
