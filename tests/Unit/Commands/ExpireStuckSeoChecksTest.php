@@ -5,6 +5,7 @@ use App\Models\SeoCheck;
 use App\Models\Website;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 afterEach(function () {
     Carbon::setTestNow();
@@ -43,6 +44,20 @@ test('command marks old pending seo checks as failed with failure details', func
             'threshold_minutes' => 60,
             'website_url' => 'https://example.com',
         ]);
+
+    $rawFailureContext = DB::table('seo_checks')->where('id', $seoCheck->id)->value('failure_context');
+    $decodedFailureContext = json_decode($rawFailureContext, true);
+
+    if (is_string($decodedFailureContext)) {
+        $decodedFailureContext = json_decode($decodedFailureContext, true);
+    }
+
+    expect($decodedFailureContext)->toMatchArray([
+        'expired_by' => ExpireStuckSeoChecks::class,
+        'previous_status' => SeoCheck::STATUS_PENDING,
+        'threshold_minutes' => 60,
+        'website_url' => 'https://example.com',
+    ]);
 });
 
 test('command marks long running seo checks as failed with failure details', function () {

@@ -80,7 +80,7 @@ class ExpireStuckSeoChecks extends Command
                             'status' => SeoCheck::STATUS_FAILED,
                             'finished_at' => now(),
                             'failure_summary' => $summary,
-                            'failure_context' => $this->failureContext($seoCheck, $status, $thresholdMinutes),
+                            'failure_context' => json_encode($this->failureContext($seoCheck, $status, $thresholdMinutes), JSON_THROW_ON_ERROR),
                         ]);
 
                     if ($updated === 0) {
