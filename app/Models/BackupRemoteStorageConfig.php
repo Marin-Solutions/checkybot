@@ -35,13 +35,17 @@ class BackupRemoteStorageConfig extends Model
     public static function testConnection($config): array
     {
         $type = BackupRemoteStorageType::query()->firstWhere('id', $config['backup_remote_storage_type_id']);
+        $target = $config['host'] ?? $config['endpoint'] ?? $config['bucket'] ?? $type->name;
+        $port = filled($config['port'] ?? null) ? (int) $config['port'] : 21;
         $testResult = [
             'error' => false,
             'title' => 'Test '.$type->name.' Connection',
-            'message' => 'Successfully connected to '.$config['host'].'.',
+            'message' => 'Successfully connected to '.$target.'.',
         ];
 
         try {
+            Storage::forgetDisk('temp_storage');
+
             switch ($type->driver) {
                 case 'ftp':
                 case 'sftp':
@@ -49,7 +53,7 @@ class BackupRemoteStorageConfig extends Model
                         'filesystems.disks.temp_storage' => [
                             'driver' => $type->driver,
                             'host' => $config['host'],
-                            'port' => 21,
+                            'port' => $port,
                             'username' => $config['username'],
                             'password' => $config['password'],
                             'root' => $config['directory'] ?? '/',
@@ -78,13 +82,13 @@ class BackupRemoteStorageConfig extends Model
 
             if (! $connected) {
                 $testResult['error'] = true;
-                $testResult['message'] = 'Failed to connect to '.$config['host'].'.';
+                $testResult['message'] = 'Failed to connect to '.$target.'.';
             }
 
             return $testResult;
         } catch (\Exception $e) {
             $testResult['error'] = true;
-            $testResult['message'] = 'Failed to connect to '.$config['host'].'. '.$e->getMessage();
+            $testResult['message'] = 'Failed to connect to '.$target.'. '.$e->getMessage();
 
             return $testResult;
         }
