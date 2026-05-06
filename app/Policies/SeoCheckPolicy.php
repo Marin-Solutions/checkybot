@@ -19,7 +19,10 @@ class SeoCheckPolicy
 
     public function view(AuthUser $authUser, SeoCheck $seoCheck): bool
     {
-        return $authUser->can('View:SeoCheck');
+        return $authUser->can('View:SeoCheck')
+            && $seoCheck->website()
+                ->where('created_by', $authUser->getAuthIdentifier())
+                ->exists();
     }
 
     public function create(AuthUser $authUser): bool

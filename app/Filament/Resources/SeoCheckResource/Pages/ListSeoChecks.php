@@ -40,7 +40,9 @@ class ListSeoChecks extends ListRecords
         // Set the website for title and breadcrumbs
         if (request()->has('website_id')) {
             $websiteId = request()->get('website_id');
-            $this->website = Website::find($websiteId);
+            $this->website = Website::query()
+                ->where('created_by', auth()->id())
+                ->find($websiteId);
         }
 
         return $query;

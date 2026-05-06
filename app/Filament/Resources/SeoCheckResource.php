@@ -126,6 +126,7 @@ class SeoCheckResource extends Resource
     {
         $query = parent::getEloquentQuery()
             ->with('website')
+            ->whereHas('website', fn ($query) => $query->where('created_by', auth()->id()))
             ->withCount([
                 'seoIssues as errors_count' => function ($query) {
                     $query->where('severity', 'error');

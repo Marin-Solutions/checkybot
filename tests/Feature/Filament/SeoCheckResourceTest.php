@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\SeoCheckResource\Pages\ListSeoChecks;
 use App\Filament\Resources\SeoCheckResource\Pages\ViewSeoCheck;
 use App\Filament\Resources\WebsiteSeoCheckResource\Pages\ListWebsiteSeoChecks;
 use App\Filament\Widgets\SeoIssuesTableWidget;
@@ -7,7 +8,9 @@ use App\Jobs\SeoHealthCheckJob;
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
 use App\Models\SeoIssue;
+use App\Models\User;
 use App\Models\Website;
+use App\Policies\SeoCheckPolicy;
 use App\Services\RobotsSitemapService;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
@@ -33,6 +36,87 @@ test('website seo checks list includes websites without previous checks', functi
         ->assertCanSeeTableRecords([$firstRunWebsite, $previouslyCheckedWebsite])
         ->assertTableActionVisible('run_seo_check', $firstRunWebsite)
         ->assertTableActionHidden('view_latest_progress', $firstRunWebsite);
+});
+
+test('website seo checks list only includes websites owned by the current user', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+
+    $ownWebsite = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Own SEO site',
+    ]);
+    $otherWebsite = Website::factory()->create([
+        'created_by' => $otherUser->id,
+        'name' => 'Other SEO site',
+    ]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->assertCanSeeTableRecords([$ownWebsite])
+        ->assertCanNotSeeTableRecords([$otherWebsite]);
+});
+
+test('seo check list only includes checks for websites owned by the current user', function () {
+    $this->createResourcePermissions('SeoCheck');
+
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['ViewAny:SeoCheck', 'View:SeoCheck']);
+    $otherUser = User::factory()->create();
+
+    $ownWebsite = Website::factory()->create(['created_by' => $user->id]);
+    $otherWebsite = Website::factory()->create(['created_by' => $otherUser->id]);
+
+    $ownSeoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $ownWebsite->id,
+    ]);
+    $otherSeoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $otherWebsite->id,
+    ]);
+
+    Livewire::test(ListSeoChecks::class)
+        ->assertCanSeeTableRecords([$ownSeoCheck])
+        ->assertCanNotSeeTableRecords([$otherSeoCheck]);
+});
+
+test('seo check policy requires ownership through the related website', function () {
+    $this->createResourcePermissions('SeoCheck');
+
+    $user = User::factory()->create();
+    $user->givePermissionTo('View:SeoCheck');
+    $otherUser = User::factory()->create();
+
+    $ownWebsite = Website::factory()->create(['created_by' => $user->id]);
+    $otherWebsite = Website::factory()->create(['created_by' => $otherUser->id]);
+
+    $ownSeoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $ownWebsite->id,
+    ]);
+    $otherSeoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $otherWebsite->id,
+    ]);
+
+    $policy = app(SeoCheckPolicy::class);
+
+    expect($policy->view($user, $ownSeoCheck))->toBeTrue()
+        ->and($policy->view($user, $otherSeoCheck))->toBeFalse();
+});
+
+test('direct seo check route cannot open another users check', function () {
+    $this->createResourcePermissions('SeoCheck');
+
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['ViewAny:SeoCheck', 'View:SeoCheck']);
+    $otherUser = User::factory()->create();
+    $otherWebsite = Website::factory()->create(['created_by' => $otherUser->id]);
+    $otherSeoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $otherWebsite->id,
+    ]);
+
+    $response = $this->get(route('filament.admin.resources.seo-checks.view', [
+        'record' => $otherSeoCheck,
+    ]));
+
+    expect($response->status())->toBeIn([403, 404]);
 });
 
 test('website seo checks list can start the first seo check for a website', function () {

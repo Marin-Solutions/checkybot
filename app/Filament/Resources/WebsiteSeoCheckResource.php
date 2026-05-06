@@ -239,6 +239,7 @@ class WebsiteSeoCheckResource extends Resource
                     ]);
                 },
             ])
+            ->where('created_by', auth()->id())
             ->orderBy('created_at', 'desc');
     }
 }
