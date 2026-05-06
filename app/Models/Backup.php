@@ -123,10 +123,6 @@ class Backup extends Model
         $format = $this->compression_type;
         $password = escapeshellarg($this->password);
         $exclude = $this->exclude_folder_files ?? '';
-        $ftpHost = escapeshellarg($this->remoteStorage?->host ?? '');
-        $ftpUser = escapeshellarg($this->remoteStorage?->username ?? '');
-        $ftpPass = '"'.($this->remoteStorage?->password ?? '').'"';
-        $ftpFolder = rtrim($this->remote_storage_path ?? '', '/');
         $fileName = $this->backup_filename ?? $folder;
         $url = config('app.url');
         $serverId = $this->server?->id ?? $this->server_id;
@@ -153,7 +149,7 @@ class Backup extends Model
             $compressCmd = "tar -czvf \${FILE_NAME} $folder$excludeArgs";
         }
 
-        $uploadCmd = "curl -s -T \${FILE_NAME} -u $ftpUser:$ftpPass ftp://$ftpHost/$ftpFolder/";
+        $uploadCmd = $this->backupUploadCommand();
 
         $firstRunAtIfStart = '';
         $firstRunAtIfEnd = '';
@@ -192,6 +188,53 @@ curl -X POST $apiLogBackup \
  -d "{\"bi\": $serverId, \"iz\": \$IS_ZIPPED, \"iu\": \$IS_UPLOADED, \"sf\": \$FILE_SIZE, \"nf\": \"\$FILE_NAME\"}"
 $firstRunAtIfEnd
 BASH;
+    }
+
+    protected function backupUploadCommand(): string
+    {
+        $remoteStorage = $this->remoteStorage;
+        $driver = $remoteStorage?->storageType?->driver;
+
+        return match ($driver) {
+            'ftp', 'sftp' => $this->ftpUploadCommand($driver),
+            's3' => $this->s3UploadCommand(),
+            default => 'echo '.escapeshellarg('Unsupported backup remote storage driver: '.($driver ?? 'missing')).' && false',
+        };
+    }
+
+    protected function ftpUploadCommand(string $driver): string
+    {
+        $remoteStorage = $this->remoteStorage;
+        $host = $remoteStorage?->host ?? '';
+        $port = $remoteStorage?->port;
+        $credentials = escapeshellarg(($remoteStorage?->username ?? '').':'.($remoteStorage?->password ?? ''));
+        $remotePath = $this->joinRemotePath($remoteStorage?->directory, $this->remote_storage_path);
+        $portSegment = $port ? ':'.$port : '';
+        $targetUrl = escapeshellarg("{$driver}://{$host}{$portSegment}/{$remotePath}/");
+
+        return "curl -sS --fail -T \${FILE_NAME} --user $credentials $targetUrl";
+    }
+
+    protected function s3UploadCommand(): string
+    {
+        $remoteStorage = $this->remoteStorage;
+        $remotePath = $this->joinRemotePath($this->remote_storage_path);
+        $targetPrefix = 's3://'.trim($remoteStorage?->bucket ?? '', '/').($remotePath !== '' ? '/'.$remotePath : '').'/';
+        $endpoint = $remoteStorage?->endpoint ? ' --endpoint-url '.escapeshellarg($remoteStorage->endpoint) : '';
+
+        return 'AWS_ACCESS_KEY_ID='.escapeshellarg($remoteStorage?->access_key ?? '')
+            .' AWS_SECRET_ACCESS_KEY='.escapeshellarg($remoteStorage?->secret_key ?? '')
+            .' AWS_DEFAULT_REGION='.escapeshellarg($remoteStorage?->region ?? '')
+            .' aws s3 cp "${FILE_NAME}" '.escapeshellarg($targetPrefix).'"${FILE_NAME}" --only-show-errors'.$endpoint;
+    }
+
+    protected function joinRemotePath(?string ...$paths): string
+    {
+        return collect($paths)
+            ->filter(fn (?string $path): bool => filled($path))
+            ->map(fn (string $path): string => trim($path, '/'))
+            ->filter()
+            ->implode('/');
     }
 
     public function generateCronExpression(): ?string
