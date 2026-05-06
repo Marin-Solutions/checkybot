@@ -171,6 +171,67 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         ->and($storedRequestBody)->toBe('{"email":"monitor@example.com","password":"body-secret","filters":{}}');
 });
 
+test('control api defaults missing api schedules to the safe polling interval', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', [
+            'name' => 'Search health',
+            'url' => '/health',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.check.schedule', '5m');
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'search-health',
+        'package_schedule' => '5m',
+        'package_interval' => '5m',
+    ]);
+});
+
+test('control api defaults blank api schedules to the safe polling interval', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', [
+            'name' => 'Search health',
+            'url' => '/health',
+            'schedule' => '   ',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.check.schedule', '5m');
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'search-health',
+        'package_schedule' => '5m',
+        'package_interval' => '5m',
+    ]);
+});
+
+test('control api preserves existing schedules when update payload omits schedule', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'package_schedule' => '15m',
+        'package_interval' => '15m',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', [
+            'name' => 'Search health',
+            'url' => '/health',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.check.schedule', '15m');
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'search-health',
+        'package_schedule' => '15m',
+        'package_interval' => '15m',
+    ]);
+});
+
 test('control api disables checks without deleting data', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -904,12 +965,15 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         ])
         ->assertOk()
         ->assertJsonPath('result.structuredContent.check.key', 'search-health')
+        ->assertJsonPath('result.structuredContent.check.schedule', '5m')
         ->assertJsonPath('result.structuredContent.check.headers.Authorization', '[redacted]');
 
     $this->assertDatabaseHas('monitor_apis', [
         'project_id' => $this->project->id,
         'package_name' => 'search-health',
         'url' => 'https://api.scrappa.test/health',
+        'package_schedule' => '5m',
+        'package_interval' => '5m',
     ]);
 });
 

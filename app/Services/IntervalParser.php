@@ -6,6 +6,8 @@ use Illuminate\Validation\ValidationException;
 
 class IntervalParser
 {
+    public const DEFAULT_API_INTERVAL = '5m';
+
     /**
      * Normalize supported interval formats to the compact storage form.
      */

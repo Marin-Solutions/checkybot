@@ -11,6 +11,7 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class PackageSyncService
 {
@@ -116,7 +117,8 @@ class PackageSyncService
                 $monitorApi->restore();
             }
 
-            $normalizedSchedule = IntervalParser::normalizeOrFail($check['schedule'] ?? null, 'schedule');
+            $schedule = $this->apiSchedule($check['schedule'] ?? null);
+            $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
 
             $monitorApi->fill([
                 'project_id' => $project->id,
@@ -132,7 +134,7 @@ class PackageSyncService
                 'expected_status' => $check['expected_status'] ?? 200,
                 'timeout_seconds' => $check['timeout_seconds'] ?? ($defaults['timeout_seconds'] ?? null),
                 'save_failed_response' => $check['save_failed_response'] ?? true,
-                'package_schedule' => $check['schedule'] ?? null,
+                'package_schedule' => $schedule,
                 // Stale detection still reads package_interval, so persist the compact normalized form there.
                 'package_interval' => $normalizedSchedule,
                 'is_enabled' => $check['enabled'] ?? true,
@@ -370,6 +372,21 @@ class PackageSyncService
         }
 
         return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
+    }
+
+    private function apiSchedule(mixed $schedule): string
+    {
+        if ($schedule === null || (is_string($schedule) && blank($schedule))) {
+            return IntervalParser::DEFAULT_API_INTERVAL;
+        }
+
+        if (! is_string($schedule)) {
+            throw ValidationException::withMessages([
+                'schedule' => ['The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.'],
+            ]);
+        }
+
+        return $schedule;
     }
 
     /**

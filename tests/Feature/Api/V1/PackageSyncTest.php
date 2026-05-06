@@ -126,6 +126,43 @@ test('package sync creates a project and api check definitions', function () {
         ->and($monitor->assertions->first()->data_path)->toBe('data');
 });
 
+test('package sync defaults missing api schedules to the safe polling interval', function () {
+    $payload = packageSyncPayload();
+    unset($payload['checks'][0]['schedule']);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload);
+
+    $response->assertCreated();
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $response->json('data.project.id'),
+        'package_name' => 'google-maps-search',
+        'package_schedule' => '5m',
+        'package_interval' => '5m',
+    ]);
+});
+
+test('package sync defaults blank api schedules to the safe polling interval', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'schedule' => '   ',
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $response->json('data.project.id'),
+        'package_name' => 'google-maps-search',
+        'package_schedule' => '5m',
+        'package_interval' => '5m',
+    ]);
+});
+
 test('package sync is idempotent and updates by stable keys', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload())
