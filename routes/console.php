@@ -16,6 +16,7 @@ if (config('telescope.enabled')) {
 }
 Schedule::command('server:check-rules')->everyMinute();
 Schedule::command('monitor:check-apis')->everyMinute()->withoutOverlapping();
+Schedule::command('seo:expire-stuck')->everyMinute()->withoutOverlapping();
 Schedule::command('seo:run-scheduled')->everyMinute()->withoutOverlapping();
 Schedule::command('app:mark-stale-package-checks')->everyMinute()->withoutOverlapping();
 Schedule::command('project-components:check-stale')->everyMinute()->withoutOverlapping();
