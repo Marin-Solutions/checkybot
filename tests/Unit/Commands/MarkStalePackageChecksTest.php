@@ -137,6 +137,39 @@ test('command skips all-zero package intervals', function () {
         ->and($api->fresh()->stale_at)->toBeNull();
 });
 
+test('command skips oversized package intervals without aborting valid stale checks', function () {
+    $oversizedWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-oversized',
+        'package_interval' => '5000000000m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $oversizedApi = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-oversized',
+        'package_interval' => 'every_5000000000_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $validWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-valid',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($oversizedWebsite->fresh()->stale_at)->toBeNull()
+        ->and($oversizedApi->fresh()->stale_at)->toBeNull()
+        ->and($validWebsite->fresh()->stale_at)->not->toBeNull();
+});
+
 test('command skips invalid legacy intervals without aborting valid stale checks', function () {
     $invalidWebsite = Website::factory()->create([
         'source' => 'package',
