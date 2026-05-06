@@ -112,7 +112,7 @@ class CheckApiMonitors extends Command
     {
         return match (DB::connection()->getDriverName()) {
             'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || ({$intervalMinutesSql}) || ' minutes') <= ?",
-            'pgsql' => "date_trunc('minute', last_heartbeat_at) + (({$intervalMinutesSql}) * interval '1 minute') <= ?",
+            'pgsql' => "date_trunc('minute', last_heartbeat_at) + make_interval(mins => least(({$intervalMinutesSql}), 2147483647)::int) <= ?",
             'sqlsrv' => "DATEADD(minute, ({$intervalMinutesSql}), DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?",
             default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL ({$intervalMinutesSql}) MINUTE) <= ?",
         };
@@ -122,9 +122,9 @@ class CheckApiMonitors extends Command
     {
         return match (DB::connection()->getDriverName()) {
             'sqlite' => $this->sqliteValidIntervalSql(),
-            'pgsql' => "package_interval ~ '^[1-9][0-9]*[smhd]$' or package_interval ~ '^every_[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'",
+            'pgsql' => "package_interval ~ '^0*[1-9][0-9]*[smhd]$' or package_interval ~ '^every_0*[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'",
             'sqlsrv' => $this->sqlServerValidIntervalSql(),
-            default => "package_interval regexp '^[1-9][0-9]*[smhd]$' or package_interval regexp '^every_[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'",
+            default => "package_interval regexp '^0*[1-9][0-9]*[smhd]$' or package_interval regexp '^every_0*[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'",
         };
     }
 
@@ -198,17 +198,17 @@ class CheckApiMonitors extends Command
 
     private function postgresIntervalMinutesSql(): string
     {
-        $compactValue = "(substring(package_interval from '^[0-9]+'))::int";
+        $compactValue = "(substring(package_interval from '^[0-9]+'))::numeric";
         $compactUnit = 'right(package_interval, 1)';
-        $legacyValue = "(substring(package_interval from '^every_([0-9]+)_'))::int";
+        $legacyValue = "(substring(package_interval from '^every_([0-9]+)_'))::numeric";
         $legacyUnit = "substring(package_interval from '^every_[0-9]+_(.+)$')";
 
         return "case
-            when package_interval ~ '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 's' then ceiling({$compactValue} / 60.0)::int
-            when package_interval ~ '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 'm' then {$compactValue}
-            when package_interval ~ '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 'h' then {$compactValue} * 60
-            when package_interval ~ '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 'd' then {$compactValue} * 1440
-            when {$legacyUnit} in ('second', 'seconds') then ceiling({$legacyValue} / 60.0)::int
+            when package_interval ~ '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 's' then ceiling({$compactValue} / 60.0)
+            when package_interval ~ '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 'm' then {$compactValue}
+            when package_interval ~ '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 'h' then {$compactValue} * 60
+            when package_interval ~ '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 'd' then {$compactValue} * 1440
+            when {$legacyUnit} in ('second', 'seconds') then ceiling({$legacyValue} / 60.0)
             when {$legacyUnit} in ('minute', 'minutes') then {$legacyValue}
             when {$legacyUnit} in ('hour', 'hours') then {$legacyValue} * 60
             when {$legacyUnit} in ('day', 'days') then {$legacyValue} * 1440
@@ -223,10 +223,10 @@ class CheckApiMonitors extends Command
         $legacyUnit = "substring(package_interval, char_length(concat('every_', substring_index(substring(package_interval, 7), '_', 1), '_')) + 1)";
 
         return "case
-            when package_interval regexp '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 's' then ceiling({$compactValue} / 60)
-            when package_interval regexp '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 'm' then {$compactValue}
-            when package_interval regexp '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 'h' then {$compactValue} * 60
-            when package_interval regexp '^[1-9][0-9]*[smhd]$' and {$compactUnit} = 'd' then {$compactValue} * 1440
+            when package_interval regexp '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 's' then ceiling({$compactValue} / 60)
+            when package_interval regexp '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 'm' then {$compactValue}
+            when package_interval regexp '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 'h' then {$compactValue} * 60
+            when package_interval regexp '^0*[1-9][0-9]*[smhd]$' and {$compactUnit} = 'd' then {$compactValue} * 1440
             when {$legacyUnit} in ('second', 'seconds') then ceiling({$legacyValue} / 60)
             when {$legacyUnit} in ('minute', 'minutes') then {$legacyValue}
             when {$legacyUnit} in ('hour', 'hours') then {$legacyValue} * 60
@@ -238,14 +238,14 @@ class CheckApiMonitors extends Command
     {
         return "(
             (
-                package_interval like '[1-9]%[smhd]'
-                and try_convert(int, left(package_interval, len(package_interval) - 1)) is not null
-                and try_convert(int, left(package_interval, len(package_interval) - 1)) > 0
+                package_interval like '[0-9]%[smhd]'
+                and try_convert(bigint, left(package_interval, len(package_interval) - 1)) is not null
+                and try_convert(bigint, left(package_interval, len(package_interval) - 1)) > 0
             )
             or (
-                package_interval like 'every[_][1-9]%[_]%'
-                and try_convert(int, substring(package_interval, 7, charindex('_', substring(package_interval, 7, len(package_interval))) - 1)) is not null
-                and try_convert(int, substring(package_interval, 7, charindex('_', substring(package_interval, 7, len(package_interval))) - 1)) > 0
+                package_interval like 'every[_][0-9]%[_]%'
+                and try_convert(bigint, substring(package_interval, 7, charindex('_', substring(package_interval, 7, len(package_interval))) - 1)) is not null
+                and try_convert(bigint, substring(package_interval, 7, charindex('_', substring(package_interval, 7, len(package_interval))) - 1)) > 0
                 and substring(package_interval, 7 + charindex('_', substring(package_interval, 7, len(package_interval))), len(package_interval)) in ('second', 'seconds', 'minute', 'minutes', 'hour', 'hours', 'day', 'days')
             )
         )";
@@ -253,21 +253,26 @@ class CheckApiMonitors extends Command
 
     private function sqlServerIntervalMinutesSql(): string
     {
-        $compactValue = 'try_convert(int, left(package_interval, len(package_interval) - 1))';
+        $compactValue = 'try_convert(bigint, left(package_interval, len(package_interval) - 1))';
         $compactUnit = 'right(package_interval, 1)';
         $compactValid = "package_interval not like 'every[_]%' and {$compactValue} is not null and {$compactValue} > 0";
-        $legacyValue = "try_convert(int, substring(package_interval, 7, charindex('_', substring(package_interval, 7, len(package_interval))) - 1))";
+        $legacyValue = "try_convert(bigint, substring(package_interval, 7, charindex('_', substring(package_interval, 7, len(package_interval))) - 1))";
         $legacyUnit = "substring(package_interval, 7 + charindex('_', substring(package_interval, 7, len(package_interval))), len(package_interval))";
 
-        return "case
-            when {$legacyUnit} in ('second', 'seconds') then ceiling({$legacyValue} / 60.0)
+        $intervalMinutes = "case
+            when {$legacyUnit} in ('second', 'seconds') then cast(ceiling({$legacyValue} / 60.0) as bigint)
             when {$legacyUnit} in ('minute', 'minutes') then {$legacyValue}
             when {$legacyUnit} in ('hour', 'hours') then {$legacyValue} * 60
             when {$legacyUnit} in ('day', 'days') then {$legacyValue} * 1440
-            when {$compactValid} and {$compactUnit} = 's' then ceiling({$compactValue} / 60.0)
+            when {$compactValid} and {$compactUnit} = 's' then cast(ceiling({$compactValue} / 60.0) as bigint)
             when {$compactValid} and {$compactUnit} = 'm' then {$compactValue}
             when {$compactValid} and {$compactUnit} = 'h' then {$compactValue} * 60
             when {$compactValid} and {$compactUnit} = 'd' then {$compactValue} * 1440
+        end";
+
+        return "case
+            when ({$intervalMinutes}) > 2147483647 then 2147483647
+            else ({$intervalMinutes})
         end";
     }
 }

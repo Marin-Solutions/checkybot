@@ -166,6 +166,38 @@ test('command honors package-style api monitor intervals', function () {
     Http::assertNothingSent();
 });
 
+test('command honors zero padded api monitor intervals accepted by parser', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $compactMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/zero-padded-compact-health',
+        'package_interval' => '05m',
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    $legacyMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/zero-padded-legacy-health',
+        'package_interval' => 'every_05_minutes',
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 0 API monitors.')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $compactMonitor->id,
+    ]);
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $legacyMonitor->id,
+    ]);
+
+    Http::assertNothingSent();
+});
+
 test('command falls back to default cadence when package_interval is invalid', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
