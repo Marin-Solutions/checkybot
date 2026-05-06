@@ -54,3 +54,33 @@ test('remote storage connection test uses the configured port', function () {
     expect($result['error'])->toBeFalse()
         ->and(config('filesystems.disks.temp_storage.port'))->toBe(2222);
 });
+
+test('remote storage connection test defaults blank ports to ftp port', function () {
+    $this->seed(BackupRemoteStorageTypeOptionsSeeder::class);
+
+    Storage::shouldReceive('forgetDisk')
+        ->once()
+        ->with('temp_storage');
+    Storage::shouldReceive('disk')
+        ->once()
+        ->with('temp_storage')
+        ->andReturn(new class
+        {
+            public function exists(string $path): bool
+            {
+                return $path === '/';
+            }
+        });
+
+    $result = BackupRemoteStorageConfig::testConnection([
+        'backup_remote_storage_type_id' => '1',
+        'host' => 'storage.example.com',
+        'port' => '',
+        'username' => 'deploy',
+        'password' => 'secret',
+        'directory' => '/',
+    ]);
+
+    expect($result['error'])->toBeFalse()
+        ->and(config('filesystems.disks.temp_storage.port'))->toBe(21);
+});

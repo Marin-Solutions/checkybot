@@ -36,6 +36,7 @@ class BackupRemoteStorageConfig extends Model
     {
         $type = BackupRemoteStorageType::query()->firstWhere('id', $config['backup_remote_storage_type_id']);
         $target = $config['host'] ?? $config['endpoint'] ?? $config['bucket'] ?? $type->name;
+        $port = filled($config['port'] ?? null) ? (int) $config['port'] : 21;
         $testResult = [
             'error' => false,
             'title' => 'Test '.$type->name.' Connection',
@@ -52,7 +53,7 @@ class BackupRemoteStorageConfig extends Model
                         'filesystems.disks.temp_storage' => [
                             'driver' => $type->driver,
                             'host' => $config['host'],
-                            'port' => (int) ($config['port'] ?? 21),
+                            'port' => $port,
                             'username' => $config['username'],
                             'password' => $config['password'],
                             'root' => $config['directory'] ?? '/',
