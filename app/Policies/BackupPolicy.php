@@ -19,7 +19,8 @@ class BackupPolicy
 
     public function view(AuthUser $authUser, Backup $backup): bool
     {
-        return $authUser->can('View:Backup');
+        return $this->ownsBackup($authUser, $backup)
+            && $authUser->can('View:Backup');
     }
 
     public function create(AuthUser $authUser): bool
@@ -29,22 +30,26 @@ class BackupPolicy
 
     public function update(AuthUser $authUser, Backup $backup): bool
     {
-        return $authUser->can('Update:Backup');
+        return $this->ownsBackup($authUser, $backup)
+            && $authUser->can('Update:Backup');
     }
 
     public function delete(AuthUser $authUser, Backup $backup): bool
     {
-        return $authUser->can('Delete:Backup');
+        return $this->ownsBackup($authUser, $backup)
+            && $authUser->can('Delete:Backup');
     }
 
     public function restore(AuthUser $authUser, Backup $backup): bool
     {
-        return $authUser->can('Restore:Backup');
+        return $this->ownsBackup($authUser, $backup)
+            && $authUser->can('Restore:Backup');
     }
 
     public function forceDelete(AuthUser $authUser, Backup $backup): bool
     {
-        return $authUser->can('ForceDelete:Backup');
+        return $this->ownsBackup($authUser, $backup)
+            && $authUser->can('ForceDelete:Backup');
     }
 
     public function forceDeleteAny(AuthUser $authUser): bool
@@ -59,11 +64,18 @@ class BackupPolicy
 
     public function replicate(AuthUser $authUser, Backup $backup): bool
     {
-        return $authUser->can('Replicate:Backup');
+        return $this->ownsBackup($authUser, $backup)
+            && $authUser->can('Replicate:Backup');
     }
 
     public function reorder(AuthUser $authUser): bool
     {
         return $authUser->can('Reorder:Backup');
+    }
+
+    protected function ownsBackup(AuthUser $authUser, Backup $backup): bool
+    {
+        return (int) ($backup->server?->created_by ?? 0) === (int) $authUser->id
+            && (int) ($backup->remoteStorage?->created_by ?? 0) === (int) $authUser->id;
     }
 }

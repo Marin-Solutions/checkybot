@@ -13,6 +13,8 @@ class CreateBackupRemoteStorage extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $data['created_by'] = auth()->id();
+
         switch ($data['backup_remote_storage_type_id']) {
             case '1':
             case '2':

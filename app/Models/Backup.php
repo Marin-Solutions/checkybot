@@ -62,6 +62,13 @@ class Backup extends Model
             return '';
         }
 
+        if (
+            (int) ($backup->server?->created_by ?? 0) !== (int) $user
+            || (int) ($backup->remoteStorage?->created_by ?? 0) !== (int) $user
+        ) {
+            return '';
+        }
+
         $backupId = $backup->id;
         $backupInterval = $backup->interval?->expression ?? '* * * * *';
         $scriptFileName = 'backup_folder.sh';
