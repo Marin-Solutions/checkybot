@@ -41,14 +41,14 @@ class ServerLogFileHistoryController extends Controller
             return response()->json(['message' => __('Error: Unauthorized')], 401);
         }
 
-        $server->recordReporterMetadata($request);
-
         $file = Storage::putFile('ServerLogFiles', $request->file('log'));
         $newServerLogFileHistory = [
             'server_log_category_id' => request()->input('li'),
             'log_file_name' => $file,
         ];
         ServerLogFileHistory::create($newServerLogFileHistory);
+
+        $server->recordReporterMetadata($request);
 
         return response()->json($newServerLogFileHistory, 200);
     }

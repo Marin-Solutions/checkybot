@@ -49,8 +49,6 @@ class BackupHistoryController extends Controller
             return response()->json(['message' => __('Error: Unauthorized')], 401);
         }
 
-        $server->recordReporterMetadata($request);
-
         $backupHistory = BackupHistory::create([
             'backup_id' => $backup->id,
             'filename' => $request->input('nf'),
@@ -58,6 +56,8 @@ class BackupHistoryController extends Controller
             'is_zipped' => $request->input('iz'),
             'is_uploaded' => $request->input('iu'),
         ]);
+
+        $server->recordReporterMetadata($request);
 
         return response()->json($backupHistory, 200);
     }

@@ -13,15 +13,15 @@ return new class extends Migration
     {
         Schema::table('servers', function (Blueprint $table) {
             if (! Schema::hasColumn('servers', 'last_reporter_ip')) {
-                $table->string('last_reporter_ip', 45)->nullable()->after('ip');
+                $table->string('last_reporter_ip', 45)->nullable();
             }
 
             if (! Schema::hasColumn('servers', 'last_reporter_user_agent')) {
-                $table->text('last_reporter_user_agent')->nullable()->after('last_reporter_ip');
+                $table->text('last_reporter_user_agent')->nullable();
             }
 
             if (! Schema::hasColumn('servers', 'last_reporter_seen_at')) {
-                $table->timestamp('last_reporter_seen_at')->nullable()->after('last_reporter_user_agent');
+                $table->timestamp('last_reporter_seen_at')->nullable();
             }
         });
     }

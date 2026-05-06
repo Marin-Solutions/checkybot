@@ -43,8 +43,6 @@ class ServerInformationHistoryController extends Controller
                     return response()->json(['message' => __('Error: Unauthorized')], 401);
                 }
 
-                $dataServer->recordReporterMetadata($request);
-
                 // Update CPU cores if changed
                 if ($request->cpu_cores && $dataServer->cpu_cores != $request->cpu_cores) {
                     $dataServer->update(['cpu_cores' => $request->cpu_cores]);
@@ -59,6 +57,8 @@ class ServerInformationHistoryController extends Controller
                     'disk_free_percentage' => $request->disk_free_percentage,
                     'disk_free_bytes' => $request->disk_free_bytes,
                 ]));
+
+                $dataServer->recordReporterMetadata($request);
 
                 return response()->json($serverResource, 200);
             } else {
