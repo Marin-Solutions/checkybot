@@ -2,7 +2,9 @@
 
 use App\Crawlers\WebsiteOutboundLinkCrawler;
 use App\Enums\UptimeTransportErrorType;
-use App\Mail\EmailErrorOutgoingUrl;
+use App\Enums\WebsiteServicesEnum;
+use App\Mail\HealthStatusAlert;
+use App\Models\NotificationSetting;
 use App\Models\OutboundLink;
 use App\Models\Website;
 use GuzzleHttp\Exception\RequestException;
@@ -72,8 +74,18 @@ test('finished crawling updates website timestamp', function () {
     expect($this->website->last_outbound_checked_at)->not->toBe($originalTimestamp);
 });
 
-test('sends email notification for 404 errors', function () {
+test('sends notification setting alert for newly broken 404 outbound link', function () {
     Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+            'address' => 'alerts@example.com',
+        ]);
 
     $url = new Uri('https://external.com/not-found');
     $foundOnUrl = new Uri('https://example.com/source');
@@ -82,13 +94,25 @@ test('sends email notification for 404 errors', function () {
     $this->crawler->crawled($url, $response, $foundOnUrl, 'Broken Link');
     $this->crawler->finishedCrawling();
 
-    Mail::assertSent(EmailErrorOutgoingUrl::class, function ($mail) {
-        return $mail->hasTo($this->user->email);
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->hasTo('alerts@example.com')
+            && $mail->event === 'outbound_link_broken'
+            && $mail->status === 'danger'
+            && str_contains($mail->summary, 'https://external.com/not-found returned HTTP 404 from https://example.com/source');
     });
 });
 
-test('sends email notification for 500 errors', function () {
+test('sends notification setting alert for newly broken 500 outbound link', function () {
     Mail::fake();
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'inspection' => WebsiteServicesEnum::ALL_CHECK,
+            'address' => 'global-alerts@example.com',
+        ]);
 
     $url = new Uri('https://external.com/error');
     $foundOnUrl = new Uri('https://example.com/source');
@@ -97,13 +121,23 @@ test('sends email notification for 500 errors', function () {
     $this->crawler->crawled($url, $response, $foundOnUrl, 'Server Error Link');
     $this->crawler->finishedCrawling();
 
-    Mail::assertSent(EmailErrorOutgoingUrl::class, function ($mail) {
-        return $mail->hasTo($this->user->email);
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->hasTo('global-alerts@example.com')
+            && str_contains($mail->summary, 'https://external.com/error returned HTTP 500 from https://example.com/source');
     });
 });
 
-test('does not send email for 200 response', function () {
+test('does not send notification for 200 response', function () {
     Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+        ]);
 
     $url = new Uri('https://external.com/working');
     $foundOnUrl = new Uri('https://example.com/source');
@@ -112,7 +146,79 @@ test('does not send email for 200 response', function () {
     $this->crawler->crawled($url, $response, $foundOnUrl, 'Working Link');
     $this->crawler->finishedCrawling();
 
-    Mail::assertNotSent(EmailErrorOutgoingUrl::class);
+    Mail::assertNotSent(HealthStatusAlert::class);
+});
+
+test('does not direct email owner when no notification setting matches outbound alert', function () {
+    Mail::fake();
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/not-found'),
+        new Response(404),
+        new Uri('https://example.com/source'),
+        'Broken Link',
+    );
+
+    $this->crawler->finishedCrawling();
+
+    Mail::assertNothingSent();
+});
+
+test('does not repeat outbound broken notification while link remains broken', function () {
+    Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+        ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/not-found'),
+        new Response(404),
+        new Uri('https://example.com/source'),
+        'Broken Link',
+    );
+    $this->crawler->finishedCrawling();
+
+    $nextScan = new WebsiteOutboundLinkCrawler($this->website);
+    $nextScan->crawled(
+        new Uri('https://external.com/not-found'),
+        new Response(404),
+        new Uri('https://example.com/source'),
+        'Broken Link',
+    );
+    $nextScan->finishedCrawling();
+
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
+test('respects website snooze for outbound broken notification', function () {
+    Mail::fake();
+
+    $this->website->update(['silenced_until' => now()->addHour()]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+        ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/not-found'),
+        new Response(404),
+        new Uri('https://example.com/source'),
+        'Broken Link',
+    );
+    $this->crawler->finishedCrawling();
+
+    Mail::assertNothingSent();
 });
 
 test('stores multiple outbound links', function () {
