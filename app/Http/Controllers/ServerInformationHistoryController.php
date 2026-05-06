@@ -31,7 +31,6 @@ class ServerInformationHistoryController extends Controller
      */
     public function store(Request $request)
     {
-        $ip = $request->ip();
         $server = new Server;
         $serverId = $request->s ?? null;
         $token = $request->bearerToken();
@@ -40,30 +39,28 @@ class ServerInformationHistoryController extends Controller
             $dataServer = $server->find($serverId);
 
             if ($dataServer != null) {
-                if ($dataServer->token === $token) {
-                    if ($dataServer->ip == $ip) {
-                        // Update CPU cores if changed
-                        if ($request->cpu_cores && $dataServer->cpu_cores != $request->cpu_cores) {
-                            $dataServer->update(['cpu_cores' => $request->cpu_cores]);
-                        }
-
-                        // Create history record
-                        $serverResource = new ServerInfoHistoryResource(ServerInformationHistory::create([
-                            'server_id' => $request->s,
-                            'cpu_load' => $request->cpu_load,
-                            'ram_free_percentage' => $request->ram_free_percentage,
-                            'ram_free' => $request->ram_free,
-                            'disk_free_percentage' => $request->disk_free_percentage,
-                            'disk_free_bytes' => $request->disk_free_bytes,
-                        ]));
-
-                        return response()->json($serverResource, 200);
-                    } else {
-                        return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 406);
-                    }
-                } else {
+                if (! $dataServer->hasReporterToken($token)) {
                     return response()->json(['message' => __('Error: Unauthorized')], 401);
                 }
+
+                // Update CPU cores if changed
+                if ($request->cpu_cores && $dataServer->cpu_cores != $request->cpu_cores) {
+                    $dataServer->update(['cpu_cores' => $request->cpu_cores]);
+                }
+
+                // Create history record
+                $serverResource = new ServerInfoHistoryResource(ServerInformationHistory::create([
+                    'server_id' => $request->s,
+                    'cpu_load' => $request->cpu_load,
+                    'ram_free_percentage' => $request->ram_free_percentage,
+                    'ram_free' => $request->ram_free,
+                    'disk_free_percentage' => $request->disk_free_percentage,
+                    'disk_free_bytes' => $request->disk_free_bytes,
+                ]));
+
+                $dataServer->recordReporterMetadata($request);
+
+                return response()->json($serverResource, 200);
             } else {
                 return response()->json(['message' => __('Error: Server id not exists in database')], 406);
             }

@@ -31,7 +31,6 @@ class BackupHistoryController extends Controller
      */
     public function store(StoreBackupHistoryRequest $request)
     {
-        $ip = $request->ip();
         $id = $request->input('bi');
         $backup = Backup::query()->where('id', $id)->first();
 
@@ -44,26 +43,23 @@ class BackupHistoryController extends Controller
 
         if (! $server) {
             return response()->json(['message' => __('The server id is not in this DB')], 404);
-        } else {
-            if ($server->token !== $token) {
-                return response()->json(['message' => __('Error: Unauthorized')], 401);
-            } else {
-                if ($server->ip === $ip) {
-                    // Proses simpan ke database
-                    $backupHistory = BackupHistory::create([
-                        'backup_id' => $backup->id,
-                        'filename' => $request->input('nf'),
-                        'filesize' => $request->input('sf'),
-                        'is_zipped' => $request->input('iz'),
-                        'is_uploaded' => $request->input('iu'),
-                    ]);
-
-                    return response()->json($backupHistory, 200);
-                } else {
-                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 403);
-                }
-            }
         }
+
+        if (! $server->hasReporterToken($token)) {
+            return response()->json(['message' => __('Error: Unauthorized')], 401);
+        }
+
+        $backupHistory = BackupHistory::create([
+            'backup_id' => $backup->id,
+            'filename' => $request->input('nf'),
+            'filesize' => $request->input('sf'),
+            'is_zipped' => $request->input('iz'),
+            'is_uploaded' => $request->input('iu'),
+        ]);
+
+        $server->recordReporterMetadata($request);
+
+        return response()->json($backupHistory, 200);
     }
 
     /**

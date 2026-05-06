@@ -23,7 +23,6 @@ class ServerLogFileHistoryController extends Controller
      */
     public function store(StoreServerLogHistoryRequest $request)
     {
-        $ip = $request->ip();
         $id = $request->input('li');
         $serverLogCategory = ServerLogCategory::query()->where('id', $id)->first();
 
@@ -36,24 +35,22 @@ class ServerLogFileHistoryController extends Controller
 
         if (! $server) {
             return response()->json(['message' => __('The server id is not in this DB')], 404);
-        } else {
-            if ($server->token === $token) {
-                if ($server->ip == $ip) {
-                    $file = Storage::putFile('ServerLogFiles', $request->file('log'));
-                    $newServerLogFileHistory = [
-                        'server_log_category_id' => request()->input('li'),
-                        'log_file_name' => $file,
-                    ];
-                    ServerLogFileHistory::create($newServerLogFileHistory);
-
-                    return response()->json($newServerLogFileHistory, 200);
-                } else {
-                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 403);
-                }
-            } else {
-                return response()->json(['message' => __('Error: Unauthorized')], 401);
-            }
         }
+
+        if (! $server->hasReporterToken($token)) {
+            return response()->json(['message' => __('Error: Unauthorized')], 401);
+        }
+
+        $file = Storage::putFile('ServerLogFiles', $request->file('log'));
+        $newServerLogFileHistory = [
+            'server_log_category_id' => request()->input('li'),
+            'log_file_name' => $file,
+        ];
+        ServerLogFileHistory::create($newServerLogFileHistory);
+
+        $server->recordReporterMetadata($request);
+
+        return response()->json($newServerLogFileHistory, 200);
     }
 
     /**
