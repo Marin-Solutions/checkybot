@@ -4,7 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class Server extends Model
 {
@@ -18,6 +20,13 @@ class Server extends Model
         'created_by',
         'token',
         'ploi_server_id',
+        'last_reporter_ip',
+        'last_reporter_user_agent',
+        'last_reporter_seen_at',
+    ];
+
+    protected $casts = [
+        'last_reporter_seen_at' => 'datetime',
     ];
 
     public function user()
@@ -38,6 +47,23 @@ class Server extends Model
     public function rules()
     {
         return $this->hasMany(ServerRule::class);
+    }
+
+    public function hasReporterToken(?string $token): bool
+    {
+        return is_string($this->token)
+            && $this->token !== ''
+            && is_string($token)
+            && hash_equals($this->token, $token);
+    }
+
+    public function recordReporterMetadata(Request $request): void
+    {
+        $this->forceFill([
+            'last_reporter_ip' => $request->ip(),
+            'last_reporter_user_agent' => Str::limit((string) $request->userAgent(), 1024, ''),
+            'last_reporter_seen_at' => now(),
+        ])->saveQuietly();
     }
 
     public function parseLatestServerHistoryInfo(?string $summary = null): array
