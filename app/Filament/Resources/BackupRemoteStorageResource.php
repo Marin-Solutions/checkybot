@@ -93,13 +93,13 @@ class BackupRemoteStorageResource extends Resource
                         Forms\Components\TextInput::make('access_key')
                             ->required(self::requiredWhenCustomAwsS3())
                             ->hidden(self::onlyVisibleForCustomAwsS3()),
-                        Forms\Components\TextInput::make('secret_key')->numeric()->default('21')
+                        Forms\Components\TextInput::make('secret_key')->password()
                             ->required(self::requiredWhenCustomAwsS3())
                             ->hidden(self::onlyVisibleForCustomAwsS3()),
                         Forms\Components\TextInput::make('bucket')
                             ->required(self::requiredWhenCustomAwsS3())
                             ->hidden(self::onlyVisibleForCustomAwsS3()),
-                        Forms\Components\TextInput::make('region')->password()
+                        Forms\Components\TextInput::make('region')
                             ->required(self::requiredWhenCustomAwsS3())
                             ->hidden(self::onlyVisibleForCustomAwsS3()),
                         Forms\Components\TextInput::make('endpoint')
