@@ -98,8 +98,8 @@ class ServerLogFileHistory extends Model
             'user' => $user,
         ]);
 
-        $command = 'wget '.escapeshellarg($signedUrl).' -O log-reporter_server_info.sh ';
-        $command .= '&& chmod +x $(pwd)/log-reporter_server_info.sh ';
+        $command = 'wget '.escapeshellarg($signedUrl).' -O log_reporter_server_info.sh ';
+        $command .= '&& chmod +x $(pwd)/log_reporter_server_info.sh ';
         $command .= '&& (crontab -l ; echo "0 * * * * $(pwd)/log_reporter_server_info.sh") | crontab -';
 
         return $command;
