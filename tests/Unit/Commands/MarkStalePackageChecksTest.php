@@ -87,6 +87,56 @@ test('command treats scheduler style package intervals as stale thresholds', fun
         ->and($api->fresh()->status_summary)->toContain('5m');
 });
 
+test('command treats zero-padded package intervals as stale thresholds', function () {
+    $website = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '05m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => 'every_05_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($website->fresh()->stale_at)->not->toBeNull()
+        ->and($api->fresh()->stale_at)->not->toBeNull()
+        ->and($website->fresh()->status_summary)->toContain('5m')
+        ->and($api->fresh()->status_summary)->toContain('5m');
+});
+
+test('command skips all-zero package intervals', function () {
+    $website = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '00m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => 'every_00_minutes',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($website->fresh()->stale_at)->toBeNull()
+        ->and($api->fresh()->stale_at)->toBeNull();
+});
+
 test('command skips invalid legacy intervals without aborting valid stale checks', function () {
     $invalidWebsite = Website::factory()->create([
         'source' => 'package',

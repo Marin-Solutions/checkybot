@@ -205,6 +205,35 @@ test('command dispatches package ssl-only checks for legacy scheduler-style inte
     Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
 });
 
+test('command dispatches package ssl-only checks for zero-padded intervals', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => '01d',
+        'last_heartbeat_at' => now()->subDay(),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate-legacy',
+        'package_interval' => 'every_05_minutes',
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 2);
+});
+
 test('command honors legacy scheduler-style intervals before dispatching package ssl-only checks', function () {
     Queue::fake();
 
