@@ -50,13 +50,20 @@ class CreateBackups extends CreateRecord
             ->where('created_by', auth()->id())
             ->exists();
 
-        if ($serverOwned && $storageOwned) {
+        $errors = [];
+
+        if (! $serverOwned) {
+            $errors['server_id'] = 'Choose one of your own servers.';
+        }
+
+        if (! $storageOwned) {
+            $errors['remote_storage_id'] = 'Choose one of your own remote storage configs.';
+        }
+
+        if ($errors === []) {
             return;
         }
 
-        throw ValidationException::withMessages([
-            'server_id' => 'Choose one of your own servers.',
-            'remote_storage_id' => 'Choose one of your own remote storage configs.',
-        ]);
+        throw ValidationException::withMessages($errors);
     }
 }

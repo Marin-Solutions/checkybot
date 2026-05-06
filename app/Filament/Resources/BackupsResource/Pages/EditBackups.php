@@ -37,11 +37,18 @@ class EditBackups extends EditRecord
             ->where('created_by', auth()->id())
             ->exists();
 
-        if (! $serverOwned || ! $storageOwned) {
-            throw ValidationException::withMessages([
-                'server_id' => 'Choose one of your own servers.',
-                'remote_storage_id' => 'Choose one of your own remote storage configs.',
-            ]);
+        $errors = [];
+
+        if (! $serverOwned) {
+            $errors['server_id'] = 'Choose one of your own servers.';
+        }
+
+        if (! $storageOwned) {
+            $errors['remote_storage_id'] = 'Choose one of your own remote storage configs.';
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
         }
 
         return $data;

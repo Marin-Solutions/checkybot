@@ -249,6 +249,53 @@ test('backup create and save reject crafted ownership bypass values', function (
         ->and($ownBackup->remote_storage_id)->not->toBe($otherStorage->id);
 });
 
+test('backup ownership validation only flags fields with invalid ownership', function () {
+    $user = $this->actingAsAdmin();
+    $user->givePermissionTo([
+        'ViewAny:Backup',
+        'View:Backup',
+        'Create:Backup',
+        'Update:Backup',
+    ]);
+    $otherUser = User::factory()->create();
+
+    $ownServer = Server::factory()->create(['created_by' => $user->id]);
+    $ownStorage = createBackupManagerStorage($user);
+    $ownBackup = createBackupManagerBackup($user, [
+        'server' => $ownServer,
+        'storage' => $ownStorage,
+    ]);
+    $otherServer = Server::factory()->create(['created_by' => $otherUser->id]);
+    $otherStorage = createBackupManagerStorage($otherUser);
+    $interval = createBackupManagerInterval();
+
+    Livewire::test(CreateBackups::class)
+        ->fillForm([
+            'server_id' => $ownServer->id,
+            'remote_storage_id' => $otherStorage->id,
+            'dir_path' => '/srv/bypass-storage',
+            'remote_storage_path' => '/',
+            'interval_id' => $interval->id,
+            'max_amount_backups' => 1,
+            'compression_type' => 'zip',
+            'password' => 'secret',
+            'confirm_password' => 'secret',
+            'delete_local_on_fail' => false,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['remote_storage_id'])
+        ->assertHasNoFormErrors(['server_id']);
+
+    Livewire::test(EditBackups::class, ['record' => $ownBackup->id])
+        ->fillForm([
+            'server_id' => $otherServer->id,
+            'remote_storage_id' => $ownStorage->id,
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['server_id'])
+        ->assertHasNoFormErrors(['remote_storage_id']);
+});
+
 test('copy backup script command is blank for backups outside the current users ownership boundary', function () {
     $user = $this->actingAsAdmin();
     $otherUser = User::factory()->create();
