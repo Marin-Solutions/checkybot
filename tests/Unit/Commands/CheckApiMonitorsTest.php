@@ -92,6 +92,39 @@ test('command only checks api monitors when their polling interval is due', func
     Http::assertSentCount(1);
 });
 
+test('command does not hydrate enabled api monitors before their polling interval is due', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $dueMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/due-query-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(16),
+    ]);
+
+    $skippedMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/skipped-query-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $retrievedMonitorIds = [];
+    MonitorApis::retrieved(function (MonitorApis $monitor) use (&$retrievedMonitorIds): void {
+        $retrievedMonitorIds[] = $monitor->id;
+    });
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 1 API monitors.')
+        ->assertSuccessful();
+
+    expect($retrievedMonitorIds)
+        ->toContain($dueMonitor->id)
+        ->not->toContain($skippedMonitor->id);
+
+    Http::assertSentCount(1);
+});
+
 test('command checks interval monitors without a prior heartbeat immediately', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
@@ -128,6 +161,38 @@ test('command honors package-style api monitor intervals', function () {
 
     assertDatabaseMissing('monitor_api_results', [
         'monitor_api_id' => $monitor->id,
+    ]);
+
+    Http::assertNothingSent();
+});
+
+test('command honors zero padded api monitor intervals accepted by parser', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $compactMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/zero-padded-compact-health',
+        'package_interval' => '05m',
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    $legacyMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/zero-padded-legacy-health',
+        'package_interval' => 'every_05_minutes',
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Completed checking 0 API monitors.')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $compactMonitor->id,
+    ]);
+
+    assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $legacyMonitor->id,
     ]);
 
     Http::assertNothingSent();
