@@ -15,6 +15,7 @@ class BackupRemoteStorageConfig extends Model
     protected $fillable = [
         'backup_remote_storage_type_id',
         'label',
+        'created_by',
         'host',
         'port',
         'username',
@@ -30,6 +31,11 @@ class BackupRemoteStorageConfig extends Model
     public function storageType(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(BackupRemoteStorageType::class, 'backup_remote_storage_type_id');
+    }
+
+    public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public static function testConnection($config): array

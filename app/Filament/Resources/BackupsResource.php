@@ -9,6 +9,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class BackupsResource extends Resource
@@ -28,9 +29,19 @@ class BackupsResource extends Resource
                 \Filament\Schemas\Components\Fieldset::make()
                     ->schema([
                         Forms\Components\Select::make('server_id')
-                            ->relationship('server', 'name')->required(),
+                            ->relationship(
+                                name: 'server',
+                                titleAttribute: 'name',
+                                modifyQueryUsing: fn (Builder $query): Builder => $query->where('created_by', auth()->id()),
+                            )
+                            ->required(),
                         Forms\Components\Select::make('remote_storage_id')
-                            ->relationship('remoteStorage', 'label')->required(),
+                            ->relationship(
+                                name: 'remoteStorage',
+                                titleAttribute: 'label',
+                                modifyQueryUsing: fn (Builder $query): Builder => $query->where('created_by', auth()->id()),
+                            )
+                            ->required(),
                         Forms\Components\TextInput::make('dir_path')->required()->columnSpanFull()
                             ->label('Directory path'),
                     ]),
@@ -114,5 +125,12 @@ class BackupsResource extends Resource
             'create' => Pages\CreateBackups::route('/create'),
             'edit' => Pages\EditBackups::route('/{record}/edit'),
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->whereHas('server', fn (Builder $query): Builder => $query->where('created_by', auth()->id()))
+            ->whereHas('remoteStorage', fn (Builder $query): Builder => $query->where('created_by', auth()->id()));
     }
 }

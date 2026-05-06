@@ -187,4 +187,10 @@ class BackupRemoteStorageResource extends Resource
             'edit' => Pages\EditBackupRemoteStorage::route('/{record}/edit'),
         ];
     }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->where('created_by', auth()->id());
+    }
 }

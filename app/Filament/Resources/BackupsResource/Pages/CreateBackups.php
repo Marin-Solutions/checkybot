@@ -3,8 +3,11 @@
 namespace App\Filament\Resources\BackupsResource\Pages;
 
 use App\Filament\Resources\BackupsResource;
+use App\Models\BackupRemoteStorageConfig;
+use App\Models\Server;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Validation\ValidationException;
 
 class CreateBackups extends CreateRecord
 {
@@ -30,6 +33,30 @@ class CreateBackups extends CreateRecord
 
         unset($data['confirm_password']);
 
+        $this->validateOwnership($data);
+
         return $data;
+    }
+
+    protected function validateOwnership(array $data): void
+    {
+        $serverOwned = Server::query()
+            ->whereKey($data['server_id'] ?? null)
+            ->where('created_by', auth()->id())
+            ->exists();
+
+        $storageOwned = BackupRemoteStorageConfig::query()
+            ->whereKey($data['remote_storage_id'] ?? null)
+            ->where('created_by', auth()->id())
+            ->exists();
+
+        if ($serverOwned && $storageOwned) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'server_id' => 'Choose one of your own servers.',
+            'remote_storage_id' => 'Choose one of your own remote storage configs.',
+        ]);
     }
 }
