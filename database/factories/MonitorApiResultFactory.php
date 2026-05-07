@@ -44,7 +44,9 @@ class MonitorApiResultFactory extends Factory
             'is_success' => true,
             'http_code' => 200,
             'failed_assertions' => null,
+            'response_body' => ['data' => ['status' => 'success']],
             'status' => 'healthy',
+            'summary' => 'Heartbeat received successfully.',
         ]);
     }
 
@@ -58,7 +60,9 @@ class MonitorApiResultFactory extends Factory
                 'type' => 'value_compare',
                 'message' => 'Test failed',
             ]],
+            'response_body' => ['data' => ['status' => 'error']],
             'status' => 'danger',
+            'summary' => 'API heartbeat failed.',
         ]);
     }
 
