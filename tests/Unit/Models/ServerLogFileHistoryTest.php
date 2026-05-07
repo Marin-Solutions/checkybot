@@ -13,7 +13,7 @@ test('copy command downloads and schedules the same log reporter filename', func
     expect($command)->toContain('-O log_reporter_server_info.sh');
     expect($command)->toContain('chmod +x $(pwd)/log_reporter_server_info.sh');
     expect($command)->toContain('CRON_CMD="$(pwd)/log_reporter_server_info.sh"');
-    expect($command)->toContain('CRON_ENTRY="0 * * * * $CRON_CMD"');
+    expect($command)->toContain('CRON_ENTRY="0 * * * * \"$CRON_CMD\""');
     expect($command)->not->toContain('log-reporter_server_info.sh');
 });
 
@@ -33,9 +33,10 @@ test('content shell script escapes configured log paths and names', function () 
     $history->server_id = 123;
     $history->token = "tok'en";
 
-    $logName = "prod app'; touch /tmp/pwn #";
+    $logName = "prod app,api\"'; touch /tmp/pwn #";
     $logDirectory = "/var/log/prod app'; rm -rf / #.log";
     $tmpLog = '/tmp/'.$logName.'_log.log';
+    $curlLogFormValue = 'log=@"'.addcslashes($tmpLog, '\\"').'"';
 
     $method = new ReflectionMethod(ServerLogFileHistory::class, 'contentShellScript');
     $method->setAccessible(true);
@@ -50,7 +51,7 @@ test('content shell script escapes configured log paths and names', function () 
     expect($script)->toContain('TOKEN_ID='.escapeshellarg("tok'en"));
     expect($script)->toContain('SERVER_ID='.escapeshellarg('123'));
     expect($script)->toContain('tail -c 2097152 '.escapeshellarg($logDirectory).' > '.escapeshellarg($tmpLog));
-    expect($script)->toContain(' -F '.escapeshellarg('log=@'.$tmpLog));
+    expect($script)->toContain(' -F '.escapeshellarg($curlLogFormValue));
     expect($script)->toContain(' -F '.escapeshellarg('li=77'));
     expect($script)->toContain('rm '.escapeshellarg($tmpLog));
 });

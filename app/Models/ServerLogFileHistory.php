@@ -67,6 +67,7 @@ class ServerLogFileHistory extends Model
             foreach ($logCategories as $logCategory) {
                 $tmpLog = '/tmp/'.$logCategory['name'].'_log.log';
                 $escapedTmpLog = escapeshellarg($tmpLog);
+                $curlLogFormValue = 'log=@"'.addcslashes($tmpLog, '\\"').'"';
 
                 // Send the request to the API endpoint
                 $content .= "\n";
@@ -75,7 +76,7 @@ class ServerLogFileHistory extends Model
                 $content .= "curl -4 -s -X POST \\\n";
                 $content .= ' $API_LOG_URL\\'."\n";
                 $content .= ' -H \'Authorization: Bearer \'$TOKEN_ID \\'."\n";
-                $content .= ' -F '.escapeshellarg('log=@'.$tmpLog).' \\'."\n";
+                $content .= ' -F '.escapeshellarg($curlLogFormValue).' \\'."\n";
                 $content .= ' -F '.escapeshellarg('li='.$logCategory['id']).' \\'."\n\n";
                 $content .= 'rm '.$escapedTmpLog;
             }
@@ -102,7 +103,7 @@ class ServerLogFileHistory extends Model
         $command = 'wget '.escapeshellarg($signedUrl).' -O log_reporter_server_info.sh ';
         $command .= '&& chmod +x $(pwd)/log_reporter_server_info.sh ';
         $command .= '&& CRON_CMD="$(pwd)/log_reporter_server_info.sh" ';
-        $command .= '&& CRON_ENTRY="0 * * * * $CRON_CMD" ';
+        $command .= '&& CRON_ENTRY="0 * * * * \"$CRON_CMD\"" ';
         $command .= '&& (crontab -l 2>/dev/null | grep -Fqx "$CRON_ENTRY" || ';
         $command .= '(crontab -l 2>/dev/null; echo "$CRON_ENTRY") | crontab -)';
 
