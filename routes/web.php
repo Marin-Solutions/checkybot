@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ServerLogFileHistoryController;
 use App\Http\Controllers\WebhookController;
 use App\Models\Backup;
 use App\Models\ServerInformationHistory;
@@ -40,6 +41,10 @@ Route::post('/webhook', [WebhookController::class, 'index'])
     ->withoutMiddleware([VerifyCsrfToken::class]);
 
 Route::get('welcome', \App\Livewire\Welcome::class);
+
+Route::get('/server-log-files/{serverLogFileHistory}/download', [ServerLogFileHistoryController::class, 'download'])
+    ->name('server-log-file-history.download')
+    ->middleware(['auth']);
 
 // SEO Report Downloads - requires authentication
 Route::get('/reports/{filename}', function (string $filename) {

@@ -6,6 +6,7 @@ use App\Http\Requests\StoreServerLogHistoryRequest;
 use App\Models\ServerLogCategory;
 use App\Models\ServerLogFileHistory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 
 class ServerLogFileHistoryController extends Controller
@@ -47,6 +48,9 @@ class ServerLogFileHistoryController extends Controller
             'log_file_name' => $file,
         ];
         ServerLogFileHistory::create($newServerLogFileHistory);
+        $serverLogCategory->forceFill([
+            'last_collected_at' => now(),
+        ])->save();
 
         $server->recordReporterMetadata($request);
 
@@ -59,6 +63,26 @@ class ServerLogFileHistoryController extends Controller
     public function show(ServerLogFileHistory $serverLogFileHistory)
     {
         //
+    }
+
+    public function download(ServerLogFileHistory $serverLogFileHistory)
+    {
+        $server = $serverLogFileHistory->logCategory?->server;
+
+        if (! $server) {
+            abort(404);
+        }
+
+        Gate::authorize('view', $server);
+
+        if (! Storage::exists($serverLogFileHistory->log_file_name)) {
+            abort(404, 'Log file not found');
+        }
+
+        return Storage::download(
+            $serverLogFileHistory->log_file_name,
+            basename($serverLogFileHistory->log_file_name),
+        );
     }
 
     /**
