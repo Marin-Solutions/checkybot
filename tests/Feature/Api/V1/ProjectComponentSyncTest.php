@@ -227,6 +227,47 @@ test('declared package components await first heartbeat until data arrives', fun
     ]);
 });
 
+test('component sync accepts the same parser interval formats as the project component form', function (string $interval, int $expectedMinutes) {
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'scheduler',
+                    'interval' => $interval,
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'scheduler',
+                    'interval' => $interval,
+                    'status' => 'healthy',
+                    'summary' => 'Scheduler is reporting',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.created', 1)
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    $component = ProjectComponent::query()
+        ->where('project_id', $this->project->id)
+        ->where('name', 'scheduler')
+        ->firstOrFail();
+
+    expect($component->declared_interval)->toBe($interval)
+        ->and($component->interval_minutes)->toBe($expectedMinutes);
+})->with([
+    'compact seconds' => ['30s', 1],
+    'every seconds' => ['every_30_seconds', 1],
+    'every minutes' => ['every_5_minutes', 5],
+    'every hours' => ['every_2_hours', 120],
+    'every days' => ['every_1_day', 1440],
+]);
+
 test('sync creates package component when heartbeat arrives before declaration', function () {
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,

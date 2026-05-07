@@ -265,7 +265,7 @@ class CheckybotApiDocumentation
      *                     required={"name", "interval"},
      *
      *                     @OA\Property(property="name", type="string", example="Database"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m")
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="5m")
      *                 )
      *             ),
      *             @OA\Property(
@@ -278,7 +278,7 @@ class CheckybotApiDocumentation
      *                     required={"name", "interval", "status", "observed_at"},
      *
      *                     @OA\Property(property="name", type="string", example="Database"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="5m"),
      *                     @OA\Property(property="status", type="string", enum={"healthy", "warning", "danger"}, example="healthy"),
      *                     @OA\Property(property="summary", type="string", nullable=true, example="Replication lag is normal"),
      *                     @OA\Property(

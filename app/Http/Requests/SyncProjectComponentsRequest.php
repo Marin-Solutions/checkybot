@@ -2,10 +2,14 @@
 
 namespace App\Http\Requests;
 
+use App\Services\IntervalParser;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 
 class SyncProjectComponentsRequest extends FormRequest
 {
+    private const INTERVAL_MESSAGE = 'The interval format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.';
+
     public function authorize(): bool
     {
         $project = $this->route('project');
@@ -25,11 +29,11 @@ class SyncProjectComponentsRequest extends FormRequest
         return [
             'declared_components' => ['required', 'array', 'max:100'],
             'declared_components.*.name' => ['required', 'string', 'max:255'],
-            'declared_components.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
+            'declared_components.*.interval' => ['required', 'string', $this->intervalRule()],
 
             'components' => ['present', 'array', 'max:100'],
             'components.*.name' => ['required', 'string', 'max:255'],
-            'components.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
+            'components.*.interval' => ['required', 'string', $this->intervalRule()],
             'components.*.status' => ['required', 'in:healthy,warning,danger'],
             'components.*.summary' => ['nullable', 'string'],
             'components.*.metrics' => ['nullable', 'array'],
@@ -43,9 +47,16 @@ class SyncProjectComponentsRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'declared_components.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
-            'components.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
             'components.*.observed_at.before_or_equal' => 'The observed timestamp cannot be in the future.',
         ];
+    }
+
+    private function intervalRule(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if (! is_string($value) || ! IntervalParser::isValid($value)) {
+                $fail(self::INTERVAL_MESSAGE);
+            }
+        };
     }
 }
