@@ -1,0 +1,103 @@
+<?php
+
+use App\Jobs\RunScheduledApiMonitorJob;
+use App\Mail\HealthStatusAlert;
+use App\Models\MonitorApiAssertion;
+use App\Models\MonitorApis;
+use App\Models\NotificationSetting;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
+
+test('run scheduled api monitor job is unique and queued with enough time for configured retries', function () {
+    $monitor = MonitorApis::factory()->create();
+    $job = new RunScheduledApiMonitorJob($monitor);
+
+    expect($job)->toBeInstanceOf(ShouldQueue::class)
+        ->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($job->timeout)->toBe(420)
+        ->and($job->uniqueFor)->toBe(480)
+        ->and($job->uniqueId())->toBe("api-monitor:{$monitor->id}:scheduled");
+});
+
+test('run scheduled api monitor job records live status and sends transition notifications', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'error']], 200),
+    ]);
+
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'package-health',
+        'url' => 'https://api.example.com/health',
+        'source' => 'package',
+        'package_name' => 'package-health',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(6),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'expected_value' => 'ok',
+    ]);
+
+    (new RunScheduledApiMonitorJob($monitor))->handle(
+        app(\App\Services\ApiMonitorExecutionService::class),
+        app(\App\Services\HealthEventNotificationService::class),
+    );
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('warning')
+        ->and($monitor->last_heartbeat_at)->not->toBeNull();
+
+    $this->assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+        'status' => 'warning',
+        'is_on_demand' => false,
+    ]);
+
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
+test('run scheduled api monitor job skips monitors disabled after dispatch', function () {
+    Http::fake([
+        '*' => Http::response(['data' => ['status' => 'ok']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/disabled-after-dispatch',
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+    ]);
+
+    $job = new RunScheduledApiMonitorJob($monitor);
+
+    $monitor->update(['is_enabled' => false]);
+
+    $job->handle(
+        app(\App\Services\ApiMonitorExecutionService::class),
+        app(\App\Services\HealthEventNotificationService::class),
+    );
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('unknown')
+        ->and($monitor->last_heartbeat_at)->toBeNull();
+
+    $this->assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+    ]);
+
+    Http::assertNothingSent();
+});

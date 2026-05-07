@@ -2,16 +2,13 @@
 
 namespace App\Console\Commands;
 
-use App\Models\MonitorApiResult;
+use App\Jobs\RunScheduledApiMonitorJob;
 use App\Models\MonitorApis;
-use App\Services\ApiMonitorExecutionService;
-use App\Services\HealthEventNotificationService;
 use App\Services\IntervalParser;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Sentry\Laravel\Facade as Sentry;
 
 class CheckApiMonitors extends Command
 {
@@ -21,53 +18,22 @@ class CheckApiMonitors extends Command
 
     public function handle(): int
     {
-        $this->info('Starting API monitor checks...');
+        $this->info('Queueing due API monitor checks...');
         $count = 0;
-        $executionService = app(ApiMonitorExecutionService::class);
-        $notificationService = app(HealthEventNotificationService::class);
 
         MonitorApis::query()
             ->where('is_enabled', true)
             ->where(fn (Builder $query): Builder => $this->whereDue($query))
-            ->chunkById(100, function ($monitors) use (&$count, $executionService, $notificationService): void {
+            ->chunkById(100, function ($monitors) use (&$count): void {
                 foreach ($monitors as $monitor) {
-                    try {
-                        $this->warnIfInvalidPollingInterval($monitor);
+                    $this->warnIfInvalidPollingInterval($monitor);
 
-                        $execution = $executionService->execute($monitor);
-                        /** @var MonitorApiResult $result */
-                        $result = $execution['result'];
-                        $status = $execution['status'];
-                        $summary = $execution['summary'];
-                        $previousStatus = $execution['previous_status'];
-
-                        if (! isset($result->http_code)) {
-                            Sentry::configureScope(function (\Sentry\State\Scope $scope) use ($monitor, $execution): void {
-                                $scope->setContext('monitor', [
-                                    'monitor_id' => $monitor->id,
-                                    'monitor_title' => $monitor->title,
-                                    'url' => $monitor->url,
-                                    'data_path' => $monitor->data_path,
-                                    'result' => $execution,
-                                ]);
-                            });
-                            throw new \Exception('Invalid API test result format - missing code');
-                        }
-
-                        $count++;
-
-                        $notificationService->notifyApiIfTransitioned($monitor, $previousStatus, $status, $summary);
-                    } catch (\Exception $e) {
-                        Log::error('Error checking API monitor: '.$e->getMessage(), [
-                            'monitor_id' => $monitor->id,
-                            'monitor_title' => $monitor->title,
-                        ]);
-                        Sentry::captureException($e);
-                    }
+                    RunScheduledApiMonitorJob::dispatch($monitor->withoutRelations());
+                    $count++;
                 }
             });
 
-        $this->info("Completed checking {$count} API monitors.");
+        $this->info("Queued {$count} API monitor jobs.");
 
         return Command::SUCCESS;
     }
