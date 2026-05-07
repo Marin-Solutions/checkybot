@@ -14,6 +14,7 @@ use App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelatio
 use App\Jobs\LogUptimeSslJob;
 use App\Jobs\SeoHealthCheckJob;
 use App\Jobs\WebsiteCheckOutboundLinkJob;
+use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\OutboundLink;
@@ -24,6 +25,7 @@ use App\Models\WebsiteLogHistory;
 use App\Services\RobotsSitemapService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 use Spatie\Dns\Dns;
@@ -241,6 +243,99 @@ test('website notification relation manager only shows alerts for the current we
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$visibleSetting])
         ->assertCanNotSeeTableRecords([$hiddenSetting]);
+});
+
+test('website notification relation manager shows destination and last delivery evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Ops Hook',
+    ]);
+
+    $emailSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'address' => 'ops@example.com',
+        'last_delivery_kind' => 'test',
+        'last_delivery_succeeded' => false,
+        'last_delivery_response_code' => null,
+        'last_delivery_summary' => 'Mail transport error: connection refused',
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    $webhookSetting = NotificationSetting::factory()->websiteScope()->webhook()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'notification_channel_id' => $channel->id,
+        'last_delivery_kind' => 'send',
+        'last_delivery_succeeded' => true,
+        'last_delivery_response_code' => 200,
+        'last_delivery_summary' => 'HTTP 200: delivered',
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$emailSetting, $webhookSetting])
+        ->assertSee('ops@example.com')
+        ->assertSee('Ops Hook')
+        ->assertSee('Failed test')
+        ->assertSee('Mail transport error: connection refused')
+        ->assertSee('Success send')
+        ->assertSee('200')
+        ->assertSee('HTTP 200: delivered');
+});
+
+test('website notification relation manager flags webhook rules with removed channels', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $setting = NotificationSetting::factory()->websiteScope()->webhook()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'notification_channel_id' => 999999,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->assertCanSeeTableRecords([$setting])
+        ->assertSee('(channel removed)');
+});
+
+test('website notification relation manager send test action delivers sample email', function () {
+    Mail::fake();
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $setting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'address' => 'on-call@example.com',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->callTableAction('sendTest', $setting)
+        ->assertNotified('Test email sent');
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail) {
+        return $mail->hasTo('on-call@example.com');
+    });
+
+    $setting->refresh();
+
+    expect($setting->last_delivery_kind)->toBe('test');
+    expect($setting->last_delivery_succeeded)->toBeTrue();
+    expect($setting->last_delivery_summary)->toBe('Test email accepted by configured mail transport.');
+    expect($setting->last_delivery_attempted_at)->not->toBeNull();
 });
 
 test('super admin can create website-scoped email notification from website page', function () {
