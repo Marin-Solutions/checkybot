@@ -131,6 +131,54 @@ test('super admin cannot create api monitor with invalid regex assertion', funct
         ->assertHasFormErrors(['assertions.0.regex_pattern']);
 });
 
+test('super admin cannot create api monitor with contains array length assertion', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Array Length API',
+            'url' => 'https://example.com/array-length-health',
+            'expected_status' => 200,
+            'assertions' => [
+                [
+                    'data_path' => 'data.items',
+                    'assertion_type' => 'array_length',
+                    'comparison_operator' => 'contains',
+                    'expected_value' => '1',
+                    'is_active' => true,
+                ],
+            ],
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['assertions.0.comparison_operator']);
+});
+
+test('super admin cannot create api monitor with non numeric array length assertion', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Non Numeric Array Length API',
+            'url' => 'https://example.com/non-numeric-array-length-health',
+            'expected_status' => 200,
+            'assertions' => [
+                [
+                    'data_path' => 'data.items',
+                    'assertion_type' => 'array_length',
+                    'comparison_operator' => '>=',
+                    'expected_value' => 'many',
+                    'is_active' => true,
+                ],
+            ],
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['assertions.0.expected_value']);
+});
+
 test('super admin can update api monitor execution settings', function () {
     $this->createResourcePermissions('MonitorApis');
 
