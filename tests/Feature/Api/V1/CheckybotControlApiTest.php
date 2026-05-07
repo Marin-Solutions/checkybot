@@ -330,6 +330,7 @@ test('control api excludes diagnostic API rows from latest failures', function (
         'source' => 'package',
         'package_name' => 'scheduled-health',
         'title' => 'Scheduled health',
+        'current_status' => 'danger',
     ]);
     MonitorApiResult::factory()->failed()->create([
         'monitor_api_id' => $scheduledMonitor->id,
@@ -358,6 +359,50 @@ test('control api excludes diagnostic API rows from latest failures', function (
         ->assertJsonPath('data.0.summary', 'Scheduled failure');
 
     expect(json_encode($response->json()))->not->toContain('Diagnostic failure');
+});
+
+test('control api latest failures only returns currently failing latest scheduled results', function () {
+    $recoveredMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'recovered-health',
+        'title' => 'Recovered health',
+        'current_status' => 'healthy',
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $recoveredMonitor->id,
+        'summary' => 'Historical failure that has recovered.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $recoveredMonitor->id,
+        'summary' => 'Recovered successfully.',
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $stillFailingMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'current-health',
+        'title' => 'Current health',
+        'current_status' => 'danger',
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $stillFailingMonitor->id,
+        'summary' => 'Current scheduled failure.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.key', 'current-health')
+        ->assertJsonPath('data.0.summary', 'Current scheduled failure.');
+
+    expect(json_encode($response->json()))->not->toContain('Historical failure that has recovered');
 });
 
 test('control api diagnostic check run does not send failure notifications', function () {
@@ -488,6 +533,7 @@ test('control api result payloads include safe api failure evidence', function (
         'source' => 'package',
         'package_name' => 'search-health',
         'title' => 'Search health',
+        'current_status' => 'danger',
     ]);
 
     MonitorApiResult::factory()->failed()->create([
@@ -570,6 +616,7 @@ test('control api redacts top-level raw response body strings', function () {
         'source' => 'package',
         'package_name' => 'search-health',
         'title' => 'Search health',
+        'current_status' => 'danger',
     ]);
 
     MonitorApiResult::factory()->failed()->create([
@@ -593,6 +640,7 @@ test('control api result evidence preserves null bodies and truncates long strin
         'source' => 'package',
         'package_name' => 'search-health',
         'title' => 'Search health',
+        'current_status' => 'danger',
     ]);
 
     $longValue = str_repeat('x', 4200);

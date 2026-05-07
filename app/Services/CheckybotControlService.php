@@ -235,6 +235,23 @@ class CheckybotControlService
     {
         $query = $this->resultQuery($user)
             ->scheduled()
+            ->whereHas('monitorApi', function (Builder $monitorQuery): void {
+                $monitorQuery->where('is_enabled', true)
+                    ->whereIn('current_status', ['warning', 'danger']);
+            })
+            ->whereNotExists(function ($subQuery): void {
+                $subQuery->selectRaw('1')
+                    ->from('monitor_api_results as newer_results')
+                    ->whereColumn('newer_results.monitor_api_id', 'monitor_api_results.monitor_api_id')
+                    ->where('newer_results.is_on_demand', false)
+                    ->where(function ($newerResultQuery): void {
+                        $newerResultQuery->whereColumn('newer_results.created_at', '>', 'monitor_api_results.created_at')
+                            ->orWhere(function ($sameTimestampQuery): void {
+                                $sameTimestampQuery->whereColumn('newer_results.created_at', 'monitor_api_results.created_at')
+                                    ->whereColumn('newer_results.id', '>', 'monitor_api_results.id');
+                            });
+                    });
+            })
             ->where(function (Builder $resultQuery): void {
                 $resultQuery->where('is_success', false)
                     ->orWhereIn('status', ['warning', 'danger']);
