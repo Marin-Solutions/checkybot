@@ -233,7 +233,7 @@ test('record result caps saved failure payload size before persistence', functio
     $failedResult = [
         'code' => 500,
         'body' => collect(range(1, 200))->mapWithKeys(fn (int $index): array => [
-            "field_{$index}" => str_repeat('x', 500),
+            "field_{$index}" => str_repeat('日\"', 250),
         ])->all(),
         'assertions' => [['passed' => false, 'message' => 'Failed']],
     ];
@@ -242,7 +242,8 @@ test('record result caps saved failure payload size before persistence', functio
 
     expect($result->response_body)->toHaveKey('__checky_truncated_payload__')
         ->and($result->response_body['__checky_truncated_payload__'])->toEndWith('... [truncated]')
-        ->and(strlen($result->getRawOriginal('response_body')))->toBeLessThan(32768);
+        ->and(strlen($result->getRawOriginal('response_body')))->toBeLessThanOrEqual(32768)
+        ->and(mb_check_encoding($result->response_body['__checky_truncated_payload__'], 'UTF-8'))->toBeTrue();
 });
 
 test('record result uses redacted internal metadata key for error-only failures', function () {

@@ -57,13 +57,7 @@ class ApiMonitorEvidenceRedactor
             return $redacted;
         }
 
-        return [
-            self::TRUNCATED_PAYLOAD_KEY => Str::limit(
-                $encoded,
-                self::MAX_SAVED_RESPONSE_BODY_LENGTH - 512,
-                '... [truncated]'
-            ),
-        ];
+        return self::truncateSavedPayload($encoded);
     }
 
     /**
@@ -141,6 +135,32 @@ class ApiMonitorEvidenceRedactor
             '$1 [redacted]',
             $value,
         ) ?? $value;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function truncateSavedPayload(string $encodedPayload): array
+    {
+        $suffix = '... [truncated]';
+        $availableBytes = self::MAX_SAVED_RESPONSE_BODY_LENGTH - strlen(json_encode(
+            [self::TRUNCATED_PAYLOAD_KEY => $suffix],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
+        ));
+
+        do {
+            $truncated = mb_strcut($encodedPayload, 0, max(0, $availableBytes), 'UTF-8').$suffix;
+            $payload = [self::TRUNCATED_PAYLOAD_KEY => $truncated];
+            $encoded = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+            if ($encoded === false || strlen($encoded) <= self::MAX_SAVED_RESPONSE_BODY_LENGTH) {
+                return $payload;
+            }
+
+            $availableBytes -= max(1, strlen($encoded) - self::MAX_SAVED_RESPONSE_BODY_LENGTH);
+        } while ($availableBytes > 0);
+
+        return [self::TRUNCATED_PAYLOAD_KEY => $suffix];
     }
 
     private static function redactUrl(string $url): string
