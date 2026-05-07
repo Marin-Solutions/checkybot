@@ -808,6 +808,15 @@ test('super admin can filter applications by current status', function () {
         'created_by' => $user->id,
     ]);
 
+    $staleComponentProject = Project::factory()->create(['name' => 'Stale Component App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $staleComponentProject->id,
+        'current_status' => 'healthy',
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinute(),
+        'created_by' => $user->id,
+    ]);
+
     $unknownProject = Project::factory()->create(['name' => 'Unknown App', 'created_by' => $user->id]);
 
     $websiteDangerProject = Project::factory()->create(['name' => 'Website Danger App', 'created_by' => $user->id]);
@@ -815,6 +824,15 @@ test('super admin can filter applications by current status', function () {
         'project_id' => $websiteDangerProject->id,
         'uptime_check' => true,
         'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    $staleWebsiteProject = Project::factory()->create(['name' => 'Stale Website App', 'created_by' => $user->id]);
+    Website::factory()->create([
+        'project_id' => $staleWebsiteProject->id,
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+        'stale_at' => now()->subMinute(),
         'created_by' => $user->id,
     ]);
 
@@ -835,11 +853,28 @@ test('super admin can filter applications by current status', function () {
         'created_by' => $user->id,
     ]);
 
+    $staleApiProject = Project::factory()->create(['name' => 'Stale API App', 'created_by' => $user->id]);
+    MonitorApis::factory()->create([
+        'project_id' => $staleApiProject->id,
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'stale_at' => now()->subMinute(),
+        'created_by' => $user->id,
+    ]);
+
     $websiteHealthyProject = Project::factory()->create(['name' => 'Website Healthy App', 'created_by' => $user->id]);
     Website::factory()->create([
         'project_id' => $websiteHealthyProject->id,
         'uptime_check' => true,
         'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    $missingHeartbeatProject = Project::factory()->create(['name' => 'Missing Heartbeat App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $missingHeartbeatProject->id,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => null,
         'created_by' => $user->id,
     ]);
 
@@ -875,23 +910,23 @@ test('super admin can filter applications by current status', function () {
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'danger')
-        ->assertCanSeeTableRecords([$dangerProject, $websiteDangerProject, $sslOnlyDangerProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $apiWarningProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanSeeTableRecords([$dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $staleApiProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $apiWarningProject, $websiteHealthyProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'warning')
         ->assertCanSeeTableRecords([$warningProject, $apiWarningProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $websiteHealthyProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $staleApiProject, $websiteHealthyProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'healthy')
         ->assertCanSeeTableRecords([$healthyProject, $websiteHealthyProject])
-        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $apiWarningProject, $staleApiProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'unknown')
-        ->assertCanSeeTableRecords([$unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject, $websiteHealthyProject]);
+        ->assertCanSeeTableRecords([$missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $apiWarningProject, $staleApiProject, $websiteHealthyProject]);
 });
 
 test('application status rolls up enabled websites and api monitors', function () {
@@ -929,6 +964,33 @@ test('application status rolls up enabled websites and api monitors', function (
         'current_status' => 'warning',
     ]);
 
+    $staleComponentProject = Project::factory()->create(['created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $staleComponentProject->id,
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinute(),
+    ]);
+
+    $staleWebsiteProject = Project::factory()->create(['created_by' => $user->id]);
+    Website::factory()->create([
+        'project_id' => $staleWebsiteProject->id,
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+        'stale_at' => now()->subMinute(),
+    ]);
+
+    $staleApiProject = Project::factory()->create(['created_by' => $user->id]);
+    MonitorApis::factory()->create([
+        'project_id' => $staleApiProject->id,
+        'created_by' => $user->id,
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'stale_at' => now()->subMinute(),
+    ]);
+
     $disabledDangerProject = Project::factory()->create(['created_by' => $user->id]);
     Website::factory()->create([
         'project_id' => $disabledDangerProject->id,
@@ -949,6 +1011,14 @@ test('application status rolls up enabled websites and api monitors', function (
         'created_by' => $user->id,
         'uptime_check' => true,
         'current_status' => null,
+    ]);
+
+    $missingHeartbeatProject = Project::factory()->create(['created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $missingHeartbeatProject->id,
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => null,
     ]);
 
     $unknownStatusApiProject = Project::factory()->create(['created_by' => $user->id]);
@@ -976,8 +1046,12 @@ test('application status rolls up enabled websites and api monitors', function (
         ->and($websiteDangerProject->fresh()->application_status)->toBe('danger')
         ->and($sslOnlyWarningProject->fresh()->application_status)->toBe('warning')
         ->and($apiWarningProject->fresh()->application_status)->toBe('warning')
+        ->and($staleComponentProject->fresh()->application_status)->toBe('danger')
+        ->and($staleWebsiteProject->fresh()->application_status)->toBe('danger')
+        ->and($staleApiProject->fresh()->application_status)->toBe('danger')
         ->and($disabledDangerProject->fresh()->application_status)->toBe('unknown')
         ->and($uncheckedWebsiteProject->fresh()->application_status)->toBe('unknown')
+        ->and($missingHeartbeatProject->fresh()->application_status)->toBe('unknown')
         ->and($unknownStatusApiProject->fresh()->application_status)->toBe('unknown')
         ->and($mixedSurfaceProject->fresh()->application_status)->toBe('danger');
 });
@@ -1006,6 +1080,15 @@ test('super admin can filter applications to only failing', function () {
     ProjectComponent::factory()->create([
         'project_id' => $dangerProject->id,
         'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    $staleComponentProject = Project::factory()->create(['name' => 'Stale Component App', 'created_by' => $user->id]);
+    ProjectComponent::factory()->create([
+        'project_id' => $staleComponentProject->id,
+        'current_status' => 'healthy',
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinute(),
         'created_by' => $user->id,
     ]);
 
@@ -1061,7 +1144,7 @@ test('super admin can filter applications to only failing', function () {
 
     Livewire::test(ListProjects::class)
         ->filterTable('only_failing', true)
-        ->assertCanSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject])
+        ->assertCanSeeTableRecords([$warningProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject])
         ->assertCanNotSeeTableRecords([$healthyProject, $unknownProject, $archivedFailingProject, $disabledFailingProject]);
 });
 
