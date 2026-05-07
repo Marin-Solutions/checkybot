@@ -67,28 +67,29 @@ class ProjectsTable
                             return $query;
                         }
 
-                        // Mirror Project::application_status(): the project's status is
-                        // the worst active component, monitored website, or enabled
-                        // API monitor status. Warning and Healthy therefore require
-                        // both a positive check and a negation of worse statuses.
+                        // Mirror Project::application_status(): stale tracked surfaces
+                        // count as danger, and tracked surfaces without usable data
+                        // count as unknown instead of being hidden behind healthy rows.
                         return match ($value) {
-                            'danger' => static::whereHasMonitoredStatus($query, ['danger']),
+                            'danger' => static::whereHasDangerSurface($query),
                             'warning' => static::whereDoesntHaveMonitoredStatus(
-                                static::whereHasMonitoredStatus($query, ['warning']),
+                                static::whereHasWarningSurface($query),
                                 ['danger'],
                             ),
                             'healthy' => static::whereDoesntHaveMonitoredStatus(
-                                static::whereHasKnownMonitoredStatus($query),
+                                static::whereDoesntHaveUnknownSurface(
+                                    static::whereHasHealthySurface($query),
+                                ),
                                 ['warning', 'danger'],
                             ),
-                            'unknown' => static::whereDoesntHaveKnownMonitoredStatus($query),
+                            'unknown' => static::whereHasUnknownApplicationStatus($query),
                             default => $query,
                         };
                     }),
                 Filter::make('only_failing')
                     ->label('Show only failing')
                     ->toggle()
-                    ->query(fn (Builder $query): Builder => static::whereHasMonitoredStatus($query, ['warning', 'danger'])),
+                    ->query(fn (Builder $query): Builder => static::whereHasFailingSurface($query)),
             ])
             ->recordActions([
                 ViewAction::make(),
@@ -146,6 +147,14 @@ class ProjectsTable
      */
     protected static function whereHasMonitoredStatus(Builder $query, array $statuses): Builder
     {
+        if ($statuses === ['danger']) {
+            return static::whereHasDangerSurface($query);
+        }
+
+        if ($statuses === ['warning']) {
+            return static::whereHasWarningSurface($query);
+        }
+
         return $query->where(function (Builder $query) use ($statuses): void {
             $query
                 ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', $statuses))
@@ -159,28 +168,199 @@ class ProjectsTable
      */
     protected static function whereDoesntHaveMonitoredStatus(Builder $query, array $statuses): Builder
     {
+        if ($statuses === ['danger']) {
+            return static::whereDoesntHaveDangerSurface($query);
+        }
+
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereIn('current_status', $statuses))
-            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
-            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses));
+            ->when(
+                in_array('danger', $statuses, true),
+                fn (Builder $query): Builder => static::whereDoesntHaveDangerSurface($query),
+            )
+            ->when(
+                in_array('warning', $statuses, true),
+                fn (Builder $query): Builder => static::whereDoesntHaveWarningSurface($query),
+            );
     }
 
-    protected static function whereHasKnownMonitoredStatus(Builder $query): Builder
+    protected static function whereHasFailingSurface(Builder $query): Builder
     {
         return $query->where(function (Builder $query): void {
-            $query
-                ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
-                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
-                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
+            static::whereHasDangerSurface($query)
+                ->orWhere(function (Builder $query): void {
+                    static::whereHasWarningSurface($query);
+                });
         });
     }
 
-    protected static function whereDoesntHaveKnownMonitoredStatus(Builder $query): Builder
+    protected static function whereHasDangerSurface(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereHas('activeComponents', fn (Builder $components) => $components
+                    ->where('is_stale', true)
+                    ->orWhere('current_status', 'danger'))
+                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
+                    ->whereNotNull('stale_at')
+                    ->orWhere('current_status', 'danger'))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis
+                    ->whereNotNull('stale_at')
+                    ->orWhere('current_status', 'danger'));
+        });
+    }
+
+    protected static function whereDoesntHaveDangerSurface(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
-            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES))
-            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', Project::KNOWN_APPLICATION_STATUSES));
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components
+                ->where('is_stale', true)
+                ->orWhere('current_status', 'danger'))
+            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites
+                ->whereNotNull('stale_at')
+                ->orWhere('current_status', 'danger'))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis
+                ->whereNotNull('stale_at')
+                ->orWhere('current_status', 'danger'));
+    }
+
+    protected static function whereHasWarningSurface(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereHas('activeComponents', fn (Builder $components) => $components->where('current_status', 'warning'))
+                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'warning'))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'warning'));
+        });
+    }
+
+    protected static function whereDoesntHaveWarningSurface(Builder $query): Builder
+    {
+        return $query
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->where('current_status', 'warning'))
+            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'warning'))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'warning'));
+    }
+
+    protected static function whereHasHealthySurface(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereHas('activeComponents', fn (Builder $components) => $components
+                    ->where('current_status', 'healthy')
+                    ->where('is_stale', false)
+                    ->whereNotNull('last_heartbeat_at'))
+                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
+                    ->where('current_status', 'healthy')
+                    ->whereNull('stale_at')
+                    ->whereNotNull('last_heartbeat_at'))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis
+                    ->where('current_status', 'healthy')
+                    ->whereNull('stale_at')
+                    ->whereNotNull('last_heartbeat_at'));
+        });
+    }
+
+    protected static function whereHasUnknownApplicationStatus(Builder $query): Builder
+    {
+        return static::whereDoesntHaveMonitoredStatus($query, ['warning', 'danger'])
+            ->where(function (Builder $query): void {
+                static::whereHasUnknownSurface($query)
+                    ->orWhere(function (Builder $query): void {
+                        static::whereDoesntHaveTrackedSurface($query);
+                    });
+            });
+    }
+
+    protected static function whereHasUnknownSurface(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereHas('activeComponents', fn (Builder $components) => $components
+                    ->where('is_stale', false)
+                    ->where(function (Builder $components): void {
+                        $components
+                            ->whereNull('current_status')
+                            ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                            ->orWhere(function (Builder $components): void {
+                                $components
+                                    ->where('current_status', 'healthy')
+                                    ->whereNull('last_heartbeat_at');
+                            });
+                    }))
+                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
+                    ->whereNull('stale_at')
+                    ->where(function (Builder $websites): void {
+                        $websites
+                            ->whereNull('current_status')
+                            ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                            ->orWhere(function (Builder $websites): void {
+                                $websites
+                                    ->where('current_status', 'healthy')
+                                    ->whereNull('last_heartbeat_at');
+                            });
+                    }))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis
+                    ->whereNull('stale_at')
+                    ->where(function (Builder $apis): void {
+                        $apis
+                            ->whereNull('current_status')
+                            ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                            ->orWhere(function (Builder $apis): void {
+                                $apis
+                                    ->where('current_status', 'healthy')
+                                    ->whereNull('last_heartbeat_at');
+                            });
+                    }));
+        });
+    }
+
+    protected static function whereDoesntHaveUnknownSurface(Builder $query): Builder
+    {
+        return $query
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components
+                ->where('is_stale', false)
+                ->where(function (Builder $components): void {
+                    $components
+                        ->whereNull('current_status')
+                        ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                        ->orWhere(function (Builder $components): void {
+                            $components
+                                ->where('current_status', 'healthy')
+                                ->whereNull('last_heartbeat_at');
+                        });
+                }))
+            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites
+                ->whereNull('stale_at')
+                ->where(function (Builder $websites): void {
+                    $websites
+                        ->whereNull('current_status')
+                        ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                        ->orWhere(function (Builder $websites): void {
+                            $websites
+                                ->where('current_status', 'healthy')
+                                ->whereNull('last_heartbeat_at');
+                        });
+                }))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis
+                ->whereNull('stale_at')
+                ->where(function (Builder $apis): void {
+                    $apis
+                        ->whereNull('current_status')
+                        ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                        ->orWhere(function (Builder $apis): void {
+                            $apis
+                                ->where('current_status', 'healthy')
+                                ->whereNull('last_heartbeat_at');
+                        });
+                }));
+    }
+
+    protected static function whereDoesntHaveTrackedSurface(Builder $query): Builder
+    {
+        return $query
+            ->whereDoesntHave('activeComponents')
+            ->whereDoesntHave('monitoredWebsites')
+            ->whereDoesntHave('enabledMonitorApis');
     }
 
     /**

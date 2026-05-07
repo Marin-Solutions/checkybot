@@ -135,21 +135,60 @@ class Project extends Model
         return collect()
             ->merge($this->loadedOrQueriedStatuses('activeComponents'))
             ->merge($this->loadedOrQueriedStatuses('monitoredWebsites'))
-            ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'))
-            ->filter(fn (?string $status): bool => in_array($status, self::KNOWN_APPLICATION_STATUSES, true));
+            ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'));
     }
 
     /**
-     * @return Collection<int, string|null>
+     * @return Collection<int, string>
      */
     protected function loadedOrQueriedStatuses(string $relation): Collection
     {
         /** @var Collection<int, ProjectComponent|Website|MonitorApis> $records */
         $records = $this->relationLoaded($relation)
             ? $this->getRelation($relation)
-            : $this->{$relation}()->get(['current_status']);
+            : $this->{$relation}()->get($this->statusRollupColumns($relation));
 
-        return $records->pluck('current_status');
+        return $records->map(fn (ProjectComponent|Website|MonitorApis $record): string => $this->effectiveSurfaceStatus($record));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function statusRollupColumns(string $relation): array
+    {
+        return match ($relation) {
+            'activeComponents' => ['current_status', 'is_stale', 'last_heartbeat_at'],
+            default => ['current_status', 'last_heartbeat_at', 'stale_at'],
+        };
+    }
+
+    protected function effectiveSurfaceStatus(ProjectComponent|Website|MonitorApis $record): string
+    {
+        if ($record instanceof ProjectComponent) {
+            if ((bool) $record->is_stale) {
+                return 'danger';
+            }
+
+            if (in_array($record->current_status, ['warning', 'danger'], true)) {
+                return $record->current_status;
+            }
+
+            return $record->current_status === 'healthy' && $record->last_heartbeat_at !== null
+                ? 'healthy'
+                : 'unknown';
+        }
+
+        if ($record->stale_at !== null) {
+            return 'danger';
+        }
+
+        if (in_array($record->current_status, ['warning', 'danger'], true)) {
+            return $record->current_status;
+        }
+
+        return $record->current_status === 'healthy' && $record->last_heartbeat_at !== null
+            ? 'healthy'
+            : 'unknown';
     }
 
     protected function statusPriority(?string $status): int
@@ -157,7 +196,8 @@ class Project extends Model
         return match ($status) {
             'danger' => 3,
             'warning' => 2,
-            'healthy' => 1,
+            'unknown' => 1,
+            'healthy' => 0,
             default => 0,
         };
     }
