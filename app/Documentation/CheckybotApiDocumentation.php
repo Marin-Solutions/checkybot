@@ -172,7 +172,7 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Homepage"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="every_5_minutes"),
      *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5)
      *                 )
      *             ),
@@ -187,7 +187,7 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Certificate"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="1d")
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="1d")
      *                 )
      *             ),
      *             @OA\Property(
@@ -201,7 +201,7 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Health endpoint"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com/health"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="30s"),
      *                     @OA\Property(property="headers", type="object"),
      *                     @OA\Property(property="request_body_type", type="string", nullable=true, enum={"json", "form", "raw"}, example="json"),
      *                     @OA\Property(property="request_body", nullable=true, example={"email": "monitor@example.com", "password": "secret"}),
