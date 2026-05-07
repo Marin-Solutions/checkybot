@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreBackupHistoryRequest;
 use App\Models\Backup;
 use App\Models\BackupHistory;
+use App\Services\HealthEventNotificationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class BackupHistoryController extends Controller
 {
@@ -29,7 +29,7 @@ class BackupHistoryController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreBackupHistoryRequest $request)
+    public function store(StoreBackupHistoryRequest $request, HealthEventNotificationService $notifications)
     {
         $id = $request->input('bi');
         $backup = Backup::query()->where('id', $id)->first();
@@ -59,7 +59,25 @@ class BackupHistoryController extends Controller
 
         $server->recordReporterMetadata($request);
 
+        if (! $backupHistory->is_zipped || ! $backupHistory->is_uploaded) {
+            $notifications->notifyBackup(
+                $backup,
+                'backup_failed',
+                'danger',
+                $this->failureSummary($backupHistory),
+            );
+        }
+
         return response()->json($backupHistory, 200);
+    }
+
+    private function failureSummary(BackupHistory $backupHistory): string
+    {
+        if (! $backupHistory->is_zipped) {
+            return 'Backup archive creation failed before upload. File: '.$backupHistory->filename.'.';
+        }
+
+        return 'Backup archive was created but upload failed. File: '.$backupHistory->filename.'.';
     }
 
     /**

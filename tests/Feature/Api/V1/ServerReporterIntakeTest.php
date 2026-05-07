@@ -1,12 +1,16 @@
 <?php
 
+use App\Enums\WebsiteServicesEnum;
+use App\Mail\HealthStatusAlert;
 use App\Models\Backup;
 use App\Models\BackupHistory;
+use App\Models\NotificationSetting;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogCategory;
 use App\Models\ServerLogFileHistory;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 test('server history intake trusts a valid token when reporter ip changes', function () {
@@ -107,6 +111,138 @@ test('backup history intake trusts a valid token when reporter ip changes', func
     expect($server->last_reporter_ip)->toBe('198.51.100.24')
         ->and($server->last_reporter_user_agent)->toBe('checkybot-backup-reporter/1.0')
         ->and($server->last_reporter_seen_at)->not->toBeNull();
+});
+
+test('backup history intake sends notification when archive creation fails', function () {
+    Mail::fake();
+
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+    $backup = Backup::query()->create([
+        'server_id' => $server->id,
+        'dir_path' => '/var/www/html',
+        'remote_storage_id' => 1,
+        'remote_storage_path' => '/',
+        'interval_id' => '1',
+        'compression_type' => 'zip',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $server->created_by,
+            'inspection' => WebsiteServicesEnum::BACKUP_MONITOR,
+            'address' => 'ops@example.com',
+        ]);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer server-token',
+        'User-Agent' => 'checkybot-backup-reporter/1.0',
+    ])
+        ->postJson('/api/v1/backup-history', [
+            'bi' => $backup->id,
+            'nf' => 'site-backup.zip',
+            'sf' => 0,
+            'iz' => 0,
+            'iu' => 0,
+        ])
+        ->assertOk();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'backup_failed'
+            && $mail->status === 'danger'
+            && str_contains($mail->summary, 'Backup archive creation failed')
+            && str_contains($mail->summary, 'site-backup.zip');
+    });
+});
+
+test('backup history intake sends notification when upload fails', function () {
+    Mail::fake();
+
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+    $backup = Backup::query()->create([
+        'server_id' => $server->id,
+        'dir_path' => '/var/www/html',
+        'remote_storage_id' => 1,
+        'remote_storage_path' => '/',
+        'interval_id' => '1',
+        'compression_type' => 'zip',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $server->created_by,
+            'inspection' => WebsiteServicesEnum::ALL_CHECK,
+            'address' => 'ops@example.com',
+        ]);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer server-token',
+        'User-Agent' => 'checkybot-backup-reporter/1.0',
+    ])
+        ->postJson('/api/v1/backup-history', [
+            'bi' => $backup->id,
+            'nf' => 'site-backup.zip',
+            'sf' => 2048,
+            'iz' => 1,
+            'iu' => 0,
+        ])
+        ->assertOk();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'backup_failed'
+            && $mail->status === 'danger'
+            && str_contains($mail->summary, 'upload failed')
+            && str_contains($mail->summary, 'site-backup.zip');
+    });
+});
+
+test('backup history intake does not send notification when backup succeeds', function () {
+    Mail::fake();
+
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+    $backup = Backup::query()->create([
+        'server_id' => $server->id,
+        'dir_path' => '/var/www/html',
+        'remote_storage_id' => 1,
+        'remote_storage_path' => '/',
+        'interval_id' => '1',
+        'compression_type' => 'zip',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $server->created_by,
+            'inspection' => WebsiteServicesEnum::BACKUP_MONITOR,
+        ]);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer server-token',
+        'User-Agent' => 'checkybot-backup-reporter/1.0',
+    ])
+        ->postJson('/api/v1/backup-history', [
+            'bi' => $backup->id,
+            'nf' => 'site-backup.zip',
+            'sf' => 2048,
+            'iz' => 1,
+            'iu' => 1,
+        ])
+        ->assertOk();
+
+    Mail::assertNothingSent();
 });
 
 test('server reporter intake still rejects invalid tokens', function () {
