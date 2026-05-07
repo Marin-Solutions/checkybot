@@ -62,7 +62,11 @@ class WriteJobCheckSsl extends Command
                         $this->wherePackageSslCheckIsDue($query);
                     })
                     ->orWhere(function (Builder $query): void {
-                        $this->whereNotPackageSslOnlyCheck($query);
+                        $this->whereManualSslOnlyCheck($query);
+                        $this->whereManualSslCheckIsDue($query);
+                    })
+                    ->orWhere(function (Builder $query): void {
+                        $this->whereNotScheduledSslOnlyCheck($query);
                         $this->whereSslReminderIsDue($query);
                     });
             });
@@ -101,14 +105,41 @@ class WriteJobCheckSsl extends Command
             ->where('package_interval', '!=', '');
     }
 
-    private function whereNotPackageSslOnlyCheck(Builder $query): void
+    private function whereManualSslOnlyCheck(Builder $query): void
+    {
+        $query
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('source', '!=', 'package')
+                    ->orWhereNull('source');
+            })
+            ->where('uptime_check', false)
+            ->whereNotNull('uptime_interval');
+    }
+
+    private function whereNotScheduledSslOnlyCheck(Builder $query): void
     {
         $query->where(function (Builder $query): void {
             $query
-                ->where('source', '!=', 'package')
-                ->orWhere('uptime_check', true)
-                ->orWhereNull('package_interval')
-                ->orWhere('package_interval', '');
+                ->where('uptime_check', true)
+                ->orWhere(function (Builder $query): void {
+                    $query
+                        ->where('source', 'package')
+                        ->where(function (Builder $query): void {
+                            $query
+                                ->whereNull('package_interval')
+                                ->orWhere('package_interval', '');
+                        });
+                })
+                ->orWhere(function (Builder $query): void {
+                    $query
+                        ->where(function (Builder $query): void {
+                            $query
+                                ->where('source', '!=', 'package')
+                                ->orWhereNull('source');
+                        })
+                        ->whereNull('uptime_interval');
+                });
         });
     }
 
@@ -123,11 +154,30 @@ class WriteJobCheckSsl extends Command
         });
     }
 
+    private function whereManualSslCheckIsDue(Builder $query): void
+    {
+        $query->where(function (Builder $query): void {
+            $query
+                ->whereNull('last_heartbeat_at')
+                ->orWhereRaw($this->manualIntervalDueExpression(), [now()->startOfMinute()->toDateTimeString()]);
+        });
+    }
+
     /**
      * @return array{0: string, 1: array<int, string>}
      */
     private function packageIntervalDueExpression(): array
     {
         return PackageIntervalDueExpression::build(Website::query()->getConnection());
+    }
+
+    private function manualIntervalDueExpression(): string
+    {
+        return match (Website::query()->getConnection()->getDriverName()) {
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || uptime_interval || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', last_heartbeat_at) + (uptime_interval * interval '1 minute') <= ?",
+            'sqlsrv' => 'DATEADD(minute, uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?',
+            default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL uptime_interval MINUTE) <= ?",
+        };
     }
 }

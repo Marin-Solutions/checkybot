@@ -148,6 +148,60 @@ test('command does not dispatch package ssl-only checks before package interval 
     Queue::assertNotPushed(CheckSslExpiryDateJob::class);
 });
 
+test('command dispatches manual ssl-only checks when uptime interval is due', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => 5,
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
+test('command does not dispatch manual ssl-only checks before uptime interval is due', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => 5,
+        'last_heartbeat_at' => now()->subMinutes(4),
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(CheckSslExpiryDateJob::class);
+});
+
+test('command dispatches manual ssl-only checks once when interval and reminder day are both due', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => 5,
+        'last_heartbeat_at' => now()->subMinutes(5),
+        'ssl_expiry_date' => today()->addDays(14)->toDateString(),
+    ]);
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
 test('command does not dispatch package ssl-only reminder checks before package interval is due', function () {
     Queue::fake();
 
