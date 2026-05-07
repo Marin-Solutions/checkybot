@@ -3,6 +3,7 @@
 use App\Filament\Resources\SeoCheckResource\Pages\ListSeoChecks;
 use App\Filament\Resources\SeoCheckResource\Pages\ViewSeoCheck;
 use App\Filament\Resources\WebsiteSeoCheckResource\Pages\ListWebsiteSeoChecks;
+use App\Filament\Widgets\SeoHealthScoreTrendWidget;
 use App\Filament\Widgets\SeoIssuesTableWidget;
 use App\Jobs\SeoHealthCheckJob;
 use App\Models\SeoCheck;
@@ -117,6 +118,65 @@ test('direct seo check route cannot open another users check', function () {
     ]));
 
     expect($response->status())->toBeIn([403, 404]);
+});
+
+test('seo health score trend widget is hidden outside seo check detail pages', function () {
+    $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+    $otherWebsite = Website::factory()->create(['created_by' => $otherUser->id]);
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $otherWebsite->id,
+        'finished_at' => now(),
+        'computed_health_score' => 88.4,
+    ]);
+
+    expect(SeoHealthScoreTrendWidget::canView())->toBeFalse();
+
+    $widget = new SeoHealthScoreTrendWidget;
+    $data = (fn (): array => $this->getData())->call($widget);
+
+    expect($data['datasets'][0]['data'])->toBe([])
+        ->and($data['labels'])->toBe([]);
+});
+
+test('seo health score trend widget ignores unauthorized explicit website ids', function () {
+    $this->actingAsSuperAdmin();
+    $otherUser = User::factory()->create();
+    $otherWebsite = Website::factory()->create(['created_by' => $otherUser->id]);
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $otherWebsite->id,
+        'finished_at' => now(),
+        'computed_health_score' => 94.2,
+    ]);
+
+    $widget = new SeoHealthScoreTrendWidget;
+    $widget->websiteId = $otherWebsite->id;
+
+    $data = (fn (): array => $this->getData())->call($widget);
+
+    expect($data['datasets'][0]['data'])->toBe([])
+        ->and($data['labels'])->toBe([]);
+});
+
+test('seo health score trend widget shows authorized website trend data', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+        'finished_at' => now()->subDay(),
+        'computed_health_score' => 91.7,
+    ]);
+
+    $widget = new SeoHealthScoreTrendWidget;
+    $widget->websiteId = $website->id;
+
+    $data = (fn (): array => $this->getData())->call($widget);
+
+    expect($data['datasets'][0]['data'])->toBe([91.7])
+        ->and($data['labels'])->toBe([now()->subDay()->format('M j')]);
 });
 
 test('website seo checks list can start the first seo check for a website', function () {
