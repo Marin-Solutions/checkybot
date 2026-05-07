@@ -103,6 +103,56 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertDontSee('Project duplicate warning');
     });
 
+    it('shows project-scoped recovery transitions with resolved current state', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Recovered project homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Project homepage went down',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'summary' => 'Project homepage recovered',
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        $otherWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->otherProject->id,
+            'name' => 'Recovered other homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $otherWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Other homepage went down',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $otherWebsite->id,
+            'status' => 'healthy',
+            'summary' => 'Other homepage recovered',
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->assertSee('Project homepage went down')
+            ->assertSee('Project homepage recovered')
+            ->assertSee('RECOVERED')
+            ->assertSee('Resolved')
+            ->assertDontSee('Other homepage went down')
+            ->assertDontSee('Other homepage recovered');
+    });
+
     it('includes project-scoped API monitor failures and hides others', function () {
         $myApi = MonitorApis::factory()->create([
             'created_by' => $this->user->id,

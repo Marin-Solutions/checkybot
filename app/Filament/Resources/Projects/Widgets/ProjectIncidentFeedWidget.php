@@ -9,7 +9,7 @@ class ProjectIncidentFeedWidget extends IncidentFeedWidget
 {
     protected static ?string $heading = 'Recent incidents for this application';
 
-    protected static ?string $description = 'Warning and danger transitions from this application\'s websites, API monitors and components in the last 7 days.';
+    protected static ?string $description = 'Warning, danger and recovery transitions from this application\'s websites, API monitors and components in the last 7 days.';
 
     protected static ?int $sort = 2;
 
@@ -29,6 +29,6 @@ class ProjectIncidentFeedWidget extends IncidentFeedWidget
 
     protected function getEmptyStateDescriptionText(): string
     {
-        return 'No warning or danger transitions from this application\'s websites, API monitors or components in the last 7 days.';
+        return 'No warning, danger or recovery transitions from this application\'s websites, API monitors or components in the last 7 days.';
     }
 }

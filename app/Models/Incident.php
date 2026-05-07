@@ -14,7 +14,8 @@ use Illuminate\Database\Eloquent\Model;
  *
  * @property string $id synthetic composite id, e.g. "website_log-42"
  * @property string $source one of: website | api | component
- * @property string $status one of: warning | danger
+ * @property string $status one of: healthy | unknown | warning | danger
+ * @property string $state one of: active | resolved
  * @property string $subject human-readable subject (website name, api title, component name)
  * @property int $subject_id foreign key of the owning record in its own resource
  * @property string|null $summary evidence line describing why the event happened
