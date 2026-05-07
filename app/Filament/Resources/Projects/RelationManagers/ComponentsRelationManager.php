@@ -2,7 +2,10 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
+use App\Filament\Support\ProjectComponentDeliveryState;
+use App\Models\ProjectComponent;
 use App\Support\HealthStatusLabel;
+use Filament\Actions\ViewAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -32,19 +35,23 @@ class ComponentsRelationManager extends RelationManager
                     }),
                 Tables\Columns\TextColumn::make('declared_interval')
                     ->label('Interval'),
-                Tables\Columns\TextColumn::make('archive_state')
-                    ->label('State')
-                    ->state(fn ($record): string => $record->is_archived ? 'Archived' : 'Active')
+                Tables\Columns\TextColumn::make('delivery_state')
+                    ->label('Delivery State')
+                    ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::state($record))
+                    ->formatStateUsing(fn (string $state): string => ProjectComponentDeliveryState::label($state))
                     ->badge()
-                    ->color(fn (string $state): string => $state === 'Archived' ? 'gray' : 'success'),
+                    ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                 Tables\Columns\TextColumn::make('summary')
                     ->wrap()
                     ->limit(80),
                 Tables\Columns\TextColumn::make('last_heartbeat_at')
                     ->sinceInUserZone(),
             ])
+            ->filters([
+                ProjectComponentDeliveryState::filter(),
+            ])
             ->recordActions([
-                Tables\Actions\ViewAction::make(),
+                ViewAction::make(),
             ])
             ->defaultSort('name');
     }

@@ -8,6 +8,7 @@ use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelation
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\ProjectResource;
+use App\Filament\Resources\Projects\RelationManagers\ComponentsRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
@@ -1101,6 +1102,152 @@ test('super admin can filter application components by current status', function
         ->filterTable('current_status', 'healthy')
         ->assertCanSeeTableRecords([$healthy])
         ->assertCanNotSeeTableRecords([$warning, $danger]);
+});
+
+test('super admin can filter application components by delivery state', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $stale = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'stalled-queue',
+        'is_stale' => true,
+        'is_archived' => false,
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'created_by' => $user->id,
+    ]);
+    $awaitingFirstHeartbeat = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'new-worker',
+        'is_stale' => false,
+        'is_archived' => false,
+        'last_heartbeat_at' => null,
+        'created_by' => $user->id,
+    ]);
+    $receivingHeartbeats = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'database',
+        'is_stale' => false,
+        'is_archived' => false,
+        'last_heartbeat_at' => now()->subMinute(),
+        'created_by' => $user->id,
+    ]);
+    $archived = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'name' => 'retired-proxy',
+        'is_stale' => true,
+        'last_heartbeat_at' => null,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertSee('Delivery State')
+        ->assertSee('Stale')
+        ->assertSee('Awaiting first heartbeat')
+        ->assertSee('Receiving heartbeats')
+        ->assertSee('Archived');
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'stale')
+        ->assertCanSeeTableRecords([$stale])
+        ->assertCanNotSeeTableRecords([$awaitingFirstHeartbeat, $receivingHeartbeats, $archived]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'awaiting_first_heartbeat')
+        ->assertCanSeeTableRecords([$awaitingFirstHeartbeat])
+        ->assertCanNotSeeTableRecords([$stale, $receivingHeartbeats, $archived]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'receiving_heartbeats')
+        ->assertCanSeeTableRecords([$receivingHeartbeats])
+        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $archived]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'archived')
+        ->assertCanSeeTableRecords([$archived])
+        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $receivingHeartbeats]);
+});
+
+test('super admin can filter project components relation manager by delivery state', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $stale = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'is_stale' => true,
+        'is_archived' => false,
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'created_by' => $user->id,
+    ]);
+    $awaitingFirstHeartbeat = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'is_stale' => false,
+        'is_archived' => false,
+        'last_heartbeat_at' => null,
+        'created_by' => $user->id,
+    ]);
+    $receivingHeartbeats = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'is_stale' => false,
+        'is_archived' => false,
+        'last_heartbeat_at' => now()->subMinute(),
+        'created_by' => $user->id,
+    ]);
+    $archived = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'is_stale' => true,
+        'last_heartbeat_at' => null,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Delivery State')
+        ->assertSee('Stale')
+        ->assertSee('Awaiting first heartbeat')
+        ->assertSee('Receiving heartbeats')
+        ->assertSee('Archived');
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('delivery_state', 'stale')
+        ->assertCanSeeTableRecords([$stale])
+        ->assertCanNotSeeTableRecords([$awaitingFirstHeartbeat, $receivingHeartbeats, $archived]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('delivery_state', 'awaiting_first_heartbeat')
+        ->assertCanSeeTableRecords([$awaitingFirstHeartbeat])
+        ->assertCanNotSeeTableRecords([$stale, $receivingHeartbeats, $archived]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('delivery_state', 'receiving_heartbeats')
+        ->assertCanSeeTableRecords([$receivingHeartbeats])
+        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $archived]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('delivery_state', 'archived')
+        ->assertCanSeeTableRecords([$archived])
+        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $receivingHeartbeats]);
 });
 
 test('super admin can filter application components to only failing', function () {

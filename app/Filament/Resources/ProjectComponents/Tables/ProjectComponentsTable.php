@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\ProjectComponents\Tables;
 
 use App\Filament\Support\HealthStatusFilter;
+use App\Filament\Support\ProjectComponentDeliveryState;
 use App\Models\ProjectComponent;
 use App\Support\HealthStatusLabel;
 use Filament\Actions\BulkAction;
@@ -37,11 +38,12 @@ class ProjectComponentsTable
                         'danger' => 'danger',
                         default => 'gray',
                     }),
-                TextColumn::make('archive_state')
-                    ->label('State')
-                    ->state(fn (ProjectComponent $record): string => $record->is_archived ? 'Archived' : 'Active')
+                TextColumn::make('delivery_state')
+                    ->label('Delivery State')
+                    ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::state($record))
+                    ->formatStateUsing(fn (string $state): string => ProjectComponentDeliveryState::label($state))
                     ->badge()
-                    ->color(fn (string $state): string => $state === 'Archived' ? 'gray' : 'success'),
+                    ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                 TextColumn::make('declared_interval')
                     ->label('Interval'),
                 TextColumn::make('last_heartbeat_at')
@@ -52,6 +54,7 @@ class ProjectComponentsTable
                 HealthStatusFilter::onlyFailing(
                     activeScope: fn (Builder $query): Builder => $query->where('is_archived', false),
                 ),
+                ProjectComponentDeliveryState::filter(),
             ])
             ->recordActions([
                 ViewAction::make(),
