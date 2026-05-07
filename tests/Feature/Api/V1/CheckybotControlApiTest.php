@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\RunSource;
+use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
@@ -9,6 +10,7 @@ use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Client\Request as HttpRequest;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -718,10 +720,8 @@ test('control api scopes projects to the api key owner', function () {
         ->assertNotFound();
 });
 
-test('control api triggers all enabled project checks synchronously', function () {
-    Http::fake([
-        '*' => Http::response(['data' => ['status' => 'ok']], 200),
-    ]);
+test('control api queues all enabled project checks as a diagnostic batch', function () {
+    Bus::fake();
 
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -746,14 +746,54 @@ test('control api triggers all enabled project checks synchronously', function (
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/control/projects/scrappa/runs')
-        ->assertOk()
-        ->assertJsonPath('data.status', 'completed')
-        ->assertJsonPath('data.checks_run', 1)
-        ->assertJsonPath('data.results.0.check.key', 'search-health')
-        ->assertJsonPath('data.results.0.result.status', 'healthy');
+        ->assertAccepted()
+        ->assertJsonPath('message', 'Project run queued.')
+        ->assertJsonPath('data.status', 'queued')
+        ->assertJsonPath('data.checks_queued', 1)
+        ->assertJsonPath('data.run_batch.status', 'pending')
+        ->assertJsonPath('data.run_batch.name', 'Control project run: scrappa')
+        ->assertJsonPath('data.run_batch.total_jobs', 1)
+        ->assertJsonPath('data.run_batch.pending_jobs', 1)
+        ->assertJsonPath('data.run_batch.failed_jobs', 0);
+
+    Bus::assertBatched(function ($batch): bool {
+        return $batch->name === 'Control project run: scrappa'
+            && $batch->jobs->count() === 1
+            && $batch->jobs->first() instanceof RunApiMonitorDiagnosticJob
+            && $batch->jobs->first()->monitor->package_name === 'search-health'
+            && ($batch->options['allowFailures'] ?? false) === true;
+    });
+
+    $this->assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => MonitorApis::query()->where('package_name', 'search-health')->value('id'),
+    ]);
 });
 
-test('control api project diagnostic run does not send notifications for check status transitions', function () {
+test('control api project run reports when there are no enabled checks to queue', function () {
+    Bus::fake();
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'disabled-health',
+        'title' => 'Disabled health',
+        'url' => 'https://api.scrappa.test/disabled',
+        'is_enabled' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/runs')
+        ->assertOk()
+        ->assertJsonPath('message', 'Project has no enabled checks to run.')
+        ->assertJsonPath('data.status', 'no_enabled_checks')
+        ->assertJsonPath('data.checks_queued', 0)
+        ->assertJsonPath('data.run_batch', null);
+
+    Bus::assertNothingBatched();
+});
+
+test('queued project diagnostic jobs do not send notifications for check status transitions', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),
     ]);
@@ -786,18 +826,15 @@ test('control api project diagnostic run does not send notifications for check s
         'expected_value' => 'ok',
     ]);
 
-    $this->withToken($this->apiKey->key)
-        ->postJson('/api/v1/control/projects/scrappa/runs')
-        ->assertOk()
-        ->assertJsonPath('data.status', 'completed')
-        ->assertJsonPath('data.checks_run', 1)
-        ->assertJsonPath('data.results.0.result.status', 'warning')
-        ->assertJsonPath('data.results.0.result.run_source', RunSource::OnDemand->value)
-        ->assertJsonPath('data.results.0.result.is_on_demand', true);
+    app()->call([new RunApiMonitorDiagnosticJob($monitor), 'handle']);
 
     $monitor->refresh();
+    $result = $monitor->results()->latest('id')->first();
 
-    expect($monitor->current_status)->toBe('danger');
+    expect($monitor->current_status)->toBe('danger')
+        ->and($result?->status)->toBe('warning')
+        ->and($result?->run_source)->toBe(RunSource::OnDemand)
+        ->and($result?->is_on_demand)->toBeTrue();
 
     Mail::assertNothingSent();
 });

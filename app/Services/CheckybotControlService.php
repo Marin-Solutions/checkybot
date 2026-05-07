@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
@@ -10,6 +11,7 @@ use App\Models\User;
 use App\Support\ApiMonitorEvidenceRedactor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -184,14 +186,38 @@ class CheckybotControlService
             ->orderBy('package_name')
             ->get();
 
+        if ($checks->isEmpty()) {
+            return [
+                'project' => $this->projectIdentity($project),
+                'status' => 'no_enabled_checks',
+                'triggered_at' => now()->toISOString(),
+                'checks_queued' => 0,
+                'run_batch' => null,
+            ];
+        }
+
+        $batch = Bus::batch(
+            $checks->map(fn (MonitorApis $check): RunApiMonitorDiagnosticJob => new RunApiMonitorDiagnosticJob($check))
+        )
+            ->name("Control project run: {$project->package_key}")
+            ->allowFailures()
+            ->dispatch();
+
         return [
             'project' => $this->projectIdentity($project),
-            'status' => $checks->isEmpty() ? 'no_enabled_checks' : 'completed',
+            'status' => 'queued',
             'triggered_at' => now()->toISOString(),
-            'checks_run' => $checks->count(),
-            'results' => $checks
-                ->map(fn (MonitorApis $check): array => $this->runCheck($check))
-                ->all(),
+            'checks_queued' => $checks->count(),
+            'run_batch' => [
+                'id' => $batch->id,
+                'status' => 'pending',
+                'name' => $batch->name,
+                'total_jobs' => $batch->totalJobs,
+                'pending_jobs' => $batch->pendingJobs,
+                'failed_jobs' => $batch->failedJobs,
+                'created_at' => $batch->createdAt?->toISOString(),
+                'finished_at' => $batch->finishedAt?->toISOString(),
+            ],
         ];
     }
 

@@ -450,12 +450,13 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/runs",
      *     operationId="triggerControlProjectRun",
      *     tags={"control"},
-     *     summary="Run diagnostic checks for all enabled checks in a project",
+     *     summary="Queue diagnostic checks for all enabled checks in a project",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *
-     *     @OA\Response(response=200, description="Diagnostic project run completed"),
+     *     @OA\Response(response=202, description="Diagnostic project run queued"),
+     *     @OA\Response(response=200, description="No enabled checks to queue"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=404, description="Project not found")
      * )
