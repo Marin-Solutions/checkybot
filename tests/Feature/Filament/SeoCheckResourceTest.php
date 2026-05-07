@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\SeoCheckResource;
 use App\Filament\Resources\SeoCheckResource\Pages\ListSeoChecks;
 use App\Filament\Resources\SeoCheckResource\Pages\ViewSeoCheck;
 use App\Filament\Resources\WebsiteSeoCheckResource\Pages\ListWebsiteSeoChecks;
@@ -135,11 +136,15 @@ test('website seo checks list can start the first seo check for a website', func
         ->with($website->url)
         ->andReturn([$website->url]);
 
-    Livewire::test(ListWebsiteSeoChecks::class)
+    $component = Livewire::test(ListWebsiteSeoChecks::class)
         ->callTableAction('run_seo_check', $website)
         ->assertHasNoTableActionErrors();
 
     $seoCheck = SeoCheck::where('website_id', $website->id)->sole();
+
+    $component->assertRedirect(SeoCheckResource::getUrl('view', [
+        'record' => $seoCheck,
+    ]));
 
     expect($seoCheck->status)->toBe(SeoCheck::STATUS_PENDING)
         ->and($seoCheck->total_crawlable_urls)->toBe(1);
