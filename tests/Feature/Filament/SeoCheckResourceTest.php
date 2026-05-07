@@ -8,6 +8,7 @@ use App\Jobs\SeoHealthCheckJob;
 use App\Models\SeoCheck;
 use App\Models\SeoCrawlResult;
 use App\Models\SeoIssue;
+use App\Models\SeoSchedule;
 use App\Models\User;
 use App\Models\Website;
 use App\Policies\SeoCheckPolicy;
@@ -54,6 +55,134 @@ test('website seo checks list only includes websites owned by the current user',
     Livewire::test(ListWebsiteSeoChecks::class)
         ->assertCanSeeTableRecords([$ownWebsite])
         ->assertCanNotSeeTableRecords([$otherWebsite]);
+});
+
+test('website seo checks list exposes seo schedule automation columns', function () {
+    $user = $this->actingAsSuperAdmin();
+    $nextRunAt = now()->addDays(3)->setTime(9, 30);
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Scheduled SEO site',
+    ]);
+
+    SeoSchedule::factory()->weekly()->create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'is_active' => true,
+        'next_run_at' => $nextRunAt,
+    ]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->assertCanSeeTableRecords([$website])
+        ->assertTableColumnExists('seoSchedule.is_active')
+        ->assertTableColumnExists('seoSchedule.frequency')
+        ->assertTableColumnExists('seoSchedule.next_run_at')
+        ->assertSee('Enabled')
+        ->assertSee('Weekly');
+});
+
+test('website seo checks list filters by seo schedule state', function () {
+    $user = $this->actingAsSuperAdmin();
+    $enabled = Website::factory()->create(['created_by' => $user->id, 'name' => 'Enabled SEO automation']);
+    $disabled = Website::factory()->create(['created_by' => $user->id, 'name' => 'Disabled SEO automation']);
+    $notConfigured = Website::factory()->create(['created_by' => $user->id, 'name' => 'Manual SEO checks only']);
+
+    SeoSchedule::factory()->create([
+        'website_id' => $enabled->id,
+        'created_by' => $user->id,
+        'is_active' => true,
+    ]);
+    SeoSchedule::factory()->inactive()->create([
+        'website_id' => $disabled->id,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_state', 'enabled')
+        ->assertCanSeeTableRecords([$enabled])
+        ->assertCanNotSeeTableRecords([$disabled, $notConfigured]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_state', 'disabled')
+        ->assertCanSeeTableRecords([$disabled])
+        ->assertCanNotSeeTableRecords([$enabled, $notConfigured]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_state', 'not_configured')
+        ->assertCanSeeTableRecords([$notConfigured])
+        ->assertCanNotSeeTableRecords([$enabled, $disabled]);
+});
+
+test('website seo checks list filters by seo schedule frequency', function () {
+    $user = $this->actingAsSuperAdmin();
+    $daily = Website::factory()->create(['created_by' => $user->id, 'name' => 'Daily SEO site']);
+    $weekly = Website::factory()->create(['created_by' => $user->id, 'name' => 'Weekly SEO site']);
+    $monthly = Website::factory()->create(['created_by' => $user->id, 'name' => 'Monthly SEO site']);
+    $notConfigured = Website::factory()->create(['created_by' => $user->id, 'name' => 'Unscheduled SEO site']);
+
+    SeoSchedule::factory()->daily()->create(['website_id' => $daily->id, 'created_by' => $user->id]);
+    SeoSchedule::factory()->weekly()->create(['website_id' => $weekly->id, 'created_by' => $user->id]);
+    SeoSchedule::factory()->monthly()->create(['website_id' => $monthly->id, 'created_by' => $user->id]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_frequency', 'weekly')
+        ->assertCanSeeTableRecords([$weekly])
+        ->assertCanNotSeeTableRecords([$daily, $monthly, $notConfigured]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_frequency', 'not_configured')
+        ->assertCanSeeTableRecords([$notConfigured])
+        ->assertCanNotSeeTableRecords([$daily, $weekly, $monthly]);
+});
+
+test('website seo checks list filters by seo schedule next run window', function () {
+    $user = $this->actingAsSuperAdmin();
+    $overdue = Website::factory()->create(['created_by' => $user->id, 'name' => 'Overdue SEO site']);
+    $soon = Website::factory()->create(['created_by' => $user->id, 'name' => 'Soon SEO site']);
+    $later = Website::factory()->create(['created_by' => $user->id, 'name' => 'Later SEO site']);
+    $inactiveDue = Website::factory()->create(['created_by' => $user->id, 'name' => 'Inactive due SEO site']);
+    $notScheduled = Website::factory()->create(['created_by' => $user->id, 'name' => 'No next run SEO site']);
+
+    SeoSchedule::factory()->create([
+        'website_id' => $overdue->id,
+        'created_by' => $user->id,
+        'next_run_at' => now()->subHour(),
+    ]);
+    SeoSchedule::factory()->create([
+        'website_id' => $soon->id,
+        'created_by' => $user->id,
+        'next_run_at' => now()->addHours(6),
+    ]);
+    SeoSchedule::factory()->create([
+        'website_id' => $later->id,
+        'created_by' => $user->id,
+        'next_run_at' => now()->addDays(10),
+    ]);
+    SeoSchedule::factory()->inactive()->create([
+        'website_id' => $inactiveDue->id,
+        'created_by' => $user->id,
+        'next_run_at' => now()->subHour(),
+    ]);
+    SeoSchedule::factory()->create([
+        'website_id' => $notScheduled->id,
+        'created_by' => $user->id,
+        'next_run_at' => null,
+    ]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_next_run', 'overdue')
+        ->assertCanSeeTableRecords([$overdue])
+        ->assertCanNotSeeTableRecords([$soon, $later, $inactiveDue, $notScheduled]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_next_run', 'next_24_hours')
+        ->assertCanSeeTableRecords([$soon])
+        ->assertCanNotSeeTableRecords([$overdue, $later, $inactiveDue, $notScheduled]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('seo_schedule_next_run', 'not_scheduled')
+        ->assertCanSeeTableRecords([$notScheduled])
+        ->assertCanNotSeeTableRecords([$overdue, $soon, $later, $inactiveDue]);
 });
 
 test('seo check list only includes checks for websites owned by the current user', function () {
