@@ -27,6 +27,26 @@ test('ploi account list only shows accounts created by the current user', functi
         ->assertDontSee('Other Team Ploi');
 });
 
+test('ploi account list uses duplicate label space for verification context', function () {
+    $this->createResourcePermissions('PloiAccounts');
+
+    $user = $this->actingAsAdmin();
+    $user->givePermissionTo(['ViewAny:PloiAccounts', 'View:PloiAccounts']);
+
+    $account = PloiAccounts::factory()->unverified()->create([
+        'created_by' => $user->id,
+        'label' => 'Production Ploi',
+        'error_message' => 'Invalid API token.',
+    ]);
+
+    Livewire::test(ListPloiAccounts::class)
+        ->assertCanSeeTableRecords([$account])
+        ->assertTableColumnExists('label')
+        ->assertTableColumnExists('error_message')
+        ->assertSee('Production Ploi')
+        ->assertSee('Invalid API token.');
+});
+
 test('direct ploi account view route cannot open another users account', function () {
     $this->createResourcePermissions('PloiAccounts');
 
