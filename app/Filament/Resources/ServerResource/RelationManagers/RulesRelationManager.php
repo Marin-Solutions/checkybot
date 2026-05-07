@@ -89,8 +89,10 @@ class RulesRelationManager extends RelationManager
                     ->state(fn ($record): string => $this->ruleState($record))
                     ->color(fn (string $state): string => match ($state) {
                         'Triggered' => 'danger',
+                        'Reporter stale' => 'warning',
                         'Recovered' => 'success',
                         'Inactive' => 'gray',
+                        'Awaiting data' => 'gray',
                         default => 'info',
                     })
                     ->description(fn ($record): ?string => $this->stateDescription($record)),
@@ -111,7 +113,7 @@ class RulesRelationManager extends RelationManager
                     ->label('Last value')
                     ->suffix('%')
                     ->placeholder('Not evaluated')
-                    ->description(fn ($record): ?string => $record->last_evaluated_at?->diffForHumans())
+                    ->description(fn ($record): ?string => $this->lastValueDescription($record))
                     ->sortable(),
                 Tables\Columns\TextColumn::make('channel')
                     ->badge()
@@ -165,6 +167,14 @@ class RulesRelationManager extends RelationManager
             return 'Triggered';
         }
 
+        if ($record->last_evaluation_status === 'skipped_stale_reporter') {
+            return 'Reporter stale';
+        }
+
+        if ($record->last_evaluation_status === 'skipped_missing_reporter') {
+            return 'Awaiting data';
+        }
+
         if ($record->recovered_at instanceof Carbon) {
             return 'Recovered';
         }
@@ -174,11 +184,36 @@ class RulesRelationManager extends RelationManager
 
     private function stateDescription($record): ?string
     {
+        if (in_array($record->last_evaluation_status, ['skipped_missing_reporter', 'skipped_stale_reporter'], true)) {
+            if ($record->is_triggered) {
+                return $record->last_evaluation_status === 'skipped_missing_reporter'
+                    ? 'Reporter data is missing; alert remains triggered until fresh data confirms recovery.'
+                    : 'Reporter data is stale; alert remains triggered until a fresh sample confirms recovery.';
+            }
+
+            return $record->last_evaluation_reason;
+        }
+
         if ($record->last_evaluated_value === null) {
             return null;
         }
 
         return 'Last checked '.$this->formatMetricValue($record->last_evaluated_value).' '.$record->operator.' '.$this->formatMetricValue($record->value);
+    }
+
+    private function lastValueDescription($record): ?string
+    {
+        if ($record->last_evaluation_status === 'skipped_stale_reporter') {
+            return $record->last_reported_at instanceof Carbon
+                ? 'Last reporter sample '.$record->last_reported_at->diffForHumans()
+                : 'Reporter data is stale';
+        }
+
+        if ($record->last_evaluation_status === 'skipped_missing_reporter') {
+            return 'No reporter samples received';
+        }
+
+        return $record->last_evaluated_at?->diffForHumans();
     }
 
     private function formatMetricValue(float $value): string

@@ -13,6 +13,8 @@ class CheckServerRules extends Command
 {
     use ChecksWebhookResponses;
 
+    private const REPORTER_FRESHNESS_MINUTES = 5;
+
     protected $signature = 'server:check-rules';
 
     protected $description = 'Check server monitoring rules and send notifications if conditions are met';
@@ -32,7 +34,26 @@ class CheckServerRules extends Command
                     ->first();
 
                 if (! $latestInfo) {
-                    $this->warn("No information history for server {$rule->server->name}");
+                    $this->skipRuleEvaluation(
+                        $rule,
+                        'skipped_missing_reporter',
+                        'No reporter data has been received for this server.',
+                    );
+
+                    $this->warn("Skipped server rule for {$rule->server->name}: no reporter data has been received");
+
+                    continue;
+                }
+
+                if ($latestInfo->created_at->lt(now()->subMinutes(self::REPORTER_FRESHNESS_MINUTES))) {
+                    $this->skipRuleEvaluation(
+                        $rule,
+                        'skipped_stale_reporter',
+                        'Latest reporter data is stale; waiting for a fresh sample before evaluating this rule.',
+                        $latestInfo->created_at,
+                    );
+
+                    $this->warn("Skipped server rule for {$rule->server->name}: latest reporter data is stale from {$latestInfo->created_at->toDateTimeString()}");
 
                     continue;
                 }
@@ -50,6 +71,9 @@ class CheckServerRules extends Command
                 $stateUpdates = [
                     'last_evaluated_value' => $currentValue,
                     'last_evaluated_at' => $evaluatedAt,
+                    'last_evaluation_status' => 'evaluated',
+                    'last_evaluation_reason' => null,
+                    'last_reported_at' => $latestInfo->created_at,
                 ];
 
                 if ($conditionIsMet && ! $rule->is_triggered) {
@@ -82,6 +106,17 @@ class CheckServerRules extends Command
         }
 
         return Command::SUCCESS;
+    }
+
+    private function skipRuleEvaluation(ServerRule $rule, string $status, string $reason, $reportedAt = null): void
+    {
+        $rule->forceFill([
+            'last_evaluated_value' => null,
+            'last_evaluated_at' => now(),
+            'last_evaluation_status' => $status,
+            'last_evaluation_reason' => $reason,
+            'last_reported_at' => $reportedAt,
+        ])->save();
     }
 
     private function getCurrentValue($latestInfo, $metric, Server $server)
