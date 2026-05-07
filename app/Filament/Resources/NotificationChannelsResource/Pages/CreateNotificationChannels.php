@@ -20,7 +20,7 @@ class CreateNotificationChannels extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $data['created_by'] = auth()->id();
-        $data['request_body'] = $data['method'] === WebhookHttpMethod::GET->value ? '' : $data['request_body'];
+        $data['request_body'] = $data['method'] === WebhookHttpMethod::GET->value ? '' : ($data['request_body'] ?? []);
 
         return $data;
     }

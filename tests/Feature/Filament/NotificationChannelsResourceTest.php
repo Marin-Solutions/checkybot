@@ -1,10 +1,36 @@
 <?php
 
+use App\Filament\Resources\NotificationChannelsResource\Pages\CreateNotificationChannels;
 use App\Filament\Resources\NotificationChannelsResource\Pages\ListNotificationChannels;
 use App\Models\NotificationChannels;
 use App\Models\User;
 use App\Policies\NotificationChannelsPolicy;
 use Livewire\Livewire;
+
+test('super admin can create a post webhook channel with no request body', function () {
+    $this->createResourcePermissions('NotificationChannels');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationChannels::class)
+        ->fillForm([
+            'title' => 'Incident webhook',
+            'method' => 'POST',
+            'url' => 'https://example.com/webhook?text={message}&description={description}',
+            'request_body' => null,
+            'description' => 'Receives incident alerts.',
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $channel = NotificationChannels::query()->where('title', 'Incident webhook')->firstOrFail();
+
+    expect($channel->created_by)->toBe($user->id)
+        ->and($channel->method)->toBe('POST')
+        ->and($channel->request_body)->toBe([]);
+});
 
 test('webhook channel list only shows channels created by the current user', function () {
     $user = $this->actingAsSuperAdmin();
