@@ -501,7 +501,7 @@ class WebsiteResource extends Resource
                     ->requiresConfirmation()
                     ->modalHeading('Start SEO Health Check')
                     ->modalDescription('This will start a comprehensive SEO health check for this website. The process may take several minutes depending on the site size. The crawler will respect robots.txt and use sitemap.xml if available.')
-                    ->action(function (Website $record) {
+                    ->action(function (Website $record, \Filament\Actions\Action $action) {
                         try {
                             $seoService = app(SeoHealthCheckService::class);
                             $seoCheck = $seoService->startManualCheck($record);
@@ -511,6 +511,10 @@ class WebsiteResource extends Resource
                                 ->body("SEO health check has been started for {$record->name}. You can monitor progress in real-time.")
                                 ->success()
                                 ->send();
+
+                            $action->successRedirectUrl(SeoCheckResource::getUrl('view', [
+                                'record' => $seoCheck,
+                            ]));
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->title('Error Starting SEO Check')
