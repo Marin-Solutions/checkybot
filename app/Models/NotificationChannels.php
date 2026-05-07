@@ -34,7 +34,7 @@ class NotificationChannels extends Model
         $method = strtoupper($data['method']);
         $url = $data['url'];
         $responseData = [];
-        $requestBody = @$data['request_body'] ?? [];
+        $requestBody = self::normalizeRequestBody($data['request_body'] ?? null);
 
         try {
             if (str_contains($url, '{message}')) {
@@ -44,7 +44,7 @@ class NotificationChannels extends Model
                 $url = str_replace('{description}', $data['description'] ?? '', $url);
             }
 
-            if ($method === WebhookHttpMethod::POST->value && count($data['request_body'])) {
+            if ($method === WebhookHttpMethod::POST->value && count($requestBody)) {
                 foreach ($requestBody as $key => $value) {
                     if ($value === '{message}') {
                         $requestBody[$key] = $messageTest;
@@ -81,7 +81,7 @@ class NotificationChannels extends Model
         $method = $this->method;
         $url = $this->url;
         $responseData = ['url' => $url];
-        $requestBody = $this->request_body;
+        $requestBody = self::normalizeRequestBody($this->request_body);
 
         try {
             Log::info('Preparing webhook notification', [
@@ -267,5 +267,10 @@ class NotificationChannels extends Model
         }
 
         return self::REDACTED_LOG_VALUE;
+    }
+
+    private static function normalizeRequestBody(mixed $requestBody): array
+    {
+        return is_array($requestBody) ? $requestBody : [];
     }
 }

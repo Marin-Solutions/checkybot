@@ -52,7 +52,9 @@ class NotificationChannelsResource extends Resource
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $set, callable $get) {
                         if ($state === WebhookHttpMethod::POST->value) {
-                            if (count($get('request_body'))) {
+                            $requestBody = $get('request_body');
+
+                            if (is_array($requestBody) && count($requestBody)) {
                                 $set('request_body', []);
                             }
                         }
@@ -89,13 +91,15 @@ class NotificationChannelsResource extends Resource
                         fn (\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
 
                             if ($get('is_post_method')) {
+                                $requestBodyValues = array_values(is_array($value) ? $value : []);
+                                $url = (string) $get('url');
 
                                 // Check if "message" placeholder is set is URL or in the request body
-                                if (! str_contains($get('url'), '{message}') && ! in_array('{message}', array_values($value))) {
+                                if (! str_contains($url, '{message}') && ! in_array('{message}', $requestBodyValues, true)) {
                                     $fail('The request body must contain key for {message} value or you can set the placeholder for it in the URL.');
                                 }
                                 // Check if "description" placeholder is set is URL or in the request body
-                                if (! str_contains($get('url'), '{description}') && ! in_array('{description}', array_values($value))) {
+                                if (! str_contains($url, '{description}') && ! in_array('{description}', $requestBodyValues, true)) {
                                     $fail('The request body must contain key for {description} value or you can set the placeholder for it in the URL.');
                                 }
                             }

@@ -72,6 +72,22 @@ test('test webhook sends post request', function () {
     expect($result['body'])->toBe(['success' => true]);
 });
 
+test('test webhook accepts a null post request body', function () {
+    Http::fake(['*' => Http::response(['success' => true], 200)]);
+
+    $result = NotificationChannels::testWebhook([
+        'method' => 'post',
+        'url' => 'https://example.com/webhook?text={message}&description={description}',
+        'description' => 'Test webhook',
+        'request_body' => null,
+    ]);
+
+    expect($result['code'])->toBe(200);
+    expect($result['body'])->toBe(['success' => true]);
+
+    Http::assertSent(fn ($request): bool => $request->data() === []);
+});
+
 test('test webhook replaces message placeholder in url', function () {
     Http::fake(['*' => Http::response([], 200)]);
 
@@ -137,6 +153,26 @@ test('send webhook notification sends request', function () {
 
     expect($result['code'])->toBe(200);
     expect($result['body'])->toBe(['result' => 'sent']);
+});
+
+test('send webhook notification accepts a null post request body', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/webhook?text={message}&description={description}',
+        'method' => 'POST',
+        'request_body' => null,
+    ]);
+
+    $result = $channel->sendWebhookNotification([
+        'message' => 'Test notification',
+        'description' => 'Test description',
+    ]);
+
+    expect($result['code'])->toBe(200);
+    expect($result['body'])->toBe(['result' => 'sent']);
+
+    Http::assertSent(fn ($request): bool => $request->data() === []);
 });
 
 test('send webhook notification replaces placeholders', function () {

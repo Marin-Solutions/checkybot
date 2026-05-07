@@ -11,6 +11,10 @@ trait NotificationChannels
     {
         $validatedData = $form->getState();
         if ($form->validate()) {
+            $validatedData['request_body'] = is_array($validatedData['request_body'] ?? null)
+                ? $validatedData['request_body']
+                : [];
+
             $callback = \App\Models\NotificationChannels::testWebhook($validatedData);
             $code = (int) ($callback['code'] ?? 0);
 
