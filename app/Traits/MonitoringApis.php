@@ -7,9 +7,10 @@ use Filament\Actions\Action;
 
 trait MonitoringApis
 {
-    public function callDoMonitoring($form): void
+    public function callDoMonitoring($form, ?int $monitorId = null): void
     {
         $validatedData = $form->getState();
+        $validatedData['id'] = $monitorId;
         $validatedData['request_body'] = $validatedData['request_body'] ?? null;
 
         if ($form->validate()) {

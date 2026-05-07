@@ -34,7 +34,7 @@ class EditMonitorApis extends EditRecord
 
     public function doMonitoring(): void
     {
-        $this->callDoMonitoring($this->form);
+        $this->callDoMonitoring($this->form, $this->record->id);
     }
 
     protected function mutateFormDataBeforeSave(array $data): array
