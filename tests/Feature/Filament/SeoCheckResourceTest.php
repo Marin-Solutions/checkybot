@@ -485,6 +485,33 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
         ]);
 });
 
+test('seo issue table sorts by severity priority by default', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+    ]);
+    $seoCheck = SeoCheck::factory()->completed()->create([
+        'website_id' => $website->id,
+    ]);
+
+    $notice = SeoIssue::factory()->notice()->create([
+        'seo_check_id' => $seoCheck->id,
+        'title' => 'Notice issue',
+    ]);
+    $warning = SeoIssue::factory()->warning()->create([
+        'seo_check_id' => $seoCheck->id,
+        'title' => 'Warning issue',
+    ]);
+    $error = SeoIssue::factory()->error()->create([
+        'seo_check_id' => $seoCheck->id,
+        'title' => 'Error issue',
+    ]);
+
+    Livewire::test(SeoIssuesTableWidget::class, ['recordId' => $seoCheck->id])
+        ->assertCanSeeTableRecords([$error, $warning, $notice], inOrder: true);
+});
+
 test('seo issue details keep affected url roles when values match', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([

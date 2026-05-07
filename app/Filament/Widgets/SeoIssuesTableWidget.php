@@ -12,6 +12,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\On;
 
 class SeoIssuesTableWidget extends BaseWidget
@@ -86,7 +87,14 @@ class SeoIssuesTableWidget extends BaseWidget
                     ->badge()
                     ->color(fn (SeoIssue $record): string => $record->getSeverityColor())
                     ->formatStateUsing(fn ($state): string => strtoupper($state->value))
-                    ->sortable(),
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderByRaw(<<<SQL
+                        CASE severity
+                            WHEN 'error' THEN 1
+                            WHEN 'warning' THEN 2
+                            WHEN 'notice' THEN 3
+                            ELSE 4
+                        END {$direction}
+                    SQL)),
                 TextColumn::make('type')
                     ->label('Issue Type')
                     ->badge()
