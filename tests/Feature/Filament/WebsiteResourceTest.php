@@ -2,7 +2,6 @@
 
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
-use App\Enums\RunSource;
 use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
@@ -11,6 +10,7 @@ use App\Filament\Resources\WebsiteResource\Pages\ViewWebsite;
 use App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelationManager;
+use App\Jobs\LogUptimeSslJob;
 use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
@@ -18,12 +18,10 @@ use App\Models\OutboundLink;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
-use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
-use Mockery\MockInterface;
 use Spatie\Dns\Dns;
 
 afterEach(function () {
@@ -984,8 +982,9 @@ test('view page explains invalid package interval for expected stale threshold',
         ->assertSee('Cannot parse package interval xyz');
 });
 
-test('view page run now action persists a real heartbeat and surfaces evidence', function () {
+test('view page run now action queues a website diagnostic without running heartbeat inline', function () {
     $user = $this->actingAsSuperAdmin();
+    Queue::fake();
 
     $website = Website::factory()->create([
         'created_by' => $user->id,
@@ -996,29 +995,27 @@ test('view page run now action persists a real heartbeat and surfaces evidence',
         'last_heartbeat_at' => null,
     ]);
 
-    Http::fake([
-        'https://example.com' => Http::response('OK', 200),
-    ]);
+    Http::preventStrayRequests();
 
     expect($website->logHistory()->count())->toBe(0);
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->callAction('run_now')
-        ->assertNotified('On-demand check succeeded');
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($website) && $job->onDemand === true);
 
     $website->refresh();
 
-    expect($website->logHistory()->count())->toBe(1)
-        ->and($website->logHistory()->first()->status)->toBe('healthy')
-        ->and($website->logHistory()->first()->run_source)->toBe(RunSource::OnDemand)
-        ->and($website->logHistory()->first()->is_on_demand)->toBeTrue()
+    expect($website->logHistory()->count())->toBe(0)
         ->and($website->current_status)->toBeNull()
         ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->status_summary)->toBeNull();
 });
 
-test('view page run now action surfaces failure when target returns server error', function () {
+test('view page run now action queues failure-prone websites without moving live status', function () {
     $user = $this->actingAsSuperAdmin();
+    Queue::fake();
 
     $website = Website::factory()->create([
         'created_by' => $user->id,
@@ -1028,29 +1025,24 @@ test('view page run now action surfaces failure when target returns server error
         'status_summary' => 'Heartbeat received successfully.',
     ]);
 
-    Http::fake([
-        'https://broken.example' => Http::response('boom', 500),
-    ]);
-
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->callAction('run_now')
-        ->assertNotified('On-demand check failed');
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($website) && $job->onDemand === true);
 
     $website->refresh();
 
-    expect($website->logHistory()->count())->toBe(1)
-        ->and($website->logHistory()->first()->http_status_code)->toBe(500)
-        ->and($website->logHistory()->first()->status)->toBe('danger')
-        ->and($website->logHistory()->first()->run_source)->toBe(RunSource::OnDemand)
-        ->and($website->logHistory()->first()->is_on_demand)->toBeTrue()
+    expect($website->logHistory()->count())->toBe(0)
         ->and($website->current_status)->toBe('healthy')
         ->and($website->status_summary)->toBe('Heartbeat received successfully.');
 });
 
-test('view page run now action records ssl-only diagnostic evidence', function () {
+test('view page run now action queues ssl-only diagnostic evidence', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
     $user = $this->actingAsSuperAdmin();
+    Queue::fake();
 
     $website = Website::factory()->create([
         'created_by' => $user->id,
@@ -1062,41 +1054,16 @@ test('view page run now action records ssl-only diagnostic evidence', function (
         'last_heartbeat_at' => null,
     ]);
 
-    Http::preventStrayRequests();
-
-    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
-        $mock->shouldReceive('extractHost')
-            ->once()
-            ->with('https://example.com')
-            ->andReturn('example.com');
-
-        $mock->shouldReceive('extractPort')
-            ->once()
-            ->with('https://example.com')
-            ->andReturn(443);
-
-        $mock->shouldReceive('getExpirationDateForHost')
-            ->once()
-            ->with('example.com', 443)
-            ->andReturn(Carbon::parse('2026-05-24 09:00:00'));
-    });
-
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertActionVisible('run_now')
         ->callAction('run_now')
-        ->assertNotified('On-demand check succeeded');
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($website) && $job->onDemand === true);
 
     $website->refresh();
-    $history = $website->logHistory()->first();
 
-    expect($website->logHistory()->count())->toBe(1)
-        ->and($history->status)->toBe('healthy')
-        ->and($history->summary)->toBe('SSL certificate is valid for 30 day(s).')
-        ->and($history->ssl_expiry_date?->isSameDay('2026-05-24'))->toBeTrue()
-        ->and($history->http_status_code)->toBeNull()
-        ->and($history->speed)->toBeNull()
-        ->and($history->run_source)->toBe(RunSource::OnDemand)
-        ->and($history->is_on_demand)->toBeTrue()
+    expect($website->logHistory()->count())->toBe(0)
         ->and($website->current_status)->toBeNull()
         ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->status_summary)->toBeNull();
@@ -1131,6 +1098,7 @@ test('view page hides run now action for users without update permission', funct
 
 test('view page run now action does not fire user-facing health alerts and preserves the live status baseline', function () {
     $user = $this->actingAsSuperAdmin();
+    Queue::fake();
 
     $website = Website::factory()->create([
         'created_by' => $user->id,
@@ -1142,23 +1110,19 @@ test('view page run now action does not fire user-facing health alerts and prese
 
     $heartbeatBefore = $website->last_heartbeat_at;
 
-    Http::fake([
-        'https://broken.example' => Http::response('boom', 500),
-    ]);
-
     $notificationService = Mockery::mock(\App\Services\HealthEventNotificationService::class);
     $notificationService->shouldNotReceive('notifyWebsite');
     $this->app->instance(\App\Services\HealthEventNotificationService::class, $notificationService);
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->callAction('run_now')
-        ->assertNotified('On-demand check failed');
+        ->assertNotified('Diagnostic queued');
 
     $website->refresh();
 
     expect($website->current_status)->toBe('healthy')
         ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
-        ->and($website->logHistory()->latest('id')->first()->status)->toBe('danger');
+        ->and($website->logHistory()->count())->toBe(0);
 });
 
 test('view page renders recent failures when non-healthy logs exist', function () {

@@ -8,10 +8,9 @@ use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Support\HealthStatusFilter;
+use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
-use App\Services\ApiMonitorExecutionService;
 use App\Services\IntervalParser;
-use App\Support\ApiMonitorRunNotification;
 use App\Support\PackageCheckTableEvidence;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -334,31 +333,33 @@ class MonitorApisResource extends Resource
                     ->requiresConfirmation()
                     ->modalIcon('heroicon-o-bolt')
                     ->modalHeading('Run API monitor now')
-                    ->modalDescription('Checkybot will execute a real heartbeat against this endpoint immediately and append the result to its run history. The monitor\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalDescription('Checkybot will queue a real heartbeat against this endpoint and append the result to its diagnostic history when it completes. The monitor\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                     ->visible(fn (MonitorApis $record): bool => (bool) $record->is_enabled)
                     ->action(function (MonitorApis $record): void {
                         try {
-                            $outcome = app(ApiMonitorExecutionService::class)->execute($record, onDemand: true);
+                            RunApiMonitorDiagnosticJob::dispatch($record->withoutRelations());
                         } catch (\Throwable $e) {
-                            Log::error('Run Now API monitor check failed from table action', [
+                            Log::error('Run Now API monitor diagnostic dispatch failed from table action', [
                                 'monitor_api_id' => $record->id,
                                 'exception' => $e,
                             ]);
 
                             Notification::make()
-                                ->title('Run failed')
-                                ->body('Checkybot could not complete the on-demand check. Check the application logs for details.')
+                                ->title('Diagnostic could not be queued')
+                                ->body('Checkybot could not queue the on-demand check. Check the application logs for details.')
                                 ->danger()
                                 ->send();
 
                             return;
                         }
 
-                        $record->load(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult']);
-
-                        ApiMonitorRunNotification::send($outcome);
+                        Notification::make()
+                            ->title('Diagnostic queued')
+                            ->body('Checkybot will run this API monitor in the background and add the evidence to diagnostic history.')
+                            ->success()
+                            ->send();
                     }),
             ])
             ->bulkActions([

@@ -24,15 +24,19 @@ test('scheduled uptime jobs are unique per website', function () {
         ->and($job->uniqueId())->toBe("website-uptime-ssl:{$website->id}:scheduled");
 });
 
-test('on-demand uptime jobs use a separate unique key', function () {
+test('on-demand uptime jobs use a per-dispatch unique key', function () {
     $website = Website::factory()->create();
 
     $scheduledJob = new LogUptimeSslJob($website);
-    $onDemandJob = new LogUptimeSslJob($website, onDemand: true);
+    $firstOnDemandJob = new LogUptimeSslJob($website, onDemand: true, diagnosticRunId: 'first-run');
+    $secondOnDemandJob = new LogUptimeSslJob($website, onDemand: true, diagnosticRunId: 'second-run');
 
-    expect($onDemandJob->uniqueId())
-        ->toBe("website-uptime-ssl:{$website->id}:".RunSource::OnDemand->value)
-        ->not->toBe($scheduledJob->uniqueId());
+    expect($firstOnDemandJob->uniqueId())
+        ->toBe("website-uptime-ssl:{$website->id}:".RunSource::OnDemand->value.':first-run')
+        ->not->toBe($scheduledJob->uniqueId())
+        ->and($secondOnDemandJob->uniqueId())
+        ->toBe("website-uptime-ssl:{$website->id}:".RunSource::OnDemand->value.':second-run')
+        ->not->toBe($firstOnDemandJob->uniqueId());
 });
 
 test('uptime job unique locks extend beyond the website interval', function () {
