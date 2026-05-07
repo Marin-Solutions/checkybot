@@ -186,7 +186,9 @@ class RulesRelationManager extends RelationManager
     {
         if (in_array($record->last_evaluation_status, ['skipped_missing_reporter', 'skipped_stale_reporter'], true)) {
             if ($record->is_triggered) {
-                return 'Reporter data is stale; alert remains triggered until a fresh sample confirms recovery.';
+                return $record->last_evaluation_status === 'skipped_missing_reporter'
+                    ? 'Reporter data is missing; alert remains triggered until fresh data confirms recovery.'
+                    : 'Reporter data is stale; alert remains triggered until a fresh sample confirms recovery.';
             }
 
             return $record->last_evaluation_reason;

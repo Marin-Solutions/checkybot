@@ -105,6 +105,30 @@ test('server rule table keeps triggered badge when active alert has stale report
         ->assertSee('Not evaluated');
 });
 
+test('server rule table keeps triggered badge when active alert has missing reporter evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $server = Server::factory()->create(['created_by' => $user->id]);
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'is_triggered' => true,
+        'triggered_at' => now()->subMinutes(10),
+        'last_evaluation_status' => 'skipped_missing_reporter',
+        'last_evaluation_reason' => 'No reporter data has been received for this server.',
+        'last_evaluated_at' => now(),
+    ]);
+
+    Livewire::test(RulesRelationManager::class, [
+        'ownerRecord' => $server,
+        'pageClass' => EditServer::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$rule])
+        ->assertSee('Triggered')
+        ->assertSee('Reporter data is missing; alert remains triggered until fresh data confirms recovery.')
+        ->assertSee('Not evaluated');
+});
+
 test('server rule table renders missing reporter evidence', function () {
     $user = $this->actingAsSuperAdmin();
     $server = Server::factory()->create(['created_by' => $user->id]);
