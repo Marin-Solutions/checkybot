@@ -647,6 +647,44 @@ test('check api action uses degraded title for expected status mismatches withou
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->url() === 'https://example.com/created-health');
 });
 
+test('edit check api action evaluates saved assertions for the current monitor', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Http::fake([
+        'https://example.com/*' => Http::response(['data' => ['status' => 'degraded']], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Saved Assertion API',
+        'url' => 'https://example.com/saved-assertion-health',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'data_path' => 'data.status',
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'ok',
+        'is_active' => true,
+    ]);
+
+    Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
+        ->fillForm([
+            'package_interval' => '5m',
+        ])
+        ->call('doMonitoring')
+        ->assertHasNoFormErrors()
+        ->assertNotified('Some API assertions failed');
+
+    Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/saved-assertion-health');
+});
+
 test('view page run now action persists a real run and surfaces evidence', function () {
     $this->createResourcePermissions('MonitorApis');
 
