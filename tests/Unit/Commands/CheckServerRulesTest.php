@@ -48,6 +48,105 @@ test('command skips inactive rules', function () {
         ->assertSuccessful();
 });
 
+test('command records skipped evidence when server reporter data is missing', function () {
+    $server = Server::factory()->create();
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Skipped server rule for {$server->name}: no reporter data has been received")
+        ->assertSuccessful();
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeFalse();
+    expect($rule->last_evaluated_value)->toBeNull();
+    expect($rule->last_evaluated_at)->not->toBeNull();
+    expect($rule->last_evaluation_status)->toBe('skipped_missing_reporter');
+    expect($rule->last_evaluation_reason)->toBe('No reporter data has been received for this server.');
+    expect($rule->last_reported_at)->toBeNull();
+});
+
+test('command skips stale server reporter data without triggering alerts', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
+        'url' => 'https://example.com/server-rule-webhook',
+    ]);
+    $reportedAt = now()->subMinutes(6);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+        'created_at' => $reportedAt,
+    ]);
+
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $channel->id,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Skipped server rule for {$server->name}: latest reporter data is stale from {$reportedAt->toDateTimeString()}")
+        ->assertSuccessful();
+
+    Http::assertNothingSent();
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeFalse();
+    expect($rule->triggered_at)->toBeNull();
+    expect($rule->last_evaluated_value)->toBeNull();
+    expect($rule->last_evaluated_at)->not->toBeNull();
+    expect($rule->last_evaluation_status)->toBe('skipped_stale_reporter');
+    expect($rule->last_evaluation_reason)->toBe('Latest reporter data is stale; waiting for a fresh sample before evaluating this rule.');
+    expect($rule->last_reported_at->toDateTimeString())->toBe($reportedAt->toDateTimeString());
+});
+
+test('command skips stale server reporter data without recovering triggered alerts', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $reportedAt = now()->subMinutes(6);
+    $triggeredAt = now()->subMinutes(10);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 20,
+        'created_at' => $reportedAt,
+    ]);
+
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'is_triggered' => true,
+        'triggered_at' => $triggeredAt,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->assertSuccessful();
+
+    Http::assertNothingSent();
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->triggered_at->toDateTimeString())->toBe($triggeredAt->toDateTimeString());
+    expect($rule->recovered_at)->toBeNull();
+    expect($rule->last_evaluated_value)->toBeNull();
+    expect($rule->last_evaluation_status)->toBe('skipped_stale_reporter');
+    expect($rule->last_reported_at->toDateTimeString())->toBe($reportedAt->toDateTimeString());
+});
+
 test('command evaluates cpu usage rule', function () {
     $server = Server::factory()->create(['cpu_cores' => 4]);
 

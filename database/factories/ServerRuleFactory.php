@@ -24,6 +24,9 @@ class ServerRuleFactory extends Factory
             'recovered_at' => null,
             'last_evaluated_value' => null,
             'last_evaluated_at' => null,
+            'last_evaluation_status' => null,
+            'last_evaluation_reason' => null,
+            'last_reported_at' => null,
         ];
     }
 

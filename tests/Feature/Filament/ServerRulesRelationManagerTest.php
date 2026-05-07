@@ -56,3 +56,48 @@ test('server rule table renders trigger evidence', function () {
         ->assertSee('95%')
         ->assertSee('Not recovered');
 });
+
+test('server rule table renders skipped stale reporter evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $server = Server::factory()->create(['created_by' => $user->id]);
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'last_evaluation_status' => 'skipped_stale_reporter',
+        'last_evaluation_reason' => 'Latest reporter data is stale; waiting for a fresh sample before evaluating this rule.',
+        'last_reported_at' => now()->subMinutes(7),
+        'last_evaluated_at' => now(),
+    ]);
+
+    Livewire::test(RulesRelationManager::class, [
+        'ownerRecord' => $server,
+        'pageClass' => EditServer::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$rule])
+        ->assertSee('Reporter stale')
+        ->assertSee('Latest reporter data is stale; waiting for a fresh sample before evaluating this rule.')
+        ->assertSee('Not evaluated');
+});
+
+test('server rule table renders missing reporter evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $server = Server::factory()->create(['created_by' => $user->id]);
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'last_evaluation_status' => 'skipped_missing_reporter',
+        'last_evaluation_reason' => 'No reporter data has been received for this server.',
+        'last_evaluated_at' => now(),
+    ]);
+
+    Livewire::test(RulesRelationManager::class, [
+        'ownerRecord' => $server,
+        'pageClass' => EditServer::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$rule])
+        ->assertSee('Awaiting data')
+        ->assertSee('No reporter data has been received for this server.')
+        ->assertSee('Not evaluated');
+});
