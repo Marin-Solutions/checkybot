@@ -54,6 +54,17 @@ test('backup script uploads ftp backups over ftp', function () {
         ->not->toContain('sftp://backup.example.com');
 });
 
+test('backup script reports backup id in history payload', function () {
+    Server::factory()->create();
+
+    $backup = backupWithRemoteStorage('ftp');
+    $script = $backup->backupScript();
+
+    expect($backup->server_id)->not->toBe($backup->id)
+        ->and($script)->toContain("\\\"bi\\\": {$backup->id}")
+        ->and($script)->not->toContain("\\\"bi\\\": {$backup->server_id}");
+});
+
 test('backup script uploads sftp backups over sftp', function () {
     $script = backupWithRemoteStorage('sftp')->backupScript();
 
