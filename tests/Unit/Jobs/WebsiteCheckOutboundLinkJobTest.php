@@ -30,15 +30,25 @@ test('outbound link jobs are unique per website', function () {
 
     expect($job)
         ->toBeInstanceOf(ShouldBeUnique::class)
-        ->and($job->uniqueId())->toBe("website-outbound-link:{$website->id}");
+        ->and($job->uniqueId())->toBe("website-outbound-link:scheduled:{$website->id}");
 });
 
-test('outbound link job unique lock covers the daily scan window', function () {
+test('scheduled outbound link job unique lock covers the daily scan window', function () {
     $website = Website::factory()->create();
 
-    $job = new WebsiteCheckOutboundLinkJob($website);
+    $job = WebsiteCheckOutboundLinkJob::scheduled($website);
 
-    expect($job->uniqueFor())->toBe(86400);
+    expect($job->uniqueId())->toBe("website-outbound-link:scheduled:{$website->id}")
+        ->and($job->uniqueFor())->toBe(86400);
+});
+
+test('on demand outbound link job uses a separate short unique lock', function () {
+    $website = Website::factory()->create();
+
+    $job = WebsiteCheckOutboundLinkJob::onDemand($website);
+
+    expect($job->uniqueId())->toBe("website-outbound-link:on-demand:{$website->id}")
+        ->and($job->uniqueFor())->toBe(300);
 });
 
 test('job can be dispatched to queue', function () {

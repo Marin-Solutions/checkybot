@@ -14,19 +14,38 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Website $website)
-    {
+    public const SOURCE_SCHEDULED = 'scheduled';
+
+    public const SOURCE_ON_DEMAND = 'on-demand';
+
+    public function __construct(
+        public Website $website,
+        public string $source = self::SOURCE_SCHEDULED,
+    ) {
         //
+    }
+
+    public static function scheduled(Website $website): self
+    {
+        return new self($website, self::SOURCE_SCHEDULED);
+    }
+
+    public static function onDemand(Website $website): self
+    {
+        return new self($website, self::SOURCE_ON_DEMAND);
     }
 
     public function uniqueId(): string
     {
-        return "website-outbound-link:{$this->website->getKey()}";
+        return "website-outbound-link:{$this->source}:{$this->website->getKey()}";
     }
 
     public function uniqueFor(): int
     {
-        return 86400;
+        return match ($this->source) {
+            self::SOURCE_ON_DEMAND => 300,
+            default => 86400,
+        };
     }
 
     /**

@@ -31,7 +31,7 @@ class ScanWebsiteForOutboundCheck extends Command
         $websites = Website::query()->where('outbound_check', 1)->get();
 
         $websites->each(function ($website) {
-            WebsiteCheckOutboundLinkJob::dispatch($website)->onQueue('log-website');
+            WebsiteCheckOutboundLinkJob::dispatch($website, WebsiteCheckOutboundLinkJob::SOURCE_SCHEDULED)->onQueue('log-website');
         });
 
         Log::info('Scan completed and jobs dispatched for outbound link checks', ['website_count' => $websites->count()]);

@@ -15,7 +15,7 @@ test('command can be executed', function () {
 test('command dispatches jobs for websites with outbound check enabled', function () {
     Queue::fake();
 
-    $websites = Website::factory()->count(3)->create([
+    Website::factory()->count(3)->create([
         'outbound_check' => true,
     ]);
 
@@ -109,7 +109,11 @@ test('command dispatches correct website to job', function () {
     $this->artisan('website:scan-outbound-check')
         ->assertSuccessful();
 
-    Queue::assertPushed(WebsiteCheckOutboundLinkJob::class, 1);
+    Queue::assertPushed(
+        WebsiteCheckOutboundLinkJob::class,
+        fn (WebsiteCheckOutboundLinkJob $job): bool => $job->website->is($website)
+            && $job->source === WebsiteCheckOutboundLinkJob::SOURCE_SCHEDULED,
+    );
 });
 
 test('command handles large number of websites', function () {

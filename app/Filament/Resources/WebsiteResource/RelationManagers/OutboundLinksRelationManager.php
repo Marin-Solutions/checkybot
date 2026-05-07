@@ -139,7 +139,7 @@ class OutboundLinksRelationManager extends RelationManager
                     ->authorize(fn (): bool => auth()->user()?->can('update', $this->ownerRecord) ?? false)
                     ->visible(fn (): bool => (bool) $this->ownerRecord->outbound_check)
                     ->action(function (): void {
-                        WebsiteCheckOutboundLinkJob::dispatch($this->ownerRecord)->onQueue('log-website');
+                        WebsiteCheckOutboundLinkJob::dispatch($this->ownerRecord, WebsiteCheckOutboundLinkJob::SOURCE_ON_DEMAND)->onQueue('log-website');
 
                         Notification::make()
                             ->title('Outbound scan queued')
