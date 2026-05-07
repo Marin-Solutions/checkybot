@@ -11,6 +11,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Sentry\Laravel\Facade as Sentry;
+use Throwable;
 
 class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
 {
@@ -64,13 +65,15 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
             }
 
             $notificationService->notifyApiIfTransitioned($this->monitor, $previousStatus, $status, $summary);
-        } catch (\Exception $e) {
+        } catch (Throwable $e) {
             Log::error('Error checking API monitor: '.$e->getMessage(), [
                 'monitor_id' => $this->monitor->id,
                 'monitor_title' => $this->monitor->title,
             ]);
 
             Sentry::captureException($e);
+
+            throw $e;
         }
     }
 }

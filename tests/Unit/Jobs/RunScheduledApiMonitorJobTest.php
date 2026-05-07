@@ -5,9 +5,11 @@ use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use App\Services\ApiMonitorExecutionService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 test('run scheduled api monitor job is unique and queued with enough time for configured retries', function () {
@@ -100,4 +102,32 @@ test('run scheduled api monitor job skips monitors disabled after dispatch', fun
     ]);
 
     Http::assertNothingSent();
+});
+
+test('run scheduled api monitor job rethrows unexpected execution exceptions for queue handling', function () {
+    Log::spy();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'unstable-health',
+        'url' => 'https://api.example.com/unstable',
+    ]);
+
+    $executionService = Mockery::mock(ApiMonitorExecutionService::class);
+    $executionService
+        ->shouldReceive('execute')
+        ->once()
+        ->andThrow(new RuntimeException('Unexpected monitor runner failure'));
+
+    expect(fn () => (new RunScheduledApiMonitorJob($monitor))->handle(
+        $executionService,
+        app(\App\Services\HealthEventNotificationService::class),
+    ))->toThrow(RuntimeException::class, 'Unexpected monitor runner failure');
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->with(
+            'Error checking API monitor: Unexpected monitor runner failure',
+            Mockery::on(fn (array $context): bool => ($context['monitor_id'] ?? null) === $monitor->id
+                && ($context['monitor_title'] ?? null) === 'unstable-health')
+        );
 });
