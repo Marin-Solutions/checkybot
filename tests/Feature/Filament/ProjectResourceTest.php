@@ -8,6 +8,7 @@ use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelation
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\ProjectResource;
+use App\Filament\Resources\Projects\RelationManagers\ComponentsRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
@@ -1140,6 +1141,111 @@ test('super admin can filter application components to only failing', function (
         ->filterTable('only_failing', true)
         ->assertCanSeeTableRecords([$warning, $danger])
         ->assertCanNotSeeTableRecords([$healthy, $archivedWarning, $archivedDanger]);
+});
+
+test('super admin can filter application components by delivery state', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $stale = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'stale-worker',
+        'current_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(30),
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
+        'created_by' => $user->id,
+    ]);
+    $awaiting = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'new-scheduler',
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+        'is_stale' => false,
+        'created_by' => $user->id,
+    ]);
+    $receiving = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'healthy-queue',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinute(),
+        'is_stale' => false,
+        'created_by' => $user->id,
+    ]);
+    $archived = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'name' => 'retired-cron',
+        'current_status' => 'danger',
+        'last_heartbeat_at' => null,
+        'is_stale' => true,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertSee('Delivery')
+        ->assertSee('Stale')
+        ->assertSee('Awaiting first heartbeat')
+        ->assertSee('Receiving heartbeats')
+        ->assertSee('Archived');
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'stale')
+        ->assertCanSeeTableRecords([$stale])
+        ->assertCanNotSeeTableRecords([$awaiting, $receiving, $archived]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'awaiting_first_heartbeat')
+        ->assertCanSeeTableRecords([$awaiting])
+        ->assertCanNotSeeTableRecords([$stale, $receiving, $archived]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'receiving_heartbeats')
+        ->assertCanSeeTableRecords([$receiving])
+        ->assertCanNotSeeTableRecords([$stale, $awaiting, $archived]);
+
+    Livewire::test(ListProjectComponents::class)
+        ->filterTable('delivery_state', 'archived')
+        ->assertCanSeeTableRecords([$archived])
+        ->assertCanNotSeeTableRecords([$stale, $awaiting, $receiving]);
+});
+
+test('project components relation manager can filter by delivery state', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $stale = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'stale-worker',
+        'current_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(30),
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
+        'created_by' => $user->id,
+    ]);
+    $receiving = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'healthy-queue',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinute(),
+        'is_stale' => false,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Delivery')
+        ->filterTable('delivery_state', 'stale')
+        ->assertCanSeeTableRecords([$stale])
+        ->assertCanNotSeeTableRecords([$receiving]);
 });
 
 test('super admin can bulk disable project components', function () {

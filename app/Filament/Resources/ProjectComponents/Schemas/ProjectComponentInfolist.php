@@ -8,6 +8,7 @@ use App\Services\ProjectComponentStaleService;
 use App\Support\ComponentHeartbeatSetupSnippet;
 use App\Support\HealthStatusLabel;
 use App\Support\MetricsPayloadFormatter;
+use App\Support\ProjectComponentDeliveryState;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -61,19 +62,9 @@ class ProjectComponentInfolist
                             ->hint(fn (ProjectComponent $record): ?string => $record->stale_detected_at?->diffForHumans()),
                         TextEntry::make('delivery_state')
                             ->label('Delivery State')
-                            ->state(fn (ProjectComponent $record): string => match (true) {
-                                $record->is_archived => 'Archived',
-                                $record->is_stale => 'Stale',
-                                $record->last_heartbeat_at === null => 'Awaiting first heartbeat',
-                                default => 'Receiving heartbeats',
-                            })
+                            ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
                             ->badge()
-                            ->color(fn (string $state): string => match ($state) {
-                                'Receiving heartbeats' => 'success',
-                                'Awaiting first heartbeat' => 'warning',
-                                'Stale' => 'danger',
-                                default => 'gray',
-                            }),
+                            ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                     ])->columns(2),
                 Section::make('Heartbeat Setup')
                     ->description('Copy a Laravel package definition or direct API heartbeat template for this component. Replace the API key before sending direct heartbeats; the direct API template requires jq.')
