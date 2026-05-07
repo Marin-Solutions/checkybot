@@ -12,6 +12,8 @@ class RunApiMonitorDiagnosticJob implements ShouldQueue
 {
     use Batchable, Queueable;
 
+    public int $timeout = 420;
+
     public function __construct(
         public MonitorApis $monitor,
     ) {}

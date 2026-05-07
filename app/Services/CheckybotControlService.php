@@ -198,7 +198,7 @@ class CheckybotControlService
         }
 
         $batch = Bus::batch(
-            $checks->map(fn (MonitorApis $check): RunApiMonitorDiagnosticJob => new RunApiMonitorDiagnosticJob($check))
+            $checks->map(fn (MonitorApis $check): RunApiMonitorDiagnosticJob => new RunApiMonitorDiagnosticJob($check->withoutRelations()))
         )
             ->name("Control project run: {$project->package_key}")
             ->allowFailures()
