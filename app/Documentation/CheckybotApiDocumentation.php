@@ -253,8 +253,14 @@ class CheckybotApiDocumentation
      *
      *         @OA\JsonContent(
      *             type="object",
-     *             required={"declared_components", "components"},
+     *             required={"components"},
      *
+     *             @OA\Property(
+     *                 property="full_manifest",
+     *                 type="boolean",
+     *                 example=false,
+     *                 description="Set true only when declared_components and components represent the complete active component manifest; missing package components are archived only in full-manifest syncs."
+     *             ),
      *             @OA\Property(
      *                 property="declared_components",
      *                 type="array",

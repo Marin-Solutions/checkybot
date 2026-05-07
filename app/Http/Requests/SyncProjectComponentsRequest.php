@@ -27,7 +27,9 @@ class SyncProjectComponentsRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'declared_components' => ['required', 'array', 'max:100'],
+            'full_manifest' => ['sometimes', 'boolean'],
+
+            'declared_components' => ['required_if:full_manifest,true,1', 'array', 'max:100'],
             'declared_components.*.name' => ['required', 'string', 'max:255'],
             'declared_components.*.interval' => ['required', 'string', $this->intervalRule()],
 

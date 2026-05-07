@@ -128,6 +128,7 @@ test('sync stores package component state and appends heartbeat history', functi
     $thirdResponse = $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",
         [
+            'full_manifest' => true,
             'declared_components' => [
                 [
                     'name' => 'database',
@@ -331,7 +332,7 @@ test('sync creates package component when heartbeat arrives before declaration',
     ]);
 });
 
-test('sync does not archive active components reported only by heartbeat payload', function () {
+test('partial component sync does not archive active package components missing from the payload', function () {
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -378,7 +379,7 @@ test('sync does not archive active components reported only by heartbeat payload
     );
 
     $response->assertOk()
-        ->assertJsonPath('summary.components.archived', 1)
+        ->assertJsonPath('summary.components.archived', 0)
         ->assertJsonPath('summary.heartbeats.recorded', 1);
 
     $this->assertDatabaseHas('project_components', [
@@ -396,7 +397,138 @@ test('sync does not archive active components reported only by heartbeat payload
     $this->assertDatabaseHas('project_components', [
         'project_id' => $this->project->id,
         'name' => 'old-cron',
+        'is_archived' => false,
+    ]);
+});
+
+test('full manifest component sync archives package components missing from the payload', function () {
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'cache',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'old-cron',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'full_manifest' => true,
+            'declared_components' => [
+                [
+                    'name' => 'cache',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Queue workers are running',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.archived', 1)
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'cache',
+        'is_archived' => false,
+    ]);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'queue',
+        'is_archived' => false,
+    ]);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'old-cron',
         'is_archived' => true,
+    ]);
+});
+
+test('component heartbeat sync accepts payloads without declarations', function () {
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Queue workers are running',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.created', 1)
+        ->assertJsonPath('summary.components.archived', 0)
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'queue',
+        'is_archived' => false,
+    ]);
+});
+
+test('component sync requires declarations when full manifest is true', function () {
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'cache',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'full_manifest' => true,
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Queue workers are running',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    )->assertStatus(422)
+        ->assertJsonValidationErrors(['declared_components']);
+
+    $this->assertDatabaseHas('project_components', [
+        'project_id' => $this->project->id,
+        'name' => 'cache',
+        'is_archived' => false,
     ]);
 });
 

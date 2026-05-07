@@ -13,22 +13,23 @@ class ProjectComponentSyncService
     ) {}
 
     /**
-     * @param  array{declared_components?: array<int, array<string, mixed>>, components?: array<int, array<string, mixed>>}  $payload
+     * @param  array{full_manifest?: bool, declared_components?: array<int, array<string, mixed>>, components?: array<int, array<string, mixed>>}  $payload
      * @return array<string, array<string, int>>
      */
     public function sync(Project $project, array $payload): array
     {
         $declaredComponents = $payload['declared_components'] ?? [];
         $heartbeats = $payload['components'] ?? [];
+        $isFullManifest = array_key_exists('declared_components', $payload)
+            && filter_var($payload['full_manifest'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $declaredNames = array_values(array_unique(array_column($declaredComponents, 'name')));
         $heartbeatNames = array_values(array_unique(array_column($heartbeats, 'name')));
         $componentNames = array_values(array_unique(array_merge($declaredNames, $heartbeatNames)));
 
-        return DB::transaction(function () use ($project, $declaredComponents, $heartbeats, $componentNames): array {
+        return DB::transaction(function () use ($project, $declaredComponents, $heartbeats, $componentNames, $isFullManifest): array {
             $createdNames = [];
             $updatedNames = [];
             $recordedHeartbeats = 0;
-            $activeNames = $componentNames;
             $componentsByName = collect();
 
             if ($componentNames !== []) {
@@ -77,18 +78,18 @@ class ProjectComponentSyncService
                 }
             }
 
-            foreach ($heartbeats as $payload) {
-                $component = $componentsByName->get($payload['name']);
+            foreach ($heartbeats as $heartbeat) {
+                $component = $componentsByName->get($heartbeat['name']);
 
                 if (! $component) {
                     $component = ProjectComponent::create([
                         'project_id' => $project->id,
-                        'name' => $payload['name'],
+                        'name' => $heartbeat['name'],
                         'source' => 'package',
                         'is_archived' => false,
                         'archived_at' => null,
-                        'declared_interval' => $payload['interval'],
-                        'interval_minutes' => IntervalParser::toMinutes($payload['interval']),
+                        'declared_interval' => $heartbeat['interval'],
+                        'interval_minutes' => IntervalParser::toMinutes($heartbeat['interval']),
                         'current_status' => 'unknown',
                         'last_reported_status' => 'unknown',
                         'summary' => 'Awaiting first heartbeat',
@@ -104,17 +105,17 @@ class ProjectComponentSyncService
                 $wasStale = $component->is_stale;
 
                 $component->fill([
-                    'summary' => $payload['summary'] ?? null,
-                    'current_status' => $payload['status'],
-                    'last_reported_status' => $payload['status'],
-                    'metrics' => $payload['metrics'] ?? [],
-                    'last_heartbeat_at' => $payload['observed_at'],
+                    'summary' => $heartbeat['summary'] ?? null,
+                    'current_status' => $heartbeat['status'],
+                    'last_reported_status' => $heartbeat['status'],
+                    'metrics' => $heartbeat['metrics'] ?? [],
+                    'last_heartbeat_at' => $heartbeat['observed_at'],
                     'stale_detected_at' => null,
                     'is_stale' => false,
                     'is_archived' => false,
                     'archived_at' => null,
-                    'declared_interval' => $payload['interval'],
-                    'interval_minutes' => IntervalParser::toMinutes($payload['interval']),
+                    'declared_interval' => $heartbeat['interval'],
+                    'interval_minutes' => IntervalParser::toMinutes($heartbeat['interval']),
                 ]);
 
                 if ($component->isDirty()) {
@@ -130,26 +131,26 @@ class ProjectComponentSyncService
 
                 $component->heartbeats()->create([
                     'component_name' => $component->name,
-                    'status' => $payload['status'],
+                    'status' => $heartbeat['status'],
                     'event' => 'heartbeat',
-                    'summary' => $payload['summary'] ?? null,
-                    'metrics' => $payload['metrics'] ?? [],
-                    'observed_at' => $payload['observed_at'],
+                    'summary' => $heartbeat['summary'] ?? null,
+                    'metrics' => $heartbeat['metrics'] ?? [],
+                    'observed_at' => $heartbeat['observed_at'],
                 ]);
 
                 $recordedHeartbeats++;
 
                 if (
-                    in_array($payload['status'], ['warning', 'danger'], true)
-                    && $previousStatus !== $payload['status']
+                    in_array($heartbeat['status'], ['warning', 'danger'], true)
+                    && $previousStatus !== $heartbeat['status']
                 ) {
                     $this->projectComponentNotificationService->notify(
                         $component->loadMissing('project'),
                         'heartbeat',
-                        $payload['status']
+                        $heartbeat['status']
                     );
                 } elseif (
-                    $payload['status'] === 'healthy'
+                    $heartbeat['status'] === 'healthy'
                     && (
                         in_array($previousStatus, ['warning', 'danger'], true)
                         || $wasStale
@@ -158,12 +159,14 @@ class ProjectComponentSyncService
                     $this->projectComponentNotificationService->notify(
                         $component->loadMissing('project'),
                         'recovered',
-                        $payload['status']
+                        $heartbeat['status']
                     );
                 }
             }
 
-            $archived = $this->archiveMissingComponents($project, $activeNames);
+            $archived = $isFullManifest
+                ? $this->archiveMissingComponents($project, $componentNames)
+                : 0;
 
             return [
                 'components' => [
