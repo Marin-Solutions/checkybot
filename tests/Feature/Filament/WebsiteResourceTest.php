@@ -1570,7 +1570,8 @@ test('outbound links relation manager can queue an on demand outbound scan', fun
     Queue::assertPushedOn(
         'log-website',
         WebsiteCheckOutboundLinkJob::class,
-        fn (WebsiteCheckOutboundLinkJob $job): bool => $job->website->is($website),
+        fn (WebsiteCheckOutboundLinkJob $job): bool => $job->website->is($website)
+            && $job->source === WebsiteCheckOutboundLinkJob::SOURCE_ON_DEMAND,
     );
 });
 
