@@ -50,7 +50,12 @@ class PloiAccountsResource extends Resource
         return $table
             ->columns([
                 Tables\Columns\TextColumn::make('label'),
-                Tables\Columns\TextColumn::make('label'),
+                Tables\Columns\TextColumn::make('error_message')
+                    ->label('Message')
+                    ->placeholder('-')
+                    ->limit(80)
+                    ->wrap()
+                    ->tooltip(fn (PloiAccounts $record): ?string => $record->error_message),
                 Tables\Columns\IconColumn::make('is_verified')
                     ->label('Verified')
                     ->boolean()
