@@ -152,6 +152,8 @@ test('command reports webhook notification failure when server rule destination 
 
     expect($rule->is_triggered)->toBeFalse();
     expect($rule->triggered_at)->toBeNull();
+    expect($rule->last_evaluated_value)->toBe(95.0);
+    expect($rule->last_evaluated_at)->not->toBeNull();
 });
 
 test('command sends server rule notification only when threshold transitions to triggered', function () {
@@ -191,6 +193,8 @@ test('command sends server rule notification only when threshold transitions to 
     expect($rule->is_triggered)->toBeTrue();
     expect($rule->triggered_at)->not->toBeNull();
     expect($rule->recovered_at)->toBeNull();
+    expect($rule->last_evaluated_value)->toBe(95.0);
+    expect($rule->last_evaluated_at)->not->toBeNull();
 });
 
 test('command resets server rule state when threshold recovers', function () {
@@ -228,6 +232,8 @@ test('command resets server rule state when threshold recovers', function () {
     expect($rule->is_triggered)->toBeFalse();
     expect($rule->triggered_at)->not->toBeNull();
     expect($rule->recovered_at)->not->toBeNull();
+    expect($rule->last_evaluated_value)->toBe(80.0);
+    expect($rule->last_evaluated_at)->not->toBeNull();
 });
 
 test('command sends server rule notification again after recovery and new breach', function () {

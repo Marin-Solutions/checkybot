@@ -46,26 +46,33 @@ class CheckServerRules extends Command
                 }
 
                 $conditionIsMet = $this->isConditionMet($currentValue, $rule->operator, $rule->value);
+                $evaluatedAt = now();
+                $stateUpdates = [
+                    'last_evaluated_value' => $currentValue,
+                    'last_evaluated_at' => $evaluatedAt,
+                ];
 
                 if ($conditionIsMet && ! $rule->is_triggered) {
                     $this->info("Rule condition met for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
 
                     if ($this->sendNotification($rule->server, $rule, $currentValue)) {
-                        $rule->forceFill([
+                        $rule->forceFill($stateUpdates + [
                             'is_triggered' => true,
-                            'triggered_at' => now(),
+                            'triggered_at' => $evaluatedAt,
                             'recovered_at' => null,
                         ])->save();
+                    } else {
+                        $rule->forceFill($stateUpdates)->save();
                     }
-                }
-
-                if (! $conditionIsMet && $rule->is_triggered) {
-                    $rule->forceFill([
+                } elseif (! $conditionIsMet && $rule->is_triggered) {
+                    $rule->forceFill($stateUpdates + [
                         'is_triggered' => false,
-                        'recovered_at' => now(),
+                        'recovered_at' => $evaluatedAt,
                     ])->save();
 
                     $this->info("Rule recovered for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
+                } else {
+                    $rule->forceFill($stateUpdates)->save();
                 }
             } catch (\Exception $e) {
                 $this->error('Error processing rule: '.$e->getMessage());
