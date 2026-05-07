@@ -69,7 +69,7 @@ class SeoHealthCheckService
         });
 
         // Dispatch job to start crawling with specific URLs
-        SeoHealthCheckJob::dispatch($seoCheck, $crawlableUrls);
+        SeoHealthCheckJob::dispatch($seoCheck, $crawlableUrls)->onQueue('seo-checks');
 
         return $seoCheck;
     }

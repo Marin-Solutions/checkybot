@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SeoHealthCheckJob;
 use App\Models\SeoCheck;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
@@ -30,7 +31,7 @@ test('start manual check dispatches job', function () {
 
     $this->service->startManualCheck($website);
 
-    Queue::assertPushed(\App\Jobs\SeoHealthCheckJob::class);
+    Queue::assertPushedOn('seo-checks', SeoHealthCheckJob::class);
 });
 
 test('cannot start check if already running', function () {
