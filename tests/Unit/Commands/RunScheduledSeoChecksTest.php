@@ -225,6 +225,14 @@ test('command records failed check and advances schedule when no crawlable urls 
         ->and($seoCheck->started_at)->not->toBeNull()
         ->and($seoCheck->finished_at)->not->toBeNull()
         ->and($seoCheck->finished_at->equalTo($seoCheck->started_at))->toBeTrue()
+        ->and($seoCheck->failure_summary)->toBe('No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.')
+        ->and($seoCheck->failure_context)->toMatchArray([
+            'failure_reason' => 'no_crawlable_urls',
+            'website_url' => $website->url,
+            'schedule_id' => $schedule->id,
+            'scheduled_by' => $user->id,
+        ])
+        ->and($seoCheck->failure_context['checked_at'])->not->toBeEmpty()
         ->and($seoCheck->crawl_summary['scheduled_by'])->toBe($user->id)
         ->and($seoCheck->crawl_summary['schedule_id'])->toBe($schedule->id)
         ->and($seoCheck->crawl_summary['is_scheduled'])->toBeTrue()

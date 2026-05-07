@@ -83,6 +83,14 @@ class RunScheduledSeoChecks extends Command
                         'robots_txt_checked' => true,
                         'started_at' => $failedAt,
                         'finished_at' => $failedAt,
+                        'failure_summary' => $summary,
+                        'failure_context' => [
+                            'failure_reason' => 'no_crawlable_urls',
+                            'website_url' => $website->url,
+                            'schedule_id' => $schedule->id,
+                            'scheduled_by' => $schedule->created_by,
+                            'checked_at' => $failedAt->toIso8601String(),
+                        ],
                         'crawl_summary' => [
                             'scheduled_by' => $schedule->created_by,
                             'schedule_id' => $schedule->id,
