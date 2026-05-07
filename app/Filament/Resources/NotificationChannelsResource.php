@@ -117,8 +117,15 @@ class NotificationChannelsResource extends Resource
             ->columns([
                 TextColumn::make('title'),
                 TextColumn::make('method'),
-                TextColumn::make('url')->label('Webhook URL'),
-                TextColumn::make('request_body'),
+                TextColumn::make('url')
+                    ->label('Webhook URL')
+                    ->state(fn (NotificationChannels $record): string => $record->maskedWebhookUrlForDisplay())
+                    ->copyable()
+                    ->copyableState(fn (NotificationChannels $record): ?string => $record->url),
+                TextColumn::make('request_body')
+                    ->state(fn (NotificationChannels $record): ?string => $record->maskedRequestBodyForDisplay())
+                    ->copyable(fn (NotificationChannels $record): bool => $record->requestBodyForCopy() !== null)
+                    ->copyableState(fn (NotificationChannels $record): ?string => $record->requestBodyForCopy()),
                 TextColumn::make('description'),
                 TextColumn::make('last_delivery_succeeded')
                     ->label('Last Delivery')
