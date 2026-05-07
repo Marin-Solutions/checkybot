@@ -44,6 +44,7 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->color(fn (string $state): string => match ($state) {
                         'Active' => 'success',
                         'Disabled' => 'warning',
+                        'Archived' => 'gray',
                         default => 'gray',
                     })
                     ->description(fn (MonitorApis $record): ?string => $this->monitoringStateDescription($record)),
@@ -78,7 +79,7 @@ class PackageManagedApisRelationManager extends RelationManager
 
     private function monitoringState(MonitorApis $record): string
     {
-        if (! $record->is_enabled) {
+        if ($record->is_enabled === false) {
             return 'Disabled';
         }
 
@@ -87,7 +88,7 @@ class PackageManagedApisRelationManager extends RelationManager
 
     private function monitoringStateDescription(MonitorApis $record): ?string
     {
-        if (! $record->is_enabled) {
+        if ($record->is_enabled === false) {
             return 'Package sync disabled this check. Scheduled runs are paused.';
         }
 
