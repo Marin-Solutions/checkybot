@@ -73,6 +73,32 @@ test('project component sync preloads known components and avoids per-item name 
     ]);
 });
 
+test('project component sync does not archive when full manifest is the string false', function () {
+    $project = Project::factory()->create();
+
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'worker-a',
+        'source' => 'package',
+        'created_by' => $project->created_by,
+        'is_archived' => false,
+    ]);
+
+    $summary = app(ProjectComponentSyncService::class)->sync($project, [
+        'full_manifest' => 'false',
+        'declared_components' => [],
+        'components' => [],
+    ]);
+
+    expect($summary['components']['archived'])->toBe(0);
+
+    assertDatabaseHas('project_components', [
+        'project_id' => $project->id,
+        'name' => 'worker-a',
+        'is_archived' => false,
+    ]);
+});
+
 test('project component sync sends recovery notifications when a component returns to healthy', function () {
     Mail::fake();
 
