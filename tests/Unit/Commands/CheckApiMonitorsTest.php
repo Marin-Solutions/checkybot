@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\RunScheduledApiMonitorJob;
 use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
@@ -9,6 +10,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 
 test('command checks all active api monitors', function () {
     Http::fake([
@@ -60,6 +62,42 @@ test('command skips disabled api monitors', function () {
     expect($monitor->last_heartbeat_at)->toBeNull();
 });
 
+test('command queues due api monitor jobs without running http checks inline', function () {
+    Queue::fake();
+
+    Http::fake(function (): never {
+        throw new ConnectionException('The scheduler command should not perform HTTP requests inline.');
+    });
+
+    $dueMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/queued-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(16),
+    ]);
+
+    $skippedMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/skipped-queued-health',
+        'package_interval' => '15m',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Queued 1 API monitor jobs.')
+        ->assertSuccessful();
+
+    Queue::assertPushed(RunScheduledApiMonitorJob::class, 1);
+    Queue::assertPushed(
+        RunScheduledApiMonitorJob::class,
+        fn (RunScheduledApiMonitorJob $job): bool => $job->monitor->is($dueMonitor)
+    );
+    Queue::assertNotPushed(
+        RunScheduledApiMonitorJob::class,
+        fn (RunScheduledApiMonitorJob $job): bool => $job->monitor->is($skippedMonitor)
+    );
+
+    Http::assertNothingSent();
+});
+
 test('command only checks api monitors when their polling interval is due', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
@@ -78,7 +116,7 @@ test('command only checks api monitors when their polling interval is due', func
     ]);
 
     $this->artisan('monitor:check-apis')
-        ->expectsOutput('Completed checking 1 API monitors.')
+        ->expectsOutput('Queued 1 API monitor jobs.')
         ->assertSuccessful();
 
     assertDatabaseHas('monitor_api_results', [
@@ -115,7 +153,7 @@ test('command does not hydrate enabled api monitors before their polling interva
     });
 
     $this->artisan('monitor:check-apis')
-        ->expectsOutput('Completed checking 1 API monitors.')
+        ->expectsOutput('Queued 1 API monitor jobs.')
         ->assertSuccessful();
 
     expect($retrievedMonitorIds)
@@ -156,7 +194,7 @@ test('command honors package-style api monitor intervals', function () {
     ]);
 
     $this->artisan('monitor:check-apis')
-        ->expectsOutput('Completed checking 0 API monitors.')
+        ->expectsOutput('Queued 0 API monitor jobs.')
         ->assertSuccessful();
 
     assertDatabaseMissing('monitor_api_results', [
@@ -184,7 +222,7 @@ test('command honors zero padded api monitor intervals accepted by parser', func
     ]);
 
     $this->artisan('monitor:check-apis')
-        ->expectsOutput('Completed checking 0 API monitors.')
+        ->expectsOutput('Queued 0 API monitor jobs.')
         ->assertSuccessful();
 
     assertDatabaseMissing('monitor_api_results', [
@@ -212,7 +250,7 @@ test('command falls back to default cadence when package_interval is invalid', f
     ]);
 
     $this->artisan('monitor:check-apis')
-        ->expectsOutput('Completed checking 1 API monitors.')
+        ->expectsOutput('Queued 1 API monitor jobs.')
         ->assertSuccessful();
 
     assertDatabaseHas('monitor_api_results', [
@@ -241,7 +279,7 @@ test('command treats monitor intervals as minute-granular scheduler buckets', fu
     ]);
 
     $this->artisan('monitor:check-apis')
-        ->expectsOutput('Completed checking 1 API monitors.')
+        ->expectsOutput('Queued 1 API monitor jobs.')
         ->assertSuccessful();
 
     assertDatabaseHas('monitor_api_results', [
