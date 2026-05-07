@@ -79,6 +79,14 @@ class UpsertControlCheckRequest extends FormRequest
                 return;
             }
 
+            $this->addExpectedValueShapeValidationErrors(
+                $validator,
+                $assertions,
+                'assertions',
+                'type',
+                ['json_path_equals', 'value_compare', 'array_length']
+            );
+
             $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');
         });
     }

@@ -9,6 +9,37 @@ trait ValidatesMonitorApiRegexAssertions
 {
     /**
      * @param  array<int, mixed>  $assertions
+     * @param  array<int, string>  $assertionTypesUsingExpectedValue
+     */
+    protected function addExpectedValueShapeValidationErrors(
+        Validator $validator,
+        array $assertions,
+        string $attributePrefix,
+        string $typeKey,
+        array $assertionTypesUsingExpectedValue,
+    ): void {
+        foreach ($assertions as $index => $assertion) {
+            if (! is_array($assertion)) {
+                continue;
+            }
+
+            if (! in_array($assertion[$typeKey] ?? null, $assertionTypesUsingExpectedValue, true)) {
+                continue;
+            }
+
+            if (! array_key_exists('expected_value', $assertion) || is_scalar($assertion['expected_value']) || $assertion['expected_value'] === null) {
+                continue;
+            }
+
+            $validator->errors()->add(
+                "{$attributePrefix}.{$index}.expected_value",
+                'The expected value must be a string, number, boolean, or null. Arrays and objects are not supported.'
+            );
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $assertions
      */
     protected function addRegexAssertionValidationErrors(
         Validator $validator,

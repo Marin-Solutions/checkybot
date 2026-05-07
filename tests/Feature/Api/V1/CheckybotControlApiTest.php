@@ -194,6 +194,28 @@ test('control api rejects invalid regex assertion patterns', function () {
     ]);
 });
 
+test('control api rejects array expected values for comparison assertions', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/array-expected-value', [
+            'name' => 'Array expected value',
+            'url' => '/health',
+            'assertions' => [
+                [
+                    'type' => 'value_compare',
+                    'path' => '$.status',
+                    'comparison_operator' => '=',
+                    'expected_value' => ['ok'],
+                ],
+            ],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['assertions.0.expected_value']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'array-expected-value',
+    ]);
+});
+
 test('control api defaults missing api schedules to the safe polling interval', function () {
     $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/search-health', [

@@ -155,6 +155,36 @@ test('package sync rejects invalid regex assertion patterns', function () {
     ]);
 });
 
+test('package sync rejects array expected values for comparison assertions', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'array-expected-value',
+                    'type' => 'api',
+                    'name' => 'Array expected value',
+                    'method' => 'GET',
+                    'url' => '/health',
+                    'assertions' => [
+                        [
+                            'type' => 'value_compare',
+                            'path' => '$.status',
+                            'comparison_operator' => '=',
+                            'expected_value' => ['ok'],
+                        ],
+                    ],
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['checks.0.assertions.0.expected_value']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'array-expected-value',
+    ]);
+});
+
 test('package sync defaults missing api schedules to the safe polling interval', function () {
     $payload = packageSyncPayload();
     unset($payload['checks'][0]['schedule']);
