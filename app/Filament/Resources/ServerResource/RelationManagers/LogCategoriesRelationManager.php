@@ -82,7 +82,7 @@ class LogCategoriesRelationManager extends RelationManager
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close')
                     ->modalWidth('4xl')
-                    ->visible(fn (ServerLogCategory $record): bool => $record->files_count > 0 || $record->files()->exists())
+                    ->visible(fn (ServerLogCategory $record): bool => $record->files_count > 0)
                     ->modalContent(fn (ServerLogCategory $record): View => view('filament.resources.server-resource.log-files-modal', [
                         'files' => $record->files()->latest()->limit(50)->get(),
                     ])),

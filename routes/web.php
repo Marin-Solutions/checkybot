@@ -44,7 +44,7 @@ Route::get('welcome', \App\Livewire\Welcome::class);
 
 Route::get('/server-log-files/{serverLogFileHistory}/download', [ServerLogFileHistoryController::class, 'download'])
     ->name('server-log-file-history.download')
-    ->middleware(['auth']);
+    ->middleware(['auth', 'throttle:30,1']);
 
 // SEO Report Downloads - requires authentication
 Route::get('/reports/{filename}', function (string $filename) {

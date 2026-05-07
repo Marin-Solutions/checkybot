@@ -44,7 +44,7 @@ class ServerLogFileHistoryController extends Controller
 
         $file = Storage::putFile('ServerLogFiles', $request->file('log'));
         $newServerLogFileHistory = [
-            'server_log_category_id' => request()->input('li'),
+            'server_log_category_id' => $request->input('li'),
             'log_file_name' => $file,
         ];
         ServerLogFileHistory::create($newServerLogFileHistory);

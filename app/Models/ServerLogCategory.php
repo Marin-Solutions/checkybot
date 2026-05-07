@@ -19,9 +19,12 @@ class ServerLogCategory extends Model
         'last_collected_at',
     ];
 
-    protected $casts = [
-        'last_collected_at' => 'datetime',
-    ];
+    protected function casts(): array
+    {
+        return [
+            'last_collected_at' => 'datetime',
+        ];
+    }
 
     public function server(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
