@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\RunSource;
 use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
@@ -323,6 +324,119 @@ test('single check and recent result endpoints return investigation context', fu
         ->assertJsonPath('data.0.check_id', "api:{$api->id}")
         ->assertJsonPath('data.0.status', 'danger')
         ->assertJsonPath('data.0.summary', 'API returned HTTP 500.');
+});
+
+test('recent api check results can be filtered by run source', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+    ]);
+
+    $scheduled = MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Scheduled run is healthy.',
+        'run_source' => RunSource::Scheduled,
+        'is_on_demand' => false,
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $onDemand = MonitorApiResult::factory()->onDemand()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Diagnostic run failed.',
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?run_source=scheduled")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $scheduled->id)
+        ->assertJsonPath('data.0.run_source', RunSource::Scheduled->value);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?run_source=on_demand")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $onDemand->id)
+        ->assertJsonPath('data.0.run_source', RunSource::OnDemand->value);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?run_source=all")
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.id', $onDemand->id)
+        ->assertJsonPath('data.1.id', $scheduled->id);
+});
+
+test('recent website check results can be filtered by run source', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+
+    $scheduled = WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Scheduled uptime is healthy.',
+        'run_source' => RunSource::Scheduled,
+        'is_on_demand' => false,
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $onDemand = WebsiteLogHistory::factory()->onDemand()->transportError()->create([
+        'website_id' => $website->id,
+        'summary' => 'Diagnostic uptime failed.',
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/homepage/results?run_source=scheduled")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $scheduled->id)
+        ->assertJsonPath('data.0.run_source', RunSource::Scheduled->value);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/homepage/results?run_source=on_demand")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $onDemand->id)
+        ->assertJsonPath('data.0.run_source', RunSource::OnDemand->value);
+});
+
+test('recent check results default to all run sources and reject invalid filters', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'run_source' => RunSource::Scheduled,
+        'is_on_demand' => false,
+        'created_at' => now()->subMinutes(5),
+    ]);
+    MonitorApiResult::factory()->onDemand()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results")
+        ->assertOk()
+        ->assertJsonCount(2, 'data');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?run_source=manual")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('run_source');
 });
 
 test('project check read endpoints redact saved api response body evidence', function () {

@@ -121,16 +121,25 @@ class CheckybotImportService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function recentResults(User $user, string|int $projectKey, string $checkKey, int $limit = 25): array
-    {
+    public function recentResults(
+        User $user,
+        string|int $projectKey,
+        string $checkKey,
+        int $limit = 25,
+        string $runSource = 'all',
+    ): array {
         $project = $this->findProject($user, $projectKey);
         $check = $this->findCheck($project, $checkKey);
         $limit = min(max($limit, 1), 100);
 
         if ($check['storage'] === 'monitor_api') {
-            return MonitorApiResult::query()
+            $query = MonitorApiResult::query()
                 ->with('monitorApi.project')
-                ->where('monitor_api_id', $check['database_id'])
+                ->where('monitor_api_id', $check['database_id']);
+
+            $this->applyRunSourceFilter($query, $runSource);
+
+            return $query
                 ->latest()
                 ->limit($limit)
                 ->get()
@@ -138,13 +147,30 @@ class CheckybotImportService
                 ->all();
         }
 
-        return WebsiteLogHistory::query()
-            ->where('website_id', $check['database_id'])
+        $query = WebsiteLogHistory::query()
+            ->where('website_id', $check['database_id']);
+
+        $this->applyRunSourceFilter($query, $runSource);
+
+        return $query
             ->latest()
             ->limit($limit)
             ->get()
             ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result, $check))
             ->all();
+    }
+
+    private function applyRunSourceFilter(Builder $query, string $runSource): void
+    {
+        if ($runSource === 'scheduled') {
+            $query->where('is_on_demand', false);
+
+            return;
+        }
+
+        if ($runSource === 'on_demand') {
+            $query->where('is_on_demand', true);
+        }
     }
 
     public function findProject(User $user, string|int $projectKey): Project
