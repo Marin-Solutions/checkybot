@@ -87,12 +87,20 @@ test('guests cannot access api v1 server endpoints', function () {
 
 test('server owners can view their own servers through the api without panel permissions', function () {
     $owner = User::factory()->create();
-    $server = Server::factory()->create(['created_by' => $owner->id]);
+    $server = Server::factory()->create([
+        'created_by' => $owner->id,
+        'last_reporter_ip' => '198.51.100.24',
+        'last_reporter_user_agent' => 'checkybot-reporter/1.0',
+        'last_reporter_seen_at' => now()->subMinutes(5),
+    ]);
 
     $this->actingAs($owner)
         ->getJson("/api/v1/servers/{$server->id}")
         ->assertOk()
-        ->assertJsonPath('data.id', $server->id);
+        ->assertJsonPath('data.id', $server->id)
+        ->assertJsonPath('data.last_reporter_ip', '198.51.100.24')
+        ->assertJsonPath('data.last_reporter_user_agent', 'checkybot-reporter/1.0')
+        ->assertJsonPath('data.last_reporter_seen_at', fn (?string $value): bool => filled($value));
 });
 
 test('users cannot view another users server through the api even with server permissions', function () {
