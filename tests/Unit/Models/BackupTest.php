@@ -83,6 +83,7 @@ test('backup script reports failure evidence with valid fallback values', functi
         ->toContain('MESSAGE="Compression failed: $DO_ZIP"')
         ->toContain('MESSAGE="Upload failed: $DO_UPLOAD_FILE"')
         ->toContain('MESSAGE_JSON=$(printf')
+        ->toContain('s/\\r/\\\\r/g;s/\\t/\\\\t/g;s/\\n/\\\\n/g')
         ->toContain('\\"bi\\": '.$backup->id)
         ->toContain('\\"sf\\": $FILE_SIZE')
         ->toContain('\\"iu\\": $IS_UPLOADED')

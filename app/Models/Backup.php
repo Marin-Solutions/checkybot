@@ -187,7 +187,7 @@ else
 fi
 
 MESSAGE=\$(printf '%s' "\$MESSAGE" | head -c 4000)
-MESSAGE_JSON=\$(printf '%s' "\$MESSAGE" | sed ':a;N;\$!ba;s/\\\\/\\\\\\\\/g;s/"/\\\\"/g;s/\r/\\\\r/g;s/\t/\\\\t/g;s/\n/\\\\n/g')
+MESSAGE_JSON=\$(printf '%s' "\$MESSAGE" | sed ':a;N;\$!ba;s/\\\\/\\\\\\\\/g;s/"/\\\\"/g;s/\\r/\\\\r/g;s/\\t/\\\\t/g;s/\\n/\\\\n/g')
 
 curl -X POST $apiLogBackup \
  -H "Authorization: Bearer $token" \
