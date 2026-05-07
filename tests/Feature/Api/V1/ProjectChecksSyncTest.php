@@ -494,6 +494,37 @@ test('rejects zero intervals at the request boundary', function () {
         ]);
 });
 
+test('rejects unsupported legacy check families at the request boundary', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+            'link_checks' => [
+                [
+                    'name' => 'homepage-links',
+                    'url' => 'https://example.com',
+                    'interval' => '1d',
+                ],
+            ],
+            'open_graph_checks' => [
+                [
+                    'name' => 'homepage-og',
+                    'url' => 'https://example.com',
+                    'interval' => '1d',
+                ],
+            ],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'link_checks',
+            'open_graph_checks',
+        ])
+        ->assertJsonPath('errors.link_checks.0', 'link_checks are not supported by project check sync yet.')
+        ->assertJsonPath('errors.open_graph_checks.0', 'open_graph_checks are not supported by project check sync yet.');
+});
+
 test('validates url format', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
