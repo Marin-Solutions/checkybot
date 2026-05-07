@@ -42,6 +42,7 @@ class ProjectChecksController extends Controller
     {
         $data = $request->validate([
             'limit' => ['integer', 'min:1', 'max:100'],
+            'run_source' => ['string', 'in:scheduled,on_demand,all'],
         ]);
 
         return response()->json([
@@ -50,6 +51,7 @@ class ProjectChecksController extends Controller
                 $project,
                 $check,
                 $data['limit'] ?? 25,
+                $data['run_source'] ?? 'all',
             ),
         ]);
     }
