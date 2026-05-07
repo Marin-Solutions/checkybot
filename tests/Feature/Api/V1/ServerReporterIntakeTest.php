@@ -97,10 +97,14 @@ test('backup history intake trusts a valid token when reporter ip changes', func
             'sf' => 2048,
             'iz' => 1,
             'iu' => 1,
+            'msg' => 'Upload completed',
         ])
         ->assertOk();
 
-    expect(BackupHistory::query()->where('backup_id', $backup->id)->exists())->toBeTrue();
+    $history = BackupHistory::query()->where('backup_id', $backup->id)->first();
+
+    expect($history)->not->toBeNull()
+        ->and($history?->message)->toBe('Upload completed');
 
     $server->refresh();
 
