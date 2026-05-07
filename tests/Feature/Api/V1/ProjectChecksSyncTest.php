@@ -494,6 +494,46 @@ test('rejects zero intervals at the request boundary', function () {
         ]);
 });
 
+test('rejects unsupported legacy check families at the request boundary', function (array $linkChecks, array $openGraphChecks) {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+            'link_checks' => $linkChecks,
+            'open_graph_checks' => $openGraphChecks,
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'link_checks',
+            'open_graph_checks',
+        ])
+        ->assertJsonPath('errors.link_checks.0', 'link_checks are not supported by project check sync yet.')
+        ->assertJsonPath('errors.open_graph_checks.0', 'open_graph_checks are not supported by project check sync yet.');
+})->with([
+    'populated unsupported families' => [
+        [
+            [
+                'name' => 'homepage-links',
+                'url' => 'https://example.com',
+                'interval' => '1d',
+            ],
+        ],
+        [
+            [
+                'name' => 'homepage-og',
+                'url' => 'https://example.com',
+                'interval' => '1d',
+            ],
+        ],
+    ],
+    'empty unsupported families' => [
+        [],
+        [],
+    ],
+]);
+
 test('validates url format', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
