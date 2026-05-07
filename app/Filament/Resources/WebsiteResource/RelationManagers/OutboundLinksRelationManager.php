@@ -77,12 +77,14 @@ class OutboundLinksRelationManager extends RelationManager
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('http_status_code')
-                    ->label('HTTP Status')
+                    ->label('Triage status')
                     ->options([
+                        'attention' => 'Needs triage',
                         'broken' => 'Broken (4xx & 5xx)',
                         'client_error' => 'Client errors (4xx)',
                         'server_error' => 'Server errors (5xx)',
                         'redirect' => 'Redirects (3xx)',
+                        'transport_failed' => 'Transport failed',
                         'success' => 'Successful (2xx)',
                         'unknown' => 'No response recorded',
                         '404' => '404 Not Found',
@@ -92,10 +94,17 @@ class OutboundLinksRelationManager extends RelationManager
                         $value = $data['value'] ?? null;
 
                         return match ($value) {
+                            'attention' => $query->where(function (Builder $query): void {
+                                $query
+                                    ->whereBetween('http_status_code', [300, 599])
+                                    ->orWhereNull('http_status_code')
+                                    ->orWhereNotNull('transport_error_type');
+                            }),
                             'broken' => $query->whereBetween('http_status_code', [400, 599]),
                             'client_error' => $query->whereBetween('http_status_code', [400, 499]),
                             'server_error' => $query->whereBetween('http_status_code', [500, 599]),
                             'redirect' => $query->whereBetween('http_status_code', [300, 399]),
+                            'transport_failed' => $query->whereNotNull('transport_error_type'),
                             'success' => $query->whereBetween('http_status_code', [200, 299]),
                             'unknown' => $query->whereNull('http_status_code'),
                             '404', '500' => $query->where('http_status_code', (int) $value),
@@ -103,7 +112,20 @@ class OutboundLinksRelationManager extends RelationManager
                         };
                     }),
             ])
-            ->defaultSort('last_checked_at', 'desc')
+            ->defaultSort(
+                fn (Builder $query): Builder => $query
+                    ->orderByRaw(<<<'SQL'
+                        CASE
+                            WHEN transport_error_type IS NOT NULL THEN 0
+                            WHEN http_status_code BETWEEN 400 AND 599 THEN 1
+                            WHEN http_status_code BETWEEN 300 AND 399 THEN 2
+                            WHEN http_status_code IS NULL THEN 3
+                            ELSE 4
+                        END
+                    SQL)
+                    ->orderByDesc('last_checked_at')
+            )
+            ->defaultSortOptionLabel('Needs triage first')
             ->headerActions([
                 Action::make('run_outbound_scan')
                     ->label('Run outbound scan now')
