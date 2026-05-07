@@ -125,6 +125,7 @@ class Backup extends Model
         $exclude = $this->exclude_folder_files ?? '';
         $fileName = $this->backup_filename ?? $folder;
         $url = config('app.url');
+        $backupId = $this->id;
         $serverId = $this->server?->id ?? $this->server_id;
         $token = $this->server?->token ?? '';
         $apiLogBackup = "$url/api/v1/backup-history";
@@ -185,7 +186,7 @@ curl -X POST $apiLogBackup \
  -H "Authorization: Bearer $token" \
  -H "Content-Type: application/json" \
  -H "Accept: application/json" \
- -d "{\"bi\": $serverId, \"iz\": \$IS_ZIPPED, \"iu\": \$IS_UPLOADED, \"sf\": \$FILE_SIZE, \"nf\": \"\$FILE_NAME\"}"
+ -d "{\"bi\": $backupId, \"iz\": \$IS_ZIPPED, \"iu\": \$IS_UPLOADED, \"sf\": \$FILE_SIZE, \"nf\": \"\$FILE_NAME\"}"
 $firstRunAtIfEnd
 BASH;
     }
