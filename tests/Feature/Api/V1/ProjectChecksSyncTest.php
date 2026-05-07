@@ -688,6 +688,35 @@ test('validates expected value shapes before syncing api checks', function () {
     ]);
 });
 
+test('validates unused expected value shapes before syncing api checks', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'unused-array-expected-value',
+                    'url' => 'https://api.example.com/health',
+                    'interval' => '5m',
+                    'assertions' => [
+                        [
+                            'data_path' => 'status',
+                            'assertion_type' => 'exists',
+                            'expected_value' => ['ok'],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['api_checks.0.assertions.0.expected_value']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'unused-array-expected-value',
+    ]);
+});
+
 test('validates api check execution settings', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [

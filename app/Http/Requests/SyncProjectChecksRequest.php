@@ -113,9 +113,7 @@ class SyncProjectChecksRequest extends FormRequest
                 $this->addExpectedValueShapeValidationErrors(
                     $validator,
                     $check['assertions'],
-                    "api_checks.{$checkIndex}.assertions",
-                    'assertion_type',
-                    ['value_compare', 'array_length']
+                    "api_checks.{$checkIndex}.assertions"
                 );
 
                 $this->addRegexAssertionValidationErrors(

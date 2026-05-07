@@ -132,9 +132,7 @@ class PackageSyncRequest extends FormRequest
                     $this->addExpectedValueShapeValidationErrors(
                         $validator,
                         $check['assertions'],
-                        "checks.{$index}.assertions",
-                        'type',
-                        ['json_path_equals', 'value_compare', 'array_length']
+                        "checks.{$index}.assertions"
                     );
 
                     $this->addRegexAssertionValidationErrors(

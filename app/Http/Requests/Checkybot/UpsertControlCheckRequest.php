@@ -82,9 +82,7 @@ class UpsertControlCheckRequest extends FormRequest
             $this->addExpectedValueShapeValidationErrors(
                 $validator,
                 $assertions,
-                'assertions',
-                'type',
-                ['json_path_equals', 'value_compare', 'array_length']
+                'assertions'
             );
 
             $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');

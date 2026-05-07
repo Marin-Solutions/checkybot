@@ -9,21 +9,14 @@ trait ValidatesMonitorApiRegexAssertions
 {
     /**
      * @param  array<int, mixed>  $assertions
-     * @param  array<int, string>  $assertionTypesUsingExpectedValue
      */
     protected function addExpectedValueShapeValidationErrors(
         Validator $validator,
         array $assertions,
         string $attributePrefix,
-        string $typeKey,
-        array $assertionTypesUsingExpectedValue,
     ): void {
         foreach ($assertions as $index => $assertion) {
             if (! is_array($assertion)) {
-                continue;
-            }
-
-            if (! in_array($assertion[$typeKey] ?? null, $assertionTypesUsingExpectedValue, true)) {
                 continue;
             }
 
