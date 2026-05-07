@@ -44,8 +44,8 @@ class SyncProjectChecksRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'link_checks' => ['prohibited'],
-            'open_graph_checks' => ['prohibited'],
+            'link_checks' => ['missing'],
+            'open_graph_checks' => ['missing'],
 
             'uptime_checks' => ['array', 'max:100'],
             'uptime_checks.*.name' => $this->checkNameRules(),
@@ -88,8 +88,8 @@ class SyncProjectChecksRequest extends FormRequest
             'uptime_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
             'ssl_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
             'api_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
-            'link_checks.prohibited' => 'link_checks are not supported by project check sync yet.',
-            'open_graph_checks.prohibited' => 'open_graph_checks are not supported by project check sync yet.',
+            'link_checks.missing' => 'link_checks are not supported by project check sync yet.',
+            'open_graph_checks.missing' => 'open_graph_checks are not supported by project check sync yet.',
             'uptime_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
             'ssl_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
             'api_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
