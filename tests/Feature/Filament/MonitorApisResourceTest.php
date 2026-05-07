@@ -1060,6 +1060,55 @@ test('super admin can bulk change the interval of api monitors', function () {
     }
 });
 
+test('bulk change interval skips package managed api monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $manualMonitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'source' => 'manual',
+        'package_interval' => '5m',
+    ]);
+    $packageMonitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_name' => 'checkout-health',
+        'package_interval' => '5m',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('changeInterval', collect([$manualMonitor, $packageMonitor]), data: [
+            'interval' => '15m',
+        ])
+        ->assertNotified('1 API monitor updated, 1 package-managed monitor skipped');
+
+    expect($manualMonitor->refresh()->package_interval)->toBe('15m')
+        ->and($packageMonitor->refresh()->package_interval)->toBe('5m');
+});
+
+test('bulk change interval leaves package managed api monitors unchanged when all selected are package owned', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(2)->create([
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_interval' => '5m',
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->callTableBulkAction('changeInterval', $monitors, data: [
+            'interval' => '15m',
+        ])
+        ->assertNotified('Nothing to update');
+
+    foreach ($monitors as $monitor) {
+        expect($monitor->refresh()->package_interval)->toBe('5m');
+    }
+});
+
 test('bulk change interval on monitors already at the target interval notifies that nothing changed', function () {
     $this->createResourcePermissions('MonitorApis');
 

@@ -569,7 +569,11 @@ class MonitorApisResource extends Resource
                         ->action(function (Collection $records, array $data): void {
                             $interval = IntervalParser::normalizeOrFail($data['interval'], 'interval');
 
-                            $ids = $records
+                            $editableRecords = $records
+                                ->reject(fn (MonitorApis $monitor): bool => $monitor->source === 'package');
+                            $skippedCount = $records->count() - $editableRecords->count();
+
+                            $ids = $editableRecords
                                 ->reject(fn (MonitorApis $monitor): bool => $monitor->package_interval === $interval)
                                 ->pluck('id');
 
@@ -577,13 +581,26 @@ class MonitorApisResource extends Resource
                                 ? 0
                                 : MonitorApis::query()->whereIn('id', $ids)->update(['package_interval' => $interval]);
 
+                            $title = $count === 0
+                                ? 'Nothing to update'
+                                : ($count === 1 ? '1 API monitor updated' : "{$count} API monitors updated");
+
+                            if ($skippedCount > 0 && $count > 0) {
+                                $title .= $skippedCount === 1
+                                    ? ', 1 package-managed monitor skipped'
+                                    : ", {$skippedCount} package-managed monitors skipped";
+                            }
+
                             Notification::make()
-                                ->title($count === 0
-                                    ? 'Nothing to update'
-                                    : ($count === 1 ? '1 API monitor updated' : "{$count} API monitors updated"))
-                                ->body($count === 0
-                                    ? "All selected API monitors already run every {$interval}."
-                                    : "New polling interval: {$interval}.")
+                                ->title($title)
+                                ->body(match (true) {
+                                    $count === 0 && $skippedCount > 0 => $skippedCount === $records->count()
+                                        ? 'Package-managed API monitor intervals are controlled by the package and were not changed.'
+                                        : "Editable monitors already run every {$interval}; package-managed schedules were not changed.",
+                                    $count === 0 => "All selected API monitors already run every {$interval}.",
+                                    $skippedCount > 0 => "New polling interval: {$interval}. Package-managed schedules stay controlled by the package.",
+                                    default => "New polling interval: {$interval}.",
+                                })
                                 ->success()
                                 ->send();
                         })
