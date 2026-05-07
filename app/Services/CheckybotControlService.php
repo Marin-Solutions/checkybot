@@ -226,7 +226,6 @@ class CheckybotControlService
         $batch = Bus::findBatch($batchId);
 
         if (! $batch instanceof Batch
-            || $batch->name !== $this->controlProjectRunBatchName($project)
             || (int) Arr::get($batch->options, 'checkybot_control.project_id') !== $project->id
             || (int) Arr::get($batch->options, 'checkybot_control.user_id') !== $user->id) {
             abort(404, 'Project run batch not found.');

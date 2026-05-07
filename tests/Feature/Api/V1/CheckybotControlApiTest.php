@@ -855,6 +855,36 @@ test('control api returns queued project diagnostic batch status', function () {
         ->assertJsonStructure(['data' => ['run_batch' => ['created_at']]]);
 });
 
+test('control api batch status lookup is scoped by stable metadata instead of mutable batch name', function () {
+    DB::table('job_batches')->insert([
+        'id' => 'batch-before-project-rename',
+        'name' => 'Control project run: old-scrappa-key',
+        'total_jobs' => 1,
+        'pending_jobs' => 0,
+        'failed_jobs' => 0,
+        'failed_job_ids' => '[]',
+        'options' => serialize([
+            'checkybot_control' => [
+                'project_id' => $this->project->id,
+                'user_id' => $this->user->id,
+            ],
+        ]),
+        'cancelled_at' => null,
+        'created_at' => now()->subMinute()->timestamp,
+        'finished_at' => now()->timestamp,
+    ]);
+
+    $this->project->update(['package_key' => 'renamed-scrappa']);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/renamed-scrappa/runs/batch-before-project-rename')
+        ->assertOk()
+        ->assertJsonPath('data.project.key', 'renamed-scrappa')
+        ->assertJsonPath('data.run_batch.id', 'batch-before-project-rename')
+        ->assertJsonPath('data.run_batch.name', 'Control project run: old-scrappa-key')
+        ->assertJsonPath('data.run_batch.status', 'finished');
+});
+
 test('control api scopes diagnostic batch status to the project owner and control metadata', function () {
     $otherUser = User::factory()->create();
     $otherApiKey = ApiKey::factory()->create(['user_id' => $otherUser->id]);
