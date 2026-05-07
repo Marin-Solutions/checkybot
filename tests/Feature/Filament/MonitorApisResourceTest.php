@@ -57,6 +57,128 @@ test('super admin can create api monitor with execution settings', function () {
         ->and($monitor->save_failed_response)->toBeFalse();
 });
 
+test('super admin can create api monitor with first run assertions', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Orders API',
+            'url' => 'https://example.com/orders/health',
+            'expected_status' => 200,
+            'assertions' => [
+                [
+                    'data_path' => 'data.status',
+                    'assertion_type' => 'value_compare',
+                    'comparison_operator' => '=',
+                    'expected_value' => 'ok',
+                    'is_active' => true,
+                ],
+                [
+                    'data_path' => 'data.items',
+                    'assertion_type' => 'array_length',
+                    'comparison_operator' => '>=',
+                    'expected_value' => '1',
+                    'is_active' => true,
+                ],
+            ],
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified()
+        ->assertRedirect();
+
+    $monitor = MonitorApis::query()
+        ->where('title', 'Orders API')
+        ->with('assertions')
+        ->firstOrFail();
+
+    expect($monitor->created_by)->toBe($user->id)
+        ->and($monitor->assertions)->toHaveCount(2)
+        ->and($monitor->assertions[0]->data_path)->toBe('data.status')
+        ->and($monitor->assertions[0]->assertion_type)->toBe('value_compare')
+        ->and($monitor->assertions[0]->comparison_operator)->toBe('=')
+        ->and($monitor->assertions[0]->expected_value)->toBe('ok')
+        ->and($monitor->assertions[0]->sort_order)->toBe(1)
+        ->and($monitor->assertions[1]->data_path)->toBe('data.items')
+        ->and($monitor->assertions[1]->assertion_type)->toBe('array_length')
+        ->and($monitor->assertions[1]->comparison_operator)->toBe('>=')
+        ->and($monitor->assertions[1]->expected_value)->toBe('1')
+        ->and($monitor->assertions[1]->sort_order)->toBe(2);
+});
+
+test('super admin cannot create api monitor with invalid regex assertion', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Regex API',
+            'url' => 'https://example.com/regex-health',
+            'expected_status' => 200,
+            'assertions' => [
+                [
+                    'data_path' => 'data.version',
+                    'assertion_type' => 'regex_match',
+                    'regex_pattern' => '[invalid',
+                    'is_active' => true,
+                ],
+            ],
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['assertions.0.regex_pattern']);
+});
+
+test('super admin cannot create api monitor with contains array length assertion', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Array Length API',
+            'url' => 'https://example.com/array-length-health',
+            'expected_status' => 200,
+            'assertions' => [
+                [
+                    'data_path' => 'data.items',
+                    'assertion_type' => 'array_length',
+                    'comparison_operator' => 'contains',
+                    'expected_value' => '1',
+                    'is_active' => true,
+                ],
+            ],
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['assertions.0.comparison_operator']);
+});
+
+test('super admin cannot create api monitor with non numeric array length assertion', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Non Numeric Array Length API',
+            'url' => 'https://example.com/non-numeric-array-length-health',
+            'expected_status' => 200,
+            'assertions' => [
+                [
+                    'data_path' => 'data.items',
+                    'assertion_type' => 'array_length',
+                    'comparison_operator' => '>=',
+                    'expected_value' => 'many',
+                    'is_active' => true,
+                ],
+            ],
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['assertions.0.expected_value']);
+});
+
 test('super admin can update api monitor execution settings', function () {
     $this->createResourcePermissions('MonitorApis');
 

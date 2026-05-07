@@ -9,6 +9,7 @@ use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Support\HealthStatusFilter;
 use App\Jobs\RunApiMonitorDiagnosticJob;
+use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Services\IntervalParser;
 use App\Support\PackageCheckTableEvidence;
@@ -120,7 +121,7 @@ class MonitorApisResource extends Resource
                             ->placeholder((string) config('monitor.api_timeout', 10))
                             ->helperText('Optional override for slow endpoints. Leave blank to use the default timeout.'),
                         Forms\Components\TextInput::make('data_path')
-                            ->helperText('Optional JSON path to validate in the response body (for example: data.items).')
+                            ->helperText('Optional legacy single JSON path check. Use response assertions below for richer API checks.')
                             ->maxLength(255)
                             ->columnSpanFull(),
                         Forms\Components\KeyValue::make('headers')
@@ -180,6 +181,24 @@ class MonitorApisResource extends Resource
                                 };
                             }),
                     ]),
+                Section::make('Response Assertions')
+                    ->description('Add JSON response checks now so the first scheduled run validates the fields that prove this endpoint is healthy.')
+                    ->visibleOn('create')
+                    ->schema([
+                        Forms\Components\Repeater::make('assertions')
+                            ->schema(static::assertionFormSchema())
+                            ->columns(2)
+                            ->default([])
+                            ->defaultItems(0)
+                            ->itemLabel(fn (array $state): ?string => filled($state['data_path'] ?? null)
+                                ? ($state['data_path'].' - '.str_replace('_', ' ', (string) ($state['assertion_type'] ?? 'assertion')))
+                                : 'New assertion')
+                            ->addActionLabel('Add assertion')
+                            ->reorderableWithButtons()
+                            ->collapsible()
+                            ->maxItems(50)
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Failure Handling')
                     ->schema([
                         Forms\Components\Toggle::make('save_failed_response')
@@ -188,6 +207,122 @@ class MonitorApisResource extends Resource
                             ->default(true),
                     ]),
             ]);
+    }
+
+    /**
+     * @return array<int, \Filament\Schemas\Components\Component>
+     */
+    public static function assertionFormSchema(bool $includeSortOrder = false): array
+    {
+        $schema = [
+            Forms\Components\TextInput::make('data_path')
+                ->required()
+                ->label('JSON Path')
+                ->helperText('Path to the value in the JSON response, for example data.user.id.')
+                ->maxLength(255),
+
+            Forms\Components\Select::make('assertion_type')
+                ->required()
+                ->label('Assertion')
+                ->options([
+                    'type_check' => 'Check Type',
+                    'value_compare' => 'Compare Value',
+                    'exists' => 'Value Exists',
+                    'not_exists' => 'Value Does Not Exist',
+                    'array_length' => 'Array Length',
+                    'regex_match' => 'Regex Match',
+                ])
+                ->default('exists')
+                ->native(false)
+                ->live()
+                ->afterStateUpdated(function (?string $state, Set $set): void {
+                    $set('expected_type', null);
+                    $set('comparison_operator', null);
+                    $set('expected_value', null);
+                    $set('regex_pattern', null);
+                }),
+
+            Forms\Components\Select::make('expected_type')
+                ->options([
+                    'string' => 'String',
+                    'integer' => 'Integer',
+                    'boolean' => 'Boolean',
+                    'array' => 'Array',
+                    'object' => 'Object',
+                    'float' => 'Float',
+                    'null' => 'Null',
+                ])
+                ->native(false)
+                ->required(fn (Get $get): bool => $get('assertion_type') === 'type_check')
+                ->visible(fn (Get $get): bool => $get('assertion_type') === 'type_check'),
+
+            Forms\Components\Select::make('comparison_operator')
+                ->options(fn (Get $get): array => static::comparisonOperatorOptions($get('assertion_type')))
+                ->native(false)
+                ->required(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->visible(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->rules(fn (Get $get): array => in_array($get('assertion_type'), ['value_compare', 'array_length'], true)
+                    ? ['in:'.implode(',', array_keys(static::comparisonOperatorOptions($get('assertion_type'))))]
+                    : []),
+
+            Forms\Components\TextInput::make('expected_value')
+                ->required(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->visible(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->label(fn (Get $get): string => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value')
+                ->rules(fn (Get $get): array => $get('assertion_type') === 'array_length' ? ['integer', 'min:0'] : [])
+                ->maxLength(255),
+
+            Forms\Components\TextInput::make('regex_pattern')
+                ->required(fn (Get $get): bool => $get('assertion_type') === 'regex_match')
+                ->visible(fn (Get $get): bool => $get('assertion_type') === 'regex_match')
+                ->rules(fn (Get $get): array => $get('assertion_type') === 'regex_match'
+                    ? [
+                        function (string $attribute, mixed $value, \Closure $fail): void {
+                            if (! is_string($value) || ! MonitorApiAssertion::hasValidRegexPattern($value)) {
+                                $fail('Enter a valid regular expression pattern, including delimiters such as /pattern/.');
+                            }
+                        },
+                    ]
+                    : [])
+                ->helperText('Regular expression pattern, for example /^[0-9]+$/.')
+                ->placeholder('/pattern/')
+                ->maxLength(1000),
+
+            Forms\Components\Toggle::make('is_active')
+                ->label('Active')
+                ->default(true),
+        ];
+
+        if ($includeSortOrder) {
+            $schema[] = Forms\Components\TextInput::make('sort_order')
+                ->numeric()
+                ->default(0)
+                ->label('Sort Order')
+                ->helperText('Lower numbers are evaluated first.');
+        }
+
+        return $schema;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function comparisonOperatorOptions(?string $assertionType): array
+    {
+        $options = [
+            '=' => 'Equals',
+            '!=' => 'Not Equals',
+            '>' => 'Greater Than',
+            '<' => 'Less Than',
+            '>=' => 'Greater Than or Equal',
+            '<=' => 'Less Than or Equal',
+        ];
+
+        if ($assertionType !== 'array_length') {
+            $options['contains'] = 'Contains';
+        }
+
+        return $options;
     }
 
     public static function table(Table $table): Table

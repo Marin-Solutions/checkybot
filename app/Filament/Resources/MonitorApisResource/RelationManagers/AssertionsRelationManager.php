@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
+use App\Filament\Resources\MonitorApisResource;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Support\ApiMonitorEvidenceFormatter;
@@ -11,12 +12,9 @@ use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
-use Filament\Forms;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Components\Section;
-use Filament\Schemas\Components\Utilities\Get;
-use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -39,81 +37,7 @@ class AssertionsRelationManager extends RelationManager
     public function form(Schema $schema): Schema
     {
         return $schema
-            ->schema([
-                Forms\Components\TextInput::make('data_path')
-                    ->required()
-                    ->label('JSON Path')
-                    ->helperText('The path to the value in the JSON response (e.g. data.user.id)'),
-
-                Forms\Components\Select::make('assertion_type')
-                    ->required()
-                    ->options([
-                        'type_check' => 'Check Type',
-                        'value_compare' => 'Compare Value',
-                        'exists' => 'Value Exists',
-                        'not_exists' => 'Value Does Not Exist',
-                        'array_length' => 'Array Length',
-                        'regex_match' => 'Regex Match',
-                    ])
-                    ->reactive()
-                    ->afterStateUpdated(fn ($state, Set $set) => $set('comparison_operator', null)),
-
-                Forms\Components\Select::make('expected_type')
-                    ->options([
-                        'string' => 'String',
-                        'integer' => 'Integer',
-                        'boolean' => 'Boolean',
-                        'array' => 'Array',
-                        'object' => 'Object',
-                        'float' => 'Float',
-                        'null' => 'Null',
-                    ])
-                    ->required(fn (Get $get) => $get('assertion_type') === 'type_check')
-                    ->visible(fn (Get $get) => $get('assertion_type') === 'type_check'),
-
-                Forms\Components\Select::make('comparison_operator')
-                    ->options([
-                        '=' => 'Equals',
-                        '!=' => 'Not Equals',
-                        '>' => 'Greater Than',
-                        '<' => 'Less Than',
-                        '>=' => 'Greater Than or Equal',
-                        '<=' => 'Less Than or Equal',
-                        'contains' => 'Contains',
-                    ])
-                    ->required(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->visible(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length'])),
-
-                Forms\Components\TextInput::make('expected_value')
-                    ->required(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->visible(fn (Get $get) => in_array($get('assertion_type'), ['value_compare', 'array_length']))
-                    ->label(fn (Get $get) => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value'),
-
-                Forms\Components\TextInput::make('regex_pattern')
-                    ->required(fn (Get $get) => $get('assertion_type') === 'regex_match')
-                    ->visible(fn (Get $get) => $get('assertion_type') === 'regex_match')
-                    ->rules(fn (Get $get): array => $get('assertion_type') === 'regex_match'
-                        ? [
-                            function (string $attribute, mixed $value, \Closure $fail): void {
-                                if (! is_string($value) || ! MonitorApiAssertion::hasValidRegexPattern($value)) {
-                                    $fail('Enter a valid regular expression pattern, including delimiters such as /pattern/.');
-                                }
-                            },
-                        ]
-                        : [])
-                    ->helperText('Regular expression pattern (e.g. /^[0-9]+$/)')
-                    ->placeholder('/pattern/'),
-
-                Forms\Components\Toggle::make('is_active')
-                    ->label('Active')
-                    ->default(true),
-
-                Forms\Components\TextInput::make('sort_order')
-                    ->numeric()
-                    ->default(0)
-                    ->label('Sort Order')
-                    ->helperText('Lower numbers are evaluated first'),
-            ]);
+            ->schema(MonitorApisResource::assertionFormSchema(includeSortOrder: true));
     }
 
     public function table(Table $table): Table
