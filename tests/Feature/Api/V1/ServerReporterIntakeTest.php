@@ -134,3 +134,39 @@ test('server reporter intake still rejects invalid tokens', function () {
     expect($server->last_reporter_ip)->toBeNull()
         ->and($server->last_reporter_seen_at)->toBeNull();
 });
+
+test('server history intake rejects malformed metric payloads', function (array $override, string $field) {
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+
+    $payload = array_merge([
+        's' => $server->id,
+        'cpu_load' => '0.25',
+        'cpu_cores' => 4,
+        'ram_free_percentage' => '70',
+        'ram_free' => '1024000',
+        'disk_free_percentage' => '55',
+        'disk_free_bytes' => '2048000',
+    ], $override);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer server-token',
+        'Accept' => 'application/json',
+    ])
+        ->postJson('/api/v1/server-history', $payload)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors($field);
+
+    expect(ServerInformationHistory::query()->where('server_id', $server->id)->exists())->toBeFalse();
+})->with([
+    'negative cpu load' => [['cpu_load' => '-0.01'], 'cpu_load'],
+    'non numeric cpu load' => [['cpu_load' => 'not-a-load'], 'cpu_load'],
+    'ram percentage above 100' => [['ram_free_percentage' => '101'], 'ram_free_percentage'],
+    'negative ram free' => [['ram_free' => '-1'], 'ram_free'],
+    'disk percentage below 0' => [['disk_free_percentage' => '-1'], 'disk_free_percentage'],
+    'negative disk free bytes' => [['disk_free_bytes' => '-1'], 'disk_free_bytes'],
+    'zero cpu cores' => [['cpu_cores' => 0], 'cpu_cores'],
+    'invalid server id' => [['s' => 'server-1'], 's'],
+]);
