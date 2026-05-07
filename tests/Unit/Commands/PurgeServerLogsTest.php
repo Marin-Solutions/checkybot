@@ -2,6 +2,7 @@
 
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
+use Illuminate\Console\Scheduling\Schedule;
 
 test('command can be executed', function () {
     $this->artisan('app:purge-server-logs')
@@ -248,6 +249,39 @@ test('command deletes invalid 10 minute intervals', function () {
 test('command has correct signature', function () {
     $this->artisan('app:purge-server-logs')
         ->assertSuccessful();
+});
+
+test('command deletes matching records across multiple chunks', function () {
+    $server = Server::factory()->create();
+
+    foreach ([1, 2, 3, 4, 5] as $minute) {
+        ServerInformationHistory::factory()->create([
+            'server_id' => $server->id,
+            'created_at' => now()->subDays(8)->startOfHour()->addMinutes($minute),
+        ]);
+    }
+
+    $keepLog = ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'created_at' => now()->subDays(8)->startOfHour(),
+    ]);
+
+    $this->artisan('app:purge-server-logs --chunk=2')
+        ->expectsOutput('Purged 0 mid-range logs and 5 old logs.')
+        ->assertSuccessful();
+
+    assertDatabaseHas('server_information_history', ['id' => $keepLog->id]);
+    expect(ServerInformationHistory::count())->toBe(1);
+});
+
+test('scheduled server log purge uses hourly overlap protection', function () {
+    $event = collect(app(Schedule::class)->events())->first(
+        fn ($event) => str_contains((string) $event->command, 'app:purge-server-logs')
+    );
+
+    expect($event)->not->toBeNull();
+    expect($event->expression)->toBe('0 * * * *');
+    expect($event->withoutOverlapping)->toBeTrue();
 });
 
 test('command operates on correct time boundaries', function () {

@@ -3,9 +3,9 @@
 namespace App\Filament\Resources\ProjectComponents\Tables;
 
 use App\Filament\Support\HealthStatusFilter;
-use App\Filament\Support\ProjectComponentDeliveryState;
 use App\Models\ProjectComponent;
 use App\Support\HealthStatusLabel;
+use App\Support\ProjectComponentDeliveryState;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
@@ -14,6 +14,7 @@ use Filament\Actions\EditAction;
 use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -40,8 +41,7 @@ class ProjectComponentsTable
                     }),
                 TextColumn::make('delivery_state')
                     ->label('Delivery State')
-                    ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::state($record))
-                    ->formatStateUsing(fn (string $state): string => ProjectComponentDeliveryState::label($state))
+                    ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
                     ->badge()
                     ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                 TextColumn::make('declared_interval')
@@ -51,10 +51,16 @@ class ProjectComponentsTable
             ])
             ->filters([
                 HealthStatusFilter::makeForNonNullableColumn(),
+                SelectFilter::make('delivery_state')
+                    ->label('Delivery State')
+                    ->options(ProjectComponentDeliveryState::options())
+                    ->query(fn (Builder $query, array $data): Builder => ProjectComponentDeliveryState::applyFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    )),
                 HealthStatusFilter::onlyFailing(
                     activeScope: fn (Builder $query): Builder => $query->where('is_archived', false),
                 ),
-                ProjectComponentDeliveryState::filter(),
             ])
             ->recordActions([
                 ViewAction::make(),

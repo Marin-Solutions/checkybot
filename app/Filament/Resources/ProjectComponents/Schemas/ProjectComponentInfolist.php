@@ -2,13 +2,13 @@
 
 namespace App\Filament\Resources\ProjectComponents\Schemas;
 
-use App\Filament\Support\ProjectComponentDeliveryState;
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
 use App\Services\ProjectComponentStaleService;
 use App\Support\ComponentHeartbeatSetupSnippet;
 use App\Support\HealthStatusLabel;
 use App\Support\MetricsPayloadFormatter;
+use App\Support\ProjectComponentDeliveryState;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -62,8 +62,7 @@ class ProjectComponentInfolist
                             ->hint(fn (ProjectComponent $record): ?string => $record->stale_detected_at?->diffForHumans()),
                         TextEntry::make('delivery_state')
                             ->label('Delivery State')
-                            ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::state($record))
-                            ->formatStateUsing(fn (string $state): string => ProjectComponentDeliveryState::label($state))
+                            ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
                             ->badge()
                             ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                     ])->columns(2),

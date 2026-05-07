@@ -2,13 +2,15 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
-use App\Filament\Support\ProjectComponentDeliveryState;
+use App\Filament\Support\HealthStatusFilter;
 use App\Models\ProjectComponent;
 use App\Support\HealthStatusLabel;
+use App\Support\ProjectComponentDeliveryState;
 use Filament\Actions\ViewAction;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ComponentsRelationManager extends RelationManager
 {
@@ -37,8 +39,7 @@ class ComponentsRelationManager extends RelationManager
                     ->label('Interval'),
                 Tables\Columns\TextColumn::make('delivery_state')
                     ->label('Delivery State')
-                    ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::state($record))
-                    ->formatStateUsing(fn (string $state): string => ProjectComponentDeliveryState::label($state))
+                    ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
                     ->badge()
                     ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                 Tables\Columns\TextColumn::make('summary')
@@ -48,7 +49,17 @@ class ComponentsRelationManager extends RelationManager
                     ->sinceInUserZone(),
             ])
             ->filters([
-                ProjectComponentDeliveryState::filter(),
+                HealthStatusFilter::makeForNonNullableColumn(),
+                Tables\Filters\SelectFilter::make('delivery_state')
+                    ->label('Delivery State')
+                    ->options(ProjectComponentDeliveryState::options())
+                    ->query(fn (Builder $query, array $data): Builder => ProjectComponentDeliveryState::applyFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    )),
+                HealthStatusFilter::onlyFailing(
+                    activeScope: fn (Builder $query): Builder => $query->where('is_archived', false),
+                ),
             ])
             ->recordActions([
                 ViewAction::make(),
