@@ -172,7 +172,7 @@ test('record result only saves response body on error', function () {
     expect($result->response_body)->not->toBeNull();
 });
 
-test('record result preserves raw failure payloads when json parsing fails', function () {
+test('record result redacts raw failure payloads when json parsing fails', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);
 
@@ -187,12 +187,65 @@ test('record result preserves raw failure payloads when json parsing fails', fun
     $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
 
     expect($result->response_body)->toBe([
-        MonitorApiResult::RAW_BODY_KEY => '<html>upstream exploded</html>',
+        MonitorApiResult::RAW_BODY_KEY => '[redacted]',
         'error' => 'Invalid JSON response: Syntax error',
     ]);
 });
 
-test('record result uses internal metadata key for error-only failures', function () {
+test('record result redacts saved failure payload keys before persistence', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $failedResult = [
+        'code' => 500,
+        'body' => [
+            'message' => 'upstream failed',
+            'access_token' => 'token-secret',
+            'customer' => [
+                'email' => 'customer@example.com',
+                'password' => 'plaintext-password',
+            ],
+        ],
+        'assertions' => [['passed' => false, 'message' => 'Failed']],
+        'error' => 'Invalid JSON response: token=should-not-persist',
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime);
+
+    expect($result->response_body)->toBe([
+        'message' => 'upstream failed',
+        'access_token' => '[redacted]',
+        'customer' => [
+            'email' => 'customer@example.com',
+            'password' => '[redacted]',
+        ],
+        'error' => 'Invalid JSON response: token=[redacted]',
+    ])
+        ->and($result->getRawOriginal('response_body'))->not->toContain('token-secret')
+        ->and($result->getRawOriginal('response_body'))->not->toContain('plaintext-password')
+        ->and($result->getRawOriginal('response_body'))->not->toContain('should-not-persist');
+});
+
+test('record result caps saved failure payload size before persistence', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $failedResult = [
+        'code' => 500,
+        'body' => collect(range(1, 200))->mapWithKeys(fn (int $index): array => [
+            "field_{$index}" => str_repeat('x', 500),
+        ])->all(),
+        'assertions' => [['passed' => false, 'message' => 'Failed']],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime);
+
+    expect($result->response_body)->toHaveKey('__checky_truncated_payload__')
+        ->and($result->response_body['__checky_truncated_payload__'])->toEndWith('... [truncated]')
+        ->and(strlen($result->getRawOriginal('response_body')))->toBeLessThan(32768);
+});
+
+test('record result uses redacted internal metadata key for error-only failures', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);
 
@@ -207,7 +260,7 @@ test('record result uses internal metadata key for error-only failures', functio
     $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API request failed.');
 
     expect($result->response_body)->toBe([
-        MonitorApiResult::ERROR_METADATA_KEY => 'Connection timeout: cURL error 28',
+        MonitorApiResult::ERROR_METADATA_KEY => '[redacted]',
     ]);
 });
 

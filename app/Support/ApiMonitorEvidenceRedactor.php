@@ -10,6 +10,10 @@ class ApiMonitorEvidenceRedactor
 {
     private const MAX_EVIDENCE_STRING_LENGTH = 4096;
 
+    private const MAX_SAVED_RESPONSE_BODY_LENGTH = 32768;
+
+    private const TRUNCATED_PAYLOAD_KEY = '__checky_truncated_payload__';
+
     /**
      * @param  array<string, mixed>  $headers
      * @return array<string, mixed>
@@ -33,6 +37,33 @@ class ApiMonitorEvidenceRedactor
         }
 
         return self::redactValue($responseBody);
+    }
+
+    /**
+     * @param  array<string, mixed>  $responseBody
+     * @return array<string, mixed>
+     */
+    public static function redactSavedResponseBody(array $responseBody): array
+    {
+        $redacted = self::redactValue($responseBody);
+
+        if (! is_array($redacted)) {
+            return [];
+        }
+
+        $encoded = json_encode($redacted, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        if ($encoded === false || strlen($encoded) <= self::MAX_SAVED_RESPONSE_BODY_LENGTH) {
+            return $redacted;
+        }
+
+        return [
+            self::TRUNCATED_PAYLOAD_KEY => Str::limit(
+                $encoded,
+                self::MAX_SAVED_RESPONSE_BODY_LENGTH - 512,
+                '... [truncated]'
+            ),
+        ];
     }
 
     /**
@@ -65,7 +96,7 @@ class ApiMonitorEvidenceRedactor
         }
 
         if (is_string($value)) {
-            return Str::limit($value, self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
+            return Str::limit(self::sanitizeString($value), self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
         }
 
         return $value;
