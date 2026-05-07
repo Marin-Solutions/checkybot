@@ -68,6 +68,7 @@ test('server log intake trusts a valid token when reporter ip changes', function
         ->assertOk();
 
     expect(ServerLogFileHistory::query()->where('server_log_category_id', $category->id)->exists())->toBeTrue();
+    expect($category->refresh()->last_collected_at)->not->toBeNull();
 
     $server->refresh();
 

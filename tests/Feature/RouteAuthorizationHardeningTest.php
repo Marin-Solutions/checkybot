@@ -4,6 +4,7 @@ use App\Models\Backup;
 use App\Models\SeoCheck;
 use App\Models\Server;
 use App\Models\ServerLogCategory;
+use App\Models\ServerLogFileHistory;
 use App\Models\User;
 use App\Models\Website;
 use App\Services\SeoReportGenerationService;
@@ -140,4 +141,28 @@ test('seo report downloads are isolated to the owning user', function () {
         ->get(route('seo.report.download', ['filename' => $filename]))
         ->assertOk()
         ->assertHeader('Content-Disposition', "attachment; filename=\"{$filename}\"");
+});
+
+test('server log file downloads are limited to the owning server user', function () {
+    Storage::fake('local');
+
+    $owner = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $server = Server::factory()->create(['created_by' => $owner->id]);
+    $category = ServerLogCategory::factory()->create(['server_id' => $server->id]);
+    $file = ServerLogFileHistory::factory()->create([
+        'server_log_category_id' => $category->id,
+        'log_file_name' => 'ServerLogFiles/app.log',
+    ]);
+
+    Storage::put('ServerLogFiles/app.log', 'log contents');
+
+    $this->actingAs($otherUser)
+        ->get(route('server-log-file-history.download', $file))
+        ->assertForbidden();
+
+    $this->actingAs($owner)
+        ->get(route('server-log-file-history.download', $file))
+        ->assertOk()
+        ->assertHeader('Content-Disposition', 'attachment; filename=app.log');
 });

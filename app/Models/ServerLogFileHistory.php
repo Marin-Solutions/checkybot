@@ -21,7 +21,7 @@ class ServerLogFileHistory extends Model
 
     public function logCategory(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        return $this->belongsTo(ServerLogCategory::class);
+        return $this->belongsTo(ServerLogCategory::class, 'server_log_category_id');
     }
 
     public static function doShellScript(int $server_id, int $user): Response
