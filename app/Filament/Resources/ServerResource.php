@@ -7,8 +7,11 @@ use App\Filament\Resources\ServerResource\RelationManagers;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerLogFileHistory;
+use App\Support\UserTimezone;
 use Filament\Forms;
+use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -284,6 +287,43 @@ class ServerResource extends Resource
                     \Filament\Actions\ForceDeleteBulkAction::make(),
                     \Filament\Actions\RestoreBulkAction::make(),
                 ]),
+            ]);
+    }
+
+    public static function infolist(Schema $schema): Schema
+    {
+        return $schema
+            ->schema([
+                Section::make('Server')
+                    ->schema([
+                        TextEntry::make('name'),
+                        TextEntry::make('ip')
+                            ->label('IP')
+                            ->copyable(),
+                        TextEntry::make('description')
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(2),
+                Section::make('Reporter Evidence')
+                    ->description('Latest reporter request metadata for verifying setup and diagnosing offline servers.')
+                    ->schema([
+                        TextEntry::make('last_reporter_seen_at')
+                            ->label('Last Seen')
+                            ->state(fn (Server $record): string => $record->last_reporter_seen_at
+                                ? $record->last_reporter_seen_at->timezone(UserTimezone::current() ?? config('app.timezone'))->toDayDateTimeString()
+                                : 'Never')
+                            ->hint(fn (Server $record): ?string => $record->last_reporter_seen_at?->diffForHumans()),
+                        TextEntry::make('last_reporter_ip')
+                            ->label('Last Reporter IP')
+                            ->default('-')
+                            ->copyable(),
+                        TextEntry::make('last_reporter_user_agent')
+                            ->label('Last Reporter User Agent')
+                            ->default('-')
+                            ->copyable()
+                            ->columnSpanFull(),
+                    ])
+                    ->columns(2),
             ]);
     }
 

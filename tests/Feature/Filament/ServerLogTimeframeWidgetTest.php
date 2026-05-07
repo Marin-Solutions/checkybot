@@ -71,6 +71,20 @@ describe('LogServer Page with Widgets', function () {
             $this->get(LogServer::getUrl(['record' => $this->server]))
                 ->assertSeeLivewire(ServerLogTimeframe::class);
         });
+
+        it('shows reporter evidence for setup diagnostics', function () {
+            $this->server->update([
+                'last_reporter_ip' => '198.51.100.24',
+                'last_reporter_user_agent' => 'checkybot-reporter/1.0',
+                'last_reporter_seen_at' => now()->subMinutes(5),
+            ]);
+
+            $this->get(LogServer::getUrl(['record' => $this->server]))
+                ->assertSuccessful()
+                ->assertSee('Reporter Evidence')
+                ->assertSee('198.51.100.24')
+                ->assertSee('checkybot-reporter/1.0');
+        });
     });
 });
 
