@@ -17,12 +17,13 @@ class StoreServerInformationHistoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'cpu_load' => ['required'],
-            's' => ['required'],
-            'ram_free_percentage' => ['required'],
-            'ram_free' => ['required'],
-            'disk_free_percentage' => ['required'],
-            'disk_free_bytes' => ['required'],
+            'cpu_load' => ['required', 'numeric', 'min:0', 'max:10000'],
+            'cpu_cores' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:4096'],
+            's' => ['required', 'integer', 'min:1'],
+            'ram_free_percentage' => ['required', 'numeric', 'min:0', 'max:100'],
+            'ram_free' => ['required', 'integer', 'min:0'],
+            'disk_free_percentage' => ['required', 'numeric', 'min:0', 'max:100'],
+            'disk_free_bytes' => ['required', 'integer', 'min:0'],
         ];
     }
 

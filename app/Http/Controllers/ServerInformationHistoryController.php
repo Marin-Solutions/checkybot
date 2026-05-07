@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreServerInformationHistoryRequest;
 use App\Http\Requests\UpdateServerInformationHistoryRequest;
 use App\Http\Resources\ServerInfoHistoryResource;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
-use Illuminate\Http\Request;
 
 class ServerInformationHistoryController extends Controller
 {
@@ -29,10 +29,11 @@ class ServerInformationHistoryController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(Request $request)
+    public function store(StoreServerInformationHistoryRequest $request)
     {
         $server = new Server;
-        $serverId = $request->s ?? null;
+        $validated = $request->validated();
+        $serverId = $validated['s'] ?? null;
         $token = $request->bearerToken();
 
         if ($serverId !== null && $serverId !== false) {
@@ -44,18 +45,18 @@ class ServerInformationHistoryController extends Controller
                 }
 
                 // Update CPU cores if changed
-                if ($request->cpu_cores && $dataServer->cpu_cores != $request->cpu_cores) {
-                    $dataServer->update(['cpu_cores' => $request->cpu_cores]);
+                if (isset($validated['cpu_cores']) && $dataServer->cpu_cores != $validated['cpu_cores']) {
+                    $dataServer->update(['cpu_cores' => $validated['cpu_cores']]);
                 }
 
                 // Create history record
                 $serverResource = new ServerInfoHistoryResource(ServerInformationHistory::create([
-                    'server_id' => $request->s,
-                    'cpu_load' => $request->cpu_load,
-                    'ram_free_percentage' => $request->ram_free_percentage,
-                    'ram_free' => $request->ram_free,
-                    'disk_free_percentage' => $request->disk_free_percentage,
-                    'disk_free_bytes' => $request->disk_free_bytes,
+                    'server_id' => $validated['s'],
+                    'cpu_load' => $validated['cpu_load'],
+                    'ram_free_percentage' => $validated['ram_free_percentage'],
+                    'ram_free' => $validated['ram_free'],
+                    'disk_free_percentage' => $validated['disk_free_percentage'],
+                    'disk_free_bytes' => $validated['disk_free_bytes'],
                 ]));
 
                 $dataServer->recordReporterMetadata($request);
