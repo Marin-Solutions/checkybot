@@ -17,6 +17,7 @@ use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 {
@@ -29,14 +30,27 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
      *                          are left untouched so the scheduler's transition-based alerting baseline
      *                          stays accurate, and no health notifications are sent.
      */
+    public string $diagnosticRunId;
+
     public function __construct(
         public Website $website,
         public bool $onDemand = false,
-    ) {}
+        ?string $diagnosticRunId = null,
+    ) {
+        $this->diagnosticRunId = $diagnosticRunId ?? ($this->onDemand ? (string) Str::uuid() : '');
+    }
 
     public function uniqueId(): string
     {
         $mode = $this->isOnDemand() ? RunSource::OnDemand->value : RunSource::Scheduled->value;
+
+        if ($this->isOnDemand()) {
+            $runId = isset($this->diagnosticRunId) && $this->diagnosticRunId !== ''
+                ? $this->diagnosticRunId
+                : 'legacy';
+
+            return "website-uptime-ssl:{$this->website->getKey()}:{$mode}:{$runId}";
+        }
 
         return "website-uptime-ssl:{$this->website->getKey()}:{$mode}";
     }

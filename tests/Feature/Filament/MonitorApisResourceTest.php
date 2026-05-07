@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\RunSource;
 use App\Filament\Resources\MonitorApisResource;
 use App\Filament\Resources\MonitorApisResource\Pages\CreateMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
@@ -8,11 +7,13 @@ use App\Filament\Resources\MonitorApisResource\Pages\ListMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ViewMonitorApis;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\AssertionsRelationManager;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\ResultsRelationManager;
+use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
 test('super admin can create api monitor with execution settings', function () {
@@ -438,14 +439,13 @@ test('user without Update:MonitorApis permission cannot toggle is_enabled inline
     expect($monitor->refresh()->is_enabled)->toBeTrue();
 });
 
-test('list run now action uses stored execution settings and persists diagnostic evidence', function () {
+test('list run now action queues diagnostic job without running outbound request inline', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
-    Http::fake([
-        'https://example.com/*' => Http::response(['data' => ['status' => 'ok']], 200),
-    ]);
+    Queue::fake();
+    Http::preventStrayRequests();
 
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
@@ -461,28 +461,21 @@ test('list run now action uses stored execution settings and persists diagnostic
 
     Livewire::test(ListMonitorApis::class)
         ->callTableAction('run_now', $monitor)
-        ->assertNotified('On-demand run succeeded');
+        ->assertNotified('Diagnostic queued');
 
-    Http::assertSent(fn ($request) => $request->method() === 'POST'
-        && $request->url() === 'https://example.com/health'
-        && $request->data() === ['probe' => true]);
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($monitor));
 
     $monitor->refresh();
 
-    expect($monitor->results()->count())->toBe(1)
-        ->and($monitor->results()->latest('id')->first()->status)->toBe('healthy')
-        ->and($monitor->results()->latest('id')->first()->run_source)->toBe(RunSource::OnDemand)
-        ->and($monitor->results()->latest('id')->first()->is_on_demand)->toBeTrue();
+    expect($monitor->results()->count())->toBe(0);
 });
 
-test('list run now action records success without moving live status', function () {
+test('list run now action leaves live status unchanged while diagnostic is queued', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
-    Http::fake([
-        'https://example.com/*' => Http::response(['data' => ['status' => 'ok']], 200),
-    ]);
+    Queue::fake();
 
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
@@ -498,26 +491,22 @@ test('list run now action records success without moving live status', function 
 
     Livewire::test(ListMonitorApis::class)
         ->callTableAction('run_now', $monitor)
-        ->assertNotified('On-demand run succeeded');
+        ->assertNotified('Diagnostic queued');
 
     $monitor->refresh();
 
-    expect($monitor->results()->count())->toBe(1)
-        ->and($monitor->results()->first()->status)->toBe('healthy')
-        ->and($monitor->results()->first()->run_source)->toBe(RunSource::OnDemand)
+    expect($monitor->results()->count())->toBe(0)
         ->and($monitor->current_status)->toBeNull()
         ->and($monitor->last_heartbeat_at)->toBeNull()
         ->and($monitor->status_summary)->toBeNull();
 });
 
-test('list run now action records failure evidence without moving live status', function () {
+test('list run now action queues failure-prone endpoints without moving live status', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
-    Http::fake([
-        'https://example.com/*' => Http::response(['error' => 'boom'], 500),
-    ]);
+    Queue::fake();
 
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
@@ -534,28 +523,24 @@ test('list run now action records failure evidence without moving live status', 
 
     Livewire::test(ListMonitorApis::class)
         ->callTableAction('run_now', $monitor)
-        ->assertNotified('On-demand run failed');
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($monitor));
 
     $monitor->refresh();
 
-    expect($monitor->results()->count())->toBe(1)
-        ->and($monitor->results()->first()->http_code)->toBe(500)
-        ->and($monitor->results()->first()->status)->toBe('danger')
-        ->and($monitor->results()->first()->run_source)->toBe(RunSource::OnDemand)
-        ->and($monitor->results()->first()->is_on_demand)->toBeTrue()
+    expect($monitor->results()->count())->toBe(0)
         ->and($monitor->current_status)->toBe('healthy')
         ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
         ->and($monitor->status_summary)->toBe('API responded as expected.');
 });
 
-test('list run now action records degraded assertion evidence', function () {
+test('list run now action queues diagnostics for degraded assertion cases', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
-    Http::fake([
-        'https://example.com/*' => Http::response(['data' => []], 200),
-    ]);
+    Queue::fake();
 
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
@@ -568,14 +553,10 @@ test('list run now action records degraded assertion evidence', function () {
 
     Livewire::test(ListMonitorApis::class)
         ->callTableAction('run_now', $monitor)
-        ->assertNotified('On-demand run is degraded');
+        ->assertNotified('Diagnostic queued');
 
-    $result = $monitor->results()->first();
-
-    expect($result)->not->toBeNull()
-        ->and($result->status)->toBe('warning')
-        ->and($result->run_source)->toBe(RunSource::OnDemand)
-        ->and($result->failed_assertions)->toHaveCount(1);
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($monitor));
+    expect($monitor->results()->count())->toBe(0);
 });
 
 test('check api action treats configured non-200 expected status as success', function () {
@@ -685,14 +666,13 @@ test('edit check api action evaluates saved assertions for the current monitor',
     Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/saved-assertion-health');
 });
 
-test('view page run now action persists a real run and surfaces evidence', function () {
+test('view page run now action queues a diagnostic run', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
-    Http::fake([
-        'https://example.com/*' => Http::response(['data' => ['status' => 'ok']], 200),
-    ]);
+    Queue::fake();
+    Http::preventStrayRequests();
 
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
@@ -710,29 +690,24 @@ test('view page run now action persists a real run and surfaces evidence', funct
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->callAction('run_now')
-        ->assertNotified('On-demand run succeeded');
+        ->assertNotified('Diagnostic queued');
 
-    Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/run-now');
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($monitor));
 
     $monitor->refresh();
 
-    expect($monitor->results()->count())->toBe(1)
-        ->and($monitor->results()->latest('id')->first()->status)->toBe('healthy')
-        ->and($monitor->results()->latest('id')->first()->run_source)->toBe(RunSource::OnDemand)
-        ->and($monitor->results()->latest('id')->first()->is_on_demand)->toBeTrue()
+    expect($monitor->results()->count())->toBe(0)
         ->and($monitor->current_status)->toBeNull()
         ->and($monitor->last_heartbeat_at)->toBeNull()
         ->and($monitor->status_summary)->toBeNull();
 });
 
-test('view page run now action surfaces failure evidence and persists the failed run', function () {
+test('view page run now action queues diagnostics for failure cases without moving live status', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
-    Http::fake([
-        'https://example.com/*' => Http::response(['error' => 'boom'], 500),
-    ]);
+    Queue::fake();
 
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
@@ -749,15 +724,13 @@ test('view page run now action surfaces failure evidence and persists the failed
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->callAction('run_now')
-        ->assertNotified('On-demand run failed');
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($monitor));
 
     $monitor->refresh();
 
-    expect($monitor->results()->count())->toBe(1)
-        ->and($monitor->results()->first()->http_code)->toBe(500)
-        ->and($monitor->results()->first()->status)->toBe('danger')
-        ->and($monitor->results()->first()->run_source)->toBe(RunSource::OnDemand)
-        ->and($monitor->results()->first()->is_on_demand)->toBeTrue()
+    expect($monitor->results()->count())->toBe(0)
         ->and($monitor->current_status)->toBe('healthy')
         ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
         ->and($monitor->status_summary)->toBe('API responded as expected.');
