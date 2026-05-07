@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\RunSource;
 use App\Enums\WebsiteServicesEnum;
 use App\Mail\EmailReminderSsl;
 use App\Models\NotificationSetting;
@@ -47,7 +48,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
         if (blank($host)) {
             Log::error('Could not determine SSL host for website '.$this->website->url);
-            $this->recordPackageHealth(null, $statusService, $notificationService);
+            $this->recordSslOnlyHealth(null, $statusService, $notificationService);
 
             return;
         }
@@ -56,7 +57,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
             $newExpiryDate = $sslCertificateService->getExpirationDateForHost($host, $port);
         } catch (\Exception $e) {
             Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage());
-            $this->recordPackageHealth(null, $statusService, $notificationService);
+            $this->recordSslOnlyHealth(null, $statusService, $notificationService);
 
             return;
         }
@@ -76,7 +77,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
         $this->website->forceFill($attributes)->save();
 
-        $this->recordPackageHealth($newExpiryDate, $statusService, $notificationService);
+        $this->recordSslOnlyHealth($newExpiryDate, $statusService, $notificationService);
 
         if (! $this->shouldSendReminder($newExpiryDate)) {
             return;
@@ -156,16 +157,14 @@ class CheckSslExpiryDateJob implements ShouldQueue
         return $this->website->ssl_expiry_reminder_sent_at->gt(now()->subDay());
     }
 
-    private function recordPackageHealth(
+    private function recordSslOnlyHealth(
         ?CarbonInterface $expiryDate,
         PackageHealthStatusService $statusService,
         HealthEventNotificationService $notificationService,
     ): void {
         if (
-            $this->website->source !== 'package'
-            || $this->website->uptime_check
-            || blank($this->website->package_interval)
-            || ! $this->packageIntervalElapsed()
+            $this->website->uptime_check
+            || ! $this->sslOnlyHealthIntervalElapsed()
         ) {
             return;
         }
@@ -179,6 +178,8 @@ class CheckSslExpiryDateJob implements ShouldQueue
             'ssl_expiry_date' => $expiryDate,
             'status' => $status,
             'summary' => $summary,
+            'run_source' => RunSource::Scheduled,
+            'is_on_demand' => false,
         ]);
 
         $this->website->forceFill([
@@ -201,18 +202,41 @@ class CheckSslExpiryDateJob implements ShouldQueue
         }
     }
 
-    private function packageIntervalElapsed(): bool
+    private function sslOnlyHealthIntervalElapsed(): bool
     {
         if ($this->website->last_heartbeat_at === null) {
             return true;
         }
 
+        $interval = $this->website->source === 'package'
+            ? $this->website->package_interval
+            : $this->website->uptime_interval;
+
+        if (blank($interval)) {
+            return false;
+        }
+
         try {
             return $this->website->last_heartbeat_at->lte(
-                now()->subMinutes(IntervalParser::toMinutes($this->website->package_interval))
+                now()->subMinutes($this->intervalToMinutes($interval))
             );
         } catch (\InvalidArgumentException) {
             return false;
         }
+    }
+
+    private function intervalToMinutes(string|int $interval): int
+    {
+        if (is_int($interval) || ctype_digit($interval)) {
+            $minutes = (int) $interval;
+
+            if ($minutes < 1) {
+                throw new \InvalidArgumentException('Interval value must be greater than zero.');
+            }
+
+            return $minutes;
+        }
+
+        return IntervalParser::toMinutes($interval);
     }
 }
