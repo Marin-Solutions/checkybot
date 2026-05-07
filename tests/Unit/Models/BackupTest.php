@@ -84,3 +84,19 @@ test('backup script uploads s3 backups with aws cli destination config', functio
         ->not->toContain('ftp://')
         ->not->toContain('sftp://');
 });
+
+test('backup script reports failure evidence with valid fallback values', function () {
+    $backup = backupWithRemoteStorage('ftp');
+    $script = $backup->backupScript();
+
+    expect($script)
+        ->toContain("FILE_SIZE=0\nIS_UPLOADED=0\nMESSAGE=\"\"\nDO_ZIP=")
+        ->toContain('MESSAGE="Compression failed: $DO_ZIP"')
+        ->toContain('MESSAGE="Upload failed: $DO_UPLOAD_FILE"')
+        ->toContain('MESSAGE_JSON=$(printf')
+        ->toContain('s/\\r/\\\\r/g;s/\\t/\\\\t/g;s/\\n/\\\\n/g')
+        ->toContain('\\"bi\\": '.$backup->id)
+        ->toContain('\\"sf\\": $FILE_SIZE')
+        ->toContain('\\"iu\\": $IS_UPLOADED')
+        ->toContain('\\"msg\\": \\"$MESSAGE_JSON\\"');
+});

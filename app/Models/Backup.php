@@ -126,7 +126,6 @@ class Backup extends Model
         $fileName = $this->backup_filename ?? $folder;
         $url = config('app.url');
         $backupId = $this->id;
-        $serverId = $this->server?->id ?? $this->server_id;
         $token = $this->server?->token ?? '';
         $apiLogBackup = "$url/api/v1/backup-history";
         $firstRunAt = strtotime($this->first_run_at ?? now());
@@ -164,6 +163,9 @@ class Backup extends Model
 $firstRunAtIfStart
 TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
 FILE_NAME="{$fileName}_\${TIMESTAMP}.$format"
+FILE_SIZE=0
+IS_UPLOADED=0
+MESSAGE=""
 DO_ZIP="$($compressCmd 2>&1)"
 DO_ZIP_STATUS=$?
 
@@ -177,16 +179,21 @@ if [ \$DO_ZIP_STATUS -eq 0 ]; then
         IS_UPLOADED=1
     else
         IS_UPLOADED=0
+        MESSAGE="Upload failed: \$DO_UPLOAD_FILE"
     fi
 else
     IS_ZIPPED=0
+    MESSAGE="Compression failed: \$DO_ZIP"
 fi
+
+MESSAGE=\$(printf '%s' "\$MESSAGE" | head -c 4000)
+MESSAGE_JSON=\$(printf '%s' "\$MESSAGE" | sed ':a;N;\$!ba;s/\\\\/\\\\\\\\/g;s/"/\\\\"/g;s/\\r/\\\\r/g;s/\\t/\\\\t/g;s/\\n/\\\\n/g')
 
 curl -X POST $apiLogBackup \
  -H "Authorization: Bearer $token" \
  -H "Content-Type: application/json" \
  -H "Accept: application/json" \
- -d "{\"bi\": $backupId, \"iz\": \$IS_ZIPPED, \"iu\": \$IS_UPLOADED, \"sf\": \$FILE_SIZE, \"nf\": \"\$FILE_NAME\"}"
+ -d "{\"bi\": $backupId, \"iz\": \$IS_ZIPPED, \"iu\": \$IS_UPLOADED, \"sf\": \$FILE_SIZE, \"nf\": \"\$FILE_NAME\", \"msg\": \"\$MESSAGE_JSON\"}"
 $firstRunAtIfEnd
 BASH;
     }

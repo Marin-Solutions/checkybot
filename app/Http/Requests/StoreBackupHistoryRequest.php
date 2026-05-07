@@ -27,6 +27,7 @@ class StoreBackupHistoryRequest extends FormRequest
             'iu' => 'required|integer|in:0,1',
             'sf' => 'required|integer',
             'nf' => 'required|string|max:255',
+            'msg' => 'nullable|string|max:5000',
         ];
     }
 }

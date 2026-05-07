@@ -55,6 +55,7 @@ class BackupHistoryController extends Controller
             'filesize' => $request->input('sf'),
             'is_zipped' => $request->input('iz'),
             'is_uploaded' => $request->input('iu'),
+            'message' => $request->input('msg'),
         ]);
 
         $server->recordReporterMetadata($request);
