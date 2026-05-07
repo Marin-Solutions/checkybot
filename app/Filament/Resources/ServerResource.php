@@ -71,9 +71,7 @@ class ServerResource extends Resource
                     ->label('Status')
                     ->badge()
                     ->getStateUsing(function ($record) {
-                        $latestInfo = $record->latest_server_history_created_at ?? null;
-
-                        if ($latestInfo && Carbon::parse($latestInfo)->diffInMinutes(now()) <= 2) {
+                        if ($record->hasFreshLatestHistory()) {
                             return 'Online';
                         }
 
@@ -102,6 +100,7 @@ class ServerResource extends Resource
                 ProgressColumn::make('disk_usage')
                     ->label('Disk Usage')
                     ->translateLabel()
+                    ->view('filament.tables.columns.server-metric-progress')
                     ->sortable(query: function (Builder $query, string $direction): Builder {
                         return $query
                             ->orderBy(
@@ -112,7 +111,12 @@ class ServerResource extends Resource
                                 $direction
                             );
                     })
+                    ->tooltip(fn (Server $record): string => self::serverMetricFreshnessTooltip($record))
                     ->progress(function (Server $record): float {
+                        if (! $record->hasFreshLatestHistory()) {
+                            return 0;
+                        }
+
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['disk_usage'])) {
@@ -125,6 +129,10 @@ class ServerResource extends Resource
                         return max(0, min(100, $usedPercentage));
                     })
                     ->color(function (Server $record): string {
+                        if (! $record->hasFreshLatestHistory()) {
+                            return 'gray';
+                        }
+
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['disk_usage'])) {
@@ -143,6 +151,7 @@ class ServerResource extends Resource
                 ProgressColumn::make('ram_usage')
                     ->label('RAM Usage')
                     ->translateLabel()
+                    ->view('filament.tables.columns.server-metric-progress')
                     ->sortable(query: function (Builder $query, string $direction): Builder {
                         return $query
                             ->orderBy(
@@ -153,7 +162,12 @@ class ServerResource extends Resource
                                 $direction
                             );
                     })
+                    ->tooltip(fn (Server $record): string => self::serverMetricFreshnessTooltip($record))
                     ->progress(function (Server $record): float {
+                        if (! $record->hasFreshLatestHistory()) {
+                            return 0;
+                        }
+
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['ram_usage'])) {
@@ -166,6 +180,10 @@ class ServerResource extends Resource
                         return max(0, min(100, $usedPercentage));
                     })
                     ->color(function (Server $record): string {
+                        if (! $record->hasFreshLatestHistory()) {
+                            return 'gray';
+                        }
+
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['ram_usage'])) {
@@ -184,6 +202,7 @@ class ServerResource extends Resource
                 ProgressColumn::make('cpu_usage')
                     ->label('CPU Load')
                     ->translateLabel()
+                    ->view('filament.tables.columns.server-metric-progress')
                     ->sortable(query: function (Builder $query, string $direction): Builder {
                         return $query
                             ->orderBy(
@@ -201,7 +220,12 @@ class ServerResource extends Resource
                                 $direction
                             );
                     })
+                    ->tooltip(fn (Server $record): string => self::serverMetricFreshnessTooltip($record))
                     ->progress(function (Server $record): float {
+                        if (! $record->hasFreshLatestHistory()) {
+                            return 0;
+                        }
+
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['cpu_usage'])) {
@@ -213,6 +237,10 @@ class ServerResource extends Resource
                         return max(0, min(100, $cpuUsage));
                     })
                     ->color(function (Server $record): string {
+                        if (! $record->hasFreshLatestHistory()) {
+                            return 'gray';
+                        }
+
                         $latestInfo = $record->parseLatestServerHistoryInfo($record->latest_server_history_info);
 
                         if (! isset($latestInfo['cpu_usage'])) {
@@ -359,5 +387,18 @@ class ServerResource extends Resource
             \Filament\Actions\EditAction::make(),
             \Filament\Actions\DeleteAction::make(),
         ];
+    }
+
+    private static function serverMetricFreshnessTooltip(Server $record): string
+    {
+        if (! $record->latest_server_history_created_at) {
+            return 'Metric freshness unknown because no reporter data has been received.';
+        }
+
+        if (! $record->hasFreshLatestHistory()) {
+            return 'Metrics are stale. Last reporter update '.Carbon::parse($record->latest_server_history_created_at)->diffForHumans().'.';
+        }
+
+        return 'Last reporter update '.Carbon::parse($record->latest_server_history_created_at)->diffForHumans().'.';
     }
 }
