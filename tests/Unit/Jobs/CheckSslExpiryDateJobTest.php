@@ -662,6 +662,50 @@ test('job does not record manual ssl-only heartbeat before interval elapses', fu
         ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
 });
 
+test('job does not record manual ssl-only heartbeat without an interval', function () {
+    Mail::fake();
+
+    $futureDate = now()->addDays(45);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($futureDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://manual-no-interval.example')
+            ->andReturn('manual-no-interval.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://manual-no-interval.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('manual-no-interval.example', 443)
+            ->andReturn($futureDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://manual-no-interval.example',
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => null,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => null,
+        'status_summary' => 'Awaiting scheduled SSL check.',
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->last_heartbeat_at)->toBeNull()
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->status_summary)->toBe('Awaiting scheduled SSL check.')
+        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
+});
+
 test('job does not record package ssl heartbeat before interval elapses on reminder dispatch', function () {
     Mail::fake();
 
@@ -705,6 +749,51 @@ test('job does not record package ssl heartbeat before interval elapses on remin
     expect($website->last_heartbeat_at->equalTo($lastHeartbeat))->toBeTrue()
         ->and($website->current_status)->toBe('healthy')
         ->and($website->status_summary)->toBe('SSL certificate is valid for 15 day(s).')
+        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
+});
+
+test('job does not record package ssl-only heartbeat without an interval', function () {
+    Mail::fake();
+
+    $futureDate = now()->addDays(45);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($futureDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://package-no-interval.example')
+            ->andReturn('package-no-interval.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://package-no-interval.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('package-no-interval.example', 443)
+            ->andReturn($futureDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://package-no-interval.example',
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'package',
+        'package_name' => 'certificate',
+        'package_interval' => null,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => null,
+        'status_summary' => 'Awaiting scheduled SSL check.',
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->last_heartbeat_at)->toBeNull()
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->status_summary)->toBe('Awaiting scheduled SSL check.')
         ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
 });
 

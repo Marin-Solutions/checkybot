@@ -204,16 +204,16 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
     private function sslOnlyHealthIntervalElapsed(): bool
     {
-        if ($this->website->last_heartbeat_at === null) {
-            return true;
-        }
-
         $interval = $this->website->source === 'package'
             ? $this->website->package_interval
             : $this->website->uptime_interval;
 
         if (blank($interval)) {
             return false;
+        }
+
+        if ($this->website->last_heartbeat_at === null) {
+            return true;
         }
 
         try {
