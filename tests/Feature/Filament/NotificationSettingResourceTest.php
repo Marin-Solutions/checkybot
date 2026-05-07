@@ -146,6 +146,25 @@ test('global notification list shows the destination for email and webhook rules
         ->assertSee('Ops Webhook');
 });
 
+test('global notification list shows last delivery evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $setting = NotificationSetting::factory()->email()->create([
+        'user_id' => $user->id,
+        'address' => 'ops@example.com',
+        'last_delivery_kind' => 'test',
+        'last_delivery_succeeded' => false,
+        'last_delivery_response_code' => null,
+        'last_delivery_summary' => 'Mail transport error: connection refused',
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->assertCanSeeTableRecords([$setting])
+        ->assertSee('Failed test')
+        ->assertSee('Mail transport error: connection refused');
+});
+
 test('global notification list flags webhook rules with removed channels', function () {
     $user = $this->actingAsSuperAdmin();
 

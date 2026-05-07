@@ -22,6 +22,13 @@ test('send test notification dispatches sample email when channel type is mail',
         ->toHaveKeys(['ok', 'title', 'body']);
     expect($result['ok'])->toBeTrue();
 
+    $setting->refresh();
+    expect($setting->last_delivery_kind)->toBe('test');
+    expect($setting->last_delivery_succeeded)->toBeTrue();
+    expect($setting->last_delivery_response_code)->toBeNull();
+    expect($setting->last_delivery_summary)->toBe('Test email accepted by configured mail transport.');
+    expect($setting->last_delivery_attempted_at)->not->toBeNull();
+
     Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail) {
         return $mail->hasTo('ops@example.com')
             && $mail->event === 'test_notification'
@@ -119,6 +126,17 @@ test('send test notification triggers webhook with sample payload', function () 
     expect($result['ok'])->toBeTrue();
     expect($result['title'])->toContain('delivered');
 
+    $setting->refresh();
+    $channel->refresh();
+
+    expect($setting->last_delivery_kind)->toBe('test');
+    expect($setting->last_delivery_succeeded)->toBeTrue();
+    expect($setting->last_delivery_response_code)->toBe(200);
+    expect($setting->last_delivery_summary)->toContain('HTTP 200');
+    expect($channel->last_delivery_kind)->toBe('test');
+    expect($channel->last_delivery_succeeded)->toBeTrue();
+    expect($channel->last_delivery_response_code)->toBe(200);
+
     Http::assertSent(function ($request) {
         $body = $request->data();
 
@@ -147,6 +165,12 @@ test('send test notification reports failure with the real upstream status code'
     expect($result['ok'])->toBeFalse();
     expect($result['title'])->toContain('failed');
     expect($result['body'])->toContain('HTTP 502');
+
+    $setting->refresh();
+    expect($setting->last_delivery_kind)->toBe('test');
+    expect($setting->last_delivery_succeeded)->toBeFalse();
+    expect($setting->last_delivery_response_code)->toBe(502);
+    expect($setting->last_delivery_summary)->toContain('HTTP 502');
 });
 
 test('send test notification reports a 2xx response (e.g. 204) as success', function () {
@@ -178,6 +202,11 @@ test('send test notification reports failure when webhook channel was deleted', 
 
     expect($result['ok'])->toBeFalse();
     expect($result['body'])->toContain('not linked');
+
+    $setting->refresh();
+    expect($setting->last_delivery_succeeded)->toBeFalse();
+    expect($setting->last_delivery_response_code)->toBeNull();
+    expect($setting->last_delivery_summary)->toBe('Webhook channel is missing.');
 });
 
 test('send test notification surfaces a graceful failure when the webhook helper throws', function () {
@@ -185,7 +214,7 @@ test('send test notification surfaces a graceful failure when the webhook helper
 
     $stubChannel = new class extends NotificationChannels
     {
-        public function sendWebhookNotification(array $data): array
+        public function sendWebhookNotification(array $data, string $deliveryKind = 'send'): array
         {
             throw new \RuntimeException('Boom — non-Guzzle error from inside the helper');
         }
@@ -223,7 +252,7 @@ test('send test notification labels curl-style errnos as network errors, not HTT
     {
         public string $title = 'TLS-broken endpoint';
 
-        public function sendWebhookNotification(array $data): array
+        public function sendWebhookNotification(array $data, string $deliveryKind = 'send'): array
         {
             return ['url' => 'https://example.com/webhook', 'code' => 60, 'body' => 'SSL certificate problem'];
         }

@@ -170,8 +170,22 @@ class HealthEventNotificationService
                         summary: $summary,
                         url: $url,
                     ));
+
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: true,
+                        responseCode: null,
+                        summary: 'Email accepted by configured mail transport.',
+                    );
                 } catch (Throwable $exception) {
                     $failures++;
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Mail transport error: '.$exception->getMessage(),
+                    );
+
                     Log::error('Failed to deliver health notification mail; continuing with other channels', [
                         'setting_id' => $setting->id,
                         'event' => $event,
@@ -187,6 +201,13 @@ class HealthEventNotificationService
                 $channel = $setting->channel;
 
                 if (! $channel) {
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Webhook channel is missing.',
+                    );
+
                     Log::warning('No channel found for health notification setting', [
                         'setting_id' => $setting->id,
                     ]);
@@ -201,6 +222,14 @@ class HealthEventNotificationService
                         'message' => $message,
                         'description' => $summary,
                     ]);
+                    $code = (int) ($response['code'] ?? 0);
+
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: $this->webhookResponseWasSuccessful($response),
+                        responseCode: $code ?: null,
+                        summary: \App\Models\NotificationChannels::summarizeDeliveryResponse($response),
+                    );
 
                     if (! $this->webhookResponseWasSuccessful($response)) {
                         $failures++;
@@ -215,6 +244,13 @@ class HealthEventNotificationService
                     }
                 } catch (Throwable $exception) {
                     $failures++;
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Unexpected webhook error: '.$exception->getMessage(),
+                    );
+
                     Log::error('Failed to deliver health notification webhook; continuing with other channels', [
                         'setting_id' => $setting->id,
                         'event' => $event,

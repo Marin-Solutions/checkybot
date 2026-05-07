@@ -42,6 +42,13 @@ class ProjectComponentNotificationService
                 $channel = $setting->channel;
 
                 if (! $channel) {
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Webhook channel is missing.',
+                    );
+
                     Log::warning('No channel found for project component notification setting', [
                         'setting_id' => $setting->id,
                         'project_component_id' => $component->id,
@@ -57,6 +64,14 @@ class ProjectComponentNotificationService
                         'message' => $payload['message'],
                         'description' => $payload['details'],
                     ]);
+                    $code = (int) ($response['code'] ?? 0);
+
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: $this->webhookResponseWasSuccessful($response),
+                        responseCode: $code ?: null,
+                        summary: \App\Models\NotificationChannels::summarizeDeliveryResponse($response),
+                    );
 
                     if (! $this->webhookResponseWasSuccessful($response)) {
                         Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
@@ -69,6 +84,13 @@ class ProjectComponentNotificationService
                         ]);
                     }
                 } catch (Throwable $exception) {
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Unexpected webhook error: '.$exception->getMessage(),
+                    );
+
                     Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
                         'setting_id' => $setting->id,
                         'project_component_id' => $component->id,
