@@ -22,7 +22,7 @@ class IncidentFeedWidget extends BaseWidget
 {
     protected static ?string $heading = 'Recent incidents';
 
-    protected static ?string $description = 'Warning and danger transitions from websites, API monitors and components — in the order they happened.';
+    protected static ?string $description = 'Warning, danger and recovery transitions from websites, API monitors and components — in the order they happened.';
 
     protected int|string|array $columnSpan = 'full';
 
@@ -45,14 +45,24 @@ class IncidentFeedWidget extends BaseWidget
                     ->tooltip(fn (Incident $record): string => $record->occurred_at?->toDayDateTimeString() ?? '')
                     ->sortable(),
                 TextColumn::make('status')
-                    ->label('Severity')
+                    ->label('Transition')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'danger' => 'danger',
                         'warning' => 'warning',
+                        'healthy' => 'success',
                         default => 'gray',
                     })
-                    ->formatStateUsing(fn (string $state): string => strtoupper($state))
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'healthy', 'unknown' => 'RECOVERED',
+                        default => strtoupper($state),
+                    })
+                    ->sortable(),
+                TextColumn::make('state')
+                    ->label('Current state')
+                    ->badge()
+                    ->color(fn (string $state): string => $state === 'active' ? 'danger' : 'success')
+                    ->formatStateUsing(fn (string $state): string => $state === 'active' ? 'Active' : 'Resolved')
                     ->sortable(),
                 TextColumn::make('source')
                     ->label('Source')
@@ -85,19 +95,24 @@ class IncidentFeedWidget extends BaseWidget
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->label('Severity')
+                    ->label('Transition')
                     ->options([
                         'danger' => 'Danger',
                         'warning' => 'Warning',
+                        'recovered' => 'Recovered',
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         if (blank($data['value'] ?? null)) {
                             return $query;
                         }
 
+                        if ($data['value'] === 'recovered') {
+                            return $query->whereIn('status', self::NON_INCIDENT_STATUSES);
+                        }
+
                         return $query->where('status', $data['value']);
                     })
-                    ->placeholder('All severities'),
+                    ->placeholder('All transitions'),
                 SelectFilter::make('source')
                     ->label('Source')
                     ->options([
@@ -136,7 +151,7 @@ class IncidentFeedWidget extends BaseWidget
 
     protected function getEmptyStateDescriptionText(): string
     {
-        return 'No warning or danger transitions from your websites, API monitors or components in the selected window.';
+        return 'No warning, danger or recovery transitions from your websites, API monitors or components in the selected window.';
     }
 
     protected function buildIncidentsQuery(): Builder
@@ -228,6 +243,13 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw('summary')
             ->selectRaw('occurred_at')
             ->selectRaw('
+                FIRST_VALUE(normalized_status) OVER (
+                    PARTITION BY source, source_subject_id
+                    ORDER BY occurred_at DESC, source_row_id DESC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ) as current_status
+            ')
+            ->selectRaw('
                 LAG(normalized_status) OVER (
                     PARTITION BY source, source_subject_id
                     ORDER BY occurred_at, source_row_id
@@ -236,13 +258,32 @@ class IncidentFeedWidget extends BaseWidget
 
         return Incident::query()
             ->fromSub($rankedRuns, 'incidents')
-            ->whereIn('status', self::INCIDENT_STATUSES)
             ->where('occurred_at', '>=', $since)
             ->where(function (Builder $transitionQuery): void {
-                $transitionQuery->whereNull('previous_status')
-                    ->orWhereIn('previous_status', self::NON_INCIDENT_STATUSES)
-                    ->orWhereColumn('previous_status', '!=', 'status');
-            });
+                $transitionQuery
+                    ->where(function (Builder $incidentTransitionQuery): void {
+                        $incidentTransitionQuery
+                            ->whereIn('status', self::INCIDENT_STATUSES)
+                            ->where(function (Builder $statusChangeQuery): void {
+                                $statusChangeQuery
+                                    ->whereNull('previous_status')
+                                    ->orWhereIn('previous_status', self::NON_INCIDENT_STATUSES)
+                                    ->orWhereColumn('previous_status', '!=', 'status');
+                            });
+                    })
+                    ->orWhere(function (Builder $recoveryTransitionQuery): void {
+                        $recoveryTransitionQuery
+                            ->whereIn('status', self::NON_INCIDENT_STATUSES)
+                            ->whereIn('previous_status', self::INCIDENT_STATUSES);
+                    });
+            })
+            ->select('incidents.*')
+            ->selectRaw("
+                CASE
+                    WHEN current_status IN ('warning', 'danger') THEN 'active'
+                    ELSE 'resolved'
+                END as state
+            ");
     }
 
     /**

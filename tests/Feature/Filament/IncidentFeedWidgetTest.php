@@ -47,7 +47,9 @@ describe('IncidentFeedWidget', function () {
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('Acme Corp Homepage')
             ->assertSee('Homepage returned HTTP 503')
-            ->assertDontSee('All good');
+            ->assertSee('All good')
+            ->assertSee('RECOVERED')
+            ->assertSee('Resolved');
     });
 
     it('suppresses duplicate unhealthy rows until the severity changes', function () {
@@ -96,6 +98,32 @@ describe('IncidentFeedWidget', function () {
             ->assertSee('Escalated to danger')
             ->assertDontSee('Duplicate warning run')
             ->assertDontSee('Duplicate danger run');
+    });
+
+    it('shows active state for incident sources that have not recovered', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Still broken homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'summary' => 'Baseline healthy',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Current outage',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('Current outage')
+            ->assertSee('Active')
+            ->assertDontSee('Resolved');
     });
 
     it('does not treat an already-open incident from before the feed window as a new incident', function () {
@@ -164,7 +192,10 @@ describe('IncidentFeedWidget', function () {
 
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('Billing webhook')
-            ->assertSee('Billing webhook returned 500');
+            ->assertSee('Billing webhook returned 500')
+            ->assertSee('Heartbeat received successfully.')
+            ->assertSee('RECOVERED')
+            ->assertSee('Resolved');
     });
 
     it('does not create a new api incident row for repeated failed runs without a status change', function () {
@@ -242,7 +273,9 @@ describe('IncidentFeedWidget', function () {
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('queue-worker')
             ->assertSee('Latency spiking above threshold')
-            ->assertDontSee('Back to normal');
+            ->assertSee('Back to normal')
+            ->assertSee('RECOVERED')
+            ->assertSee('Resolved');
     });
 
     it('scopes incidents to the current user', function () {
