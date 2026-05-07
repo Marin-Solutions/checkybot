@@ -40,7 +40,7 @@ class ProjectComponentsTable
                         default => 'gray',
                     }),
                 TextColumn::make('delivery_state')
-                    ->label('Delivery')
+                    ->label('Delivery State')
                     ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
                     ->badge()
                     ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),

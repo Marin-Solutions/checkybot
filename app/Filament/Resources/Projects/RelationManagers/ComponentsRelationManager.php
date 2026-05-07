@@ -38,7 +38,7 @@ class ComponentsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('declared_interval')
                     ->label('Interval'),
                 Tables\Columns\TextColumn::make('delivery_state')
-                    ->label('Delivery')
+                    ->label('Delivery State')
                     ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
                     ->badge()
                     ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
