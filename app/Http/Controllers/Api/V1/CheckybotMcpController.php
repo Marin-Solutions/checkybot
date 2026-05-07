@@ -129,6 +129,12 @@ class CheckybotMcpController extends Controller
             'checkybot_trigger_run' => isset($arguments['check'])
                 ? $this->control->triggerCheckRun($user, $this->requiredString($arguments, 'project'), $this->requiredString($arguments, 'check'))
                 : $this->control->triggerProjectRun($user, $this->requiredString($arguments, 'project')),
+            'get_run_batch',
+            'checkybot_get_run_batch' => $this->control->projectRunBatch(
+                $user,
+                $this->requiredString($arguments, 'project'),
+                $this->requiredString($arguments, 'batch'),
+            ),
             'latest_failures',
             'checkybot_latest_failures' => $this->latestFailures($request, $arguments),
             default => throw ValidationException::withMessages(['name' => ['Unknown Checkybot MCP tool.']]),
@@ -269,6 +275,10 @@ class CheckybotMcpController extends Controller
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string', 'description' => 'Optional check key.'],
             ], ['project']),
+            $this->tool('get_run_batch', 'Get queued project diagnostic batch status.', [
+                'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
+                'batch' => ['type' => 'string', 'description' => 'Laravel batch id returned by trigger_run.'],
+            ], ['project', 'batch']),
             $this->tool('latest_failures', 'List latest warning or danger check results.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],

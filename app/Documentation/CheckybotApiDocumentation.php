@@ -470,6 +470,24 @@ class CheckybotApiDocumentation
     public function triggerControlProjectRun(): void {}
 
     /**
+     * @OA\Get(
+     *     path="/v1/control/projects/{project}/runs/{batch}",
+     *     operationId="getControlProjectRunBatch",
+     *     tags={"control"},
+     *     summary="Get queued project diagnostic batch status",
+     *     security={{"checkybotApiKey": {}}},
+     *
+     *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="batch", in="path", required=true, @OA\Schema(type="string")),
+     *
+     *     @OA\Response(response=200, description="Project run batch status"),
+     *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=404, description="Project run batch not found")
+     * )
+     */
+    public function getControlProjectRunBatch(): void {}
+
+    /**
      * @OA\Post(
      *     path="/v1/control/projects/{project}/checks/{check}/runs",
      *     operationId="triggerControlProjectCheckRun",

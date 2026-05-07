@@ -809,12 +809,88 @@ test('control api queues all enabled project checks as a diagnostic batch', func
             && $batch->jobs->count() === 1
             && $batch->jobs->first() instanceof RunApiMonitorDiagnosticJob
             && $batch->jobs->first()->monitor->package_name === 'search-health'
+            && ($batch->options['checkybot_control']['project_id'] ?? null) === $this->project->id
+            && ($batch->options['checkybot_control']['user_id'] ?? null) === $this->user->id
             && ($batch->options['allowFailures'] ?? false) === true;
     });
 
     $this->assertDatabaseMissing('monitor_api_results', [
         'monitor_api_id' => MonitorApis::query()->where('package_name', 'search-health')->value('id'),
     ]);
+});
+
+test('control api returns queued project diagnostic batch status', function () {
+    $createdAt = now()->subMinute()->timestamp;
+
+    DB::table('job_batches')->insert([
+        'id' => 'batch-control-scrappa',
+        'name' => 'Control project run: scrappa',
+        'total_jobs' => 3,
+        'pending_jobs' => 1,
+        'failed_jobs' => 1,
+        'failed_job_ids' => json_encode(['failed-job-1']),
+        'options' => serialize([
+            'allowFailures' => true,
+            'checkybot_control' => [
+                'project_id' => $this->project->id,
+                'user_id' => $this->user->id,
+            ],
+        ]),
+        'cancelled_at' => null,
+        'created_at' => $createdAt,
+        'finished_at' => null,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/runs/batch-control-scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.project.key', 'scrappa')
+        ->assertJsonPath('data.run_batch.id', 'batch-control-scrappa')
+        ->assertJsonPath('data.run_batch.status', 'running')
+        ->assertJsonPath('data.run_batch.name', 'Control project run: scrappa')
+        ->assertJsonPath('data.run_batch.total_jobs', 3)
+        ->assertJsonPath('data.run_batch.pending_jobs', 1)
+        ->assertJsonPath('data.run_batch.failed_jobs', 1)
+        ->assertJsonPath('data.run_batch.finished_at', null)
+        ->assertJsonStructure(['data' => ['run_batch' => ['created_at']]]);
+});
+
+test('control api scopes diagnostic batch status to the project owner and control metadata', function () {
+    $otherUser = User::factory()->create();
+    $otherApiKey = ApiKey::factory()->create(['user_id' => $otherUser->id]);
+    Project::factory()->create([
+        'created_by' => $otherUser->id,
+        'package_key' => 'scrappa',
+        'name' => 'Other Scrappa',
+    ]);
+
+    DB::table('job_batches')->insert([
+        'id' => 'batch-owned-by-primary-user',
+        'name' => 'Control project run: scrappa',
+        'total_jobs' => 1,
+        'pending_jobs' => 1,
+        'failed_jobs' => 0,
+        'failed_job_ids' => '[]',
+        'options' => serialize([
+            'checkybot_control' => [
+                'project_id' => $this->project->id,
+                'user_id' => $this->user->id,
+            ],
+        ]),
+        'cancelled_at' => null,
+        'created_at' => now()->timestamp,
+        'finished_at' => null,
+    ]);
+
+    $this->withToken($otherApiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/runs/batch-owned-by-primary-user')
+        ->assertNotFound()
+        ->assertJsonPath('message', 'Project run batch not found.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/runs/missing-batch')
+        ->assertNotFound()
+        ->assertJsonPath('message', 'Project run batch not found.');
 });
 
 test('control api project run reports when there are no enabled checks to queue', function () {
@@ -1040,7 +1116,8 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
             'method' => 'tools/list',
         ])
         ->assertOk()
-        ->assertJsonPath('result.tools.0.name', 'me');
+        ->assertJsonPath('result.tools.0.name', 'me')
+        ->assertJsonFragment(['name' => 'get_run_batch']);
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
