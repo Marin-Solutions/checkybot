@@ -71,10 +71,14 @@ class CheckybotControlController extends Controller
 
     public function triggerProjectRun(Request $request, string $project): JsonResponse
     {
+        $result = $this->control->triggerProjectRun($request->user(), $project);
+
         return response()->json([
-            'message' => 'Project run completed.',
-            'data' => $this->control->triggerProjectRun($request->user(), $project),
-        ]);
+            'message' => $result['status'] === 'queued'
+                ? 'Project run queued.'
+                : 'Project has no enabled checks to run.',
+            'data' => $result,
+        ], $result['status'] === 'queued' ? 202 : 200);
     }
 
     public function triggerCheckRun(Request $request, string $project, string $check): JsonResponse

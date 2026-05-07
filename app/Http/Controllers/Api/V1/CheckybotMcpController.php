@@ -265,7 +265,7 @@ class CheckybotMcpController extends Controller
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string'],
             ]),
-            $this->tool('trigger_run', 'Run enabled checks for a project or a single check.', [
+            $this->tool('trigger_run', 'Queue enabled checks for a project, or run a single check immediately.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string', 'description' => 'Optional check key.'],
             ], ['project']),
