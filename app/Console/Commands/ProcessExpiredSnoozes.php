@@ -42,13 +42,13 @@ use Throwable;
  * - Disabled monitors are skipped: API monitors with `is_enabled = false`,
  *   and websites whose `current_status` is no longer maintained by any
  *   pipeline. Status is updated by `LogUptimeSslJob` when `uptime_check`
- *   is on, and by `MarkStalePackageChecks` for `source = 'package'` rows
- *   with a `package_interval` (this matters because package SSL checks
- *   are created with `uptime_check = false` but still receive status
- *   updates). Standard websites with only SSL/outbound on don't qualify —
- *   their stored status is frozen from before the toggle change. The
- *   snooze marker is still cleared so the UI doesn't keep showing an
- *   expired window.
+ *   is on, by `CheckSslExpiryDateJob` for scheduled SSL-only rows, and by
+ *   `MarkStalePackageChecks` for `source = 'package'` rows with a
+ *   `package_interval` (this matters because package SSL checks are created
+ *   with `uptime_check = false` but still receive status updates). Standard
+ *   websites with only outbound on don't qualify — their stored status is
+ *   frozen from before the toggle change. The snooze marker is still
+ *   cleared so the UI doesn't keep showing an expired window.
  * - Healthy monitors get their snooze cleared with no alert.
  */
 class ProcessExpiredSnoozes extends Command
@@ -218,20 +218,23 @@ class ProcessExpiredSnoozes extends Command
     }
 
     /**
-     * `current_status` for a website is written by two pipelines:
+     * `current_status` for a website is written by three pipelines:
      *
      * 1. `LogUptimeSslJob` — gated on `uptime_check`; short-circuits at
      *    line 39 when the toggle is off.
-     * 2. `MarkStalePackageChecks` — runs for every `source = 'package'`
+     * 2. `CheckSslExpiryDateJob` — writes scheduled health for SSL-only rows
+     *    that have an interval: `package_interval` for package rows,
+     *    `uptime_interval` for manual rows.
+     * 3. `MarkStalePackageChecks` — runs for every `source = 'package'`
      *    row that has a `package_interval`, regardless of `uptime_check`.
      *    Package-managed SSL checks are created with `uptime_check = false`
      *    by `CheckSyncService::syncSslChecks()`, but they still get their
      *    `current_status` flipped to `danger` when stale.
      *
      * A monitor is "actively monitored" — i.e. its stored status is fresh
-     * enough to alert on — when *any* of those two pipelines applies. SSL-
-     * cert and outbound-link checks on standard websites do not write to
-     * `current_status` and therefore do not qualify.
+     * enough to alert on — when *any* of those pipelines applies. Outbound-
+     * link checks on standard websites do not write to `current_status` and
+     * therefore do not qualify on their own.
      */
     private function isWebsiteActivelyMonitored(Website $website): bool
     {
@@ -239,7 +242,11 @@ class ProcessExpiredSnoozes extends Command
             return true;
         }
 
-        return $website->source === 'package' && $website->package_interval !== null;
+        if ($website->source === 'package') {
+            return $website->package_interval !== null;
+        }
+
+        return $website->ssl_check && $website->uptime_interval !== null;
     }
 
     /**

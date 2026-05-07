@@ -244,15 +244,15 @@ test('command skips disabled api monitors but still clears their expired snooze'
     Mail::assertNothingSent();
 });
 
-test('command skips websites with uptime_check disabled even when ssl and outbound checks are on', function () {
+test('command skips websites with only outbound checks enabled because current_status is not refreshed by outbound scans', function () {
     Mail::fake();
 
-    // ssl/outbound checks don't refresh current_status — only uptime does —
-    // so the stored "danger" is frozen from before the toggle change. The
-    // command must not re-fire an alert from that stale state.
+    // Outbound checks don't refresh current_status, so the stored "danger"
+    // is frozen from before the toggle change. The command must not re-fire
+    // an alert from that stale state.
     $website = Website::factory()->create([
         'uptime_check' => false,
-        'ssl_check' => true,
+        'ssl_check' => false,
         'outbound_check' => true,
         'current_status' => 'danger',
         'silenced_until' => now()->subMinute(),
@@ -271,6 +271,61 @@ test('command skips websites with uptime_check disabled even when ssl and outbou
 
     expect($website->refresh()->silenced_until)->toBeNull();
 
+    Mail::assertNothingSent();
+});
+
+test('command alerts on a manual ssl-only website because scheduled ssl checks keep current_status fresh', function () {
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'source' => 'manual',
+        'uptime_check' => false,
+        'uptime_interval' => 5,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'SSL certificate check failed before an expiry date could be read.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
+test('command skips manual ssl-only websites without an interval because scheduled ssl checks do not run', function () {
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'source' => 'manual',
+        'uptime_check' => false,
+        'uptime_interval' => null,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
     Mail::assertNothingSent();
 });
 
@@ -313,6 +368,7 @@ test('command skips snooze_expired alert if uptime_check was toggled off between
     // The helper must observe the toggle and skip the alert; status would
     // be frozen from before the toggle so paging is misleading.
     $website = Website::factory()->create([
+        'ssl_check' => false,
         'current_status' => 'danger',
         'silenced_until' => now()->subMinute(),
     ]);
