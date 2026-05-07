@@ -6,6 +6,7 @@ use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
 test('send test notification dispatches sample email when channel type is mail', function () {
@@ -21,6 +22,13 @@ test('send test notification dispatches sample email when channel type is mail',
         ->toBeArray()
         ->toHaveKeys(['ok', 'title', 'body']);
     expect($result['ok'])->toBeTrue();
+
+    $setting->refresh();
+    expect($setting->last_delivery_kind)->toBe('test');
+    expect($setting->last_delivery_succeeded)->toBeTrue();
+    expect($setting->last_delivery_response_code)->toBeNull();
+    expect($setting->last_delivery_summary)->toBe('Test email accepted by configured mail transport.');
+    expect($setting->last_delivery_attempted_at)->not->toBeNull();
 
     Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail) {
         return $mail->hasTo('ops@example.com')
@@ -46,6 +54,14 @@ test('send ssl notification dispatches reminder email when channel type is mail'
     Mail::assertSent(EmailReminderSsl::class, function (EmailReminderSsl $mail) {
         return $mail->hasTo('ops@example.com');
     });
+
+    $setting->refresh();
+
+    expect($setting->last_delivery_kind)->toBe('send');
+    expect($setting->last_delivery_succeeded)->toBeTrue();
+    expect($setting->last_delivery_response_code)->toBeNull();
+    expect($setting->last_delivery_summary)->toBe('Email accepted by configured mail transport.');
+    expect($setting->last_delivery_attempted_at)->not->toBeNull();
 });
 
 test('send ssl notification triggers webhook when channel type is webhook', function () {
@@ -80,6 +96,47 @@ test('send ssl notification triggers webhook when channel type is webhook', func
             && ($body['message'] ?? '') === 'Action Required: Renew Your SSL Certificate.'
             && str_contains($body['description'] ?? '', 'https://example.com');
     });
+});
+
+test('send ssl notification does not log raw webhook urls when delivery fails', function () {
+    Http::fake([
+        '*' => Http::response(['error' => 'unauthorized'], 401),
+    ]);
+    Log::spy();
+
+    $user = User::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'method' => 'POST',
+        'url' => 'https://hooks.slack.com/services/T00000000/B00000000/slack-secret-token',
+        'request_body' => [
+            'message' => '{message}',
+            'description' => '{description}',
+        ],
+    ]);
+
+    $setting = NotificationSetting::factory()->webhook()->create([
+        'notification_channel_id' => $channel->id,
+    ]);
+
+    $setting->sendSslNotification(data: [
+        'user' => $user,
+        'daysLeft' => 0,
+        'url' => 'https://example.com',
+    ]);
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->withArgs(function (string $message, array $context) use ($channel, $setting): bool {
+            $encodedContext = json_encode($context);
+
+            return $message === 'Webhook notification failed to send'
+                && $context['notification_setting_id'] === $setting->id
+                && $context['channel_id'] === $channel->id
+                && $context['response_code'] === 401
+                && ! array_key_exists('url', $context)
+                && ! str_contains($encodedContext, 'slack-secret-token')
+                && ! str_contains($encodedContext, 'hooks.slack.com');
+        });
 });
 
 test('send test notification reports failure when email address is missing', function () {
@@ -119,6 +176,17 @@ test('send test notification triggers webhook with sample payload', function () 
     expect($result['ok'])->toBeTrue();
     expect($result['title'])->toContain('delivered');
 
+    $setting->refresh();
+    $channel->refresh();
+
+    expect($setting->last_delivery_kind)->toBe('test');
+    expect($setting->last_delivery_succeeded)->toBeTrue();
+    expect($setting->last_delivery_response_code)->toBe(200);
+    expect($setting->last_delivery_summary)->toContain('HTTP 200');
+    expect($channel->last_delivery_kind)->toBe('test');
+    expect($channel->last_delivery_succeeded)->toBeTrue();
+    expect($channel->last_delivery_response_code)->toBe(200);
+
     Http::assertSent(function ($request) {
         $body = $request->data();
 
@@ -147,6 +215,12 @@ test('send test notification reports failure with the real upstream status code'
     expect($result['ok'])->toBeFalse();
     expect($result['title'])->toContain('failed');
     expect($result['body'])->toContain('HTTP 502');
+
+    $setting->refresh();
+    expect($setting->last_delivery_kind)->toBe('test');
+    expect($setting->last_delivery_succeeded)->toBeFalse();
+    expect($setting->last_delivery_response_code)->toBe(502);
+    expect($setting->last_delivery_summary)->toContain('HTTP 502');
 });
 
 test('send test notification reports a 2xx response (e.g. 204) as success', function () {
@@ -178,6 +252,11 @@ test('send test notification reports failure when webhook channel was deleted', 
 
     expect($result['ok'])->toBeFalse();
     expect($result['body'])->toContain('not linked');
+
+    $setting->refresh();
+    expect($setting->last_delivery_succeeded)->toBeFalse();
+    expect($setting->last_delivery_response_code)->toBeNull();
+    expect($setting->last_delivery_summary)->toBe('Webhook channel is missing.');
 });
 
 test('send test notification surfaces a graceful failure when the webhook helper throws', function () {
@@ -185,7 +264,7 @@ test('send test notification surfaces a graceful failure when the webhook helper
 
     $stubChannel = new class extends NotificationChannels
     {
-        public function sendWebhookNotification(array $data): array
+        public function sendWebhookNotification(array $data, string $deliveryKind = 'send'): array
         {
             throw new \RuntimeException('Boom — non-Guzzle error from inside the helper');
         }
@@ -223,7 +302,7 @@ test('send test notification labels curl-style errnos as network errors, not HTT
     {
         public string $title = 'TLS-broken endpoint';
 
-        public function sendWebhookNotification(array $data): array
+        public function sendWebhookNotification(array $data, string $deliveryKind = 'send'): array
         {
             return ['url' => 'https://example.com/webhook', 'code' => 60, 'body' => 'SSL certificate problem'];
         }

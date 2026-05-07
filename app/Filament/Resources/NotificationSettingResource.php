@@ -125,6 +125,33 @@ class NotificationSettingResource extends Resource
                         : null),
                 Tables\Columns\ToggleColumn::make('flag_active')
                     ->label('Active'),
+                Tables\Columns\TextColumn::make('last_delivery_succeeded')
+                    ->label('Last Delivery')
+                    ->badge()
+                    ->placeholder('No delivery evidence')
+                    ->state(fn (NotificationSetting $record): ?string => $record->last_delivery_attempted_at
+                        ? (($record->last_delivery_succeeded ? 'Success' : 'Failed').' '.($record->last_delivery_kind ?? 'send'))
+                        : null)
+                    ->color(fn (NotificationSetting $record): string => match ($record->last_delivery_succeeded) {
+                        true => 'success',
+                        false => 'danger',
+                        default => 'gray',
+                    }),
+                Tables\Columns\TextColumn::make('last_delivery_response_code')
+                    ->label('Response')
+                    ->placeholder('No response code')
+                    ->state(fn (NotificationSetting $record): ?string => $record->last_delivery_response_code
+                        ? (string) $record->last_delivery_response_code
+                        : null),
+                Tables\Columns\TextColumn::make('last_delivery_summary')
+                    ->label('Delivery Evidence')
+                    ->placeholder('No test or send recorded yet')
+                    ->wrap()
+                    ->limit(100),
+                Tables\Columns\TextColumn::make('last_delivery_attempted_at')
+                    ->label('Attempted')
+                    ->placeholder('Never')
+                    ->dateTime(),
             ])
             ->filters([])
             ->actions([

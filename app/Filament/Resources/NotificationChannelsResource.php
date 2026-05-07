@@ -120,6 +120,33 @@ class NotificationChannelsResource extends Resource
                 TextColumn::make('url')->label('Webhook URL'),
                 TextColumn::make('request_body'),
                 TextColumn::make('description'),
+                TextColumn::make('last_delivery_succeeded')
+                    ->label('Last Delivery')
+                    ->badge()
+                    ->placeholder('No delivery evidence')
+                    ->state(fn (NotificationChannels $record): ?string => $record->last_delivery_attempted_at
+                        ? (($record->last_delivery_succeeded ? 'Success' : 'Failed').' '.($record->last_delivery_kind ?? 'send'))
+                        : null)
+                    ->color(fn (NotificationChannels $record): string => match ($record->last_delivery_succeeded) {
+                        true => 'success',
+                        false => 'danger',
+                        default => 'gray',
+                    }),
+                TextColumn::make('last_delivery_response_code')
+                    ->label('Response')
+                    ->placeholder('No response code')
+                    ->state(fn (NotificationChannels $record): ?string => $record->last_delivery_response_code
+                        ? (string) $record->last_delivery_response_code
+                        : null),
+                TextColumn::make('last_delivery_summary')
+                    ->label('Delivery Evidence')
+                    ->placeholder('No test or send recorded yet')
+                    ->wrap()
+                    ->limit(100),
+                TextColumn::make('last_delivery_attempted_at')
+                    ->label('Attempted')
+                    ->placeholder('Never')
+                    ->dateTime(),
             ])
             ->filters([
                 //

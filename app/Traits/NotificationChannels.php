@@ -17,9 +17,22 @@ trait NotificationChannels
 
             $callback = \App\Models\NotificationChannels::testWebhook($validatedData);
             $code = (int) ($callback['code'] ?? 0);
+            $successful = $code >= 200 && $code < 300;
 
-            if ($code < 200 || $code >= 300) {
+            if (isset($this->record) && $this->record instanceof \App\Models\NotificationChannels) {
+                $this->record->recordDeliveryAttempt(
+                    kind: 'test',
+                    succeeded: $successful,
+                    responseCode: $code ?: null,
+                    summary: \App\Models\NotificationChannels::summarizeDeliveryResponse($callback),
+                );
+            }
+
+            if (! $successful) {
                 $responseFail = true;
+                $bodyDetail = is_string($callback['body'] ?? null)
+                    ? $callback['body']
+                    : (json_encode($callback['body'] ?? null) ?: '');
                 // testWebhook() reuses the `code` key for two namespaces:
                 // real HTTP status codes (100–599) on a completed request,
                 // and curl errnos (e.g. 60 for SSL) when a RequestException
@@ -27,16 +40,16 @@ trait NotificationChannels
                 // a 502 apart from a TLS handshake failure.
                 if ($code == 60) {
                     $title = 'URL website, problem with certificate';
-                    $body = $callback['body'];
+                    $body = $bodyDetail;
                 } elseif ($callback['body'] == 1) {
                     $title = 'URL Website Response error';
                     $body = 'The website response is not 2xx!';
                 } elseif ($code >= 100 && $code < 600) {
                     $title = 'Webhook returned an error status';
-                    $body = $callback['body'].' (HTTP '.$code.')';
+                    $body = $bodyDetail.' (HTTP '.$code.')';
                 } else {
                     $title = 'URL website a unknown error. try other url';
-                    $body = $callback['body'].' (curl errno '.$code.')';
+                    $body = $bodyDetail.' (curl errno '.$code.')';
                 }
             } else {
                 $responseFail = false;

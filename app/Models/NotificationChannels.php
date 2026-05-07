@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class NotificationChannels extends Model
 {
@@ -22,10 +23,17 @@ class NotificationChannels extends Model
         'description',
         'request_body',
         'created_by',
+        'last_delivery_kind',
+        'last_delivery_succeeded',
+        'last_delivery_response_code',
+        'last_delivery_summary',
+        'last_delivery_attempted_at',
     ];
 
     protected $casts = [
         'request_body' => 'array',
+        'last_delivery_succeeded' => 'boolean',
+        'last_delivery_attempted_at' => 'datetime',
     ];
 
     public static function testWebhook(array $data): array
@@ -74,7 +82,7 @@ class NotificationChannels extends Model
         }
     }
 
-    public function sendWebhookNotification(array $data): array
+    public function sendWebhookNotification(array $data, string $deliveryKind = 'send'): array
     {
         $messageText = @$data['message'] ?? "Hello, I'm from ".url('/');
         $descriptionText = @$data['description'] ?? 'Description Text';
@@ -122,6 +130,13 @@ class NotificationChannels extends Model
             $responseData['code'] = $webhookCallback->status();
             $responseData['body'] = $webhookCallback->json();
 
+            $this->recordDeliveryAttempt(
+                kind: $deliveryKind,
+                succeeded: $responseData['code'] >= 200 && $responseData['code'] < 300,
+                responseCode: (int) $responseData['code'],
+                summary: self::summarizeDeliveryResponse($responseData),
+            );
+
             Log::info('Webhook response received', [
                 'status_code' => $responseData['code'],
                 'response_body' => $responseData['body'],
@@ -140,8 +155,47 @@ class NotificationChannels extends Model
             $responseData['code'] = $handlerContext['errno'];
             $responseData['body'] = $handlerContext['error'];
 
+            $this->recordDeliveryAttempt(
+                kind: $deliveryKind,
+                succeeded: false,
+                responseCode: (int) ($responseData['code'] ?? 0) ?: null,
+                summary: self::summarizeDeliveryResponse($responseData),
+            );
+
             return $responseData;
         }
+    }
+
+    public function recordDeliveryAttempt(string $kind, bool $succeeded, ?int $responseCode, ?string $summary): void
+    {
+        if (! $this->exists) {
+            return;
+        }
+
+        $this->forceFill([
+            'last_delivery_kind' => $kind,
+            'last_delivery_succeeded' => $succeeded,
+            'last_delivery_response_code' => $responseCode,
+            'last_delivery_summary' => $summary !== null ? Str::limit($summary, 500, '') : null,
+            'last_delivery_attempted_at' => now(),
+        ])->saveQuietly();
+    }
+
+    public static function summarizeDeliveryResponse(array $response): string
+    {
+        $code = (int) ($response['code'] ?? 0);
+        $body = $response['body'] ?? null;
+        $detail = is_string($body) ? $body : (json_encode($body) ?: '');
+
+        if ($code >= 100 && $code < 600) {
+            $prefix = 'HTTP '.$code;
+        } elseif ($code > 0) {
+            $prefix = 'Network error (curl errno '.$code.')';
+        } else {
+            $prefix = 'No response';
+        }
+
+        return Str::limit(trim($prefix.($detail !== '' ? ': '.$detail : '')), 500, '');
     }
 
     private static function redactWebhookUrlForLogs(string $url): string

@@ -89,7 +89,7 @@ test('project component sync sends recovery notifications when a component retur
         'stale_detected_at' => now()->subMinutes(5),
     ]);
 
-    NotificationSetting::factory()
+    $setting = NotificationSetting::factory()
         ->globalScope()
         ->email()
         ->create([
@@ -123,6 +123,14 @@ test('project component sync sends recovery notifications when a component retur
         return ($mail->payload['subject'] ?? null) === 'Application component recovered: worker-a'
             && ($mail->payload['title'] ?? null) === 'Application component recovered';
     });
+
+    $setting->refresh();
+
+    expect($setting->last_delivery_kind)->toBe('send');
+    expect($setting->last_delivery_succeeded)->toBeTrue();
+    expect($setting->last_delivery_response_code)->toBeNull();
+    expect($setting->last_delivery_summary)->toBe('Email accepted by configured mail transport.');
+    expect($setting->last_delivery_attempted_at)->not->toBeNull();
 });
 
 test('project component sync sends recovery notifications when a stale-only component returns to healthy', function () {
@@ -189,13 +197,21 @@ test('project component sync continues after a mail notification channel fails',
         'last_reported_status' => 'healthy',
     ]);
 
-    NotificationSetting::factory()
+    $failedSetting = NotificationSetting::factory()
         ->globalScope()
         ->email()
-        ->count(2)
         ->create([
             'user_id' => $project->created_by,
             'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+            'address' => 'failed@example.com',
+        ]);
+    $successfulSetting = NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+            'address' => 'delivered@example.com',
         ]);
 
     $failingMail = Mockery::mock(PendingMail::class);
@@ -238,6 +254,19 @@ test('project component sync continues after a mail notification channel fails',
     Log::shouldHaveReceived('error')
         ->once()
         ->withArgs(fn (string $message): bool => str_contains($message, 'Failed to deliver project component notification mail'));
+
+    $failedSetting->refresh();
+    $successfulSetting->refresh();
+
+    expect($failedSetting->last_delivery_kind)->toBe('send');
+    expect($failedSetting->last_delivery_succeeded)->toBeFalse();
+    expect($failedSetting->last_delivery_response_code)->toBeNull();
+    expect($failedSetting->last_delivery_summary)->toContain('Mail transport error: SMTP down');
+    expect($failedSetting->last_delivery_attempted_at)->not->toBeNull();
+    expect($successfulSetting->last_delivery_kind)->toBe('send');
+    expect($successfulSetting->last_delivery_succeeded)->toBeTrue();
+    expect($successfulSetting->last_delivery_summary)->toBe('Email accepted by configured mail transport.');
+    expect($successfulSetting->last_delivery_attempted_at)->not->toBeNull();
 });
 
 test('project component sync logs and continues when webhook notification channel is missing', function () {

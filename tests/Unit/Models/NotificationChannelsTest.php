@@ -153,6 +153,12 @@ test('send webhook notification sends request', function () {
 
     expect($result['code'])->toBe(200);
     expect($result['body'])->toBe(['result' => 'sent']);
+
+    $channel->refresh();
+    expect($channel->last_delivery_kind)->toBe('send');
+    expect($channel->last_delivery_succeeded)->toBeTrue();
+    expect($channel->last_delivery_response_code)->toBe(200);
+    expect($channel->last_delivery_summary)->toContain('HTTP 200');
 });
 
 test('send webhook notification accepts a null post request body', function () {
@@ -217,6 +223,11 @@ test('send webhook notification preserves a 4xx status code so operators can deb
     ]);
 
     expect($result['code'])->toBe(401);
+
+    $channel->refresh();
+    expect($channel->last_delivery_succeeded)->toBeFalse();
+    expect($channel->last_delivery_response_code)->toBe(401);
+    expect($channel->last_delivery_summary)->toContain('HTTP 401');
 });
 
 test('send webhook notification redacts webhook secrets from request logs without changing delivery', function () {
