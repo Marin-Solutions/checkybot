@@ -87,14 +87,19 @@ class SeoIssuesTableWidget extends BaseWidget
                     ->badge()
                     ->color(fn (SeoIssue $record): string => $record->getSeverityColor())
                     ->formatStateUsing(fn ($state): string => strtoupper($state->value))
-                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderByRaw(<<<SQL
-                        CASE severity
-                            WHEN 'error' THEN 1
-                            WHEN 'warning' THEN 2
-                            WHEN 'notice' THEN 3
-                            ELSE 4
-                        END {$direction}
-                    SQL)),
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        $direction = $direction === 'desc' ? 'DESC' : 'ASC';
+
+                        // Keep this order aligned with SeoIssueSeverity::getPriority().
+                        return $query->orderByRaw(<<<SQL
+                            CASE severity
+                                WHEN 'error' THEN 1
+                                WHEN 'warning' THEN 2
+                                WHEN 'notice' THEN 3
+                                ELSE 4
+                            END {$direction}
+                        SQL);
+                    }),
                 TextColumn::make('type')
                     ->label('Issue Type')
                     ->badge()
