@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\WebsiteServicesEnum;
+use App\Filament\Resources\BackupsResource;
 use App\Mail\HealthStatusAlert;
+use App\Models\Backup;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
@@ -126,6 +128,45 @@ class HealthEventNotificationService
         }
 
         return true;
+    }
+
+    /**
+     * @see notifyWebsite() for the boolean return-value contract.
+     */
+    public function notifyBackup(Backup $backup, string $event, string $status, string $summary): bool
+    {
+        $server = $backup->server;
+        $userId = $server?->created_by;
+
+        if (! $userId) {
+            Log::warning('Skipping backup notification because the backup has no owning user', [
+                'backup_id' => $backup->id,
+                'server_id' => $backup->server_id,
+                'event' => $event,
+                'status' => $status,
+            ]);
+
+            return true;
+        }
+
+        $settings = NotificationSetting::query()
+            ->active()
+            ->globalScope()
+            ->where('user_id', $userId)
+            ->whereIn('inspection', [
+                WebsiteServicesEnum::BACKUP_MONITOR->value,
+                WebsiteServicesEnum::ALL_CHECK->value,
+            ])
+            ->get();
+
+        return $this->deliver(
+            $settings,
+            name: $this->backupName($backup),
+            event: $event,
+            status: $status,
+            summary: $summary,
+            url: BackupsResource::getUrl('edit', ['record' => $backup]),
+        );
     }
 
     /**
@@ -324,5 +365,12 @@ class HealthEventNotificationService
         $label = $this->eventLabel($event, $status);
 
         return "[{$label}] {$name} {$event}";
+    }
+
+    private function backupName(Backup $backup): string
+    {
+        return $backup->backup_filename
+            ?: $backup->dir_path
+            ?: 'Backup #'.$backup->id;
     }
 }
