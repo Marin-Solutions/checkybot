@@ -57,6 +57,33 @@ class WebsiteSeoCheckResource extends Resource
                         default => 'gray',
                     })
                     ->placeholder('No checks'),
+                Tables\Columns\TextColumn::make('seoSchedule.is_active')
+                    ->label('SEO Schedule')
+                    ->badge()
+                    ->formatStateUsing(function ($state, Website $record): string {
+                        if (! $record->seoSchedule) {
+                            return 'Not configured';
+                        }
+
+                        return $state ? 'Enabled' : 'Disabled';
+                    })
+                    ->color(function ($state, Website $record): string {
+                        if (! $record->seoSchedule) {
+                            return 'gray';
+                        }
+
+                        return $state ? 'success' : 'warning';
+                    }),
+                Tables\Columns\TextColumn::make('seoSchedule.frequency')
+                    ->label('Frequency')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Not configured')
+                    ->color(fn (?string $state): string => $state ? 'info' : 'gray'),
+                Tables\Columns\TextColumn::make('seoSchedule.next_run_at')
+                    ->label('Next Run')
+                    ->dateTimeInUserZone()
+                    ->sortable()
+                    ->placeholder('Not scheduled'),
                 Tables\Columns\TextColumn::make('latestSeoCheck.total_urls_crawled')
                     ->label('URLs Crawled')
                     ->numeric(),
@@ -144,6 +171,86 @@ class WebsiteSeoCheckResource extends Resource
                             $query->where('status', $data['value']);
                         });
                     }),
+                Tables\Filters\SelectFilter::make('seo_schedule_state')
+                    ->label('SEO Schedule')
+                    ->options([
+                        'enabled' => 'Enabled',
+                        'disabled' => 'Disabled',
+                        'not_configured' => 'Not configured',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! $data['value']) {
+                            return $query;
+                        }
+
+                        return match ($data['value']) {
+                            'enabled' => $query->whereHas('seoSchedule', function (Builder $query) {
+                                $query->where('is_active', true);
+                            }),
+                            'disabled' => $query->whereHas('seoSchedule', function (Builder $query) {
+                                $query->where('is_active', false);
+                            }),
+                            'not_configured' => $query->whereDoesntHave('seoSchedule'),
+                            default => $query,
+                        };
+                    }),
+                Tables\Filters\SelectFilter::make('seo_schedule_frequency')
+                    ->label('Frequency')
+                    ->options([
+                        'daily' => 'Daily',
+                        'weekly' => 'Weekly',
+                        'monthly' => 'Monthly',
+                        'not_configured' => 'Not configured',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! $data['value']) {
+                            return $query;
+                        }
+
+                        if ($data['value'] === 'not_configured') {
+                            return $query->whereDoesntHave('seoSchedule');
+                        }
+
+                        return $query->whereHas('seoSchedule', function (Builder $query) use ($data) {
+                            $query->where('frequency', $data['value']);
+                        });
+                    }),
+                Tables\Filters\SelectFilter::make('seo_schedule_next_run')
+                    ->label('Next Run')
+                    ->options([
+                        'overdue' => 'Due now or overdue',
+                        'next_24_hours' => 'Next 24 hours',
+                        'next_7_days' => 'Next 7 days',
+                        'not_scheduled' => 'Not scheduled',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! $data['value']) {
+                            return $query;
+                        }
+
+                        return match ($data['value']) {
+                            'overdue' => $query->whereHas('seoSchedule', function (Builder $query) {
+                                $query->where('is_active', true)
+                                    ->whereNotNull('next_run_at')
+                                    ->where('next_run_at', '<=', now());
+                            }),
+                            'next_24_hours' => $query->whereHas('seoSchedule', function (Builder $query) {
+                                $query->where('is_active', true)
+                                    ->whereBetween('next_run_at', [now(), now()->addDay()]);
+                            }),
+                            'next_7_days' => $query->whereHas('seoSchedule', function (Builder $query) {
+                                $query->where('is_active', true)
+                                    ->whereBetween('next_run_at', [now(), now()->addWeek()]);
+                            }),
+                            'not_scheduled' => $query->where(function (Builder $query) {
+                                $query->whereDoesntHave('seoSchedule')
+                                    ->orWhereHas('seoSchedule', function (Builder $query) {
+                                        $query->whereNull('next_run_at');
+                                    });
+                            }),
+                            default => $query,
+                        };
+                    }),
             ])
             ->actions([
                 \Filament\Actions\Action::make('view_checks')
@@ -221,6 +328,7 @@ class WebsiteSeoCheckResource extends Resource
     {
         return parent::getEloquentQuery()
             ->with([
+                'seoSchedule',
                 'latestSeoCheck' => function ($query) {
                     $query->withCount([
                         'seoIssues as errors_count' => function ($query) {
