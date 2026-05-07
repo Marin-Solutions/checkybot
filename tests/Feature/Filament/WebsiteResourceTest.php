@@ -1274,6 +1274,47 @@ test('view page hides recent failures when no failing logs exist', function () {
         ->assertDontSee('Recent Failures');
 });
 
+test('view page summarizes outbound link evidence by triage outcome', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'outbound_check' => true,
+        'last_outbound_checked_at' => now()->subMinutes(20),
+    ]);
+
+    OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'http_status_code' => 200,
+    ]);
+    OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'http_status_code' => 404,
+    ]);
+    OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'http_status_code' => 503,
+    ]);
+    OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'http_status_code' => 301,
+    ]);
+    OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'http_status_code' => null,
+        'transport_error_type' => 'timeout',
+        'transport_error_message' => 'Operation timed out',
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Outbound Link Check')
+        ->assertSee('5 total')
+        ->assertSee('2 broken')
+        ->assertSee('1 redirected')
+        ->assertSee('1 transport failed')
+        ->assertSee('1 healthy');
+});
+
 test('view page reports SSL cert expiring today as expiring, not expired', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
@@ -1570,6 +1611,103 @@ test('outbound links relation manager filters to rows with no response recorded'
         ->filterTable('http_status_code', 'unknown')
         ->assertCanSeeTableRecords([$missingResponse])
         ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+test('outbound links relation manager filters transport failures', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $transportFailure = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/timeout',
+        'http_status_code' => null,
+        'transport_error_type' => 'timeout',
+    ]);
+    $healthy = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/ok',
+        'http_status_code' => 200,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', 'transport_failed')
+        ->assertCanSeeTableRecords([$transportFailure])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+test('outbound links relation manager filters links needing triage', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $redirected = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/redirect',
+        'http_status_code' => 301,
+    ]);
+    $broken = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/missing',
+        'http_status_code' => 404,
+    ]);
+    $transportFailure = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/timeout',
+        'http_status_code' => null,
+        'transport_error_type' => 'timeout',
+    ]);
+    $healthy = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/ok',
+        'http_status_code' => 200,
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('http_status_code', 'attention')
+        ->assertCanSeeTableRecords([$redirected, $broken, $transportFailure])
+        ->assertCanNotSeeTableRecords([$healthy]);
+});
+
+test('outbound links relation manager shows triage links before healthy links by default', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $healthy = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/ok',
+        'http_status_code' => 200,
+        'last_checked_at' => now(),
+    ]);
+    $redirected = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/redirect',
+        'http_status_code' => 301,
+        'last_checked_at' => now()->subMinutes(3),
+    ]);
+    $broken = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/missing',
+        'http_status_code' => 404,
+        'last_checked_at' => now()->subMinutes(5),
+    ]);
+    $transportFailure = OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'outgoing_url' => 'https://partner.example/timeout',
+        'http_status_code' => null,
+        'transport_error_type' => 'timeout',
+        'last_checked_at' => now()->subMinutes(10),
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertCanSeeTableRecords([$transportFailure, $broken, $redirected, $healthy], inOrder: true);
 });
 
 test('notification relation manager renders on view page and is website scoped', function () {

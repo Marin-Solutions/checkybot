@@ -22,6 +22,9 @@ class WebsiteInfolist
     /** @var \WeakMap<Website, array{threshold: Carbon|null, invalid_interval: bool}>|null */
     private static ?\WeakMap $expectedStaleCache = null;
 
+    /** @var \WeakMap<Website, array{total: int, broken: int, redirected: int, transport_failed: int, healthy: int}>|null */
+    private static ?\WeakMap $outboundSummaryCache = null;
+
     public static function configure(Schema $schema): Schema
     {
         return $schema
@@ -202,7 +205,7 @@ class WebsiteInfolist
                     ])
                     ->columns(2),
                 Section::make('Outbound Link Check')
-                    ->description('Checkybot verifies external links on this website for broken targets.')
+                    ->description('Current outbound evidence from the latest stored scan, grouped by the outcomes users need to triage first.')
                     ->hidden(fn (Website $record): bool => ! $record->outbound_check)
                     ->schema([
                         TextEntry::make('last_outbound_checked_at')
@@ -210,7 +213,38 @@ class WebsiteInfolist
                             ->state(fn (Website $record): ?string => $record->last_outbound_checked_at?->toDayDateTimeString())
                             ->default('Never')
                             ->hint(fn (Website $record): ?string => $record->last_outbound_checked_at?->diffForHumans()),
-                    ]),
+                        TextEntry::make('outbound_links_total')
+                            ->label('Links Tracked')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['total'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' total')
+                            ->badge()
+                            ->color('gray'),
+                        TextEntry::make('outbound_links_broken')
+                            ->label('Broken')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['broken'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' broken')
+                            ->badge()
+                            ->color(fn (int $state): string => $state > 0 ? 'danger' : 'success'),
+                        TextEntry::make('outbound_links_redirected')
+                            ->label('Redirected')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['redirected'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' redirected')
+                            ->badge()
+                            ->color(fn (int $state): string => $state > 0 ? 'info' : 'gray'),
+                        TextEntry::make('outbound_links_transport_failed')
+                            ->label('Transport Failed')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['transport_failed'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' transport failed')
+                            ->badge()
+                            ->color(fn (int $state): string => $state > 0 ? 'danger' : 'success'),
+                        TextEntry::make('outbound_links_healthy')
+                            ->label('Healthy')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['healthy'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' healthy')
+                            ->badge()
+                            ->color('success'),
+                    ])
+                    ->columns(3),
                 Section::make('Recent Failures')
                     ->description('Most recent non-healthy monitor runs from the last 7 days.')
                     ->hidden(fn (Website $record): bool => empty(static::recentFailures($record)))
@@ -291,6 +325,38 @@ class WebsiteInfolist
         $message = filled($log->transport_error_message) ? ': '.$log->transport_error_message : '';
 
         return "{$label}{$code}{$message}";
+    }
+
+    /**
+     * @return array{total: int, broken: int, redirected: int, transport_failed: int, healthy: int}
+     */
+    private static function outboundSummary(Website $record): array
+    {
+        static::$outboundSummaryCache ??= new \WeakMap;
+
+        return static::$outboundSummaryCache[$record] ??= static::resolveOutboundSummary($record);
+    }
+
+    /**
+     * @return array{total: int, broken: int, redirected: int, transport_failed: int, healthy: int}
+     */
+    private static function resolveOutboundSummary(Website $record): array
+    {
+        $summary = $record->outboundLinks()
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('SUM(CASE WHEN http_status_code BETWEEN 400 AND 599 THEN 1 ELSE 0 END) as broken')
+            ->selectRaw('SUM(CASE WHEN http_status_code BETWEEN 300 AND 399 THEN 1 ELSE 0 END) as redirected')
+            ->selectRaw('SUM(CASE WHEN transport_error_type IS NOT NULL THEN 1 ELSE 0 END) as transport_failed')
+            ->selectRaw('SUM(CASE WHEN http_status_code BETWEEN 200 AND 299 AND transport_error_type IS NULL THEN 1 ELSE 0 END) as healthy')
+            ->first();
+
+        return [
+            'total' => (int) ($summary->total ?? 0),
+            'broken' => (int) ($summary->broken ?? 0),
+            'redirected' => (int) ($summary->redirected ?? 0),
+            'transport_failed' => (int) ($summary->transport_failed ?? 0),
+            'healthy' => (int) ($summary->healthy ?? 0),
+        ];
     }
 
     private static function statusColor(?string $state): string
