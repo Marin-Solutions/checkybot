@@ -82,11 +82,11 @@ class ApiHealthStatsWidget extends BaseWidget
     {
         $scheduledResults = MonitorApiResult::query()
             ->scheduled()
+            ->whereIn('monitor_api_id', $this->monitorScope()->select('id'))
             ->select('monitor_api_id')
             ->groupBy('monitor_api_id');
 
-        $aggregates = MonitorApis::query()
-            ->where('monitor_apis.created_by', auth()->id())
+        $aggregates = $this->monitorScope()
             ->leftJoinSub($scheduledResults, 'scheduled_results', function ($join): void {
                 $join->on('scheduled_results.monitor_api_id', '=', 'monitor_apis.id');
             })
@@ -153,6 +153,7 @@ class ApiHealthStatsWidget extends BaseWidget
             ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
             ->where('monitor_apis.created_by', auth()->id())
             ->where('monitor_apis.is_enabled', true)
+            ->whereNull('monitor_apis.deleted_at')
             ->whereNull('monitor_apis.stale_at')
             ->where('monitor_api_results.is_on_demand', false);
     }
@@ -162,5 +163,11 @@ class ApiHealthStatsWidget extends BaseWidget
         return $this->activeScheduledResults()
             ->selectRaw('MAX(monitor_api_results.id)')
             ->groupBy('monitor_api_results.monitor_api_id');
+    }
+
+    private function monitorScope(): Builder
+    {
+        return MonitorApis::query()
+            ->where('monitor_apis.created_by', auth()->id());
     }
 }

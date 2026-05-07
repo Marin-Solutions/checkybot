@@ -159,6 +159,61 @@ describe('ApiHealthStatsWidget', function () {
         ]);
     });
 
+    it('excludes soft-deleted monitors from live uptime and latency aggregates', function () {
+        $activeMonitor = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'current_status' => 'healthy',
+        ]);
+        MonitorApiResult::factory()->successful()->create([
+            'monitor_api_id' => $activeMonitor->id,
+            'response_time_ms' => 120,
+            'created_at' => now()->subMinutes(10),
+        ]);
+
+        $deletedMonitor = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'current_status' => 'danger',
+        ]);
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $deletedMonitor->id,
+            'response_time_ms' => 900,
+            'created_at' => now()->subMinutes(5),
+        ]);
+        $deletedMonitor->delete();
+
+        Livewire::test(ApiHealthStatsWidget::class)
+            ->assertSuccessful()
+            ->assertSee('100%')
+            ->assertSee('Avg response: 120ms');
+    });
+
+    it('ignores scheduled results for soft-deleted monitors when checking no-data state', function () {
+        $activeMonitor = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'current_status' => 'healthy',
+        ]);
+
+        $deletedMonitor = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'current_status' => 'danger',
+        ]);
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $deletedMonitor->id,
+        ]);
+        $deletedMonitor->delete();
+
+        $counts = Livewire::test(ApiHealthStatsWidget::class)
+            ->instance()
+            ->collectCounts();
+
+        expect($counts)->toMatchArray([
+            'total' => 1,
+            'healthy' => 0,
+            'failing' => 0,
+            'no_data' => 1,
+        ]);
+    });
+
     it('renders separated dashboard descriptions', function () {
         $healthy = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
