@@ -107,22 +107,12 @@ class ProjectComponentNotificationService
                 continue;
             }
 
+            $mailException = null;
+
             try {
                 Mail::to($setting->address)->send(new ProjectComponentAlertMail($payload));
-
-                $setting->recordDeliveryAttempt(
-                    kind: 'send',
-                    succeeded: true,
-                    responseCode: null,
-                    summary: 'Email accepted by configured mail transport.',
-                );
             } catch (Throwable $exception) {
-                $setting->recordDeliveryAttempt(
-                    kind: 'send',
-                    succeeded: false,
-                    responseCode: null,
-                    summary: 'Mail transport error: '.$exception->getMessage(),
-                );
+                $mailException = $exception;
 
                 Log::error('Failed to deliver project component notification mail; continuing with other channels', [
                     'setting_id' => $setting->id,
@@ -132,6 +122,24 @@ class ProjectComponentNotificationService
                     'exception' => $exception,
                 ]);
             }
+
+            if ($mailException) {
+                $setting->recordDeliveryAttempt(
+                    kind: 'send',
+                    succeeded: false,
+                    responseCode: null,
+                    summary: 'Mail transport error: '.$mailException->getMessage(),
+                );
+
+                continue;
+            }
+
+            $setting->recordDeliveryAttempt(
+                kind: 'send',
+                succeeded: true,
+                responseCode: null,
+                summary: 'Email accepted by configured mail transport.',
+            );
         }
     }
 
