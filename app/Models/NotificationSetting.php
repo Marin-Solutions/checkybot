@@ -147,7 +147,11 @@ class NotificationSetting extends Model
                 $summary = NotificationChannels::summarizeDeliveryResponse($response);
 
                 if ($this->webhookResponseWasSuccessful($response)) {
-                    Log::info('Webhook Notification successfully sent to '.$response['url']);
+                    Log::info('Webhook notification sent', [
+                        'notification_setting_id' => $this->id,
+                        'channel_id' => $channel->id,
+                        'response_code' => $responseCode,
+                    ]);
 
                     $this->recordDeliveryAttempt(
                         kind: 'send',
@@ -158,7 +162,11 @@ class NotificationSetting extends Model
 
                     return true;
                 } else {
-                    Log::error('Webhook Notification failed sent', ['url' => $response['url'], 'code' => $responseCode]);
+                    Log::error('Webhook notification failed to send', [
+                        'notification_setting_id' => $this->id,
+                        'channel_id' => $channel->id,
+                        'response_code' => $responseCode,
+                    ]);
 
                     $this->recordDeliveryAttempt(
                         kind: 'send',
