@@ -16,6 +16,8 @@ class NotificationChannels extends Model
 
     private const REDACTED_LOG_VALUE = '[redacted]';
 
+    private const REDACTED_DISPLAY_VALUE = '[redacted]';
+
     protected $fillable = [
         'title',
         'method',
@@ -196,6 +198,121 @@ class NotificationChannels extends Model
         }
 
         return Str::limit(trim($prefix.($detail !== '' ? ': '.$detail : '')), 500, '');
+    }
+
+    public function maskedWebhookUrlForDisplay(): string
+    {
+        return self::redactWebhookUrlForDisplay((string) $this->url);
+    }
+
+    public function maskedRequestBodyForDisplay(): ?string
+    {
+        $requestBody = self::normalizeRequestBody($this->request_body);
+
+        if ($requestBody === []) {
+            return null;
+        }
+
+        return json_encode(self::redactPayloadForDisplay($requestBody), JSON_UNESCAPED_SLASHES) ?: self::REDACTED_DISPLAY_VALUE;
+    }
+
+    public function requestBodyForCopy(): ?string
+    {
+        $requestBody = self::normalizeRequestBody($this->request_body);
+
+        if ($requestBody === []) {
+            return null;
+        }
+
+        return json_encode($requestBody, JSON_UNESCAPED_SLASHES) ?: null;
+    }
+
+    private static function redactWebhookUrlForDisplay(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if ($parts === false || ! isset($parts['host'])) {
+            return self::REDACTED_DISPLAY_VALUE;
+        }
+
+        $redactedUrl = '';
+
+        if (isset($parts['scheme'])) {
+            $redactedUrl .= $parts['scheme'].'://';
+        }
+
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            $redactedUrl .= self::REDACTED_DISPLAY_VALUE.'@';
+        }
+
+        $redactedUrl .= $parts['host'];
+
+        if (isset($parts['port'])) {
+            $redactedUrl .= ':'.$parts['port'];
+        }
+
+        if (isset($parts['path']) && $parts['path'] !== '') {
+            $redactedUrl .= self::redactPathForDisplay($parts['path']);
+        }
+
+        if (isset($parts['query'])) {
+            $redactedUrl .= '?'.self::redactQueryStringForDisplay($parts['query']);
+        }
+
+        if (isset($parts['fragment'])) {
+            $redactedUrl .= '#'.self::REDACTED_DISPLAY_VALUE;
+        }
+
+        return $redactedUrl;
+    }
+
+    private static function redactPathForDisplay(string $path): string
+    {
+        $segments = explode('/', ltrim($path, '/'));
+
+        return '/'.implode('/', array_map(
+            fn (string $segment): string => $segment === '' ? '' : self::redactScalarForDisplay($segment),
+            $segments,
+        ));
+    }
+
+    private static function redactQueryStringForDisplay(string $query): string
+    {
+        $segments = array_filter(explode('&', $query), fn (string $segment): bool => $segment !== '');
+
+        if ($segments === []) {
+            return self::REDACTED_DISPLAY_VALUE;
+        }
+
+        return implode('&', array_map(function (string $segment): string {
+            if (! str_contains($segment, '=')) {
+                return self::REDACTED_DISPLAY_VALUE;
+            }
+
+            [$key, $value] = explode('=', $segment, 2);
+
+            if ($key === '') {
+                return self::REDACTED_DISPLAY_VALUE;
+            }
+
+            return urldecode($key).'='.self::redactScalarForDisplay(urldecode($value));
+        }, $segments));
+    }
+
+    private static function redactPayloadForDisplay(mixed $payload): mixed
+    {
+        if (is_array($payload)) {
+            return array_map(fn (mixed $value): mixed => self::redactPayloadForDisplay($value), $payload);
+        }
+
+        return self::redactScalarForDisplay($payload);
+    }
+
+    private static function redactScalarForDisplay(mixed $value): string
+    {
+        return in_array($value, ['{message}', '{description}'], true)
+            ? $value
+            : self::REDACTED_DISPLAY_VALUE;
     }
 
     private static function redactWebhookUrlForLogs(string $url): string

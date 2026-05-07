@@ -102,6 +102,64 @@ test('webhook channel list shows last delivery evidence', function () {
         ->assertSee('HTTP 502: upstream unavailable');
 });
 
+test('webhook channel list masks webhook path query and request body values', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'method' => 'POST',
+        'url' => 'https://hooks.slack.com/services/T000/B000/secret-token?token=super-secret&message={message}#fragment-secret',
+        'request_body' => [
+            'message' => '{message}',
+            'description' => '{description}',
+            'token' => 'body-secret',
+            'nested' => [
+                'password' => 'nested-secret',
+            ],
+        ],
+    ]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->assertCanSeeTableRecords([$channel])
+        ->assertTableColumnStateSet(
+            'url',
+            'https://hooks.slack.com/[redacted]/[redacted]/[redacted]/[redacted]?token=[redacted]&message={message}#[redacted]',
+            $channel,
+        )
+        ->assertTableColumnStateSet(
+            'request_body',
+            '{"message":"{message}","description":"{description}","token":"[redacted]","nested":{"password":"[redacted]"}}',
+            $channel,
+        )
+        ->assertTableColumnStateNotSet('url', $channel->url, $channel)
+        ->assertTableColumnStateNotSet('request_body', json_encode($channel->request_body, JSON_UNESCAPED_SLASHES), $channel);
+});
+
+test('editing a webhook channel keeps full webhook credentials available to the owner', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'method' => 'POST',
+        'url' => 'https://example.com/webhook/secret-token?token=super-secret&message={message}',
+        'request_body' => [
+            'message' => '{message}',
+            'description' => '{description}',
+            'token' => 'body-secret',
+        ],
+    ]);
+
+    Livewire::test(EditNotificationChannels::class, ['record' => $channel->getRouteKey()])
+        ->assertFormSet([
+            'url' => 'https://example.com/webhook/secret-token?token=super-secret&message={message}',
+            'request_body' => [
+                'message' => '{message}',
+                'description' => '{description}',
+                'token' => 'body-secret',
+            ],
+        ]);
+});
+
 test('editing a webhook channel records test evidence', function () {
     Http::fake([
         '*' => Http::response(['error' => 'unauthorized'], 401),
