@@ -460,6 +460,54 @@ test('validates interval format', function () {
         ->assertJsonValidationErrors(['uptime_checks.0.interval']);
 });
 
+test('accepts interval parser formats at the request boundary', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'fast-uptime',
+                    'url' => 'https://example.com',
+                    'interval' => '30s',
+                ],
+            ],
+            'ssl_checks' => [
+                [
+                    'name' => 'ssl-certificate',
+                    'url' => 'https://example.com',
+                    'interval' => 'every_5_minutes',
+                ],
+            ],
+            'api_checks' => [
+                [
+                    'name' => 'api-health',
+                    'url' => 'https://api.example.com/health',
+                    'interval' => 'every_1_hour',
+                ],
+            ],
+        ]);
+
+    $response->assertOk();
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'fast-uptime',
+        'uptime_interval' => 1,
+        'package_interval' => '30s',
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'ssl-certificate',
+        'package_interval' => 'every_5_minutes',
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'api-health',
+        'package_interval' => 'every_1_hour',
+    ]);
+});
+
 test('rejects zero intervals at the request boundary', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [

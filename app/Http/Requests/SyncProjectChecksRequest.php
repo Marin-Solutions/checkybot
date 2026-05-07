@@ -5,7 +5,9 @@ namespace App\Http\Requests;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
+use App\Services\IntervalParser;
 use App\Support\ValidatesMonitorApiRegexAssertions;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -50,18 +52,18 @@ class SyncProjectChecksRequest extends FormRequest
             'uptime_checks' => ['array', 'max:100'],
             'uptime_checks.*.name' => $this->checkNameRules(),
             'uptime_checks.*.url' => ['required', 'url', 'max:1000'],
-            'uptime_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
+            'uptime_checks.*.interval' => $this->intervalRules(),
             'uptime_checks.*.max_redirects' => ['integer', 'min:0', 'max:20'],
 
             'ssl_checks' => ['array', 'max:100'],
             'ssl_checks.*.name' => $this->checkNameRules(),
             'ssl_checks.*.url' => ['required', 'url', 'max:1000'],
-            'ssl_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
+            'ssl_checks.*.interval' => $this->intervalRules(),
 
             'api_checks' => ['array', 'max:100'],
             'api_checks.*.name' => $this->checkNameRules(),
             'api_checks.*.url' => ['required', 'url', 'max:1000'],
-            'api_checks.*.interval' => ['required', 'string', 'regex:/^[1-9]\d*[mhd]$/'],
+            'api_checks.*.interval' => $this->intervalRules(),
             'api_checks.*.method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS'],
             'api_checks.*.headers' => ['array'],
             'api_checks.*.request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'in:json,form,raw'],
@@ -85,9 +87,6 @@ class SyncProjectChecksRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'uptime_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
-            'ssl_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
-            'api_checks.*.interval.regex' => 'The interval format is invalid. Use format: {positive number}{m|h|d} (e.g., 5m, 2h, 1d)',
             'link_checks.missing' => 'link_checks are not supported by project check sync yet.',
             'open_graph_checks.missing' => 'open_graph_checks are not supported by project check sync yet.',
             'uptime_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
@@ -126,5 +125,21 @@ class SyncProjectChecksRequest extends FormRequest
     private function checkNameRules(): array
     {
         return ['required', 'string', 'max:255', 'not_regex:#/#'];
+    }
+
+    /**
+     * @return array<int, mixed>
+     */
+    private function intervalRules(): array
+    {
+        return [
+            'required',
+            'string',
+            function (string $attribute, mixed $value, Closure $fail): void {
+                if (! is_string($value) || ! IntervalParser::isValid($value)) {
+                    $fail('The interval format is invalid. Use format: {positive number}{s|m|h|d} or every_{positive number}_{seconds|minutes|hours|days} (e.g., 30s, 5m, every_5_minutes).');
+                }
+            },
+        ];
     }
 }
