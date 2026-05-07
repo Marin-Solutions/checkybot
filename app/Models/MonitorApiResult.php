@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\RunSource;
+use App\Support\ApiMonitorEvidenceRedactor;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -203,7 +204,7 @@ class MonitorApiResult extends Model
             }
         }
 
-        return $payload === [] ? null : $payload;
+        return $payload === [] ? null : ApiMonitorEvidenceRedactor::redactSavedResponseBody($payload);
     }
 
     private static function decodeJsonAttribute(mixed $value): mixed
