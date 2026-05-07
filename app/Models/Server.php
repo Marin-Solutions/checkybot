@@ -5,12 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class Server extends Model
 {
     use HasFactory;
+
+    public const REPORTER_FRESHNESS_WINDOW_MINUTES = 2;
 
     protected $fillable = [
         'ip',
@@ -87,6 +90,16 @@ class Server extends Model
         $cores = max(1, (int) ($this->cpu_cores ?? 1));
 
         return ($load / $cores) * 100;
+    }
+
+    public function hasFreshLatestHistory(?int $freshForMinutes = null): bool
+    {
+        if (! $this->latest_server_history_created_at) {
+            return false;
+        }
+
+        return Carbon::parse($this->latest_server_history_created_at)
+            ->diffInMinutes(now()) <= ($freshForMinutes ?? self::REPORTER_FRESHNESS_WINDOW_MINUTES);
     }
 
     public function ploiServer(): \Illuminate\Database\Eloquent\Relations\BelongsTo
