@@ -369,6 +369,13 @@ class MonitorApisResource extends Resource
                         abort_unless(auth()->user()?->can('Update:MonitorApis') ?? false, 403);
                     })
                     ->afterStateUpdated(function (MonitorApis $record, bool $state): void {
+                        if (! $state) {
+                            $record->forceFill([
+                                'current_status' => 'unknown',
+                                'status_summary' => 'Disabled in Checkybot admin.',
+                            ])->save();
+                        }
+
                         $notification = Notification::make()
                             ->title($state ? "{$record->title} enabled" : "{$record->title} disabled")
                             ->body($state
@@ -538,7 +545,11 @@ class MonitorApisResource extends Resource
                             $ids = $records->where('is_enabled', true)->pluck('id');
                             $count = $ids->isEmpty()
                                 ? 0
-                                : MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => false]);
+                                : MonitorApis::query()->whereIn('id', $ids)->update([
+                                    'is_enabled' => false,
+                                    'current_status' => 'unknown',
+                                    'status_summary' => 'Disabled in Checkybot admin.',
+                                ]);
 
                             Notification::make()
                                 ->title($count === 0
