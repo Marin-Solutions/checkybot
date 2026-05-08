@@ -113,7 +113,6 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
         return match ($this->source) {
             self::SOURCE_SCHEDULED => 'scheduled',
             self::SOURCE_ON_DEMAND => 'on demand',
-            default => 'scheduled',
         };
     }
 }

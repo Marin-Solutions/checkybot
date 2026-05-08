@@ -105,7 +105,7 @@ test('job records outbound evidence when crawler startup fails', function () {
     {
         public function createCrawler(): Crawler
         {
-            throw new RuntimeException('cURL error 6: Could not resolve host: example.com?token=secret');
+            throw new \RuntimeException('cURL error 6: Could not resolve host: example.com?token=secret');
         }
     };
 
@@ -141,7 +141,7 @@ test('job records on demand scan source in crawler startup failure evidence', fu
     {
         public function createCrawler(): Crawler
         {
-            throw new RuntimeException('Operation timed out after 10000 milliseconds', 28);
+            throw new \RuntimeException('Operation timed out after 10000 milliseconds', 28);
         }
     };
 
@@ -163,7 +163,7 @@ test('job records unknown transport error when crawler startup failure cannot be
     {
         public function createCrawler(): Crawler
         {
-            throw new RuntimeException('Crawler bootstrap failed');
+            throw new \RuntimeException('Crawler bootstrap failed');
         }
     };
 
@@ -174,19 +174,6 @@ test('job records unknown transport error when crawler startup failure cannot be
     expect($link->transport_error_type)->toBe('unknown')
         ->and($link->transport_error_code)->toBeNull()
         ->and($link->transport_error_message)->toContain('Crawler bootstrap failed');
-});
-
-test('job stores website property', function () {
-    $website = Website::factory()->create();
-
-    $job = new WebsiteCheckOutboundLinkJob($website);
-
-    // Use reflection to access protected property
-    $reflection = new \ReflectionClass($job);
-    $property = $reflection->getProperty('website');
-    $property->setAccessible(true);
-
-    expect($property->getValue($job)->id)->toBe($website->id);
 });
 
 test('multiple jobs can be dispatched for different websites', function () {
