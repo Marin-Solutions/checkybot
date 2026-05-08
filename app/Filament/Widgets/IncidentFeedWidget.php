@@ -182,6 +182,12 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("'website' as source")
             ->selectRaw('website_log_history.website_id as source_subject_id')
             ->selectRaw("COALESCE(NULLIF(website_log_history.status, ''), 'unknown') as normalized_status")
+            ->selectRaw('
+                CASE
+                    WHEN websites.uptime_check = 1 OR websites.ssl_check = 1 THEN 1
+                    ELSE 0
+                END as current_monitoring_enabled
+            ')
             ->selectRaw('websites.name as subject')
             ->selectRaw('website_log_history.website_id as subject_id')
             ->selectRaw("COALESCE(NULLIF(website_log_history.summary, ''), CONCAT('HTTP ', COALESCE(website_log_history.http_status_code, 0))) as summary")
@@ -210,6 +216,12 @@ class IncidentFeedWidget extends BaseWidget
                     ELSE 'healthy'
                 END as normalized_status
             ")
+            ->selectRaw('
+                CASE
+                    WHEN monitor_apis.is_enabled = 1 THEN 1
+                    ELSE 0
+                END as current_monitoring_enabled
+            ')
             ->selectRaw('monitor_apis.title as subject')
             ->selectRaw('monitor_api_results.monitor_api_id as subject_id')
             ->selectRaw("COALESCE(NULLIF(monitor_api_results.summary, ''), CONCAT('HTTP ', COALESCE(monitor_api_results.http_code, 0))) as summary")
@@ -224,6 +236,12 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("'component' as source")
             ->selectRaw('project_component_heartbeats.project_component_id as source_subject_id')
             ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.status, ''), 'unknown') as normalized_status")
+            ->selectRaw('
+                CASE
+                    WHEN project_components.is_archived = 0 THEN 1
+                    ELSE 0
+                END as current_monitoring_enabled
+            ')
             ->selectRaw('project_component_heartbeats.component_name as subject')
             ->selectRaw('project_component_heartbeats.project_component_id as subject_id')
             ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.summary, ''), project_component_heartbeats.event) as summary")
@@ -242,6 +260,13 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw('subject_id')
             ->selectRaw('summary')
             ->selectRaw('occurred_at')
+            ->selectRaw('
+                FIRST_VALUE(current_monitoring_enabled) OVER (
+                    PARTITION BY source, source_subject_id
+                    ORDER BY occurred_at DESC, source_row_id DESC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ) as current_monitoring_enabled
+            ')
             ->selectRaw('
                 FIRST_VALUE(normalized_status) OVER (
                     PARTITION BY source, source_subject_id
@@ -280,7 +305,7 @@ class IncidentFeedWidget extends BaseWidget
             ->select('incidents.*')
             ->selectRaw("
                 CASE
-                    WHEN current_status IN ('warning', 'danger') THEN 'active'
+                    WHEN current_monitoring_enabled = 1 AND current_status IN ('warning', 'danger') THEN 'active'
                     ELSE 'resolved'
                 END as state
             ");
@@ -294,19 +319,19 @@ class IncidentFeedWidget extends BaseWidget
     {
         $windowRuns = DB::query()
             ->fromSub(clone $baseRuns, 'window_runs')
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'summary', 'occurred_at')
             ->where('occurred_at', '>=', $since);
 
         $latestPriorRuns = DB::query()
             ->fromSub(
                 DB::query()
                     ->fromSub(clone $baseRuns, 'prior_runs')
-                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'summary', 'occurred_at')
                     ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
                     ->where('occurred_at', '<', $since),
                 'ranked_prior_runs'
             )
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'summary', 'occurred_at')
             ->where('prior_rank', 1);
 
         return $windowRuns->unionAll($latestPriorRuns);
