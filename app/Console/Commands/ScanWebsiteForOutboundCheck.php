@@ -33,11 +33,29 @@ class ScanWebsiteForOutboundCheck extends Command
         $queuedAt = now();
 
         $websites->each(function (Website $website) use ($queuedAt): void {
-            $website->forceFill([
-                'outbound_scan_queued_at' => $queuedAt,
-            ])->save();
+            $queuedStatePersisted = false;
 
-            WebsiteCheckOutboundLinkJob::dispatch($website, WebsiteCheckOutboundLinkJob::SOURCE_SCHEDULED)->onQueue('log-website');
+            try {
+                $website->forceFill([
+                    'outbound_scan_queued_at' => $queuedAt,
+                ])->save();
+                $queuedStatePersisted = true;
+
+                WebsiteCheckOutboundLinkJob::dispatch($website, WebsiteCheckOutboundLinkJob::SOURCE_SCHEDULED)->onQueue('log-website');
+            } catch (\Throwable $e) {
+                if ($queuedStatePersisted) {
+                    $website->forceFill([
+                        'outbound_scan_queued_at' => null,
+                    ])->save();
+                }
+
+                Log::error('Scheduled outbound scan dispatch failed', [
+                    'website_id' => $website->id,
+                    'exception' => $e,
+                ]);
+
+                throw $e;
+            }
         });
 
         Log::info('Scan completed and jobs dispatched for outbound link checks', ['website_count' => $websites->count()]);
