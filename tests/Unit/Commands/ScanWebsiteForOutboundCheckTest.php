@@ -124,6 +124,23 @@ test('command dispatches correct website to job', function () {
     expect($website->refresh()->outbound_scan_queued_at?->toDateTimeString())->toBe('2026-05-08 16:15:00');
 });
 
+test('command skips websites with outbound scans already queued', function () {
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'outbound_check' => true,
+        'last_outbound_checked_at' => now()->subMinutes(10),
+        'outbound_scan_queued_at' => now()->subMinutes(5),
+    ]);
+
+    $this->artisan('website:scan-outbound-check')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(WebsiteCheckOutboundLinkJob::class);
+
+    expect($website->refresh()->outbound_scan_queued_at)->not->toBeNull();
+});
+
 test('command handles large number of websites', function () {
     Queue::fake();
 

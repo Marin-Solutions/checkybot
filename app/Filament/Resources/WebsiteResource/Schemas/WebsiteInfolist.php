@@ -230,9 +230,9 @@ class WebsiteInfolist
                             ->state(fn (Website $record): ?string => $record->outbound_scan_queued_at?->toDayDateTimeString())
                             ->default('No')
                             ->badge()
-                            ->color(fn (Website $record): string => $record->outbound_scan_queued_at ? 'warning' : 'gray')
-                            ->formatStateUsing(fn (?string $state, Website $record): string => $record->outbound_scan_queued_at ? 'Queued' : 'No')
-                            ->hint(fn (Website $record): ?string => $record->outbound_scan_queued_at?->diffForHumans()),
+                            ->color(fn (Website $record): string => $record->hasQueuedOutboundScan() ? 'warning' : 'gray')
+                            ->formatStateUsing(fn (?string $state, Website $record): string => $record->hasQueuedOutboundScan() ? 'Queued' : 'No')
+                            ->hint(fn (Website $record): ?string => $record->hasQueuedOutboundScan() ? $record->outbound_scan_queued_at?->diffForHumans() : null),
                         TextEntry::make('outbound_links_total')
                             ->label('Links Tracked')
                             ->state(fn (Website $record): int => static::outboundSummary($record)['total'])

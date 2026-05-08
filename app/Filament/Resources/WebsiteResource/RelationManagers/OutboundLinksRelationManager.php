@@ -142,33 +142,30 @@ class OutboundLinksRelationManager extends RelationManager
                     ->disabled(fn (): bool => $this->ownerRecord->hasQueuedOutboundScan())
                     ->action(function (): void {
                         $queuedStatePersisted = false;
+                        $dispatchFailed = false;
+
+                        $this->ownerRecord->refresh();
+
+                        if ($this->ownerRecord->hasQueuedOutboundScan()) {
+                            Notification::make()
+                                ->title('Outbound scan already queued')
+                                ->body('Checkybot is already waiting for this website\'s outbound link scan to finish.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
 
                         try {
-                            $this->ownerRecord->refresh();
-
-                            if ($this->ownerRecord->hasQueuedOutboundScan()) {
-                                Notification::make()
-                                    ->title('Outbound scan already queued')
-                                    ->body('Checkybot is already waiting for this website\'s outbound link scan to finish.')
-                                    ->warning()
-                                    ->send();
-
-                                return;
-                            }
-
                             $this->ownerRecord->forceFill([
                                 'outbound_scan_queued_at' => now(),
                             ])->save();
                             $queuedStatePersisted = true;
 
                             WebsiteCheckOutboundLinkJob::dispatch($this->ownerRecord, WebsiteCheckOutboundLinkJob::SOURCE_ON_DEMAND)->onQueue('log-website');
-
-                            Notification::make()
-                                ->title('Outbound scan queued')
-                                ->body('Checkybot will refresh this website\'s outbound link evidence shortly.')
-                                ->success()
-                                ->send();
                         } catch (\Throwable $e) {
+                            $dispatchFailed = true;
+
                             if ($queuedStatePersisted) {
                                 $this->ownerRecord->forceFill([
                                     'outbound_scan_queued_at' => null,
@@ -179,13 +176,23 @@ class OutboundLinksRelationManager extends RelationManager
                                 'website_id' => $this->ownerRecord->id,
                                 'exception' => $e,
                             ]);
+                        }
 
+                        if ($dispatchFailed) {
                             Notification::make()
                                 ->title('Outbound scan could not be queued')
                                 ->body('Checkybot could not queue the outbound link scan. Check the application logs for details.')
                                 ->danger()
                                 ->send();
+
+                            return;
                         }
+
+                        Notification::make()
+                            ->title('Outbound scan queued')
+                            ->body('Checkybot will refresh this website\'s outbound link evidence shortly.')
+                            ->success()
+                            ->send();
                     }),
             ])
             ->recordActions([])

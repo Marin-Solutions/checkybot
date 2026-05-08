@@ -1522,6 +1522,21 @@ test('view page shows when an outbound scan is queued', function () {
         ->assertSee('Queued');
 });
 
+test('view page does not show stale outbound scan queue state as pending', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'outbound_check' => true,
+        'last_outbound_checked_at' => now(),
+        'outbound_scan_queued_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Scan Pending')
+        ->assertSee('No');
+});
+
 test('view page reports SSL cert expiring today as expiring, not expired', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([

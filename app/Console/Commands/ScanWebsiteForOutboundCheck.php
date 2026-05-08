@@ -31,8 +31,13 @@ class ScanWebsiteForOutboundCheck extends Command
         $websites = Website::query()->where('outbound_check', 1)->get();
 
         $queuedAt = now();
+        $dispatchedCount = 0;
 
-        $websites->each(function (Website $website) use ($queuedAt): void {
+        $websites->each(function (Website $website) use ($queuedAt, &$dispatchedCount): void {
+            if ($website->hasQueuedOutboundScan()) {
+                return;
+            }
+
             $queuedStatePersisted = false;
 
             try {
@@ -42,6 +47,7 @@ class ScanWebsiteForOutboundCheck extends Command
                 $queuedStatePersisted = true;
 
                 WebsiteCheckOutboundLinkJob::dispatch($website, WebsiteCheckOutboundLinkJob::SOURCE_SCHEDULED)->onQueue('log-website');
+                $dispatchedCount++;
             } catch (\Throwable $e) {
                 if ($queuedStatePersisted) {
                     $website->forceFill([
@@ -58,7 +64,7 @@ class ScanWebsiteForOutboundCheck extends Command
             }
         });
 
-        Log::info('Scan completed and jobs dispatched for outbound link checks', ['website_count' => $websites->count()]);
+        Log::info('Scan completed and jobs dispatched for outbound link checks', ['website_count' => $dispatchedCount]);
 
         return Command::SUCCESS;
     }
