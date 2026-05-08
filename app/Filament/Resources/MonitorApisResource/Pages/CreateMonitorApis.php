@@ -3,12 +3,14 @@
 namespace App\Filament\Resources\MonitorApisResource\Pages;
 
 use App\Filament\Resources\MonitorApisResource;
+use App\Filament\Resources\Support\ValidatesProjectAssignment;
 use App\Traits\MonitoringApis;
 use Filament\Resources\Pages\CreateRecord;
 
 class CreateMonitorApis extends CreateRecord
 {
     use MonitoringApis;
+    use ValidatesProjectAssignment;
 
     protected static string $resource = MonitorApisResource::class;
 
@@ -24,6 +26,8 @@ class CreateMonitorApis extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $this->validateProjectAssignment($data['project_id'] ?? null);
+
         $data['created_by'] = auth()->id();
 
         $this->pendingAssertions = $this->normalizeAssertionsForCreate($data['assertions'] ?? []);

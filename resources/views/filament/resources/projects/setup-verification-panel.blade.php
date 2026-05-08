@@ -6,6 +6,14 @@
     };
 
     $stepClasses = static function (string $status): array {
+        if ($status === 'stale') {
+            return [
+                'badge' => 'bg-warning-50 text-warning-700 ring-warning-600/20 dark:bg-warning-500/10 dark:text-warning-300',
+                'card' => 'border-warning-200/70 bg-warning-50/60 dark:border-warning-500/30 dark:bg-warning-500/10',
+                'label' => 'Stale',
+            ];
+        }
+
         if ($status === 'complete') {
             return [
                 'badge' => 'bg-success-50 text-success-700 ring-success-600/20 dark:bg-success-500/10 dark:text-success-300',

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\WebsiteResource\Pages;
 
+use App\Filament\Resources\Support\ValidatesProjectAssignment;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\SeoSchedule;
 use App\Services\WebsiteUrlValidator;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Auth;
 
 class EditWebsite extends EditRecord
 {
+    use ValidatesProjectAssignment;
+
     protected static string $resource = WebsiteResource::class;
 
     protected ?array $setupValidationResult = null;
@@ -59,6 +62,8 @@ class EditWebsite extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $this->validateProjectAssignment($data['project_id'] ?? null);
+
         if (! $this->isUrlChanged()) {
             return $data;
         }

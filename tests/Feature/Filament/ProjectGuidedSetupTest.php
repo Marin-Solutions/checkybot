@@ -142,6 +142,61 @@ test('application view shows synced setup verification after first package sync'
         ->assertSee('Complete');
 });
 
+test('application view warns when package sync is stale', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    config()->set('monitor.package_sync_stale_minutes', 15);
+
+    $project = Project::factory()->create([
+        'name' => 'Stale App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+        'package_key' => 'stale-app',
+        'base_url' => 'https://checkout.example.com',
+        'last_synced_at' => now()->subMinutes(16),
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Sync stale')
+        ->assertSee('Checkybot has received package sync payloads before, but the latest sync is more than 15 minutes old.')
+        ->assertSee('The Laravel scheduler or package integration may have stopped.')
+        ->assertSee('Last sync received 16 minutes ago, which is outside the 15 minute freshness window.')
+        ->assertSee('Run `php artisan checkybot:sync` in the Laravel app')
+        ->assertSee('Stale');
+});
+
+test('application view keeps recent package sync marked synced', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    config()->set('monitor.package_sync_stale_minutes', 15);
+
+    $project = Project::factory()->create([
+        'name' => 'Fresh App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+        'package_key' => 'fresh-app',
+        'base_url' => 'https://checkout.example.com',
+        'last_synced_at' => now()->subMinutes(14),
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Synced')
+        ->assertDontSee('Sync stale')
+        ->assertDontSee('The Laravel scheduler or package integration may have stopped.');
+});
+
 test('application view can create an api key inline and update the guided setup snippet', function () {
     $this->createResourcePermissions('Project');
 

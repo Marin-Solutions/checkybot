@@ -11,6 +11,7 @@ use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\Project;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +22,7 @@ test('super admin can create api monitor with execution settings', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
 
     Livewire::test(CreateMonitorApis::class)
         ->fillForm([
@@ -30,6 +32,7 @@ test('super admin can create api monitor with execution settings', function () {
             'expected_status' => 204,
             'timeout_seconds' => 45,
             'is_enabled' => false,
+            'project_id' => $project->id,
             'data_path' => 'data.status',
             'headers' => [
                 'Authorization' => 'Bearer secret',
@@ -49,6 +52,7 @@ test('super admin can create api monitor with execution settings', function () {
         ->and($monitor->http_method)->toBe('POST')
         ->and($monitor->expected_status)->toBe(204)
         ->and($monitor->timeout_seconds)->toBe(45)
+        ->and($monitor->project_id)->toBe($project->id)
         ->and($monitor->package_interval)->toBe('5m')
         ->and($monitor->is_enabled)->toBeFalse()
         ->and($monitor->data_path)->toBe('data.status')
@@ -56,6 +60,25 @@ test('super admin can create api monitor with execution settings', function () {
         ->and($monitor->request_body_type)->toBe('json')
         ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->save_failed_response)->toBeFalse();
+});
+
+test('super admin cannot create api monitor for another users application', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+    $otherProject = Project::factory()->create();
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Foreign Application API',
+            'url' => 'https://example.com/health',
+            'expected_status' => 200,
+            'project_id' => $otherProject->id,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['project_id']);
+
+    expect(MonitorApis::query()->where('title', 'Foreign Application API')->exists())->toBeFalse();
 });
 
 test('super admin can create api monitor with first run assertions', function () {
@@ -184,6 +207,7 @@ test('super admin can update api monitor execution settings', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
         'http_method' => 'GET',
@@ -204,6 +228,7 @@ test('super admin can update api monitor execution settings', function () {
             'timeout_seconds' => 30,
             'package_interval' => '15m',
             'is_enabled' => false,
+            'project_id' => $project->id,
             'request_body_type' => 'raw',
             'request_body' => 'status=active',
             'save_failed_response' => false,
@@ -218,6 +243,7 @@ test('super admin can update api monitor execution settings', function () {
         ->and($monitor->expected_status)->toBe(202)
         ->and($monitor->timeout_seconds)->toBe(30)
         ->and($monitor->package_interval)->toBe('15m')
+        ->and($monitor->project_id)->toBe($project->id)
         ->and($monitor->is_enabled)->toBeFalse()
         ->and($monitor->current_status)->toBe('unknown')
         ->and($monitor->status_summary)->toBe('Disabled in Checkybot admin.')
@@ -1047,6 +1073,64 @@ test('api monitor view separates scheduled latest evidence from newer diagnostic
 
     expect($monitor->refresh()->latestScheduledResult->summary)->toBe('Scheduled API heartbeat succeeded.')
         ->and($monitor->latestDiagnosticResult->summary)->toBe('Diagnostic API heartbeat failed.');
+});
+
+test('api monitor view exposes latest diagnostic evidence blocks', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Checkout API',
+        'current_status' => 'healthy',
+        'status_summary' => 'Scheduler says the API is healthy.',
+    ]);
+
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'danger',
+        'summary' => 'Diagnostic API heartbeat failed with assertion evidence.',
+        'http_code' => 200,
+        'response_time_ms' => 860,
+        'failed_assertions' => [[
+            'path' => 'data.status',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed: expected = active',
+            'actual' => 'pending',
+            'expected' => '= active',
+        ]],
+        'request_headers' => [
+            'Authorization' => '[redacted]',
+            'X-Env' => 'staging',
+        ],
+        'response_headers' => [
+            'content-type' => 'application/json',
+            'x-request-id' => 'diagnostic-req-123',
+        ],
+        'response_body' => [
+            'error' => 'invalid state',
+            'trace_id' => 'diagnostic-trace-123',
+        ],
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Diagnostic API heartbeat failed with assertion evidence.')
+        ->assertSee('Failed Assertions')
+        ->assertSee('Value comparison failed: expected = active')
+        ->assertSee('Expected')
+        ->assertSee('= active')
+        ->assertSee('Actual')
+        ->assertSee('pending')
+        ->assertSee('Request Headers Snapshot')
+        ->assertSee('X-Env')
+        ->assertSee('staging')
+        ->assertSee('Response Headers Snapshot')
+        ->assertSee('diagnostic-req-123')
+        ->assertSee('Saved Failure Payload')
+        ->assertSee('diagnostic-trace-123');
 });
 
 test('super admin can bulk disable api monitors', function () {
