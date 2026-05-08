@@ -1862,8 +1862,20 @@ test('website navigation badge highlights unhealthy count in danger color', func
         'created_by' => $user->id,
         'current_status' => 'danger',
     ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'uptime_check' => false,
+        'ssl_check' => true,
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
 
-    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('2/4')
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('3/6')
         ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBe('danger');
 });
 

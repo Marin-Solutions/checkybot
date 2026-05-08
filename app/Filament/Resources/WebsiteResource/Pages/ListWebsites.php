@@ -24,6 +24,8 @@ class ListWebsites extends ListRecords
 
     protected function disabledColumn(): string
     {
+        // Required by HasHealthStatusTabs; WebsiteResource overrides the
+        // disabled scope because websites have separate uptime and SSL checks.
         return 'uptime_check';
     }
 
