@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Resources\BackupRemoteStorageResource\Pages\CreateBackupRemoteStorage;
+use App\Filament\Resources\BackupRemoteStorageResource\Pages\EditBackupRemoteStorage;
 use App\Filament\Resources\BackupRemoteStorageResource\Pages\ListBackupRemoteStorages;
 use App\Models\BackupRemoteStorageConfig;
 use App\Models\BackupRemoteStorageType;
@@ -43,6 +44,19 @@ test('remote storage policies reject configs owned by another user', function ()
         ->and($user->can('view', $hiddenStorage))->toBeFalse()
         ->and($user->can('update', $hiddenStorage))->toBeFalse()
         ->and($user->can('delete', $hiddenStorage))->toBeFalse();
+});
+
+test('remote storage edit page rejects configs owned by another user', function () {
+    $this->seed(BackupRemoteStorageTypeOptionsSeeder::class);
+    $this->createResourcePermissions('BackupRemoteStorageConfig');
+    $user = $this->actingAsAdmin();
+    $otherUser = \App\Models\User::factory()->create();
+    $user->givePermissionTo(['View:BackupRemoteStorageConfig', 'Update:BackupRemoteStorageConfig']);
+    $hiddenStorage = createBackupRemoteStorageForUser($otherUser->id);
+
+    $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+
+    Livewire::test(EditBackupRemoteStorage::class, ['record' => $hiddenStorage->id]);
 });
 
 test('s3 secret key and region fields use usable input types', function () {
