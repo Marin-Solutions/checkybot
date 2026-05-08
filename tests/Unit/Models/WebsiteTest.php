@@ -115,6 +115,24 @@ test('website project pause flags are not mass assignable', function () {
         ->and($website->project_paused_outbound_check)->toBeNull();
 });
 
+test('website knows when an outbound scan is still queued', function () {
+    $website = Website::factory()->create([
+        'last_outbound_checked_at' => now()->subMinutes(10),
+        'outbound_scan_queued_at' => now()->subMinutes(5),
+    ]);
+
+    expect($website->hasQueuedOutboundScan())->toBeTrue();
+});
+
+test('website does not report outbound scan queued after newer scan evidence', function () {
+    $website = Website::factory()->create([
+        'last_outbound_checked_at' => now(),
+        'outbound_scan_queued_at' => now()->subMinutes(5),
+    ]);
+
+    expect($website->hasQueuedOutboundScan())->toBeFalse();
+});
+
 test('extractHost returns the hostname from a full url', function () {
     expect(Website::extractHost('https://example.com/health?foo=bar'))->toBe('example.com');
 });

@@ -68,6 +68,7 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
                 $this->recordStartupFailure($e);
             } catch (\Throwable $recordingException) {
                 Log::error('Failed to record outbound link startup failure evidence for website '.$this->website->url.': '.$recordingException->getMessage());
+                $this->clearQueuedOutboundScan();
             }
         }
     }
@@ -107,9 +108,21 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
             ],
         );
 
-        $this->website->update([
+        $this->website->forceFill([
             'last_outbound_checked_at' => $checkedAt,
-        ]);
+            'outbound_scan_queued_at' => null,
+        ])->save();
+    }
+
+    private function clearQueuedOutboundScan(): void
+    {
+        try {
+            $this->website->forceFill([
+                'outbound_scan_queued_at' => null,
+            ])->save();
+        } catch (\Throwable $e) {
+            Log::error('Failed to clear queued outbound scan state for website '.$this->website->url.': '.$e->getMessage());
+        }
     }
 
     private function failureEvidenceUrl(): string

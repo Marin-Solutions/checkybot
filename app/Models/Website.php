@@ -35,6 +35,7 @@ class Website extends Model
         'ssl_expiry_date',
         'outbound_check',
         'last_outbound_checked_at',
+        'outbound_scan_queued_at',
         'source',
         'package_name',
         'package_interval',
@@ -56,6 +57,7 @@ class Website extends Model
         'outbound_check' => 'boolean',
         'project_paused_outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
+        'outbound_scan_queued_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',
         'last_synced_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
@@ -332,6 +334,15 @@ class Website extends Model
             && (
                 $this->latestDiagnosticLogHistory === null
                 || $this->diagnostic_queued_at->greaterThan($this->latestDiagnosticLogHistory->created_at)
+            );
+    }
+
+    public function hasQueuedOutboundScan(): bool
+    {
+        return $this->outbound_scan_queued_at !== null
+            && (
+                $this->last_outbound_checked_at === null
+                || $this->outbound_scan_queued_at->greaterThan($this->last_outbound_checked_at)
             );
     }
 

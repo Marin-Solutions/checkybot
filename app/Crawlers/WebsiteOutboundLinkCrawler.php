@@ -101,8 +101,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
             $this->refreshOutboundLinks($currentPages);
 
-            $this->website->last_outbound_checked_at = $checkedAt;
-            $this->website->save();
+            $this->website->forceFill([
+                'last_outbound_checked_at' => $checkedAt,
+                'outbound_scan_queued_at' => null,
+            ])->save();
         });
 
         $this->sendErrorNotification();
