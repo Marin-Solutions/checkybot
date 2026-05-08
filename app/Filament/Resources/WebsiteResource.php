@@ -7,6 +7,7 @@ use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Filament\Support\HealthStatusFilter;
+use App\Models\Project;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
 use App\Tables\Columns\SparklineColumn;
@@ -75,6 +76,19 @@ class WebsiteResource extends Resource
                                     ->url()
                                     ->helperText('If DNS, SSL, or HTTP checks fail during setup, Checkybot will still save the monitor and mark it with a warning.')
                                     ->maxLength(255),
+                                \Filament\Forms\Components\Select::make('project_id')
+                                    ->label('Application')
+                                    ->options(fn (): array => Project::query()
+                                        ->where('created_by', auth()->id())
+                                        ->orderBy('name')
+                                        ->pluck('name', 'id')
+                                        ->all())
+                                    ->searchable()
+                                    ->preload()
+                                    ->nullable()
+                                    ->native(false)
+                                    ->disabled(fn (?Website $record): bool => $record?->source === 'package')
+                                    ->helperText('Attach this manual website to an application so its incidents and health count toward that application.'),
                                 \Filament\Forms\Components\Textarea::make('description')
                                     ->translateLabel()
                                     ->columnSpanFull(),

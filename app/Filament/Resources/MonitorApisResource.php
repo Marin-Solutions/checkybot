@@ -11,6 +11,7 @@ use App\Filament\Support\HealthStatusFilter;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
+use App\Models\Project;
 use App\Services\IntervalParser;
 use App\Support\PackageCheckTableEvidence;
 use Filament\Forms;
@@ -78,6 +79,20 @@ class MonitorApisResource extends Resource
                             ->label('Enabled')
                             ->helperText('Disable this monitor to keep its configuration without running scheduled checks.')
                             ->default(true)
+                            ->columnSpanFull(),
+                        Forms\Components\Select::make('project_id')
+                            ->label('Application')
+                            ->options(fn (): array => Project::query()
+                                ->where('created_by', auth()->id())
+                                ->orderBy('name')
+                                ->pluck('name', 'id')
+                                ->all())
+                            ->searchable()
+                            ->preload()
+                            ->nullable()
+                            ->native(false)
+                            ->disabled(fn (?MonitorApis $record): bool => $record?->source === 'package')
+                            ->helperText('Attach this manual API monitor to an application so its incidents and health count toward that application.')
                             ->columnSpanFull(),
                         Forms\Components\Select::make('package_interval')
                             ->label('Polling Interval')
