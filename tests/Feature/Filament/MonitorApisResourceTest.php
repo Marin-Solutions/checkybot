@@ -576,6 +576,7 @@ test('user without Update:MonitorApis permission cannot toggle is_enabled inline
 
 test('list run now action queues diagnostic job without running outbound request inline', function () {
     $this->createResourcePermissions('MonitorApis');
+    Carbon::setTestNow('2026-04-24 12:00:00');
 
     $user = $this->actingAsSuperAdmin();
 
@@ -602,7 +603,16 @@ test('list run now action queues diagnostic job without running outbound request
 
     $monitor->refresh();
 
-    expect($monitor->results()->count())->toBe(0);
+    expect($monitor->results()->count())->toBe(0)
+        ->and($monitor->diagnostic_queued_at?->toDateTimeString())->toBe('2026-04-24 12:00:00');
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Diagnostic Status')
+        ->assertSee('Queued')
+        ->assertSee('Queued At')
+        ->assertSee('Apr 24, 2026');
 });
 
 test('list run now action leaves live status unchanged while diagnostic is queued', function () {

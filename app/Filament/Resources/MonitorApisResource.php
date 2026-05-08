@@ -487,6 +487,10 @@ class MonitorApisResource extends Resource
                     ->action(function (MonitorApis $record): void {
                         try {
                             RunApiMonitorDiagnosticJob::dispatch($record->withoutRelations());
+
+                            $record->forceFill([
+                                'diagnostic_queued_at' => now(),
+                            ])->save();
                         } catch (\Throwable $e) {
                             Log::error('Run Now API monitor diagnostic dispatch failed from table action', [
                                 'monitor_api_id' => $record->id,
