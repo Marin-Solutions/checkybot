@@ -41,7 +41,7 @@ class EditProjectComponent extends EditRecord
             ? ($this->record->archived_at ?? now())
             : null;
         $data['archive_reason'] = $data['is_archived']
-            ? ($this->record->archive_reason ?? ProjectComponent::ARCHIVE_REASON_USER)
+            ? ProjectComponent::ARCHIVE_REASON_USER
             : null;
 
         return $data;
