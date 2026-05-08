@@ -1,16 +1,22 @@
 <?php
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\NotificationScopesEnum;
+use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\MonitorApisResource;
 use App\Filament\Resources\MonitorApisResource\Pages\CreateMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ListMonitorApis;
 use App\Filament\Resources\MonitorApisResource\Pages\ViewMonitorApis;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\AssertionsRelationManager;
+use App\Filament\Resources\MonitorApisResource\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\MonitorApisResource\RelationManagers\ResultsRelationManager;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\NotificationChannels;
+use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\User;
 use Carbon\Carbon;
@@ -424,6 +430,127 @@ test('api monitor list shows enabled state', function () {
     Livewire::test(ListMonitorApis::class)
         ->assertCanSeeTableRecords([$enabledMonitor, $disabledMonitor])
         ->assertTableColumnExists('is_enabled');
+});
+
+test('api monitor edit page exposes api notification management', function () {
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('API Notifications');
+
+    expect(MonitorApisResource::getRelations())
+        ->toContain(NotificationSettingsRelationManager::class);
+});
+
+test('api notification relation manager only shows alerts for the current api monitor', function () {
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+    $otherMonitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+
+    $visibleSetting = NotificationSetting::factory()->apiMonitorScope()->email()->create([
+        'user_id' => $user->id,
+        'monitor_api_id' => $monitor->id,
+    ]);
+    $hiddenSetting = NotificationSetting::factory()->apiMonitorScope()->email()->create([
+        'user_id' => $user->id,
+        'monitor_api_id' => $otherMonitor->id,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleSetting])
+        ->assertCanNotSeeTableRecords([$hiddenSetting]);
+});
+
+test('super admin can create api-scoped email notification from api monitor page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::API_MONITOR->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+            'address' => 'endpoint-ops@example.com',
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'website_id' => null,
+        'monitor_api_id' => $monitor->id,
+        'scope' => NotificationScopesEnum::API_MONITOR->value,
+        'inspection' => WebsiteServicesEnum::API_MONITOR->value,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+        'address' => 'endpoint-ops@example.com',
+        'flag_active' => true,
+    ]);
+});
+
+test('super admin can create api-scoped webhook notification from api monitor page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Endpoint Hook',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $channel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'website_id' => null,
+        'monitor_api_id' => $monitor->id,
+        'scope' => NotificationScopesEnum::API_MONITOR->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+        'notification_channel_id' => $channel->id,
+        'address' => null,
+        'flag_active' => true,
+    ]);
+});
+
+test('api-scoped webhook notification cannot reuse another users channel', function () {
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+    $otherChannel = NotificationChannels::factory()->create([
+        'title' => 'External Hook',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $otherChannel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasTableActionErrors(['notification_channel_id']);
+
+    $this->assertDatabaseMissing('notification_settings', [
+        'monitor_api_id' => $monitor->id,
+        'notification_channel_id' => $otherChannel->id,
+    ]);
 });
 
 test('api monitor list relabels the table diagnostic action', function () {

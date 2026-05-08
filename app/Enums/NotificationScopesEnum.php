@@ -6,10 +6,15 @@ enum NotificationScopesEnum: string
 {
     case GLOBAL = 'GLOBAL';
     case WEBSITE = 'WEBSITE';
+    case API_MONITOR = 'API_MONITOR';
 
     public function label(): string
     {
-        return ucfirst(strtolower($this->value));
+        return match ($this) {
+            self::GLOBAL => 'Global',
+            self::WEBSITE => 'Website',
+            self::API_MONITOR => 'API Monitor',
+        };
     }
 
     public static function keys(): array

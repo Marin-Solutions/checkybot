@@ -229,6 +229,55 @@ test('notifyApi re-reads silenced_until and skips delivery when the monitor was 
     Mail::assertNothingSent();
 });
 
+test('notifyApi sends monitor-specific and global rules for the selected api monitor', function () {
+    Mail::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'silenced_until' => null,
+    ]);
+    $otherMonitor = MonitorApis::factory()->create([
+        'created_by' => $monitor->created_by,
+    ]);
+
+    NotificationSetting::factory()
+        ->apiMonitorScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'monitor_api_id' => $monitor->id,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+            'address' => 'endpoint-owner@example.com',
+        ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+            'address' => 'global-api@example.com',
+        ]);
+
+    NotificationSetting::factory()
+        ->apiMonitorScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'monitor_api_id' => $otherMonitor->id,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+            'address' => 'other-endpoint@example.com',
+        ]);
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyApi($monitor, 'heartbeat', 'danger', 'Latency exceeded threshold.');
+
+    expect($result)->toBeTrue();
+    Mail::assertSent(HealthStatusAlert::class, 2);
+    Mail::assertSent(HealthStatusAlert::class, fn (HealthStatusAlert $mail): bool => $mail->hasTo('endpoint-owner@example.com'));
+    Mail::assertSent(HealthStatusAlert::class, fn (HealthStatusAlert $mail): bool => $mail->hasTo('global-api@example.com'));
+    Mail::assertNotSent(HealthStatusAlert::class, fn (HealthStatusAlert $mail): bool => $mail->hasTo('other-endpoint@example.com'));
+});
+
 test('notifyWebsite returns true when at least one channel delivers despite another failing', function () {
     Log::spy();
 

@@ -87,8 +87,15 @@ class HealthEventNotificationService
 
         $settings = NotificationSetting::query()
             ->active()
-            ->globalScope()
-            ->where('user_id', $monitorApi->created_by)
+            ->where(function ($query) use ($monitorApi): void {
+                $query->where(function ($inner) use ($monitorApi): void {
+                    $inner->apiMonitorScope()
+                        ->where('monitor_api_id', $monitorApi->id);
+                })->orWhere(function ($inner) use ($monitorApi): void {
+                    $inner->globalScope()
+                        ->where('user_id', $monitorApi->created_by);
+                });
+            })
             ->whereIn('inspection', [
                 WebsiteServicesEnum::API_MONITOR->value,
                 WebsiteServicesEnum::ALL_CHECK->value,

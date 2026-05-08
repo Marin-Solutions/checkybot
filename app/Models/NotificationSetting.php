@@ -25,6 +25,7 @@ class NotificationSetting extends Model
     protected $fillable = [
         'user_id',
         'website_id',
+        'monitor_api_id',
         'scope',
         'inspection',
         'channel_type',
@@ -71,6 +72,11 @@ class NotificationSetting extends Model
         return $this->belongsTo(Website::class);
     }
 
+    public function monitorApi(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
+    }
+
     public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -84,6 +90,11 @@ class NotificationSetting extends Model
     public function scopeWebsiteScope(Builder $query): void
     {
         $query->where('scope', NotificationScopesEnum::WEBSITE->value);
+    }
+
+    public function scopeApiMonitorScope(Builder $query): void
+    {
+        $query->where('scope', NotificationScopesEnum::API_MONITOR->value);
     }
 
     public function scopeActive(Builder $query): void

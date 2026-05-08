@@ -761,6 +761,7 @@ class MonitorApisResource extends Resource
     public static function getRelations(): array
     {
         return [
+            RelationManagers\NotificationSettingsRelationManager::class,
             RelationManagers\AssertionsRelationManager::class,
             RelationManagers\ResultsRelationManager::class,
         ];
