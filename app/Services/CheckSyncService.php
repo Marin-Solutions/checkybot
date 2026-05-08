@@ -197,7 +197,7 @@ class CheckSyncService
                 'last_synced_at' => $syncedAt,
             ];
 
-            if ($isEnabled && $wasDisabledByMissingPackageSync) {
+            if ($wasDisabledByMissingPackageSync) {
                 $data['current_status'] = 'unknown';
                 $data['status_summary'] = null;
                 $data['last_heartbeat_at'] = null;

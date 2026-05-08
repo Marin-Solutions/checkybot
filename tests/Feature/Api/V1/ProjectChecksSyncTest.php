@@ -310,6 +310,57 @@ test('re-enables orphaned api checks when legacy sync reintroduces them without 
     ]);
 });
 
+test('clears missing sync evidence when orphaned api checks return disabled', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'optional-health-check',
+                'url' => 'https://api.example.com/optional-health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'optional-health-check',
+                'url' => 'https://api.example.com/optional-health',
+                'interval' => '10m',
+                'enabled' => false,
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'optional-health-check',
+        'package_interval' => '10m',
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+});
+
 test('legacy sync defaults nullable expected status to success status', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
