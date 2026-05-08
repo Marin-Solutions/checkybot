@@ -18,6 +18,7 @@ use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\OutboundLink;
+use App\Models\Project;
 use App\Models\SeoCheck;
 use App\Models\User;
 use App\Models\Website;
@@ -100,6 +101,7 @@ test('super admin can render create page', function () {
 
 test('super admin can create website', function () {
     $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
 
     $dnsMock = $this->mock(Dns::class);
     $dnsMock->shouldReceive('getRecords')
@@ -115,6 +117,7 @@ test('super admin can create website', function () {
             'name' => 'Test Website',
             'url' => 'https://example.com',
             'description' => 'Test description',
+            'project_id' => $project->id,
             'uptime_check' => true,
             'uptime_interval' => 60,
         ])
@@ -125,7 +128,35 @@ test('super admin can create website', function () {
         'name' => 'Test Website',
         'url' => 'https://example.com',
         'created_by' => $user->id,
+        'project_id' => $project->id,
     ]);
+});
+
+test('super admin cannot create website for another users application', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherProject = Project::factory()->create();
+
+    $dnsMock = $this->mock(Dns::class);
+    $dnsMock->shouldReceive('getRecords')
+        ->with('example.com', 'A')
+        ->andReturn([['ip' => '192.0.2.1']]);
+
+    Http::fake([
+        'https://example.com' => Http::response('OK', 200),
+    ]);
+
+    Livewire::test(CreateWebsite::class)
+        ->fillForm([
+            'name' => 'Foreign Application Website',
+            'url' => 'https://example.com',
+            'project_id' => $otherProject->id,
+            'uptime_check' => true,
+            'uptime_interval' => 60,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['project_id']);
+
+    expect(Website::query()->where('created_by', $user->id)->exists())->toBeFalse();
 });
 
 test('super admin can create weekly seo schedule for later today', function () {
@@ -184,6 +215,7 @@ test('super admin can render edit page', function () {
 
 test('super admin can update website', function () {
     $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
     $website = Website::factory()->create([
         'name' => 'Old Name',
         'created_by' => $user->id,
@@ -200,13 +232,17 @@ test('super admin can update website', function () {
     ]);
 
     Livewire::test(EditWebsite::class, ['record' => $website->id])
-        ->fillForm(['name' => 'New Name'])
+        ->fillForm([
+            'name' => 'New Name',
+            'project_id' => $project->id,
+        ])
         ->call('save')
         ->assertHasNoFormErrors();
 
     $this->assertDatabaseHas('websites', [
         'id' => $website->id,
         'name' => 'New Name',
+        'project_id' => $project->id,
     ]);
 });
 

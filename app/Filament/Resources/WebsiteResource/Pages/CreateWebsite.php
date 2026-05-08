@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\WebsiteResource\Pages;
 
+use App\Filament\Resources\Support\ValidatesProjectAssignment;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\SeoSchedule;
 use App\Models\Website;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Auth;
 
 class CreateWebsite extends CreateRecord
 {
+    use ValidatesProjectAssignment;
+
     protected static string $resource = WebsiteResource::class;
 
     protected ?array $setupValidationResult = null;
@@ -22,6 +25,8 @@ class CreateWebsite extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $this->validateProjectAssignment($data['project_id'] ?? null);
+
         $this->setupValidationResult ??= WebsiteUrlValidator::inspect($data['url']);
 
         $user = Auth::user();

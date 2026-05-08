@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MonitorApisResource\Pages;
 
 use App\Filament\Resources\MonitorApisResource;
+use App\Filament\Resources\Support\ValidatesProjectAssignment;
 use App\Traits\MonitoringApis;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
@@ -10,6 +11,7 @@ use Filament\Resources\Pages\EditRecord;
 class EditMonitorApis extends EditRecord
 {
     use MonitoringApis;
+    use ValidatesProjectAssignment;
 
     protected static string $resource = MonitorApisResource::class;
 
@@ -39,6 +41,8 @@ class EditMonitorApis extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $this->validateProjectAssignment($data['project_id'] ?? null);
+
         if (blank($data['request_body_type'] ?? null)) {
             $data['request_body'] = null;
         }
