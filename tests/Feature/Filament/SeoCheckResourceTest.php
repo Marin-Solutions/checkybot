@@ -437,7 +437,9 @@ test('view seo check page shows live progress section for pending checks', funct
         ->assertSuccessful()
         ->assertSee('Live Progress')
         ->assertSee('SEO Health Check Pending')
-        ->assertSee('SEO Health Check is pending.');
+        ->assertSee('SEO Health Check is pending.')
+        ->assertSeeHtml('display: block;" class="completion-section"')
+        ->assertDontSee('SEO Health Check in Progress');
 });
 
 test('seo issue table exposes issue detail action with evidence and fix guidance', function () {
