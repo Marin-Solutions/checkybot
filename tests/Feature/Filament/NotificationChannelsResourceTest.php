@@ -35,6 +35,49 @@ test('super admin can create a post webhook channel with no request body', funct
         ->and($channel->request_body)->toBe([]);
 });
 
+test('post webhook channel requires a valid http url', function (string $url) {
+    $this->createResourcePermissions('NotificationChannels');
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationChannels::class)
+        ->fillForm([
+            'title' => 'Incident webhook',
+            'method' => 'POST',
+            'url' => $url,
+            'request_body' => [
+                'message' => '{message}',
+                'description' => '{description}',
+            ],
+            'description' => 'Receives incident alerts.',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['url']);
+
+    expect(NotificationChannels::query()->where('title', 'Incident webhook')->exists())->toBeFalse();
+})->with([
+    'missing scheme' => ['example.com/webhook'],
+    'unsupported scheme' => ['ftp://example.com/webhook'],
+    'missing host' => ['https://'],
+    'malformed url' => ['https://example .com/webhook'],
+]);
+
+test('get webhook channel requires a valid http url before checking placeholders', function () {
+    $this->createResourcePermissions('NotificationChannels');
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationChannels::class)
+        ->fillForm([
+            'title' => 'Incident webhook',
+            'method' => 'GET',
+            'url' => 'mailto:alerts@example.com?body={message}-{description}',
+            'description' => 'Receives incident alerts.',
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['url']);
+
+    expect(NotificationChannels::query()->where('title', 'Incident webhook')->exists())->toBeFalse();
+});
+
 test('webhook channel list only shows channels created by the current user', function () {
     $user = $this->actingAsSuperAdmin();
 
