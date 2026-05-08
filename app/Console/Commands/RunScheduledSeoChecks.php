@@ -48,6 +48,7 @@ class RunScheduledSeoChecks extends Command
 
         foreach ($schedules as $schedule) {
             $seoCheck = null;
+            $jobDispatched = false;
 
             try {
                 $website = $schedule->website;
@@ -129,6 +130,7 @@ class RunScheduledSeoChecks extends Command
 
                 // Dispatch the job with schedule information
                 SeoHealthCheckJob::dispatch($seoCheck, $crawlableUrls)->onQueue('seo-checks');
+                $jobDispatched = true;
 
                 // Update the schedule
                 $schedule->updateNextRun();
@@ -137,7 +139,14 @@ class RunScheduledSeoChecks extends Command
 
                 Log::info("Scheduled SEO check started for website: {$schedule->website->url} (Schedule ID: {$schedule->id})");
             } catch (Throwable $e) {
-                $this->recordStartupFailure($schedule, $e, $seoCheck);
+                if ($jobDispatched) {
+                    Log::error("Scheduled SEO check was dispatched for website {$schedule->website->url}, but follow-up processing failed: ".$e->getMessage(), [
+                        'schedule_id' => $schedule->id,
+                        'seo_check_id' => $seoCheck?->id,
+                    ]);
+                } else {
+                    $this->recordStartupFailure($schedule, $e, $seoCheck);
+                }
 
                 $this->error("Failed to start SEO check for {$schedule->website->url}: ".$e->getMessage());
             }

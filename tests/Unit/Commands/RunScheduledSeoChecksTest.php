@@ -409,6 +409,53 @@ test('command handles exceptions gracefully', function () {
         ->once();
 });
 
+test('command does not fail seo check when follow-up processing fails after dispatch', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
+
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->with($website->url)
+        ->andReturn(['https://example.com']);
+
+    Log::shouldReceive('info')
+        ->once()
+        ->andThrow(new RuntimeException('Log sink failed'));
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(function ($message, $context = []) use ($schedule, $website) {
+            return str_contains($message, "Scheduled SEO check was dispatched for website {$website->url}, but follow-up processing failed: Log sink failed")
+                && ($context['schedule_id'] ?? null) === $schedule->id;
+        });
+
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
+
+    Queue::assertPushedOn('seo-checks', SeoHealthCheckJob::class);
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->first();
+
+    expect(SeoCheck::where('website_id', $website->id)->count())->toBe(1)
+        ->and($seoCheck)->not->toBeNull()
+        ->and($seoCheck->status)->toBe('pending')
+        ->and($seoCheck->failure_summary)->toBeNull()
+        ->and($seoCheck->failure_context)->toBeNull();
+});
+
 test('command displays progress bar', function () {
     Queue::fake();
 
