@@ -224,6 +224,35 @@ test('does not send notification for 200 response', function () {
     Mail::assertNotSent(HealthStatusAlert::class);
 });
 
+test('sends notification setting alert for newly failed outbound transport', function () {
+    Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+            'address' => 'alerts@example.com',
+        ]);
+
+    $url = new Uri('https://external.com/page');
+    $foundOnUrl = new Uri('https://example.com/source');
+    $request = new Request('GET', $url);
+    $exception = new RequestException('cURL error 6: Could not resolve host: external.com', $request);
+
+    $this->crawler->crawlFailed($url, $exception, $foundOnUrl, 'Broken Link');
+    $this->crawler->finishedCrawling();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->hasTo('alerts@example.com')
+            && $mail->event === 'outbound_link_broken'
+            && $mail->status === 'danger'
+            && str_contains($mail->summary, 'https://external.com/page could not be reached (DNS failure) from https://example.com/source');
+    });
+});
+
 test('does not direct email owner when no notification setting matches outbound alert', function () {
     Mail::fake();
 
@@ -264,6 +293,41 @@ test('does not repeat outbound broken notification while link remains broken', f
         new Uri('https://external.com/gone'),
         new Response(410),
         new Uri('https://example.com/source'),
+        'Broken Link',
+    );
+    $nextScan->finishedCrawling();
+
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
+test('does not repeat outbound broken notification while transport failure remains broken', function () {
+    Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+        ]);
+
+    $url = new Uri('https://external.com/page');
+    $foundOnUrl = new Uri('https://example.com/source');
+
+    $this->crawler->crawlFailed(
+        $url,
+        new RequestException('cURL error 6: Could not resolve host: external.com', new Request('GET', $url)),
+        $foundOnUrl,
+        'Broken Link',
+    );
+    $this->crawler->finishedCrawling();
+
+    $nextScan = new WebsiteOutboundLinkCrawler($this->website);
+    $nextScan->crawlFailed(
+        $url,
+        new RequestException('cURL error 6: Could not resolve host: external.com', new Request('GET', $url)),
+        $foundOnUrl,
         'Broken Link',
     );
     $nextScan->finishedCrawling();
