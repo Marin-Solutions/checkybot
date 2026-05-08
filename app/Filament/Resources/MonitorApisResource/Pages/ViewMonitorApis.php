@@ -30,6 +30,10 @@ class ViewMonitorApis extends ViewRecord
                 ->action(function (): void {
                     try {
                         RunApiMonitorDiagnosticJob::dispatch($this->record->withoutRelations());
+
+                        $this->record->forceFill([
+                            'diagnostic_queued_at' => now(),
+                        ])->save();
                     } catch (\Throwable $e) {
                         Log::error('Run Now API monitor diagnostic dispatch failed', [
                             'monitor_api_id' => $this->record->id,

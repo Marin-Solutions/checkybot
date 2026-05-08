@@ -189,11 +189,23 @@ class MonitorApiInfolist
                     ->columns(2),
                 Section::make('Latest Diagnostic Run')
                     ->description('Manual run evidence is appended for triage but does not drive live status, dashboards, or alerts.')
-                    ->hidden(fn (MonitorApis $record): bool => $record->latestDiagnosticResult === null)
+                    ->hidden(fn (MonitorApis $record): bool => $record->latestDiagnosticResult === null && ! $record->hasQueuedDiagnostic())
                     ->schema([
+                        TextEntry::make('diagnostic_queue_status')
+                            ->label('Diagnostic Status')
+                            ->state(fn (MonitorApis $record): ?string => $record->hasQueuedDiagnostic() ? 'Queued' : null)
+                            ->hidden(fn (MonitorApis $record): bool => ! $record->hasQueuedDiagnostic())
+                            ->badge()
+                            ->color('warning'),
+                        TextEntry::make('diagnostic_queued_at')
+                            ->label('Queued At')
+                            ->state(fn (MonitorApis $record): ?string => $record->diagnostic_queued_at?->toDayDateTimeString())
+                            ->hint(fn (MonitorApis $record): ?string => $record->diagnostic_queued_at?->diffForHumans())
+                            ->hidden(fn (MonitorApis $record): bool => ! $record->hasQueuedDiagnostic()),
                         TextEntry::make('latest_diagnostic_created_at')
                             ->label('Observed At')
                             ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->created_at?->toDayDateTimeString())
+                            ->default('-')
                             ->hint(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->created_at?->diffForHumans()),
                         TextEntry::make('latest_diagnostic_status')
                             ->label('Result')

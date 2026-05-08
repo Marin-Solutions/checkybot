@@ -1121,6 +1121,8 @@ test('view page explains invalid package interval for expected stale threshold',
 });
 
 test('view page run now action queues a website diagnostic without running heartbeat inline', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
     $user = $this->actingAsSuperAdmin();
     Queue::fake();
 
@@ -1148,7 +1150,16 @@ test('view page run now action queues a website diagnostic without running heart
     expect($website->logHistory()->count())->toBe(0)
         ->and($website->current_status)->toBeNull()
         ->and($website->last_heartbeat_at)->toBeNull()
-        ->and($website->status_summary)->toBeNull();
+        ->and($website->status_summary)->toBeNull()
+        ->and($website->diagnostic_queued_at?->toDateTimeString())->toBe('2026-04-24 12:00:00');
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Diagnostic Status')
+        ->assertSee('Queued')
+        ->assertSee('Queued At')
+        ->assertSee('Apr 24, 2026');
 });
 
 test('view page run now action queues failure-prone websites without moving live status', function () {
@@ -1204,7 +1215,8 @@ test('view page run now action queues ssl-only diagnostic evidence', function ()
     expect($website->logHistory()->count())->toBe(0)
         ->and($website->current_status)->toBeNull()
         ->and($website->last_heartbeat_at)->toBeNull()
-        ->and($website->status_summary)->toBeNull();
+        ->and($website->status_summary)->toBeNull()
+        ->and($website->diagnostic_queued_at?->toDateTimeString())->toBe('2026-04-24 12:00:00');
 });
 
 test('view page hides run now action when uptime and ssl checks are disabled', function () {

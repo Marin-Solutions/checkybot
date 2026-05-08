@@ -150,11 +150,23 @@ class WebsiteInfolist
                     ->columns(2),
                 Section::make('Latest Diagnostic Run')
                     ->description('Manual run evidence is separate from scheduler-owned live status, dashboards, and alerts.')
-                    ->hidden(fn (Website $record): bool => $record->latestDiagnosticLogHistory === null)
+                    ->hidden(fn (Website $record): bool => $record->latestDiagnosticLogHistory === null && ! $record->hasQueuedDiagnostic())
                     ->schema([
+                        TextEntry::make('diagnostic_queue_status')
+                            ->label('Diagnostic Status')
+                            ->state(fn (Website $record): ?string => $record->hasQueuedDiagnostic() ? 'Queued' : null)
+                            ->hidden(fn (Website $record): bool => ! $record->hasQueuedDiagnostic())
+                            ->badge()
+                            ->color('warning'),
+                        TextEntry::make('diagnostic_queued_at')
+                            ->label('Queued At')
+                            ->state(fn (Website $record): ?string => $record->diagnostic_queued_at?->toDayDateTimeString())
+                            ->hint(fn (Website $record): ?string => $record->diagnostic_queued_at?->diffForHumans())
+                            ->hidden(fn (Website $record): bool => ! $record->hasQueuedDiagnostic()),
                         TextEntry::make('latest_diagnostic_created_at')
                             ->label('Observed At')
                             ->state(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->created_at?->toDayDateTimeString())
+                            ->default('-')
                             ->hint(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->created_at?->diffForHumans()),
                         TextEntry::make('latest_diagnostic_status')
                             ->label('Result')

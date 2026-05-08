@@ -12,9 +12,14 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+
+afterEach(function () {
+    Carbon::setTestNow();
+});
 
 test('super admin can create api monitor with execution settings', function () {
     $this->createResourcePermissions('MonitorApis');
@@ -798,6 +803,7 @@ test('edit check api action evaluates saved assertions for the current monitor',
 
 test('view page run now action queues a diagnostic run', function () {
     $this->createResourcePermissions('MonitorApis');
+    Carbon::setTestNow('2026-04-24 12:00:00');
 
     $user = $this->actingAsSuperAdmin();
 
@@ -829,7 +835,16 @@ test('view page run now action queues a diagnostic run', function () {
     expect($monitor->results()->count())->toBe(0)
         ->and($monitor->current_status)->toBeNull()
         ->and($monitor->last_heartbeat_at)->toBeNull()
-        ->and($monitor->status_summary)->toBeNull();
+        ->and($monitor->status_summary)->toBeNull()
+        ->and($monitor->diagnostic_queued_at?->toDateTimeString())->toBe('2026-04-24 12:00:00');
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Diagnostic Status')
+        ->assertSee('Queued')
+        ->assertSee('Queued At')
+        ->assertSee('Apr 24, 2026');
 });
 
 test('view page run now action queues diagnostics for failure cases without moving live status', function () {

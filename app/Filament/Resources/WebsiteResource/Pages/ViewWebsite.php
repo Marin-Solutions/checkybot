@@ -30,6 +30,10 @@ class ViewWebsite extends ViewRecord
                 ->action(function (): void {
                     try {
                         LogUptimeSslJob::dispatch($this->record->withoutRelations(), onDemand: true);
+
+                        $this->record->forceFill([
+                            'diagnostic_queued_at' => now(),
+                        ])->save();
                     } catch (\Throwable $e) {
                         Log::error('Run Now uptime/SSL diagnostic dispatch failed', [
                             'website_id' => $this->record->id,

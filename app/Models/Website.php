@@ -43,6 +43,7 @@ class Website extends Model
         'last_heartbeat_at',
         'stale_at',
         'status_summary',
+        'diagnostic_queued_at',
         'silenced_until',
     ];
 
@@ -59,6 +60,7 @@ class Website extends Model
         'last_synced_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
         'stale_at' => 'datetime',
+        'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
 
@@ -322,6 +324,15 @@ class Website extends Model
             ['created_at' => 'max', 'id' => 'max'],
             fn ($query) => $query->where('is_on_demand', true),
         );
+    }
+
+    public function hasQueuedDiagnostic(): bool
+    {
+        return $this->diagnostic_queued_at !== null
+            && (
+                $this->latestDiagnosticLogHistory === null
+                || $this->diagnostic_queued_at->greaterThan($this->latestDiagnosticLogHistory->created_at)
+            );
     }
 
     public function logHistoryLast24h(): \Illuminate\Database\Eloquent\Relations\HasMany
