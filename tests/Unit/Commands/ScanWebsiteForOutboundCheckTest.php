@@ -2,8 +2,13 @@
 
 use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\Website;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+
+afterEach(function () {
+    Carbon::setTestNow();
+});
 
 test('command can be executed', function () {
     Queue::fake();
@@ -100,6 +105,7 @@ test('command handles no websites', function () {
 
 test('command dispatches correct website to job', function () {
     Queue::fake();
+    Carbon::setTestNow('2026-05-08 16:15:00');
 
     $website = Website::factory()->create([
         'outbound_check' => true,
@@ -114,6 +120,8 @@ test('command dispatches correct website to job', function () {
         fn (WebsiteCheckOutboundLinkJob $job): bool => $job->website->is($website)
             && $job->source === WebsiteCheckOutboundLinkJob::SOURCE_SCHEDULED,
     );
+
+    expect($website->refresh()->outbound_scan_queued_at?->toDateTimeString())->toBe('2026-05-08 16:15:00');
 });
 
 test('command handles large number of websites', function () {

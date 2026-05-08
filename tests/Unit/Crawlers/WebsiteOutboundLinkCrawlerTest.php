@@ -74,6 +74,16 @@ test('finished crawling updates website timestamp', function () {
     expect($this->website->last_outbound_checked_at)->not->toBe($originalTimestamp);
 });
 
+test('finished crawling clears queued outbound scan timestamp', function () {
+    $this->website->forceFill([
+        'outbound_scan_queued_at' => now()->subMinutes(10),
+    ])->save();
+
+    $this->crawler->finishedCrawling();
+
+    expect($this->website->refresh()->outbound_scan_queued_at)->toBeNull();
+});
+
 test('sends notification setting alert for newly broken 404 outbound link', function () {
     Mail::fake();
 

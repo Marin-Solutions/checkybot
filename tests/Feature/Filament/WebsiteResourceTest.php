@@ -1478,6 +1478,20 @@ test('view page summarizes outbound link evidence by triage outcome', function (
         ->assertSee('1 healthy');
 });
 
+test('view page shows when an outbound scan is queued', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'outbound_check' => true,
+        'outbound_scan_queued_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertSuccessful()
+        ->assertSee('Scan Pending')
+        ->assertSee('Queued');
+});
+
 test('view page reports SSL cert expiring today as expiring, not expired', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
@@ -1618,6 +1632,7 @@ test('outbound links relation manager is registered on website resource', functi
 
 test('outbound links relation manager can queue an on demand outbound scan', function () {
     Queue::fake();
+    Carbon::setTestNow('2026-05-08 16:00:00');
 
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
@@ -1641,6 +1656,8 @@ test('outbound links relation manager can queue an on demand outbound scan', fun
         fn (WebsiteCheckOutboundLinkJob $job): bool => $job->website->is($website)
             && $job->source === WebsiteCheckOutboundLinkJob::SOURCE_ON_DEMAND,
     );
+
+    expect($website->refresh()->outbound_scan_queued_at?->toDateTimeString())->toBe('2026-05-08 16:00:00');
 });
 
 test('outbound links relation manager hides on demand scan action when outbound check is disabled', function () {

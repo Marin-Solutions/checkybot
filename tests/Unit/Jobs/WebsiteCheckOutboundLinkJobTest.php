@@ -97,6 +97,7 @@ test('job records outbound evidence when crawler startup fails', function () {
     $website = Website::factory()->create([
         'url' => 'https://example.com',
         'last_outbound_checked_at' => null,
+        'outbound_scan_queued_at' => now()->subMinutes(5),
     ]);
 
     $job = new class($website) extends WebsiteCheckOutboundLinkJob
@@ -125,7 +126,8 @@ test('job records outbound evidence when crawler startup fails', function () {
         ->toContain('Outbound scheduled scan failed before crawling started')
         ->toContain('token=[redacted]')
         ->not->toContain('token=secret')
-        ->and($website->refresh()->last_outbound_checked_at?->toDateTimeString())->toBe('2026-05-08 12:34:56');
+        ->and($website->refresh()->last_outbound_checked_at?->toDateTimeString())->toBe('2026-05-08 12:34:56')
+        ->and($website->outbound_scan_queued_at)->toBeNull();
 
     Carbon::setTestNow();
 });

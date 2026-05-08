@@ -109,6 +109,7 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
 
         $this->website->update([
             'last_outbound_checked_at' => $checkedAt,
+            'outbound_scan_queued_at' => null,
         ]);
     }
 
