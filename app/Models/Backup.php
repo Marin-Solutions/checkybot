@@ -19,6 +19,7 @@ class Backup extends Model
 
     protected $fillable = [
         'server_id',
+        'created_by',
         'dir_path',
         'remote_storage_id',
         'remote_storage_path',
@@ -33,6 +34,7 @@ class Backup extends Model
     ];
 
     protected $casts = [
+        'created_by' => 'integer',
         'delete_local_on_fail' => 'boolean',
         'first_run_at' => 'datetime',
         'last_history_at' => 'datetime',
@@ -42,6 +44,18 @@ class Backup extends Model
     public function server(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Server::class, 'server_id', 'id');
+    }
+
+    public function owner(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function scopeOwnedBy($query, int $userId)
+    {
+        return $query
+            ->where('created_by', $userId)
+            ->whereHas('server', fn ($serverQuery) => $serverQuery->where('created_by', $userId));
     }
 
     public function remoteStorage(): \Illuminate\Database\Eloquent\Relations\BelongsTo

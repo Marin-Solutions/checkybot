@@ -1,11 +1,63 @@
 <?php
 
 use App\Filament\Resources\BackupRemoteStorageResource\Pages\CreateBackupRemoteStorage;
+use App\Filament\Resources\BackupRemoteStorageResource\Pages\EditBackupRemoteStorage;
+use App\Filament\Resources\BackupRemoteStorageResource\Pages\ListBackupRemoteStorages;
 use App\Models\BackupRemoteStorageConfig;
 use App\Models\BackupRemoteStorageType;
 use Database\Seeders\BackupRemoteStorageTypeOptionsSeeder;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+
+test('remote storage list is scoped to the authenticated owner', function () {
+    $this->seed(BackupRemoteStorageTypeOptionsSeeder::class);
+    $this->createResourcePermissions('BackupRemoteStorageConfig');
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = \App\Models\User::factory()->create();
+    $user->givePermissionTo(['View:BackupRemoteStorageConfig']);
+    $visibleStorage = createBackupRemoteStorageForUser($user->id, ['label' => 'Owned FTP']);
+    $hiddenStorage = createBackupRemoteStorageForUser($otherUser->id, ['label' => 'Other FTP']);
+
+    Livewire::test(ListBackupRemoteStorages::class)
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleStorage])
+        ->assertCanNotSeeTableRecords([$hiddenStorage]);
+});
+
+test('remote storage policies reject configs owned by another user', function () {
+    $this->seed(BackupRemoteStorageTypeOptionsSeeder::class);
+    $this->createResourcePermissions('BackupRemoteStorageConfig');
+    $user = \App\Models\User::factory()->create();
+    $otherUser = \App\Models\User::factory()->create();
+    $this->actingAs($user);
+    $user->givePermissionTo([
+        'View:BackupRemoteStorageConfig',
+        'Update:BackupRemoteStorageConfig',
+        'Delete:BackupRemoteStorageConfig',
+    ]);
+    $visibleStorage = createBackupRemoteStorageForUser($user->id);
+    $hiddenStorage = createBackupRemoteStorageForUser($otherUser->id);
+
+    expect($user->can('view', $visibleStorage))->toBeTrue()
+        ->and($user->can('update', $visibleStorage))->toBeTrue()
+        ->and($user->can('delete', $visibleStorage))->toBeTrue()
+        ->and($user->can('view', $hiddenStorage))->toBeFalse()
+        ->and($user->can('update', $hiddenStorage))->toBeFalse()
+        ->and($user->can('delete', $hiddenStorage))->toBeFalse();
+});
+
+test('remote storage edit page rejects configs owned by another user', function () {
+    $this->seed(BackupRemoteStorageTypeOptionsSeeder::class);
+    $this->createResourcePermissions('BackupRemoteStorageConfig');
+    $user = $this->actingAsAdmin();
+    $otherUser = \App\Models\User::factory()->create();
+    $user->givePermissionTo(['View:BackupRemoteStorageConfig', 'Update:BackupRemoteStorageConfig']);
+    $hiddenStorage = createBackupRemoteStorageForUser($otherUser->id);
+
+    $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+
+    Livewire::test(EditBackupRemoteStorage::class, ['record' => $hiddenStorage->id]);
+});
 
 test('s3 secret key and region fields use usable input types', function () {
     $this->seed(BackupRemoteStorageTypeOptionsSeeder::class);
@@ -144,3 +196,21 @@ test('remote storage connection test defaults blank ports to ftp port', function
     expect($result['error'])->toBeFalse()
         ->and(config('filesystems.disks.temp_storage.port'))->toBe(21);
 });
+
+function createBackupRemoteStorageForUser(int $userId, array $attributes = []): BackupRemoteStorageConfig
+{
+    $storageType = BackupRemoteStorageType::query()
+        ->where('driver', BackupRemoteStorageType::DRIVER_FTP)
+        ->firstOrFail();
+
+    return BackupRemoteStorageConfig::query()->create(array_merge([
+        'created_by' => $userId,
+        'backup_remote_storage_type_id' => $storageType->id,
+        'label' => 'Primary FTP',
+        'host' => 'backup.example.com',
+        'port' => 21,
+        'username' => 'deploy',
+        'password' => 'secret',
+        'directory' => '/',
+    ], $attributes));
+}

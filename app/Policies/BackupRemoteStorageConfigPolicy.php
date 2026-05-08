@@ -19,7 +19,7 @@ class BackupRemoteStorageConfigPolicy
 
     public function view(AuthUser $authUser, BackupRemoteStorageConfig $backupRemoteStorageConfig): bool
     {
-        return $authUser->can('View:BackupRemoteStorageConfig');
+        return $authUser->can('View:BackupRemoteStorageConfig') && $this->ownsStorage($authUser, $backupRemoteStorageConfig);
     }
 
     public function create(AuthUser $authUser): bool
@@ -29,22 +29,22 @@ class BackupRemoteStorageConfigPolicy
 
     public function update(AuthUser $authUser, BackupRemoteStorageConfig $backupRemoteStorageConfig): bool
     {
-        return $authUser->can('Update:BackupRemoteStorageConfig');
+        return $authUser->can('Update:BackupRemoteStorageConfig') && $this->ownsStorage($authUser, $backupRemoteStorageConfig);
     }
 
     public function delete(AuthUser $authUser, BackupRemoteStorageConfig $backupRemoteStorageConfig): bool
     {
-        return $authUser->can('Delete:BackupRemoteStorageConfig');
+        return $authUser->can('Delete:BackupRemoteStorageConfig') && $this->ownsStorage($authUser, $backupRemoteStorageConfig);
     }
 
     public function restore(AuthUser $authUser, BackupRemoteStorageConfig $backupRemoteStorageConfig): bool
     {
-        return $authUser->can('Restore:BackupRemoteStorageConfig');
+        return $authUser->can('Restore:BackupRemoteStorageConfig') && $this->ownsStorage($authUser, $backupRemoteStorageConfig);
     }
 
     public function forceDelete(AuthUser $authUser, BackupRemoteStorageConfig $backupRemoteStorageConfig): bool
     {
-        return $authUser->can('ForceDelete:BackupRemoteStorageConfig');
+        return $authUser->can('ForceDelete:BackupRemoteStorageConfig') && $this->ownsStorage($authUser, $backupRemoteStorageConfig);
     }
 
     public function forceDeleteAny(AuthUser $authUser): bool
@@ -59,11 +59,16 @@ class BackupRemoteStorageConfigPolicy
 
     public function replicate(AuthUser $authUser, BackupRemoteStorageConfig $backupRemoteStorageConfig): bool
     {
-        return $authUser->can('Replicate:BackupRemoteStorageConfig');
+        return $authUser->can('Replicate:BackupRemoteStorageConfig') && $this->ownsStorage($authUser, $backupRemoteStorageConfig);
     }
 
     public function reorder(AuthUser $authUser): bool
     {
         return $authUser->can('Reorder:BackupRemoteStorageConfig');
+    }
+
+    private function ownsStorage(AuthUser $authUser, BackupRemoteStorageConfig $backupRemoteStorageConfig): bool
+    {
+        return (int) $backupRemoteStorageConfig->created_by === (int) $authUser->id;
     }
 }
