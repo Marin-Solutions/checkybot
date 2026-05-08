@@ -484,10 +484,23 @@ class MonitorApisResource extends Resource
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                     ->visible(fn (MonitorApis $record): bool => (bool) $record->is_enabled)
+                    ->disabled(fn (MonitorApis $record): bool => $record->hasQueuedDiagnostic())
                     ->action(function (MonitorApis $record): void {
                         $queuedStatePersisted = false;
 
                         try {
+                            $record->refresh();
+
+                            if ($record->hasQueuedDiagnostic()) {
+                                Notification::make()
+                                    ->title('Diagnostic already queued')
+                                    ->body('Checkybot is already waiting for this API monitor diagnostic to finish.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
                             $record->forceFill([
                                 'diagnostic_queued_at' => now(),
                             ])->save();

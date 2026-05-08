@@ -1231,6 +1231,18 @@ test('view page hides run now action when uptime and ssl checks are disabled', f
         ->assertActionHidden('run_now');
 });
 
+test('view page disables run now action while website diagnostic is queued', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionDisabled('run_now');
+});
+
 test('view page hides run now action for users without update permission', function () {
     $user = User::factory()->create();
     $user->assignRole('Admin');

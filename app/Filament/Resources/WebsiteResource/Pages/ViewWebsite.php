@@ -27,10 +27,23 @@ class ViewWebsite extends ViewRecord
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->uptime_check || (bool) $this->record->ssl_check)
+                ->disabled(fn (): bool => $this->record->hasQueuedDiagnostic())
                 ->action(function (): void {
                     $queuedStatePersisted = false;
 
                     try {
+                        $this->record->refresh();
+
+                        if ($this->record->hasQueuedDiagnostic()) {
+                            Notification::make()
+                                ->title('Diagnostic already queued')
+                                ->body('Checkybot is already waiting for this website diagnostic to finish.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
+
                         $this->record->forceFill([
                             'diagnostic_queued_at' => now(),
                         ])->save();
