@@ -37,6 +37,20 @@ class WebsiteResource extends Resource
         return auth()->user()?->hasAnyRole(['Super Admin', 'Admin']) ?? false;
     }
 
+    public static function scopeActiveMonitoring(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $query): Builder => $query
+            ->where('uptime_check', true)
+            ->orWhere('ssl_check', true));
+    }
+
+    public static function scopeDisabledMonitoring(Builder $query): Builder
+    {
+        return $query
+            ->where('uptime_check', false)
+            ->where('ssl_check', false);
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
@@ -416,7 +430,7 @@ class WebsiteResource extends Resource
             ->filters([
                 HealthStatusFilter::make(),
                 HealthStatusFilter::onlyFailing(
-                    activeScope: fn (Builder $query): Builder => $query->where('uptime_check', true),
+                    activeScope: fn (Builder $query): Builder => static::scopeActiveMonitoring($query),
                 ),
                 Tables\Filters\TrashedFilter::make(),
             ])
