@@ -17,6 +17,17 @@ class CreateBackups extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        if (! BackupsResource::ownsSelectedReferences($data)) {
+            Notification::make()
+                ->title('Backup destination is not available')
+                ->body('Choose one of your servers and remote storage configs.')
+                ->danger()
+                ->persistent()
+                ->send();
+
+            $this->halt();
+        }
+
         if ($data['password'] !== $data['confirm_password']) {
             Notification::make()
                 ->title('Passwords do not match')
@@ -29,6 +40,7 @@ class CreateBackups extends CreateRecord
         }
 
         unset($data['confirm_password']);
+        $data['created_by'] = auth()->id();
 
         return $data;
     }

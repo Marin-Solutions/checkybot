@@ -186,6 +186,14 @@ class BackupRemoteStorageResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        $userId = auth()->id();
+
+        return parent::getEloquentQuery()
+            ->when($userId, fn (Builder $query): Builder => $query->ownedBy($userId), fn (Builder $query): Builder => $query->whereRaw('1 = 0'));
+    }
+
     public static function getPages(): array
     {
         return [

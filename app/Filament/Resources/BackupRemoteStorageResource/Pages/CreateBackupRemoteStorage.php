@@ -15,6 +15,7 @@ class CreateBackupRemoteStorage extends CreateRecord
     protected function mutateFormDataBeforeCreate(array $data): array
     {
         $typeId = $data['backup_remote_storage_type_id'] ?? null;
+        $data['created_by'] = auth()->id();
 
         if (BackupRemoteStorageType::usesFileTransferFieldsForId($typeId)) {
             unset($data['access_key'], $data['secret_key'], $data['bucket'], $data['region'], $data['endpoint']);

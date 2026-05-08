@@ -5,6 +5,8 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\BackupsResource\Pages;
 use App\Filament\Resources\BackupsResource\RelationManagers\HistoriesRelationManager;
 use App\Models\Backup;
+use App\Models\BackupRemoteStorageConfig;
+use App\Models\Server;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
@@ -30,9 +32,19 @@ class BackupsResource extends Resource
                 \Filament\Schemas\Components\Fieldset::make()
                     ->schema([
                         Forms\Components\Select::make('server_id')
-                            ->relationship('server', 'name')->required(),
+                            ->relationship(
+                                name: 'server',
+                                titleAttribute: 'name',
+                                modifyQueryUsing: fn (Builder $query): Builder => $query->where('created_by', auth()->id()),
+                            )
+                            ->required(),
                         Forms\Components\Select::make('remote_storage_id')
-                            ->relationship('remoteStorage', 'label')->required(),
+                            ->relationship(
+                                name: 'remoteStorage',
+                                titleAttribute: 'label',
+                                modifyQueryUsing: fn (Builder $query): Builder => $query->where('created_by', auth()->id()),
+                            )
+                            ->required(),
                         Forms\Components\TextInput::make('dir_path')->required()->columnSpanFull()
                             ->label('Directory path'),
                     ]),
@@ -133,8 +145,29 @@ class BackupsResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
+        $userId = auth()->id();
+
         return parent::getEloquentQuery()
+            ->when($userId, fn (Builder $query): Builder => $query->ownedBy($userId), fn (Builder $query): Builder => $query->whereRaw('1 = 0'))
             ->with(['interval', 'latestHistory']);
+    }
+
+    public static function ownsSelectedReferences(array $data): bool
+    {
+        $userId = auth()->id();
+
+        if (! $userId) {
+            return false;
+        }
+
+        return Server::query()
+            ->whereKey($data['server_id'] ?? null)
+            ->where('created_by', $userId)
+            ->exists()
+            && BackupRemoteStorageConfig::query()
+                ->whereKey($data['remote_storage_id'] ?? null)
+                ->where('created_by', $userId)
+                ->exists();
     }
 
     public static function getPages(): array

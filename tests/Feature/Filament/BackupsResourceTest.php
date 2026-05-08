@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Resources\BackupsResource;
+use App\Filament\Resources\BackupsResource\Pages\CreateBackups;
 use App\Filament\Resources\BackupsResource\Pages\EditBackups;
 use App\Filament\Resources\BackupsResource\Pages\ListBackups;
 use App\Filament\Resources\BackupsResource\RelationManagers\HistoriesRelationManager;
@@ -139,6 +140,57 @@ test('backup list shows expected run freshness evidence', function () {
         ->assertSee('Latest Run');
 });
 
+test('backup list is scoped to the authenticated owner', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = \App\Models\User::factory()->create();
+    $user->givePermissionTo(['View:Backup']);
+    $visibleBackup = createBackupResourceBackupForUser($user->id);
+    $hiddenBackup = createBackupResourceBackupForUser($otherUser->id);
+
+    Livewire::test(ListBackups::class)
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleBackup])
+        ->assertCanNotSeeTableRecords([$hiddenBackup]);
+});
+
+test('backup form relationship selects only expose owned servers and storage configs', function () {
+    $user = $this->actingAsSuperAdmin();
+    $otherUser = \App\Models\User::factory()->create();
+    $user->givePermissionTo(['Create:Backup']);
+    $visibleBackup = createBackupResourceBackupForUser($user->id);
+    $hiddenBackup = createBackupResourceBackupForUser($otherUser->id);
+
+    Livewire::test(CreateBackups::class)
+        ->assertFormFieldExists('server_id', function ($field) use ($visibleBackup, $hiddenBackup): bool {
+            $options = $field->getOptions();
+
+            return array_key_exists($visibleBackup->server_id, $options)
+                && ! array_key_exists($hiddenBackup->server_id, $options);
+        })
+        ->assertFormFieldExists('remote_storage_id', function ($field) use ($visibleBackup, $hiddenBackup): bool {
+            $options = $field->getOptions();
+
+            return array_key_exists($visibleBackup->remote_storage_id, $options)
+                && ! array_key_exists($hiddenBackup->remote_storage_id, $options);
+        });
+});
+
+test('backup policies reject records owned by another user', function () {
+    $user = \App\Models\User::factory()->create();
+    $otherUser = \App\Models\User::factory()->create();
+    $this->actingAs($user);
+    $user->givePermissionTo(['View:Backup', 'Update:Backup', 'Delete:Backup']);
+    $visibleBackup = createBackupResourceBackupForUser($user->id);
+    $hiddenBackup = createBackupResourceBackupForUser($otherUser->id);
+
+    expect($user->can('view', $visibleBackup))->toBeTrue()
+        ->and($user->can('update', $visibleBackup))->toBeTrue()
+        ->and($user->can('delete', $visibleBackup))->toBeTrue()
+        ->and($user->can('view', $hiddenBackup))->toBeFalse()
+        ->and($user->can('update', $hiddenBackup))->toBeFalse()
+        ->and($user->can('delete', $hiddenBackup))->toBeFalse();
+});
+
 function createBackupResourceBackupForUser(int $userId, array $attributes = []): Backup
 {
     $server = Server::factory()->create(['created_by' => $userId]);
@@ -148,6 +200,7 @@ function createBackupResourceBackupForUser(int $userId, array $attributes = []):
         'flag_active' => true,
     ]);
     $remoteStorage = BackupRemoteStorageConfig::query()->create([
+        'created_by' => $userId,
         'backup_remote_storage_type_id' => $storageType->id,
         'label' => 'Primary FTP',
         'host' => 'backup.example.com',
@@ -163,6 +216,7 @@ function createBackupResourceBackupForUser(int $userId, array $attributes = []):
 
     return Backup::query()->create(array_merge([
         'server_id' => $server->id,
+        'created_by' => $userId,
         'dir_path' => '/var/www/html',
         'remote_storage_id' => $remoteStorage->id,
         'remote_storage_path' => '/',
