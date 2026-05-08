@@ -27,7 +27,7 @@ class EditBackups extends EditRecord
     {
         $password = $data['password'] ?? null;
         $confirmPassword = $data['confirm_password'] ?? null;
-        $storedPassword = $this->record->getOriginal('password');
+        $storedPassword = $this->record->getAttribute('password');
 
         if ($password !== $storedPassword && $password !== $confirmPassword) {
             Notification::make()

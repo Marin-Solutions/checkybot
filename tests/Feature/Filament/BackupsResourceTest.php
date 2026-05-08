@@ -47,6 +47,25 @@ test('backup edit rejects mismatched zip password confirmation', function () {
     expect($backup->refresh()->password)->toBe('current-password');
 });
 
+test('backup edit saves matching zip password confirmation', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup', 'Update:Backup']);
+    $backup = createBackupResourceBackupForUser($user->id, [
+        'password' => 'current-password',
+    ]);
+
+    Livewire::test(EditBackups::class, ['record' => $backup->id])
+        ->fillForm([
+            'password' => 'new-password',
+            'confirm_password' => 'new-password',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    expect($backup->refresh()->password)->toBe('new-password');
+});
+
 test('backup edit allows unrelated changes when zip password is unchanged', function () {
     $user = $this->actingAsSuperAdmin();
     $user->givePermissionTo(['View:Backup', 'Update:Backup']);
