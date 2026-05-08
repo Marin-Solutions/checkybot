@@ -42,6 +42,10 @@ class ServerLogFileHistoryController extends Controller
             return response()->json(['message' => __('Error: Unauthorized')], 401);
         }
 
+        if (! $serverLogCategory->should_collect) {
+            return response()->json(['message' => __('Server log category collection is disabled')], 403);
+        }
+
         $file = Storage::putFile('ServerLogFiles', $request->file('log'));
         $newServerLogFileHistory = [
             'server_log_category_id' => $request->input('li'),

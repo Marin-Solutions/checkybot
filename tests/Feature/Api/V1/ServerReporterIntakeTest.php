@@ -54,7 +54,10 @@ test('server log intake trusts a valid token when reporter ip changes', function
         'ip' => '192.0.2.10',
         'token' => 'server-token',
     ]);
-    $category = ServerLogCategory::factory()->create(['server_id' => $server->id]);
+    $category = ServerLogCategory::factory()->create([
+        'server_id' => $server->id,
+        'should_collect' => true,
+    ]);
 
     $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.24'])
         ->withHeaders([
@@ -75,6 +78,42 @@ test('server log intake trusts a valid token when reporter ip changes', function
     expect($server->last_reporter_ip)->toBe('198.51.100.24')
         ->and($server->last_reporter_user_agent)->toBe('checkybot-log-reporter/1.0')
         ->and($server->last_reporter_seen_at)->not->toBeNull();
+});
+
+test('server log intake rejects disabled log categories', function () {
+    Storage::fake('local');
+
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+    $category = ServerLogCategory::factory()->create([
+        'server_id' => $server->id,
+        'should_collect' => false,
+    ]);
+
+    $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.24'])
+        ->withHeaders([
+            'Authorization' => 'Bearer server-token',
+            'User-Agent' => 'checkybot-log-reporter/1.0',
+        ])
+        ->post('/api/v1/server-log-history', [
+            'li' => $category->id,
+            'log' => UploadedFile::fake()->create('syslog.log', 1, 'text/plain'),
+        ])
+        ->assertForbidden()
+        ->assertJsonPath('message', 'Server log category collection is disabled');
+
+    expect(ServerLogFileHistory::query()->where('server_log_category_id', $category->id)->exists())->toBeFalse();
+    expect($category->refresh()->last_collected_at)->toBeNull();
+
+    $server->refresh();
+
+    expect($server->last_reporter_ip)->toBeNull()
+        ->and($server->last_reporter_user_agent)->toBeNull()
+        ->and($server->last_reporter_seen_at)->toBeNull();
+
+    Storage::disk('local')->assertMissing('ServerLogFiles/syslog.log');
 });
 
 test('backup history intake trusts a valid token when reporter ip changes', function () {
