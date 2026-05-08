@@ -503,6 +503,88 @@ test('project check read endpoints redact saved api response body evidence', fun
         ->and(json_encode($resultsResponse->json()))->not->toContain('body-password-secret');
 });
 
+test('project check read endpoints expose redacted api transport and header evidence', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'current_status' => 'danger',
+    ]);
+
+    $longValue = str_repeat('x', 4200);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'http_code' => 0,
+        'status' => 'danger',
+        'summary' => 'API heartbeat failed because DNS lookup failed.',
+        'transport_error_type' => 'dns',
+        'transport_error_message' => 'Could not resolve https://user:transport-secret@api.scrappa.test/private/request-secret?debug=transport-query-secret, with Bearer transport-bearer-secret',
+        'transport_error_code' => 6,
+        'request_headers' => [
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer request-secret',
+            'Proxy-Authorization' => 'Basic proxy-secret',
+            'X-Api-Key' => 'package-secret',
+            'x-debug-trace' => $longValue,
+        ],
+        'response_headers' => [
+            'content-type' => 'application/json',
+            'set-cookie' => 'session=response-secret',
+            'x-request-id' => 'req-123',
+        ],
+    ]);
+
+    $showResponse = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api:{$api->id}")
+        ->assertOk()
+        ->assertJsonPath('data.latest_result.transport_error_type', 'dns')
+        ->assertJsonPath('data.latest_result.transport_error_message', 'Could not resolve https://api.scrappa.test/[redacted-url], with Bearer [redacted]')
+        ->assertJsonPath('data.latest_result.transport_error_code', 6)
+        ->assertJsonPath('data.latest_result.request_headers.Accept', 'application/json')
+        ->assertJsonPath('data.latest_result.request_headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.latest_result.request_headers.Proxy-Authorization', '[redacted]')
+        ->assertJsonPath('data.latest_result.request_headers.X-Api-Key', '[redacted]')
+        ->assertJsonPath('data.latest_result.response_headers.content-type', 'application/json')
+        ->assertJsonPath('data.latest_result.response_headers.set-cookie', '[redacted]')
+        ->assertJsonPath('data.latest_result.response_headers.x-request-id', 'req-123');
+
+    $resultsResponse = $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results")
+        ->assertOk()
+        ->assertJsonPath('data.0.transport_error_type', 'dns')
+        ->assertJsonPath('data.0.transport_error_message', 'Could not resolve https://api.scrappa.test/[redacted-url], with Bearer [redacted]')
+        ->assertJsonPath('data.0.transport_error_code', 6)
+        ->assertJsonPath('data.0.request_headers.Accept', 'application/json')
+        ->assertJsonPath('data.0.request_headers.Authorization', '[redacted]')
+        ->assertJsonPath('data.0.request_headers.Proxy-Authorization', '[redacted]')
+        ->assertJsonPath('data.0.request_headers.X-Api-Key', '[redacted]')
+        ->assertJsonPath('data.0.response_headers.content-type', 'application/json')
+        ->assertJsonPath('data.0.response_headers.set-cookie', '[redacted]')
+        ->assertJsonPath('data.0.response_headers.x-request-id', 'req-123');
+
+    expect($showResponse->json('data.latest_result.request_headers.x-debug-trace'))->toEndWith('... [truncated]')
+        ->and($showResponse->json('data.latest_result.request_headers.x-debug-trace'))->not->toBe($longValue)
+        ->and($resultsResponse->json('data.0.request_headers.x-debug-trace'))->toEndWith('... [truncated]')
+        ->and($resultsResponse->json('data.0.request_headers.x-debug-trace'))->not->toBe($longValue)
+        ->and(json_encode($showResponse->json()))->not->toContain('request-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('proxy-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('package-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('response-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('transport-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('transport-query-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('transport-bearer-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('request-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('proxy-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('package-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('response-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('transport-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('transport-query-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('transport-bearer-secret');
+});
+
 test('project check read endpoints redact top level raw response body strings', function () {
     $api = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
