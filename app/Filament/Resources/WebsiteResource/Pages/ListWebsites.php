@@ -27,6 +27,18 @@ class ListWebsites extends ListRecords
         return 'uptime_check';
     }
 
+    protected function scopeFailing(Builder $query): Builder
+    {
+        return WebsiteResource::scopeActiveMonitoring(
+            $query->whereIn('current_status', self::UNHEALTHY_STATUSES)
+        );
+    }
+
+    protected function scopeDisabled(Builder $query): Builder
+    {
+        return WebsiteResource::scopeDisabledMonitoring($query);
+    }
+
     protected function historyTable(): string
     {
         return 'website_log_history';

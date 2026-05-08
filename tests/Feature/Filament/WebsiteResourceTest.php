@@ -700,21 +700,29 @@ test('super admin can filter websites to only failing', function () {
     $warning = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'warning']);
     $danger = Website::factory()->create(['created_by' => $user->id, 'current_status' => 'danger']);
     $unknown = Website::factory()->create(['created_by' => $user->id, 'current_status' => null]);
-    $pausedWarning = Website::factory()->create([
+    $sslOnlyWarning = Website::factory()->create([
         'created_by' => $user->id,
         'current_status' => 'warning',
         'uptime_check' => false,
+        'ssl_check' => true,
     ]);
-    $pausedDanger = Website::factory()->create([
+    $disabledWarning = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+    $disabledDanger = Website::factory()->create([
         'created_by' => $user->id,
         'current_status' => 'danger',
         'uptime_check' => false,
+        'ssl_check' => false,
     ]);
 
     Livewire::test(ListWebsites::class)
         ->filterTable('only_failing', true)
-        ->assertCanSeeTableRecords([$warning, $danger])
-        ->assertCanNotSeeTableRecords([$healthy, $unknown, $pausedWarning, $pausedDanger]);
+        ->assertCanSeeTableRecords([$warning, $danger, $sslOnlyWarning])
+        ->assertCanNotSeeTableRecords([$healthy, $unknown, $disabledWarning, $disabledDanger]);
 });
 
 test('super admin can bulk disable uptime checks on websites', function () {
@@ -1958,7 +1966,7 @@ test('website list shows all four health status tabs', function () {
         ->assertSee('Recently Recovered');
 });
 
-test('website list failing tab only shows warning and danger websites', function () {
+test('website list failing tab only shows active warning and danger websites', function () {
     $user = $this->actingAsSuperAdmin();
 
     $healthy = Website::factory()->create([
@@ -1973,29 +1981,47 @@ test('website list failing tab only shows warning and danger websites', function
         'created_by' => $user->id,
         'current_status' => 'danger',
     ]);
+    $sslOnlyDanger = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'uptime_check' => false,
+        'ssl_check' => true,
+    ]);
+    $disabledDanger = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
 
     Livewire::test(ListWebsites::class)
         ->set('activeTab', 'failing')
-        ->assertCanSeeTableRecords([$warning, $danger])
-        ->assertCanNotSeeTableRecords([$healthy]);
+        ->assertCanSeeTableRecords([$warning, $danger, $sslOnlyDanger])
+        ->assertCanNotSeeTableRecords([$healthy, $disabledDanger]);
 });
 
-test('website list disabled tab only shows websites with uptime check off', function () {
+test('website list disabled tab only shows websites with uptime and ssl checks off', function () {
     $user = $this->actingAsSuperAdmin();
 
     $enabled = Website::factory()->create([
         'created_by' => $user->id,
         'uptime_check' => true,
     ]);
+    $sslOnly = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+    ]);
     $disabled = Website::factory()->create([
         'created_by' => $user->id,
         'uptime_check' => false,
+        'ssl_check' => false,
     ]);
 
     Livewire::test(ListWebsites::class)
         ->set('activeTab', 'disabled')
         ->assertCanSeeTableRecords([$disabled])
-        ->assertCanNotSeeTableRecords([$enabled]);
+        ->assertCanNotSeeTableRecords([$enabled, $sslOnly]);
 });
 
 test('website list recently recovered tab requires healthy status with prior failure in window', function () {
@@ -2064,6 +2090,7 @@ test('website list all tab shows every visible website regardless of health', fu
         'created_by' => $user->id,
         'current_status' => 'healthy',
         'uptime_check' => false,
+        'ssl_check' => false,
     ]);
 
     Livewire::test(ListWebsites::class)
@@ -2086,6 +2113,7 @@ test('website list tab badges report accurate per-tab counts', function () {
         'created_by' => $user->id,
         'current_status' => 'healthy',
         'uptime_check' => false,
+        'ssl_check' => false,
     ]);
 
     $recovered = Website::factory()->create([
