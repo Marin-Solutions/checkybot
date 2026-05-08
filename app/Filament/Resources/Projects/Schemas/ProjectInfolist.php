@@ -157,7 +157,8 @@ class ProjectInfolist
             ->withTrashed()
             ->selectRaw(<<<'SQL'
                 COALESCE(SUM(CASE WHEN uptime_check THEN 1 ELSE 0 END), 0)
-                + COALESCE(SUM(CASE WHEN ssl_check THEN 1 ELSE 0 END), 0) as total
+                + COALESCE(SUM(CASE WHEN ssl_check THEN 1 ELSE 0 END), 0)
+                + COALESCE(SUM(CASE WHEN NOT uptime_check AND NOT ssl_check THEN 1 ELSE 0 END), 0) as total
             SQL)
             ->value('total');
     }
