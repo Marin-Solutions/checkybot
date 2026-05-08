@@ -337,6 +337,15 @@ class Website extends Model
             );
     }
 
+    public function hasQueuedOutboundScan(): bool
+    {
+        return $this->outbound_scan_queued_at !== null
+            && (
+                $this->last_outbound_checked_at === null
+                || $this->outbound_scan_queued_at->greaterThan($this->last_outbound_checked_at)
+            );
+    }
+
     public function logHistoryLast24h(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(WebsiteLogHistory::class)

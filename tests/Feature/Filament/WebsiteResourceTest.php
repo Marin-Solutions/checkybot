@@ -1660,6 +1660,22 @@ test('outbound links relation manager can queue an on demand outbound scan', fun
     expect($website->refresh()->outbound_scan_queued_at?->toDateTimeString())->toBe('2026-05-08 16:00:00');
 });
 
+test('outbound links relation manager disables on demand scan action while scan is queued', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'outbound_check' => true,
+        'last_outbound_checked_at' => now()->subMinutes(10),
+        'outbound_scan_queued_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(OutboundLinksRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->assertTableActionDisabled('run_outbound_scan');
+});
+
 test('outbound links relation manager hides on demand scan action when outbound check is disabled', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
