@@ -738,6 +738,20 @@ test('application record shows package-managed external checks including archive
     ]);
     $archivedSslWebsite->delete();
 
+    $disabledWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'removed-site',
+        'source' => 'package',
+        'package_name' => 'removed-site',
+        'package_interval' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+
     $apiMonitor = MonitorApis::factory()->create([
         'project_id' => $project->id,
         'title' => 'health',
@@ -784,12 +798,15 @@ test('application record shows package-managed external checks including archive
         'pageClass' => ViewProject::class,
     ])
         ->assertSuccessful()
-        ->assertCanSeeTableRecords([$uptimeWebsite, $archivedSslWebsite])
+        ->assertCanSeeTableRecords([$uptimeWebsite, $archivedSslWebsite, $disabledWebsite])
+        ->assertTableColumnStateSet('deleted_at', 'Disabled', $disabledWebsite)
         ->assertSee('Summary')
         ->assertSee('Last Heartbeat')
         ->assertSee('Freshness')
         ->assertSee('Homepage heartbeat succeeded with HTTP status 200.')
         ->assertSee('No heartbeat received within the expected 5m interval.')
+        ->assertSee('Disabled because it was missing from the latest package sync.')
+        ->assertSee('Both uptime and SSL checks are disabled. Scheduled runs are paused.')
         ->assertSee('Fresh')
         ->assertSee('Stale');
 
