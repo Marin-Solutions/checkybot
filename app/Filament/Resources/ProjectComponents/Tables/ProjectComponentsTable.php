@@ -207,6 +207,7 @@ class ProjectComponentsTable
                                 ? 0
                                 : ProjectComponent::query()->whereIn('id', $ids)->update([
                                     'is_archived' => false,
+                                    'project_paused_monitoring' => false,
                                     'archived_at' => null,
                                     'archive_reason' => null,
                                 ]);
@@ -237,6 +238,7 @@ class ProjectComponentsTable
                                 ? 0
                                 : ProjectComponent::query()->whereIn('id', $ids)->update([
                                     'is_archived' => true,
+                                    'project_paused_monitoring' => false,
                                     'archived_at' => now(),
                                     'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
                                 ]);

@@ -402,17 +402,41 @@ class ProjectsTable
 
             $apisChanged = MonitorApis::query()
                 ->whereIn('project_id', $projectIds)
-                ->where('is_enabled', ! $enable)
-                ->update(['is_enabled' => $enable]);
+                ->when(
+                    $enable,
+                    fn (Builder $query): Builder => $query->where('project_paused_monitoring', true),
+                    fn (Builder $query): Builder => $query->where('is_enabled', true),
+                )
+                ->update($enable
+                    ? [
+                        'is_enabled' => true,
+                        'project_paused_monitoring' => false,
+                    ]
+                    : [
+                        'is_enabled' => false,
+                        'project_paused_monitoring' => true,
+                    ]);
 
             $componentsChanged = ProjectComponent::query()
                 ->whereIn('project_id', $projectIds)
-                ->where('is_archived', $enable)
-                ->update([
-                    'is_archived' => ! $enable,
-                    'archived_at' => $enable ? null : now(),
-                    'archive_reason' => $enable ? null : ProjectComponent::ARCHIVE_REASON_USER,
-                ]);
+                ->when(
+                    $enable,
+                    fn (Builder $query): Builder => $query->where('project_paused_monitoring', true),
+                    fn (Builder $query): Builder => $query->where('is_archived', false),
+                )
+                ->update($enable
+                    ? [
+                        'is_archived' => false,
+                        'project_paused_monitoring' => false,
+                        'archived_at' => null,
+                        'archive_reason' => null,
+                    ]
+                    : [
+                        'is_archived' => true,
+                        'project_paused_monitoring' => true,
+                        'archived_at' => now(),
+                        'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
+                    ]);
 
             return [
                 'websites' => $websitesChanged,
@@ -438,29 +462,9 @@ class ProjectsTable
                     $query
                         ->where('project_paused_uptime_check', true)
                         ->orWhere('project_paused_ssl_check', true)
-                        ->orWhere('project_paused_outbound_check', true)
-                        ->orWhere(function (Builder $query): void {
-                            $query
-                                ->where('uptime_check', false)
-                                ->where('ssl_check', false)
-                                ->where('project_paused_uptime_check', false)
-                                ->where('project_paused_ssl_check', false)
-                                ->where('project_paused_outbound_check', false);
-                        });
+                        ->orWhere('project_paused_outbound_check', true);
                 })
                 ->count();
-
-            Website::query()
-                ->whereIn('project_id', $projectIds)
-                ->where('uptime_check', false)
-                ->where('ssl_check', false)
-                ->where('project_paused_uptime_check', false)
-                ->where('project_paused_ssl_check', false)
-                ->where('project_paused_outbound_check', false)
-                ->update([
-                    'uptime_check' => true,
-                    'ssl_check' => true,
-                ]);
 
             Website::query()
                 ->whereIn('project_id', $projectIds)

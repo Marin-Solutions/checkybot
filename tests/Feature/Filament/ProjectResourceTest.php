@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\ProjectComponents\Pages\CreateProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
@@ -1512,7 +1513,9 @@ test('super admin can bulk pause monitoring across selected applications', funct
         ->and($website->project_paused_ssl_check)->toBeTrue()
         ->and($website->project_paused_outbound_check)->toBeTrue()
         ->and($monitor->refresh()->is_enabled)->toBeFalse()
-        ->and($component->refresh()->is_archived)->toBeTrue();
+        ->and($monitor->project_paused_monitoring)->toBeTrue()
+        ->and($component->refresh()->is_archived)->toBeTrue()
+        ->and($component->project_paused_monitoring)->toBeTrue();
 });
 
 test('super admin can bulk resume monitoring across selected applications', function () {
@@ -1538,11 +1541,13 @@ test('super admin can bulk resume monitoring across selected applications', func
     $monitor = MonitorApis::factory()->disabled()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
+        'project_paused_monitoring' => true,
     ]);
 
     $component = ProjectComponent::factory()->archived()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
+        'project_paused_monitoring' => true,
     ]);
 
     Livewire::test(ListProjects::class)
@@ -1555,7 +1560,9 @@ test('super admin can bulk resume monitoring across selected applications', func
         ->and($website->project_paused_ssl_check)->toBeFalse()
         ->and($website->project_paused_outbound_check)->toBeFalse()
         ->and($monitor->refresh()->is_enabled)->toBeTrue()
-        ->and($component->refresh()->is_archived)->toBeFalse();
+        ->and($monitor->project_paused_monitoring)->toBeFalse()
+        ->and($component->refresh()->is_archived)->toBeFalse()
+        ->and($component->project_paused_monitoring)->toBeFalse();
 });
 
 test('bulk resume restores only website checks paused by the project action', function () {
@@ -1707,7 +1714,7 @@ test('bulk resume respects outbound checks manually disabled while project is pa
         ->and($website->project_paused_outbound_check)->toBeFalse();
 });
 
-test('bulk resume restores fully paused websites from before project pause flags existed', function () {
+test('bulk resume does not restore fully disabled websites without project pause flags', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
     $this->createResourcePermissions('MonitorApis');
@@ -1751,14 +1758,14 @@ test('bulk resume restores fully paused websites from before project pause flags
     Livewire::test(ListProjects::class)
         ->callTableBulkAction('enable', collect([$project]));
 
-    expect($legacyPaused->refresh()->uptime_check)->toBeTrue()
-        ->and($legacyPaused->ssl_check)->toBeTrue()
+    expect($legacyPaused->refresh()->uptime_check)->toBeFalse()
+        ->and($legacyPaused->ssl_check)->toBeFalse()
         ->and($legacyPaused->outbound_check)->toBeFalse()
         ->and($legacyPaused->project_paused_uptime_check)->toBeFalse()
         ->and($legacyPaused->project_paused_ssl_check)->toBeFalse()
         ->and($legacyPaused->project_paused_outbound_check)->toBeFalse()
-        ->and($legacyPausedWithOutboundEnabled->refresh()->uptime_check)->toBeTrue()
-        ->and($legacyPausedWithOutboundEnabled->ssl_check)->toBeTrue()
+        ->and($legacyPausedWithOutboundEnabled->refresh()->uptime_check)->toBeFalse()
+        ->and($legacyPausedWithOutboundEnabled->ssl_check)->toBeFalse()
         ->and($legacyPausedWithOutboundEnabled->outbound_check)->toBeTrue()
         ->and($legacyPausedWithOutboundEnabled->project_paused_uptime_check)->toBeFalse()
         ->and($legacyPausedWithOutboundEnabled->project_paused_ssl_check)->toBeFalse()
@@ -1769,6 +1776,147 @@ test('bulk resume restores fully paused websites from before project pause flags
         ->and($sslOnly->project_paused_uptime_check)->toBeFalse()
         ->and($sslOnly->project_paused_ssl_check)->toBeFalse()
         ->and($sslOnly->project_paused_outbound_check)->toBeFalse();
+});
+
+test('bulk resume restores only api monitors disabled by the project action', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $projectPaused = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'project_paused_monitoring' => true,
+    ]);
+
+    $manuallyDisabled = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'project_paused_monitoring' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($projectPaused->refresh()->is_enabled)->toBeTrue()
+        ->and($projectPaused->project_paused_monitoring)->toBeFalse()
+        ->and($manuallyDisabled->refresh()->is_enabled)->toBeFalse()
+        ->and($manuallyDisabled->project_paused_monitoring)->toBeFalse();
+});
+
+test('manual api disable while project is paused is not undone by project resume', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]));
+
+    expect($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($monitor->project_paused_monitoring)->toBeTrue();
+
+    Livewire::test(EditMonitorApis::class, ['record' => $monitor->id])
+        ->fillForm([
+            'title' => $monitor->title,
+            'url' => $monitor->url,
+            'data_path' => $monitor->data_path,
+            'project_id' => $project->id,
+            'package_interval' => $monitor->package_interval ?? '5m',
+            'is_enabled' => false,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($monitor->project_paused_monitoring)->toBeFalse();
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($monitor->project_paused_monitoring)->toBeFalse();
+});
+
+test('bulk resume restores only components archived by the project action', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $projectPaused = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'project_paused_monitoring' => true,
+    ]);
+
+    $manuallyArchived = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'project_paused_monitoring' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($projectPaused->refresh()->is_archived)->toBeFalse()
+        ->and($projectPaused->project_paused_monitoring)->toBeFalse()
+        ->and($manuallyArchived->refresh()->is_archived)->toBeTrue()
+        ->and($manuallyArchived->project_paused_monitoring)->toBeFalse();
+});
+
+test('manual component archive while project is paused is not undone by project resume', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('disable', collect([$project]));
+
+    expect($component->refresh()->is_archived)->toBeTrue()
+        ->and($component->project_paused_monitoring)->toBeTrue();
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->id])
+        ->fillForm([
+            'project_id' => $project->id,
+            'name' => $component->name,
+            'declared_interval' => $component->declared_interval,
+            'current_status' => $component->current_status,
+            'is_archived' => true,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    expect($component->refresh()->is_archived)->toBeTrue()
+        ->and($component->project_paused_monitoring)->toBeFalse();
+
+    Livewire::test(ListProjects::class)
+        ->callTableBulkAction('enable', collect([$project]));
+
+    expect($component->refresh()->is_archived)->toBeTrue()
+        ->and($component->project_paused_monitoring)->toBeFalse();
 });
 
 test('bulk disable on already disabled components notifies that nothing changed', function () {

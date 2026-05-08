@@ -565,7 +565,10 @@ class MonitorApisResource extends Resource
                             $ids = $records->where('is_enabled', false)->pluck('id');
                             $count = $ids->isEmpty()
                                 ? 0
-                                : MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => true]);
+                                : MonitorApis::query()->whereIn('id', $ids)->update([
+                                    'is_enabled' => true,
+                                    'project_paused_monitoring' => false,
+                                ]);
 
                             Notification::make()
                                 ->title($count === 0
@@ -593,6 +596,7 @@ class MonitorApisResource extends Resource
                                 ? 0
                                 : MonitorApis::query()->whereIn('id', $ids)->update([
                                     'is_enabled' => false,
+                                    'project_paused_monitoring' => false,
                                     'current_status' => 'unknown',
                                     'status_summary' => 'Disabled in Checkybot admin.',
                                 ]);

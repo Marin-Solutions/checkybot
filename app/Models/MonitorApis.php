@@ -43,6 +43,7 @@ class MonitorApis extends Model
         'timeout_seconds',
         'package_schedule',
         'is_enabled',
+        'project_paused_monitoring',
         'last_synced_at',
         'save_failed_response',
         'created_by',
@@ -63,12 +64,22 @@ class MonitorApis extends Model
         'expected_status' => 'integer',
         'timeout_seconds' => 'integer',
         'is_enabled' => 'boolean',
+        'project_paused_monitoring' => 'boolean',
         'last_synced_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
         'stale_at' => 'datetime',
         'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (MonitorApis $api): void {
+            if ($api->exists && $api->isDirty('is_enabled') && $api->is_enabled === false && $api->project_paused_monitoring) {
+                $api->project_paused_monitoring = false;
+            }
+        });
+    }
 
     protected function headers(): Attribute
     {

@@ -44,6 +44,10 @@ class EditProjectComponent extends EditRecord
             ? ProjectComponent::ARCHIVE_REASON_USER
             : null;
 
+        if ($this->record->project_paused_monitoring && ($data['is_archived'] ?? false) === true) {
+            $data['project_paused_monitoring'] = false;
+        }
+
         return $data;
     }
 

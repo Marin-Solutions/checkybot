@@ -32,6 +32,7 @@ class ProjectComponentFactory extends Factory
             'stale_detected_at' => null,
             'is_stale' => false,
             'is_archived' => false,
+            'project_paused_monitoring' => false,
             'archived_at' => null,
             'archive_reason' => null,
             'silenced_until' => null,
