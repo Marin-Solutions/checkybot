@@ -366,6 +366,111 @@ test('job sends ssl reminder on the expiry day', function () {
     Mail::assertSent(EmailReminderSsl::class, 1);
 });
 
+test('job skips configured ssl reminder notifications while website is snoozed', function () {
+    Mail::fake();
+    Http::fake();
+
+    $expiryDate = now()->addDays(7);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($expiryDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://snoozed-reminder.example')
+            ->andReturn('snoozed-reminder.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://snoozed-reminder.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('snoozed-reminder.example', 443)
+            ->andReturn($expiryDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://snoozed-reminder.example',
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => null,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $channel = NotificationChannels::factory()->create([
+        'method' => 'POST',
+        'url' => 'https://example.com/ssl-webhook',
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->webhook()
+        ->create([
+            'user_id' => $website->created_by,
+            'notification_channel_id' => $channel->id,
+        ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect(Carbon::parse($website->ssl_expiry_date)->isSameDay($expiryDate))->toBeTrue()
+        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull();
+
+    Mail::assertNothingSent();
+    Http::assertNothingSent();
+});
+
+test('job skips fallback ssl reminder email while website is snoozed', function () {
+    Mail::fake();
+
+    $expiryDate = now()->addDays(3);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($expiryDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://snoozed-fallback.example')
+            ->andReturn('snoozed-fallback.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://snoozed-fallback.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('snoozed-fallback.example', 443)
+            ->andReturn($expiryDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://snoozed-fallback.example',
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => null,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect(Carbon::parse($website->ssl_expiry_date)->isSameDay($expiryDate))->toBeTrue()
+        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull();
+
+    Mail::assertNothingSent();
+});
+
 test('job does not throttle ssl reminders when all webhook deliveries fail', function () {
     Http::fake([
         '*' => Http::response(['ok' => false], 500),

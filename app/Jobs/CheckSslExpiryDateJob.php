@@ -89,6 +89,12 @@ class CheckSslExpiryDateJob implements ShouldQueue
             return;
         }
 
+        if ($this->reminderDeliverySilenced()) {
+            Log::info('SSL expiry reminder skipped because website is snoozed: '.$this->website->url);
+
+            return;
+        }
+
         $user = User::find($this->website->created_by);
 
         if ($user) {
@@ -155,6 +161,19 @@ class CheckSslExpiryDateJob implements ShouldQueue
         }
 
         return $this->website->ssl_expiry_reminder_sent_at->gt(now()->subDay());
+    }
+
+    private function reminderDeliverySilenced(): bool
+    {
+        if (! $this->website->exists || $this->website->isDirty('silenced_until')) {
+            return $this->website->isSilenced();
+        }
+
+        $this->website->silenced_until = Website::query()
+            ->whereKey($this->website->getKey())
+            ->value('silenced_until');
+
+        return $this->website->isSilenced();
     }
 
     private function recordSslOnlyHealth(
