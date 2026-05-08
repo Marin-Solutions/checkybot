@@ -129,6 +129,10 @@ class Backup extends Model
         $token = $this->server?->token ?? '';
         $apiLogBackup = "$url/api/v1/backup-history";
         $firstRunAt = strtotime($this->first_run_at ?? now());
+        $backupFilePrefix = escapeshellarg($fileName);
+        $backupFileExtension = escapeshellarg($format);
+        $maxAmountBackups = max(0, (int) $this->max_amount_backups);
+        $deleteLocalOnFail = $this->delete_local_on_fail ? 1 : 0;
 
         $excludeArgs = '';
         if (! empty($exclude)) {
@@ -162,10 +166,44 @@ class Backup extends Model
 #!/bin/bash
 $firstRunAtIfStart
 TIMESTAMP=\$(date +"%Y%m%d_%H%M%S")
-FILE_NAME="{$fileName}_\${TIMESTAMP}.$format"
+BACKUP_FILE_PREFIX=$backupFilePrefix
+BACKUP_FILE_EXTENSION=$backupFileExtension
+FILE_NAME="\${BACKUP_FILE_PREFIX}_\${TIMESTAMP}.\${BACKUP_FILE_EXTENSION}"
+MAX_AMOUNT_BACKUPS=$maxAmountBackups
+DELETE_LOCAL_ON_FAIL=$deleteLocalOnFail
 FILE_SIZE=0
 IS_UPLOADED=0
 MESSAGE=""
+
+cleanup_old_local_backups() {
+    if [ "\$MAX_AMOUNT_BACKUPS" -le 0 ]; then
+        return
+    fi
+
+    BACKUP_FILES=()
+    BACKUP_STORAGE_DIR=\$(dirname -- "\$FILE_NAME")
+    BACKUP_STORAGE_BASENAME=\$(basename -- "\$BACKUP_FILE_PREFIX")
+    while IFS= read -r -d '' LOCAL_FILE; do
+        LOCAL_BASENAME=\$(basename -- "\$LOCAL_FILE")
+        if [[ "\$LOCAL_BASENAME" == "\$BACKUP_STORAGE_BASENAME"_*."\$BACKUP_FILE_EXTENSION" ]]; then
+            LOCAL_MTIME=\$(stat -c %Y "\$LOCAL_FILE" 2>/dev/null || echo 0)
+            BACKUP_FILES+=("\$LOCAL_MTIME \$LOCAL_FILE")
+        fi
+    done < <(find "\$BACKUP_STORAGE_DIR" -maxdepth 1 -type f -name "*.\$BACKUP_FILE_EXTENSION" -print0)
+
+    BACKUP_COUNT=\${#BACKUP_FILES[@]}
+    if [ "\$BACKUP_COUNT" -le "\$MAX_AMOUNT_BACKUPS" ]; then
+        return
+    fi
+
+    mapfile -d '' SORTED_BACKUP_FILES < <(printf '%s\0' "\${BACKUP_FILES[@]}" | sort -z -n)
+    DELETE_COUNT=\$((BACKUP_COUNT - MAX_AMOUNT_BACKUPS))
+    for BACKUP_ENTRY in "\${SORTED_BACKUP_FILES[@]:0:\$DELETE_COUNT}"; do
+        OLD_BACKUP_FILE="\${BACKUP_ENTRY#* }"
+        rm -f -- "\$OLD_BACKUP_FILE"
+    done
+}
+
 DO_ZIP="$($compressCmd 2>&1)"
 DO_ZIP_STATUS=$?
 
@@ -177,9 +215,13 @@ if [ \$DO_ZIP_STATUS -eq 0 ]; then
     UPLOAD_FILE_STATUS=$?
     if [ \$UPLOAD_FILE_STATUS -eq 0 ]; then
         IS_UPLOADED=1
+        cleanup_old_local_backups
     else
         IS_UPLOADED=0
         MESSAGE="Upload failed: \$DO_UPLOAD_FILE"
+        if [ "\$DELETE_LOCAL_ON_FAIL" -eq 1 ]; then
+            rm -f -- "\$FILE_NAME"
+        fi
     fi
 else
     IS_ZIPPED=0

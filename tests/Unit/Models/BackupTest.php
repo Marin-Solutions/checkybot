@@ -90,7 +90,8 @@ test('backup script reports failure evidence with valid fallback values', functi
     $script = $backup->backupScript();
 
     expect($script)
-        ->toContain("FILE_SIZE=0\nIS_UPLOADED=0\nMESSAGE=\"\"\nDO_ZIP=")
+        ->toContain("FILE_SIZE=0\nIS_UPLOADED=0\nMESSAGE=\"\"")
+        ->toContain('DO_ZIP=')
         ->toContain('MESSAGE="Compression failed: $DO_ZIP"')
         ->toContain('MESSAGE="Upload failed: $DO_UPLOAD_FILE"')
         ->toContain('MESSAGE_JSON=$(printf')
@@ -99,4 +100,63 @@ test('backup script reports failure evidence with valid fallback values', functi
         ->toContain('\\"sf\\": $FILE_SIZE')
         ->toContain('\\"iu\\": $IS_UPLOADED')
         ->toContain('\\"msg\\": \\"$MESSAGE_JSON\\"');
+});
+
+test('backup script prunes old local backups after successful upload when retention is configured', function () {
+    $script = backupWithRemoteStorage('ftp', [], [
+        'max_amount_backups' => 3,
+    ])->backupScript();
+
+    expect($script)
+        ->toContain('BACKUP_FILE_PREFIX=\'app-backup\'')
+        ->toContain('BACKUP_FILE_EXTENSION=\'tar\'')
+        ->toContain('MAX_AMOUNT_BACKUPS=3')
+        ->toContain('cleanup_old_local_backups()')
+        ->toContain('if [ "$MAX_AMOUNT_BACKUPS" -le 0 ]; then')
+        ->toContain('BACKUP_STORAGE_DIR=$(dirname -- "$FILE_NAME")')
+        ->toContain('BACKUP_STORAGE_BASENAME=$(basename -- "$BACKUP_FILE_PREFIX")')
+        ->toContain('find "$BACKUP_STORAGE_DIR" -maxdepth 1 -type f -name "*.$BACKUP_FILE_EXTENSION" -print0')
+        ->toContain('DELETE_COUNT=$((BACKUP_COUNT - MAX_AMOUNT_BACKUPS))')
+        ->toContain('rm -f -- "$OLD_BACKUP_FILE"')
+        ->toContain("IS_UPLOADED=1\n        cleanup_old_local_backups");
+});
+
+test('backup script removes local archive after failed upload when configured', function () {
+    $script = backupWithRemoteStorage('ftp', [], [
+        'delete_local_on_fail' => true,
+    ])->backupScript();
+
+    expect($script)
+        ->toContain('DELETE_LOCAL_ON_FAIL=1')
+        ->toContain("MESSAGE=\"Upload failed: \$DO_UPLOAD_FILE\"\n        if [ \"\$DELETE_LOCAL_ON_FAIL\" -eq 1 ]; then\n            rm -f -- \"\$FILE_NAME\"\n        fi");
+});
+
+test('backup script uses the generated file path when pruning path based default filenames', function () {
+    $script = backupWithRemoteStorage('ftp', [], [
+        'backup_filename' => null,
+        'dir_path' => '/var/www/app',
+        'max_amount_backups' => 2,
+    ])->backupScript();
+
+    expect($script)
+        ->toContain("BACKUP_FILE_PREFIX='/var/www/app'")
+        ->toContain('FILE_NAME="${BACKUP_FILE_PREFIX}_${TIMESTAMP}.${BACKUP_FILE_EXTENSION}"')
+        ->toContain('BACKUP_STORAGE_DIR=$(dirname -- "$FILE_NAME")')
+        ->toContain('BACKUP_STORAGE_BASENAME=$(basename -- "$BACKUP_FILE_PREFIX")');
+});
+
+test('generated backup script has valid bash syntax', function () {
+    $script = backupWithRemoteStorage('ftp', [], [
+        'max_amount_backups' => 2,
+        'delete_local_on_fail' => true,
+    ])->backupScript();
+
+    $path = tempnam(sys_get_temp_dir(), 'checkybot-backup-script-');
+    file_put_contents($path, $script);
+
+    exec('bash -n '.escapeshellarg($path).' 2>&1', $output, $status);
+    unlink($path);
+
+    expect(implode("\n", $output))->toBe('')
+        ->and($status)->toBe(0);
 });
