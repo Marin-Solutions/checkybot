@@ -248,6 +248,119 @@ test('preserves existing api execution settings when legacy sync omits them', fu
     ]);
 });
 
+test('re-enables orphaned api checks when legacy sync reintroduces them without enabled flag', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '10m',
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'package_interval' => '10m',
+        'is_enabled' => true,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+});
+
+test('clears missing sync evidence when orphaned api checks return disabled', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'optional-health-check',
+                'url' => 'https://api.example.com/optional-health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'optional-health-check',
+                'url' => 'https://api.example.com/optional-health',
+                'interval' => '10m',
+                'enabled' => false,
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'optional-health-check',
+        'package_interval' => '10m',
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+});
+
 test('legacy sync defaults nullable expected status to success status', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
@@ -307,7 +420,7 @@ test('updates existing checks', function () {
     ]);
 });
 
-test('prunes orphaned checks', function () {
+test('disables orphaned uptime checks without deleting them', function () {
     Website::factory()->create([
         'project_id' => $this->project->id,
         'name' => 'old-check',
@@ -316,6 +429,10 @@ test('prunes orphaned checks', function () {
         'ssl_check' => false,
         'source' => 'package',
         'package_name' => 'old-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now(),
+        'stale_at' => now()->addMinutes(10),
     ]);
 
     $summary = $this->syncService->syncChecks($this->project, [
@@ -336,11 +453,84 @@ test('prunes orphaned checks', function () {
         'deleted' => 1,
     ]);
 
-    $this->assertSoftDeleted('websites', ['package_name' => 'old-check']);
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'old-check',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'package_interval' => null,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
     $this->assertDatabaseHas('websites', ['package_name' => 'new-check']);
 });
 
-test('archives orphaned package-managed checks and preserves their history', function () {
+test('re-enables orphaned website checks without stale disabled evidence', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://example.com',
+                'interval' => '5m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://example.com',
+                'interval' => '10m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    expect($summary['uptime_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'uptime_interval' => 10,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+});
+
+test('disables orphaned package-managed checks and preserves their history', function () {
     $website = Website::factory()->create([
         'project_id' => $this->project->id,
         'name' => 'old-check',
@@ -350,6 +540,10 @@ test('archives orphaned package-managed checks and preserves their history', fun
         'source' => 'package',
         'package_name' => 'old-check',
         'package_interval' => '5m',
+        'current_status' => 'danger',
+        'status_summary' => 'HTTP 500',
+        'last_heartbeat_at' => now(),
+        'stale_at' => now()->addMinutes(10),
     ]);
 
     $api = MonitorApis::factory()->create([
@@ -359,6 +553,11 @@ test('archives orphaned package-managed checks and preserves their history', fun
         'source' => 'package',
         'package_name' => 'old-api',
         'package_interval' => '5m',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Expected 200, got 500.',
+        'last_heartbeat_at' => now(),
+        'stale_at' => now()->addMinutes(10),
         'created_by' => $this->user->id,
     ]);
 
@@ -379,12 +578,26 @@ test('archives orphaned package-managed checks and preserves their history', fun
     expect($summary['uptime_checks']['deleted'])->toBe(1);
     expect($summary['api_checks']['deleted'])->toBe(1);
 
-    $this->assertSoftDeleted('websites', [
+    $this->assertDatabaseHas('websites', [
         'id' => $website->id,
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'package_interval' => null,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
     ]);
 
-    $this->assertSoftDeleted('monitor_apis', [
+    $this->assertDatabaseHas('monitor_apis', [
         'id' => $api->id,
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
     ]);
 
     $this->assertDatabaseHas('website_log_history', [
@@ -1160,6 +1373,10 @@ test('transitioning from uptime-only to ssl-only does not restore uptime from th
         'package_name' => 'homepage',
         'uptime_check' => false,
         'ssl_check' => true,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
     ]);
 });
 

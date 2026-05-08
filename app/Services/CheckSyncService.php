@@ -6,12 +6,15 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\Website;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 class CheckSyncService
 {
+    private const MISSING_PACKAGE_SYNC_STATUS_SUMMARY = 'Disabled because it was missing from the latest package sync.';
+
     public function syncChecks(Project $project, array $payload): array
     {
         return DB::transaction(function () use ($project, $payload) {
@@ -45,6 +48,7 @@ class CheckSyncService
 
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
+            $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
 
             $data = [
                 'project_id' => $project->id,
@@ -60,6 +64,13 @@ class CheckSyncService
                 'created_by' => $project->created_by,
                 'last_synced_at' => $syncedAt,
             ];
+
+            if ($wasDisabledByMissingPackageSync) {
+                $data['current_status'] = 'unknown';
+                $data['status_summary'] = null;
+                $data['last_heartbeat_at'] = null;
+                $data['stale_at'] = null;
+            }
 
             if ($website) {
                 if ($website->trashed()) {
@@ -93,6 +104,7 @@ class CheckSyncService
 
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
+            $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
 
             $data = [
                 'project_id' => $project->id,
@@ -110,6 +122,13 @@ class CheckSyncService
                 'created_by' => $project->created_by,
                 'last_synced_at' => $syncedAt,
             ];
+
+            if ($wasDisabledByMissingPackageSync) {
+                $data['current_status'] = 'unknown';
+                $data['status_summary'] = null;
+                $data['last_heartbeat_at'] = null;
+                $data['stale_at'] = null;
+            }
 
             if ($website) {
                 if ($website->trashed()) {
@@ -143,6 +162,10 @@ class CheckSyncService
 
         foreach ($checks as $check) {
             $monitorApi = $existingApis->get($check['name']);
+            $wasDisabledByMissingPackageSync = $this->wasApiDisabledByMissingPackageSync($monitorApi);
+            $isEnabled = array_key_exists('enabled', $check)
+                ? ($check['enabled'] ?? true)
+                : ($wasDisabledByMissingPackageSync ? true : ($monitorApi?->is_enabled ?? true));
 
             $data = [
                 'project_id' => $project->id,
@@ -166,15 +189,20 @@ class CheckSyncService
                     ? ($check['save_failed_response'] ?? true)
                     : ($monitorApi?->save_failed_response ?? true),
                 'package_schedule' => $check['interval'],
-                'is_enabled' => array_key_exists('enabled', $check)
-                    ? ($check['enabled'] ?? true)
-                    : ($monitorApi?->is_enabled ?? true),
+                'is_enabled' => $isEnabled,
                 'source' => 'package',
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
                 'created_by' => $project->created_by,
                 'last_synced_at' => $syncedAt,
             ];
+
+            if ($wasDisabledByMissingPackageSync) {
+                $data['current_status'] = 'unknown';
+                $data['status_summary'] = null;
+                $data['last_heartbeat_at'] = null;
+                $data['stale_at'] = null;
+            }
 
             if ($monitorApi) {
                 if ($monitorApi->trashed()) {
@@ -245,13 +273,10 @@ class CheckSyncService
                     'last_synced_at' => $syncedAt,
                 ]);
 
-            $deleteQuery = (clone $query)->where('ssl_check', false);
-            $deleted = (clone $deleteQuery)->count();
-
-            (clone $deleteQuery)->update(['last_synced_at' => $syncedAt]);
-            $deleteQuery->delete();
-
-            return $deleted;
+            return $this->disableFullyOrphanedWebsites(
+                (clone $query)->where('ssl_check', false),
+                $syncedAt
+            );
         }
 
         if ($ssl) {
@@ -262,37 +287,63 @@ class CheckSyncService
                     'last_synced_at' => $syncedAt,
                 ]);
 
-            $deleteQuery = (clone $query)->where('uptime_check', false);
-            $deleted = (clone $deleteQuery)->count();
-
-            (clone $deleteQuery)->update(['last_synced_at' => $syncedAt]);
-            $deleteQuery->delete();
-
-            return $deleted;
+            return $this->disableFullyOrphanedWebsites(
+                (clone $query)->where('uptime_check', false),
+                $syncedAt
+            );
         }
 
-        $deleted = (clone $query)->count();
-
-        (clone $query)->update(['last_synced_at' => $syncedAt]);
-        $query->delete();
-
-        return $deleted;
+        return $this->disableFullyOrphanedWebsites($query, $syncedAt);
     }
 
     protected function pruneOrphanedApis(Project $project, array $keepNames, Carbon $syncedAt): int
     {
         $query = MonitorApis::where('project_id', $project->id)
-            ->where('source', 'package');
+            ->where('source', 'package')
+            ->where('is_enabled', true);
 
         if (! empty($keepNames)) {
             $query->whereNotIn('package_name', $keepNames);
         }
 
-        $deleted = (clone $query)->count();
+        return $query->update([
+            'is_enabled' => false,
+            'current_status' => 'unknown',
+            'status_summary' => self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY,
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'last_synced_at' => $syncedAt,
+        ]);
+    }
 
-        (clone $query)->update(['last_synced_at' => $syncedAt]);
-        $query->delete();
+    protected function disableFullyOrphanedWebsites(Builder $query, Carbon $syncedAt): int
+    {
+        return $query->update([
+            'uptime_check' => false,
+            'ssl_check' => false,
+            'current_status' => 'unknown',
+            'status_summary' => self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY,
+            'package_interval' => null,
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'last_synced_at' => $syncedAt,
+        ]);
+    }
 
-        return $deleted;
+    protected function wasApiDisabledByMissingPackageSync(?MonitorApis $monitorApi): bool
+    {
+        return $monitorApi instanceof MonitorApis
+            && ! $monitorApi->trashed()
+            && ! $monitorApi->is_enabled
+            && $monitorApi->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
+    }
+
+    protected function wasWebsiteDisabledByMissingPackageSync(?Website $website): bool
+    {
+        return $website instanceof Website
+            && ! $website->trashed()
+            && ! $website->uptime_check
+            && ! $website->ssl_check
+            && $website->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
     }
 }
