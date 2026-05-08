@@ -2,6 +2,7 @@
 
 use App\Filament\Resources\BackupsResource;
 use App\Filament\Resources\BackupsResource\Pages\EditBackups;
+use App\Filament\Resources\BackupsResource\Pages\ListBackups;
 use App\Filament\Resources\BackupsResource\RelationManagers\HistoriesRelationManager;
 use App\Models\Backup;
 use App\Models\BackupHistory;
@@ -117,6 +118,25 @@ test('backup history relation manager shows run evidence for the selected backup
         ->assertSee('Failed')
         ->assertSee('app-backup_20260506_080000.zip')
         ->assertSee('FTP upload timed out after creating the archive.');
+});
+
+test('backup list shows expected run freshness evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup']);
+    $backup = createBackupResourceBackupForUser($user->id);
+
+    createBackupResourceHistory($backup, [
+        'created_at' => now()->subDays(2),
+        'updated_at' => now()->subDays(2),
+    ]);
+    $backup->forceFill(['last_history_at' => now()->subDays(2)])->save();
+
+    Livewire::test(ListBackups::class)
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$backup])
+        ->assertSee('Missed run')
+        ->assertSee('Expected By')
+        ->assertSee('Latest Run');
 });
 
 function createBackupResourceBackupForUser(int $userId, array $attributes = []): Backup

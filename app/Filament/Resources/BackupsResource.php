@@ -10,6 +10,7 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class BackupsResource extends Resource
@@ -83,6 +84,28 @@ class BackupsResource extends Resource
                     ->description(fn (Backup $record) => $record->server->ip),
                 Tables\Columns\TextColumn::make('remoteStorage.label')
                     ->description(fn (Backup $record) => $record->remoteStorage->host),
+                Tables\Columns\TextColumn::make('freshness_state')
+                    ->label('Freshness')
+                    ->state(fn (Backup $record): string => $record->freshnessState())
+                    ->badge()
+                    ->color(fn (Backup $record): string => match ($record->freshnessState()) {
+                        'Missed run' => 'danger',
+                        'Awaiting first run' => 'warning',
+                        default => 'success',
+                    })
+                    ->description(fn (Backup $record): string => $record->freshnessSummary())
+                    ->wrap(),
+                Tables\Columns\TextColumn::make('latest_history_received_at')
+                    ->label('Latest Run')
+                    ->state(fn (Backup $record): mixed => $record->latestHistoryReceivedAt())
+                    ->dateTimeInUserZone()
+                    ->placeholder('No runs yet')
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('last_history_at', $direction)),
+                Tables\Columns\TextColumn::make('freshness_threshold_at')
+                    ->label('Expected By')
+                    ->state(fn (Backup $record): mixed => $record->freshnessThresholdAt())
+                    ->dateTimeInUserZone()
+                    ->placeholder('-'),
                 Tables\Columns\TextColumn::make('first_run_at')->dateTimeInUserZone(),
             ])
             ->filters([
@@ -106,6 +129,12 @@ class BackupsResource extends Resource
         return [
             HistoriesRelationManager::class,
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        return parent::getEloquentQuery()
+            ->with(['interval', 'latestHistory']);
     }
 
     public static function getPages(): array
