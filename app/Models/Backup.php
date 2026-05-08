@@ -34,6 +34,7 @@ class Backup extends Model
     ];
 
     protected $casts = [
+        'created_by' => 'integer',
         'delete_local_on_fail' => 'boolean',
         'first_run_at' => 'datetime',
         'last_history_at' => 'datetime',

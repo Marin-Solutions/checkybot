@@ -10,11 +10,11 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('backup_remote_storage_config', function (Blueprint $table) {
-            $table->unsignedInteger('created_by')->nullable()->after('id')->index();
+            $table->unsignedInteger('created_by')->nullable()->index();
         });
 
         Schema::table('backups', function (Blueprint $table) {
-            $table->unsignedInteger('created_by')->nullable()->after('id')->index();
+            $table->unsignedInteger('created_by')->nullable()->index();
         });
 
         DB::table('backups')
@@ -41,16 +41,16 @@ return new class extends Migration
             ->orderBy('id')
             ->chunkById(100, function ($storages): void {
                 foreach ($storages as $storage) {
-                    $ownerId = DB::table('backups')
+                    $ownerIds = DB::table('backups')
                         ->where('remote_storage_id', $storage->id)
                         ->whereNotNull('created_by')
-                        ->orderBy('id')
-                        ->value('created_by');
+                        ->distinct()
+                        ->pluck('created_by');
 
-                    if ($ownerId !== null) {
+                    if ($ownerIds->count() === 1) {
                         DB::table('backup_remote_storage_config')
                             ->where('id', $storage->id)
-                            ->update(['created_by' => $ownerId]);
+                            ->update(['created_by' => $ownerIds->first()]);
                     }
                 }
             });

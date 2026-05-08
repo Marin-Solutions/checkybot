@@ -149,7 +149,7 @@ class BackupsResource extends Resource
 
         return parent::getEloquentQuery()
             ->when($userId, fn (Builder $query): Builder => $query->ownedBy($userId), fn (Builder $query): Builder => $query->whereRaw('1 = 0'))
-            ->with(['interval', 'latestHistory']);
+            ->with(['interval', 'latestHistory', 'remoteStorage', 'server']);
     }
 
     public static function ownsSelectedReferences(array $data): bool

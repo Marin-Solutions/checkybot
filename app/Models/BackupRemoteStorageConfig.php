@@ -28,6 +28,10 @@ class BackupRemoteStorageConfig extends Model
         'endpoint',
     ];
 
+    protected $casts = [
+        'created_by' => 'integer',
+    ];
+
     public function storageType(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(BackupRemoteStorageType::class, 'backup_remote_storage_type_id');

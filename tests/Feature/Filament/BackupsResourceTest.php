@@ -89,6 +89,29 @@ test('backup edit allows unrelated changes when zip password is unchanged', func
         ->and($backup->password)->toBe('current-password');
 });
 
+test('backup edit preserves stored zip password when password fields are cleared', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup', 'Update:Backup']);
+    $backup = createBackupResourceBackupForUser($user->id, [
+        'password' => 'current-password',
+    ]);
+
+    Livewire::test(EditBackups::class, ['record' => $backup->id])
+        ->fillForm([
+            'password' => '',
+            'confirm_password' => '',
+            'remote_storage_path' => '/archives',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $backup->refresh();
+
+    expect($backup->remote_storage_path)->toBe('/archives')
+        ->and($backup->password)->toBe('current-password');
+});
+
 test('backup history relation manager shows run evidence for the selected backup', function () {
     $user = $this->actingAsSuperAdmin();
     $user->givePermissionTo(['View:Backup', 'Update:Backup']);
@@ -189,6 +212,17 @@ test('backup policies reject records owned by another user', function () {
         ->and($user->can('view', $hiddenBackup))->toBeFalse()
         ->and($user->can('update', $hiddenBackup))->toBeFalse()
         ->and($user->can('delete', $hiddenBackup))->toBeFalse();
+});
+
+test('backup edit page rejects records owned by another user', function () {
+    $user = $this->actingAsAdmin();
+    $otherUser = \App\Models\User::factory()->create();
+    $user->givePermissionTo(['View:Backup', 'Update:Backup']);
+    $hiddenBackup = createBackupResourceBackupForUser($otherUser->id);
+
+    $this->expectException(\Illuminate\Database\Eloquent\ModelNotFoundException::class);
+
+    Livewire::test(EditBackups::class, ['record' => $hiddenBackup->id]);
 });
 
 function createBackupResourceBackupForUser(int $userId, array $attributes = []): Backup

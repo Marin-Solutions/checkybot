@@ -23,9 +23,9 @@ class EditBackups extends EditRecord
         ];
     }
 
-    protected function mutateFormDataBeforeSave(array $data): array
+    protected function beforeSave(): void
     {
-        if (! BackupsResource::ownsSelectedReferences($data)) {
+        if (! BackupsResource::ownsSelectedReferences($this->data)) {
             Notification::make()
                 ->title('Backup destination is not available')
                 ->body('Choose one of your servers and remote storage configs.')
@@ -36,8 +36,8 @@ class EditBackups extends EditRecord
             $this->halt();
         }
 
-        $password = $data['password'] ?? null;
-        $confirmPassword = $data['confirm_password'] ?? null;
+        $password = $this->data['password'] ?? null;
+        $confirmPassword = $this->data['confirm_password'] ?? null;
         $storedPassword = $this->record->getAttribute('password');
 
         if ($password !== $storedPassword && $password !== $confirmPassword) {
@@ -49,6 +49,13 @@ class EditBackups extends EditRecord
                 ->send();
 
             $this->halt();
+        }
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if (blank($data['password'] ?? null)) {
+            unset($data['password']);
         }
 
         unset($data['confirm_password']);
