@@ -9,6 +9,7 @@ use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -159,6 +160,30 @@ class NotificationChannelsResource extends Resource
                 //
             ])
             ->actions([
+                \Filament\Actions\Action::make('sendTest')
+                    ->label('Send Test')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('Send a test webhook?')
+                    ->modalDescription(fn (NotificationChannels $record): string => 'A sample Checkybot payload will be sent to "'.$record->title.'". The result will be saved as this channel\'s latest delivery evidence.')
+                    ->modalSubmitActionLabel('Send test')
+                    ->action(function (NotificationChannels $record): void {
+                        $response = $record->sendWebhookNotification([
+                            'message' => 'Checkybot webhook channel test',
+                            'description' => 'This test confirms the saved webhook channel can receive Checkybot notifications.',
+                        ], 'test');
+
+                        $code = (int) ($response['code'] ?? 0);
+                        $successful = $code >= 200 && $code < 300;
+                        $summary = NotificationChannels::summarizeDeliveryResponse($response);
+
+                        $notification = Notification::make()
+                            ->title($successful ? 'Test webhook delivered' : 'Test webhook failed')
+                            ->body($summary);
+
+                        ($successful ? $notification->success() : $notification->danger())->send();
+                    }),
                 \Filament\Actions\EditAction::make(),
             ])
             ->bulkActions([

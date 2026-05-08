@@ -102,6 +102,71 @@ test('webhook channel list shows last delivery evidence', function () {
         ->assertSee('HTTP 502: upstream unavailable');
 });
 
+test('webhook channel list send test action delivers saved webhook payload and records evidence', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $user = $this->actingAsSuperAdmin();
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Incident webhook',
+        'method' => 'POST',
+        'url' => 'https://example.com/webhook',
+        'request_body' => [
+            'message' => '{message}',
+            'description' => '{description}',
+        ],
+    ]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->assertTableActionExists('sendTest', null, $channel)
+        ->assertTableActionHasLabel('sendTest', 'Send Test', $channel)
+        ->callTableAction('sendTest', $channel)
+        ->assertNotified('Test webhook delivered');
+
+    Http::assertSent(function ($request): bool {
+        return $request->url() === 'https://example.com/webhook'
+            && ($request->data()['message'] ?? null) === 'Checkybot webhook channel test'
+            && ($request->data()['description'] ?? null) === 'This test confirms the saved webhook channel can receive Checkybot notifications.';
+    });
+
+    $channel->refresh();
+
+    expect($channel->last_delivery_kind)->toBe('test');
+    expect($channel->last_delivery_succeeded)->toBeTrue();
+    expect($channel->last_delivery_response_code)->toBe(200);
+    expect($channel->last_delivery_summary)->toContain('HTTP 200');
+    expect($channel->last_delivery_attempted_at)->not->toBeNull();
+});
+
+test('webhook channel list send test action records failed delivery evidence', function () {
+    Http::fake([
+        '*' => Http::response(['error' => 'unauthorized'], 401),
+    ]);
+
+    $user = $this->actingAsSuperAdmin();
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Incident webhook',
+        'method' => 'POST',
+        'url' => 'https://example.com/webhook',
+    ]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->callTableAction('sendTest', $channel)
+        ->assertNotified('Test webhook failed');
+
+    $channel->refresh();
+
+    expect($channel->last_delivery_kind)->toBe('test');
+    expect($channel->last_delivery_succeeded)->toBeFalse();
+    expect($channel->last_delivery_response_code)->toBe(401);
+    expect($channel->last_delivery_summary)->toContain('HTTP 401');
+});
+
 test('webhook channel list masks webhook path query and request body values', function () {
     $user = $this->actingAsSuperAdmin();
 
