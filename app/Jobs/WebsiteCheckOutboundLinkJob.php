@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Spatie\Crawler\Crawler;
 
@@ -89,13 +90,25 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
         $baseUrl = $this->failureEvidenceUrl();
         $transportError = UptimeTransportError::fromThrowable($exception);
         $scanSource = $this->sourceLabel();
-        $wasAlreadyBroken = $this->hasExistingBrokenEvidence($baseUrl);
+        $shouldNotify = false;
 
-        OutboundLink::query()->upsert(
-            [[
+        DB::transaction(function () use ($baseUrl, $checkedAt, $scanSource, $transportError, &$shouldNotify): void {
+            $link = OutboundLink::query()
+                ->where('website_id', $this->website->id)
+                ->where('found_on', $baseUrl)
+                ->where('outgoing_url', $baseUrl)
+                ->lockForUpdate()
+                ->first();
+
+            $shouldNotify = ! $this->isBrokenEvidence($link);
+
+            $link ??= new OutboundLink([
                 'website_id' => $this->website->id,
                 'found_on' => $baseUrl,
                 'outgoing_url' => $baseUrl,
+            ]);
+
+            $link->forceFill([
                 'http_status_code' => null,
                 'transport_error_type' => $transportError['type']->value,
                 'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage(
@@ -103,23 +116,15 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
                 ),
                 'transport_error_code' => $transportError['code'],
                 'last_checked_at' => $checkedAt,
-            ]],
-            ['website_id', 'found_on', 'outgoing_url'],
-            [
-                'http_status_code',
-                'transport_error_type',
-                'transport_error_message',
-                'transport_error_code',
-                'last_checked_at',
-            ],
-        );
+            ])->save();
 
-        $this->website->forceFill([
-            'last_outbound_checked_at' => $checkedAt,
-            'outbound_scan_queued_at' => null,
-        ])->save();
+            $this->website->forceFill([
+                'last_outbound_checked_at' => $checkedAt,
+                'outbound_scan_queued_at' => null,
+            ])->save();
+        });
 
-        if (! $wasAlreadyBroken) {
+        if ($shouldNotify) {
             app(HealthEventNotificationService::class)->notifyWebsite(
                 $this->website,
                 'outbound_link_broken',
@@ -129,21 +134,19 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
         }
     }
 
-    private function hasExistingBrokenEvidence(string $url): bool
+    private function isBrokenEvidence(?OutboundLink $link): bool
     {
-        return OutboundLink::query()
-            ->where('website_id', $this->website->id)
-            ->where('found_on', $url)
-            ->where('outgoing_url', $url)
-            ->where(function ($query): void {
-                $query
-                    ->whereBetween('http_status_code', [
-                        self::BROKEN_STATUS_CODE_MIN,
-                        self::BROKEN_STATUS_CODE_MAX,
-                    ])
-                    ->orWhereNotNull('transport_error_type');
-            })
-            ->exists();
+        if (! $link) {
+            return false;
+        }
+
+        if (filled($link->transport_error_type)) {
+            return true;
+        }
+
+        return is_int($link->http_status_code)
+            && $link->http_status_code >= self::BROKEN_STATUS_CODE_MIN
+            && $link->http_status_code <= self::BROKEN_STATUS_CODE_MAX;
     }
 
     private function startupFailureSummary(string $url, string $transportErrorType): string

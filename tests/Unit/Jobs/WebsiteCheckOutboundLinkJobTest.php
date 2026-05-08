@@ -191,6 +191,40 @@ test('job does not notify website when crawler startup failure updates existing 
     $job->handle();
 });
 
+test('job notifies website when crawler startup failure changes existing healthy outbound evidence', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'found_on' => 'https://example.com',
+        'outgoing_url' => 'https://example.com',
+        'http_status_code' => 200,
+        'transport_error_type' => null,
+    ]);
+
+    $this->mock(HealthEventNotificationService::class, function ($mock) use ($website): void {
+        $mock->shouldReceive('notifyWebsite')
+            ->once()
+            ->withArgs(fn (Website $notifiedWebsite, string $event, string $status, string $summary): bool => $notifiedWebsite->is($website)
+                && $event === 'outbound_link_broken'
+                && $status === 'danger'
+                && str_contains($summary, 'Outbound link check failed to start.'))
+            ->andReturn(true);
+    });
+
+    $job = new class($website) extends WebsiteCheckOutboundLinkJob
+    {
+        public function createCrawler(): Crawler
+        {
+            throw new \RuntimeException('Operation timed out after 10000 milliseconds', 28);
+        }
+    };
+
+    $job->handle();
+});
+
 test('job records on demand scan source in crawler startup failure evidence', function () {
     $website = Website::factory()->create([
         'url' => 'https://example.com',
