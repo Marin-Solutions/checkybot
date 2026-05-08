@@ -48,6 +48,7 @@ class CheckSyncService
 
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
+            $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
 
             $data = [
                 'project_id' => $project->id,
@@ -63,6 +64,13 @@ class CheckSyncService
                 'created_by' => $project->created_by,
                 'last_synced_at' => $syncedAt,
             ];
+
+            if ($wasDisabledByMissingPackageSync) {
+                $data['current_status'] = 'unknown';
+                $data['status_summary'] = null;
+                $data['last_heartbeat_at'] = null;
+                $data['stale_at'] = null;
+            }
 
             if ($website) {
                 if ($website->trashed()) {
@@ -96,6 +104,7 @@ class CheckSyncService
 
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
+            $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
 
             $data = [
                 'project_id' => $project->id,
@@ -113,6 +122,13 @@ class CheckSyncService
                 'created_by' => $project->created_by,
                 'last_synced_at' => $syncedAt,
             ];
+
+            if ($wasDisabledByMissingPackageSync) {
+                $data['current_status'] = 'unknown';
+                $data['status_summary'] = null;
+                $data['last_heartbeat_at'] = null;
+                $data['stale_at'] = null;
+            }
 
             if ($website) {
                 if ($website->trashed()) {
@@ -146,7 +162,7 @@ class CheckSyncService
 
         foreach ($checks as $check) {
             $monitorApi = $existingApis->get($check['name']);
-            $wasDisabledByMissingPackageSync = $this->wasDisabledByMissingPackageSync($monitorApi);
+            $wasDisabledByMissingPackageSync = $this->wasApiDisabledByMissingPackageSync($monitorApi);
             $isEnabled = array_key_exists('enabled', $check)
                 ? ($check['enabled'] ?? true)
                 : ($wasDisabledByMissingPackageSync ? true : ($monitorApi?->is_enabled ?? true));
@@ -314,11 +330,20 @@ class CheckSyncService
         ]);
     }
 
-    protected function wasDisabledByMissingPackageSync(?MonitorApis $monitorApi): bool
+    protected function wasApiDisabledByMissingPackageSync(?MonitorApis $monitorApi): bool
     {
         return $monitorApi instanceof MonitorApis
             && ! $monitorApi->trashed()
             && ! $monitorApi->is_enabled
             && $monitorApi->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
+    }
+
+    protected function wasWebsiteDisabledByMissingPackageSync(?Website $website): bool
+    {
+        return $website instanceof Website
+            && ! $website->trashed()
+            && ! $website->uptime_check
+            && ! $website->ssl_check
+            && $website->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
     }
 }

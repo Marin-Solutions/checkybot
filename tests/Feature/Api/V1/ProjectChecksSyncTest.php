@@ -416,6 +416,69 @@ test('disables orphaned uptime checks without deleting them', function () {
     $this->assertDatabaseHas('websites', ['package_name' => 'new-check']);
 });
 
+test('re-enables orphaned website checks without stale disabled evidence', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://example.com',
+                'interval' => '5m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://example.com',
+                'interval' => '10m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    expect($summary['uptime_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'uptime_interval' => 10,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+});
+
 test('disables orphaned package-managed checks and preserves their history', function () {
     $website = Website::factory()->create([
         'project_id' => $this->project->id,
@@ -1259,6 +1322,10 @@ test('transitioning from uptime-only to ssl-only does not restore uptime from th
         'package_name' => 'homepage',
         'uptime_check' => false,
         'ssl_check' => true,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
     ]);
 });
 
