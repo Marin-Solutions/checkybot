@@ -28,6 +28,8 @@ class MonitorApis extends Model
 
     public const LEGACY_RAW_BODY_KEY = 'raw_body';
 
+    public const INTERACTIVE_RUN_KEY = 'interactive';
+
     protected $fillable = [
         'title',
         'url',
@@ -191,6 +193,7 @@ class MonitorApis extends Model
             'request_body_type' => $this->request_body_type,
             'request_body' => $this->request_body,
             'data_path' => $this->data_path,
+            self::INTERACTIVE_RUN_KEY => true,
         ]);
 
         if (
@@ -357,10 +360,19 @@ class MonitorApis extends Model
     private static function getHttpConfiguration(array $data): array
     {
         $timeout = (int) ($data['timeout_seconds'] ?? config('monitor.api_timeout', 10));
+        $retries = (int) config('monitor.api_retries', 3);
+
+        if ((bool) ($data[self::INTERACTIVE_RUN_KEY] ?? false)) {
+            $interactiveTimeout = max(1, (int) config('monitor.api_interactive_timeout', 5));
+            $interactiveRetries = max(0, (int) config('monitor.api_interactive_retries', 0));
+
+            $timeout = min($timeout > 0 ? $timeout : $interactiveTimeout, $interactiveTimeout);
+            $retries = min($retries, $interactiveRetries);
+        }
 
         return [
             'timeout' => $timeout > 0 ? $timeout : config('monitor.api_timeout', 10),
-            'retries' => config('monitor.api_retries', 3),
+            'retries' => $retries,
             'retryDelay' => config('monitor.api_retry_delay', 1000),
         ];
     }
@@ -473,8 +485,11 @@ class MonitorApis extends Model
 
     private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest
     {
-        $client = Http::timeout($config['timeout'])
-            ->retry($config['retries'], $config['retryDelay'], throw: false);
+        $client = Http::timeout($config['timeout']);
+
+        if ($config['retries'] > 0) {
+            $client = $client->retry($config['retries'], $config['retryDelay'], throw: false);
+        }
 
         if (! empty($headers)) {
             $client = $client->withHeaders($headers);
