@@ -20,6 +20,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 {
     private const OUTBOUND_LINK_WRITE_CHUNK_SIZE = 90;
 
+    private const BROKEN_STATUS_CODE_MIN = 400;
+
+    private const BROKEN_STATUS_CODE_MAX = 599;
+
     protected Website $website;
 
     protected array $crawledPages = [];
@@ -264,7 +268,10 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
         $existingBrokenKeys = OutboundLink::query()
             ->where('website_id', $this->website->id)
-            ->whereIn('http_status_code', [404, 500])
+            ->whereBetween('http_status_code', [
+                self::BROKEN_STATUS_CODE_MIN,
+                self::BROKEN_STATUS_CODE_MAX,
+            ])
             ->get(['website_id', 'found_on', 'outgoing_url'])
             ->mapWithKeys(fn (OutboundLink $link): array => [
                 $this->outboundLinkKey($link->website_id, $link->found_on, $link->outgoing_url) => true,
@@ -280,7 +287,9 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
 
     protected function isBrokenOutboundLink(array $page): bool
     {
-        return in_array($page['http_status_code'], [404, 500], true);
+        return is_int($page['http_status_code'])
+            && $page['http_status_code'] >= self::BROKEN_STATUS_CODE_MIN
+            && $page['http_status_code'] <= self::BROKEN_STATUS_CODE_MAX;
     }
 
     protected function outboundLinkKey(int $websiteId, ?string $foundOn, ?string $outgoingUrl): string

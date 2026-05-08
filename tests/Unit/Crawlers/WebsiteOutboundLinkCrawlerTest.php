@@ -127,6 +127,81 @@ test('sends notification setting alert for newly broken 500 outbound link', func
     });
 });
 
+test('sends notification setting alert for newly broken 4xx and 5xx outbound links', function () {
+    Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+            'address' => 'alerts@example.com',
+        ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/gone'),
+        new Response(410),
+        new Uri('https://example.com/source'),
+        'Gone Link',
+    );
+    $this->crawler->crawled(
+        new Uri('https://external.com/unavailable'),
+        new Response(503),
+        new Uri('https://example.com/source'),
+        'Unavailable Link',
+    );
+    $this->crawler->finishedCrawling();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->hasTo('alerts@example.com')
+            && str_contains($mail->summary, 'https://external.com/gone returned HTTP 410 from https://example.com/source')
+            && str_contains($mail->summary, 'https://external.com/unavailable returned HTTP 503 from https://example.com/source');
+    });
+});
+
+test('sends notification setting alert for broken status code boundaries', function () {
+    Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+            'address' => 'alerts@example.com',
+        ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/bad-request'),
+        new Response(400),
+        new Uri('https://example.com/source'),
+        'Bad Request Link',
+    );
+    $this->crawler->crawled(
+        new Uri('https://external.com/network-connect-timeout'),
+        new Response(599),
+        new Uri('https://example.com/source'),
+        'Network Timeout Link',
+    );
+    $this->crawler->crawled(
+        new Uri('https://external.com/redirect'),
+        new Response(399),
+        new Uri('https://example.com/source'),
+        'Redirect Link',
+    );
+    $this->crawler->finishedCrawling();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->hasTo('alerts@example.com')
+            && str_contains($mail->summary, 'https://external.com/bad-request returned HTTP 400 from https://example.com/source')
+            && str_contains($mail->summary, 'https://external.com/network-connect-timeout returned HTTP 599 from https://example.com/source')
+            && ! str_contains($mail->summary, 'https://external.com/redirect returned HTTP 399 from https://example.com/source');
+    });
+});
+
 test('does not send notification for 200 response', function () {
     Mail::fake();
 
@@ -177,8 +252,8 @@ test('does not repeat outbound broken notification while link remains broken', f
         ]);
 
     $this->crawler->crawled(
-        new Uri('https://external.com/not-found'),
-        new Response(404),
+        new Uri('https://external.com/gone'),
+        new Response(410),
         new Uri('https://example.com/source'),
         'Broken Link',
     );
@@ -186,8 +261,8 @@ test('does not repeat outbound broken notification while link remains broken', f
 
     $nextScan = new WebsiteOutboundLinkCrawler($this->website);
     $nextScan->crawled(
-        new Uri('https://external.com/not-found'),
-        new Response(404),
+        new Uri('https://external.com/gone'),
+        new Response(410),
         new Uri('https://example.com/source'),
         'Broken Link',
     );
