@@ -150,7 +150,7 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
     {
         $reason = UptimeTransportError::label($transportErrorType);
 
-        return "Outbound link check found 1 newly broken external link.\n\n{$url} could not be reached ({$reason}) from {$url}";
+        return "Outbound link check failed to start.\n\n{$url} could not be reached ({$reason}) before crawling began.";
     }
 
     private function clearQueuedOutboundScan(): void

@@ -146,8 +146,8 @@ test('job notifies website when crawler startup failure is newly broken outbound
                 return $notifiedWebsite->is($website)
                     && $event === 'outbound_link_broken'
                     && $status === 'danger'
-                    && str_contains($summary, 'Outbound link check found 1 newly broken external link.')
-                    && str_contains($summary, 'https://example.com could not be reached (DNS failure) from https://example.com');
+                    && str_contains($summary, 'Outbound link check failed to start.')
+                    && str_contains($summary, 'https://example.com could not be reached (DNS failure) before crawling began.');
             })
             ->andReturn(true);
     });
