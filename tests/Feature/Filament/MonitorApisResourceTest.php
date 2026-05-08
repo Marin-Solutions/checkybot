@@ -189,6 +189,8 @@ test('super admin can update api monitor execution settings', function () {
         'expected_status' => 200,
         'timeout_seconds' => null,
         'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'API heartbeat failed.',
         'save_failed_response' => true,
         'request_body_type' => null,
         'request_body' => null,
@@ -216,6 +218,8 @@ test('super admin can update api monitor execution settings', function () {
         ->and($monitor->timeout_seconds)->toBe(30)
         ->and($monitor->package_interval)->toBe('15m')
         ->and($monitor->is_enabled)->toBeFalse()
+        ->and($monitor->current_status)->toBe('unknown')
+        ->and($monitor->status_summary)->toBe('Disabled in Checkybot admin.')
         ->and($monitor->request_body_type)->toBe('raw')
         ->and($monitor->request_body)->toBe('status=active')
         ->and($monitor->save_failed_response)->toBeFalse();
