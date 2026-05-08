@@ -11,6 +11,8 @@ use Throwable;
 
 class SeoHealthCheckService
 {
+    public const NO_CRAWLABLE_URLS_FAILURE_SUMMARY = 'No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.';
+
     protected RobotsSitemapService $robotsSitemapService;
 
     public function __construct(RobotsSitemapService $robotsSitemapService)
@@ -43,6 +45,7 @@ class SeoHealthCheckService
                     'exception_class' => get_class($exception),
                     'exception_message' => $exception->getMessage(),
                 ],
+                // URL discovery failed before robots.txt restrictions could be evaluated.
                 robotsTxtChecked: false
             );
 
@@ -50,11 +53,9 @@ class SeoHealthCheckService
         }
 
         if (empty($crawlableUrls)) {
-            $summary = 'No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.';
-
             $this->recordManualStartupFailure(
                 $website,
-                $summary,
+                self::NO_CRAWLABLE_URLS_FAILURE_SUMMARY,
                 ['failure_reason' => 'no_crawlable_urls'],
                 robotsTxtChecked: true
             );
@@ -65,6 +66,7 @@ class SeoHealthCheckService
         Log::info('Found '.count($crawlableUrls)." crawlable URLs for {$website->url}");
 
         $seoCheck = DB::transaction(function () use ($website, $crawlableUrls) {
+            // Lock the website row so concurrent manual starts re-check under the same database lock.
             Website::query()
                 ->whereKey($website->id)
                 ->lockForUpdate()

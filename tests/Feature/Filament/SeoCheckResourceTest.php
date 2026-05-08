@@ -367,7 +367,7 @@ test('website seo checks list records failed manual start when no crawlable urls
     $seoCheck = SeoCheck::where('website_id', $website->id)->sole();
 
     expect($seoCheck->status)->toBe(SeoCheck::STATUS_FAILED)
-        ->and($seoCheck->failure_summary)->toBe('No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.')
+        ->and($seoCheck->failure_summary)->toBe(SeoHealthCheckService::NO_CRAWLABLE_URLS_FAILURE_SUMMARY)
         ->and($seoCheck->failure_context)->toMatchArray([
             'failure_reason' => 'no_crawlable_urls',
             'website_url' => $website->url,
@@ -378,7 +378,7 @@ test('website seo checks list records failed manual start when no crawlable urls
             'manual_by' => $user->id,
             'is_manual' => true,
             'failure_reason' => 'no_crawlable_urls',
-            'summary' => 'No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.',
+            'summary' => SeoHealthCheckService::NO_CRAWLABLE_URLS_FAILURE_SUMMARY,
         ])
         ->and($seoCheck->robots_txt_checked)->toBeTrue()
         ->and($seoCheck->started_at)->not->toBeNull()
