@@ -161,6 +161,47 @@ test('sends notification setting alert for newly broken 4xx and 5xx outbound lin
     });
 });
 
+test('sends notification setting alert for broken status code boundaries', function () {
+    Mail::fake();
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $this->user->id,
+            'website_id' => $this->website->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+            'address' => 'alerts@example.com',
+        ]);
+
+    $this->crawler->crawled(
+        new Uri('https://external.com/bad-request'),
+        new Response(400),
+        new Uri('https://example.com/source'),
+        'Bad Request Link',
+    );
+    $this->crawler->crawled(
+        new Uri('https://external.com/network-connect-timeout'),
+        new Response(599),
+        new Uri('https://example.com/source'),
+        'Network Timeout Link',
+    );
+    $this->crawler->crawled(
+        new Uri('https://external.com/redirect'),
+        new Response(399),
+        new Uri('https://example.com/source'),
+        'Redirect Link',
+    );
+    $this->crawler->finishedCrawling();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->hasTo('alerts@example.com')
+            && str_contains($mail->summary, 'https://external.com/bad-request returned HTTP 400 from https://example.com/source')
+            && str_contains($mail->summary, 'https://external.com/network-connect-timeout returned HTTP 599 from https://example.com/source')
+            && ! str_contains($mail->summary, 'https://external.com/redirect returned HTTP 399 from https://example.com/source');
+    });
+});
+
 test('does not send notification for 200 response', function () {
     Mail::fake();
 
