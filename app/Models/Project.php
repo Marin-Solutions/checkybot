@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 class Project extends Model
 {
@@ -246,8 +245,7 @@ class Project extends Model
         }
 
         return filled($this->identity_endpoint)
-            || filled($this->package_version)
-            || Str::lower((string) $this->technology) === 'laravel';
+            || filled($this->package_version);
     }
 
     public function hasReceivedFirstPackageSync(): bool

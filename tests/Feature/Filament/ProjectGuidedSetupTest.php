@@ -66,6 +66,33 @@ test('application view shows the guided Laravel setup snippet with pairing data'
         ->toContain('Schedule::command(\'checkybot:sync\')->everyMinute();');
 });
 
+test('application view does not treat selected Laravel technology as package registration', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create([
+        'name' => 'Unregistered Laravel App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => null,
+        'package_version' => null,
+        'package_key' => null,
+        'base_url' => null,
+        'repository' => null,
+        'last_synced_at' => null,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Waiting for registration')
+        ->assertSee('Checkybot has not received a Laravel package registration for this application yet.')
+        ->assertSee('Waiting for the package to register this application with Checkybot.')
+        ->assertDontSee('Waiting for first sync')
+        ->assertDontSee('Registration received.');
+});
+
 test('application view shows waiting for first sync after registration arrives', function () {
     $this->createResourcePermissions('Project');
 
