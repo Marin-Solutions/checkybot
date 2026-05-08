@@ -351,6 +351,49 @@ test('website seo checks list does not show the invalid create action', function
     expect($reflection->invoke($page))->toBe([]);
 });
 
+test('all seo checks list does not show the invalid create action', function () {
+    $this->actingAsSuperAdmin();
+
+    Livewire::test(ListSeoChecks::class)
+        ->assertActionDoesNotExist('create');
+});
+
+test('website scoped seo checks list can start a check from the header', function () {
+    Queue::fake();
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Scoped crawl site',
+        'url' => 'https://scoped-crawl.example.com',
+    ]);
+
+    $robotsService = $this->mock(RobotsSitemapService::class);
+    $robotsService->shouldReceive('getCrawlableUrls')
+        ->once()
+        ->with($website->url)
+        ->andReturn([$website->url]);
+
+    $component = Livewire::withQueryParams(['website_id' => $website->id])
+        ->test(ListSeoChecks::class)
+        ->assertActionVisible('run_seo_check')
+        ->assertActionDoesNotExist('create')
+        ->mountAction('run_seo_check')
+        ->assertActionMounted('run_seo_check')
+        ->callMountedAction()
+        ->assertHasNoActionErrors();
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->sole();
+
+    $component->assertRedirect(SeoCheckResource::getUrl('view', [
+        'record' => $seoCheck,
+    ]));
+
+    expect($seoCheck->status)->toBe(SeoCheck::STATUS_PENDING);
+
+    Queue::assertPushed(SeoHealthCheckJob::class);
+});
+
 test('view seo check page shows failure details for failed checks', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
