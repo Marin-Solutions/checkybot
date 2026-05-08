@@ -129,6 +129,32 @@ test('server rule table keeps triggered badge when active alert has missing repo
         ->assertSee('Not evaluated');
 });
 
+test('server rule table keeps triggered badge when active alert has unreadable metric evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $server = Server::factory()->create(['created_by' => $user->id]);
+    $rule = ServerRule::factory()->create([
+        'server_id' => $server->id,
+        'metric' => 'swap_usage',
+        'value' => 90,
+        'is_triggered' => true,
+        'triggered_at' => now()->subMinutes(10),
+        'last_evaluation_status' => 'skipped_unreadable_metric',
+        'last_evaluation_reason' => 'Latest reporter data does not include a readable swap_usage sample for this rule.',
+        'last_reported_at' => now()->subMinutes(2),
+        'last_evaluated_at' => now(),
+    ]);
+
+    Livewire::test(RulesRelationManager::class, [
+        'ownerRecord' => $server,
+        'pageClass' => EditServer::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$rule])
+        ->assertSee('Triggered')
+        ->assertSee('Reporter data is unreadable; alert remains triggered until a readable sample confirms recovery.')
+        ->assertSee('Not evaluated');
+});
+
 test('server rule table renders missing reporter evidence', function () {
     $user = $this->actingAsSuperAdmin();
     $server = Server::factory()->create(['created_by' => $user->id]);
@@ -148,5 +174,29 @@ test('server rule table renders missing reporter evidence', function () {
         ->assertCanSeeTableRecords([$rule])
         ->assertSee('Awaiting data')
         ->assertSee('No reporter data has been received for this server.')
+        ->assertSee('Not evaluated');
+});
+
+test('server rule table renders unreadable metric evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+    $server = Server::factory()->create(['created_by' => $user->id]);
+    $rule = ServerRule::factory()->create([
+        'server_id' => $server->id,
+        'metric' => 'swap_usage',
+        'value' => 90,
+        'last_evaluation_status' => 'skipped_unreadable_metric',
+        'last_evaluation_reason' => 'Latest reporter data does not include a readable swap_usage sample for this rule.',
+        'last_reported_at' => now()->subMinutes(2),
+        'last_evaluated_at' => now(),
+    ]);
+
+    Livewire::test(RulesRelationManager::class, [
+        'ownerRecord' => $server,
+        'pageClass' => EditServer::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$rule])
+        ->assertSee('Metric unreadable')
+        ->assertSee('Latest reporter data does not include a readable swap_usage sample for this rule.')
         ->assertSee('Not evaluated');
 });

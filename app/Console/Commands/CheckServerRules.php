@@ -61,6 +61,13 @@ class CheckServerRules extends Command
                 $currentValue = $this->getCurrentValue($latestInfo, $rule->metric, $rule->server);
 
                 if ($currentValue === null) {
+                    $this->skipRuleEvaluation(
+                        $rule,
+                        'skipped_unreadable_metric',
+                        "Latest reporter data does not include a readable {$rule->metric} sample for this rule.",
+                        $latestInfo->created_at,
+                    );
+
                     $this->warn("Could not get current value for {$rule->metric} on server {$rule->server->name}");
 
                     continue;
