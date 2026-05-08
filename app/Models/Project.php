@@ -256,9 +256,27 @@ class Project extends Model
             || $this->last_synced_at !== null;
     }
 
+    public function hasStalePackageSync(): bool
+    {
+        if ($this->last_synced_at === null) {
+            return false;
+        }
+
+        return $this->last_synced_at->lt(now()->subMinutes($this->packageSyncStaleMinutes()));
+    }
+
+    public function packageSyncStaleMinutes(): int
+    {
+        return max(1, (int) config('monitor.package_sync_stale_minutes', 15));
+    }
+
     public function setupVerificationState(): string
     {
         if ($this->hasReceivedFirstPackageSync()) {
+            if ($this->hasStalePackageSync()) {
+                return 'sync_stale';
+            }
+
             return 'synced';
         }
 
@@ -273,6 +291,7 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'Synced',
+            'sync_stale' => 'Sync stale',
             'waiting_for_first_sync' => 'Waiting for first sync',
             default => 'Waiting for registration',
         };
@@ -282,6 +301,7 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'success',
+            'sync_stale' => 'warning',
             'waiting_for_first_sync' => 'info',
             default => 'warning',
         };
@@ -291,6 +311,10 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'Checkybot has received both the Laravel package registration and the first package sync payload for this application.',
+            'sync_stale' => sprintf(
+                'Checkybot has received package sync payloads before, but the latest sync is more than %d minutes old. The Laravel scheduler or package integration may have stopped.',
+                $this->packageSyncStaleMinutes(),
+            ),
             'waiting_for_first_sync' => 'Checkybot has seen the Laravel package register this application, but the first package sync has not arrived yet.',
             default => 'Checkybot has not received a Laravel package registration for this application yet.',
         };
@@ -300,6 +324,7 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'Continue in the monitored checks and components tables if expected package-managed monitors are still missing.',
+            'sync_stale' => 'Run `php artisan checkybot:sync` in the Laravel app, confirm the scheduler is still executing `Schedule::command(\'checkybot:sync\')->everyMinute();`, and inspect the app logs if the command fails.',
             'waiting_for_first_sync' => 'Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.',
             default => 'Copy the guided install snippet into the Laravel app, then run `php artisan checkybot:sync` once to trigger registration.',
         };
@@ -323,14 +348,29 @@ class Project extends Model
             ],
             [
                 'title' => 'First package sync',
-                'status' => $this->hasReceivedFirstPackageSync() ? 'complete' : 'pending',
+                'status' => $this->hasStalePackageSync()
+                    ? 'stale'
+                    : ($this->hasReceivedFirstPackageSync() ? 'complete' : 'pending'),
                 'description' => $this->hasReceivedFirstPackageSync()
-                    ? sprintf(
-                        'First sync received%s.',
-                        $this->last_synced_at ? ' '.$this->last_synced_at->diffForHumans() : ''
-                    )
+                    ? $this->packageSyncStepDescription()
                     : 'Waiting for the package to send checks, components, and package metadata.',
             ],
         ];
+    }
+
+    private function packageSyncStepDescription(): string
+    {
+        if ($this->hasStalePackageSync()) {
+            return sprintf(
+                'Last sync received %s, which is outside the %d minute freshness window.',
+                $this->last_synced_at->diffForHumans(),
+                $this->packageSyncStaleMinutes(),
+            );
+        }
+
+        return sprintf(
+            'First sync received%s.',
+            $this->last_synced_at ? ' '.$this->last_synced_at->diffForHumans() : ''
+        );
     }
 }
