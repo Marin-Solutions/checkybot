@@ -47,14 +47,18 @@ class ProjectComponentSyncService
                     'project_id' => $project->id,
                     'name' => $declaration['name'],
                     'source' => 'package',
-                    'is_archived' => false,
-                    'archived_at' => null,
                     'declared_interval' => $declaration['interval'],
                     'interval_minutes' => IntervalParser::toMinutes($declaration['interval']),
                     'created_by' => $project->created_by,
                 ];
 
                 if ($component) {
+                    if ($component->archive_reason === ProjectComponent::ARCHIVE_REASON_PACKAGE) {
+                        $attributes['is_archived'] = false;
+                        $attributes['archived_at'] = null;
+                        $attributes['archive_reason'] = null;
+                    }
+
                     $component->fill($attributes);
 
                     if (! $component->isDirty()) {
@@ -68,6 +72,9 @@ class ProjectComponentSyncService
                     }
                 } else {
                     $component = ProjectComponent::create($attributes + [
+                        'is_archived' => false,
+                        'archived_at' => null,
+                        'archive_reason' => null,
                         'current_status' => 'unknown',
                         'last_reported_status' => 'unknown',
                         'summary' => 'Awaiting first heartbeat',
@@ -88,6 +95,7 @@ class ProjectComponentSyncService
                         'source' => 'package',
                         'is_archived' => false,
                         'archived_at' => null,
+                        'archive_reason' => null,
                         'declared_interval' => $heartbeat['interval'],
                         'interval_minutes' => IntervalParser::toMinutes($heartbeat['interval']),
                         'current_status' => 'unknown',
@@ -99,6 +107,10 @@ class ProjectComponentSyncService
 
                     $componentsByName->put($component->name, $component);
                     $createdNames[] = $component->name;
+                }
+
+                if ($component->is_archived && $component->archive_reason !== ProjectComponent::ARCHIVE_REASON_PACKAGE) {
+                    continue;
                 }
 
                 $previousStatus = $component->current_status;
@@ -114,6 +126,7 @@ class ProjectComponentSyncService
                     'is_stale' => false,
                     'is_archived' => false,
                     'archived_at' => null,
+                    'archive_reason' => null,
                     'declared_interval' => $heartbeat['interval'],
                     'interval_minutes' => IntervalParser::toMinutes($heartbeat['interval']),
                 ]);
@@ -198,6 +211,7 @@ class ProjectComponentSyncService
         return $query->update([
             'is_archived' => true,
             'archived_at' => now(),
+            'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
         ]);
     }
 }

@@ -84,6 +84,7 @@ class ProjectComponentsTable
                                 : ProjectComponent::query()->whereIn('id', $ids)->update([
                                     'is_archived' => false,
                                     'archived_at' => null,
+                                    'archive_reason' => null,
                                 ]);
 
                             Notification::make()
@@ -113,6 +114,7 @@ class ProjectComponentsTable
                                 : ProjectComponent::query()->whereIn('id', $ids)->update([
                                     'is_archived' => true,
                                     'archived_at' => now(),
+                                    'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
                                 ]);
 
                             Notification::make()
