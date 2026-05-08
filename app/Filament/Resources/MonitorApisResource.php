@@ -58,6 +58,11 @@ class MonitorApisResource extends Resource
             ]);
     }
 
+    protected static function scopeUnhealthyNavigationBadgeQuery(Builder $query): Builder
+    {
+        return $query->where('is_enabled', true);
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema

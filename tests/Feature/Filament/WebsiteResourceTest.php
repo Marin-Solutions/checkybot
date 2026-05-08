@@ -1859,6 +1859,34 @@ test('website navigation badge highlights unhealthy count in danger color', func
         ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBe('danger');
 });
 
+test('website navigation badge excludes paused checks from unhealthy count', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'outbound_check' => false,
+    ]);
+    Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'outbound_check' => false,
+    ]);
+
+    \App\Filament\Resources\WebsiteResource::flushUnhealthyNavigationBadgeCache();
+
+    expect(\App\Filament\Resources\WebsiteResource::getNavigationBadge())->toBe('1/3')
+        ->and(\App\Filament\Resources\WebsiteResource::getNavigationBadgeColor())->toBe('danger');
+});
+
 test('website navigation badge is scoped to the current user', function () {
     $user = $this->actingAsSuperAdmin();
     $otherUser = User::factory()->create();
