@@ -1,9 +1,11 @@
 <?php
 
 use App\Models\Backup;
+use App\Models\BackupIntervalOption;
 use App\Models\BackupRemoteStorageConfig;
 use App\Models\BackupRemoteStorageType;
 use App\Models\Server;
+use Carbon\Carbon;
 
 function backupWithRemoteStorage(string $driver, array $storageOverrides = [], array $backupOverrides = []): Backup
 {
@@ -159,4 +161,28 @@ test('generated backup script has valid bash syntax', function () {
 
     expect(implode("\n", $output))->toBe('')
         ->and($status)->toBe(0);
+});
+
+test('monthly backup freshness uses calendar months instead of fixed thirty day windows', function () {
+    Carbon::setTestNow('2026-02-28 12:00:00');
+
+    $interval = BackupIntervalOption::query()->create([
+        'value' => 1,
+        'unit' => 'monthly',
+        'expression' => '0 0 1 * *',
+    ]);
+
+    $backup = backupWithRemoteStorage('ftp', backupOverrides: [
+        'interval_id' => (string) $interval->id,
+    ]);
+    $backup->forceFill(['last_history_at' => Carbon::parse('2026-01-31 12:00:00')])->save();
+
+    expect($backup->freshnessThresholdAt()?->toDateTimeString())->toBe('2026-02-28 12:00:00')
+        ->and($backup->isMissingExpectedRun())->toBeFalse();
+
+    Carbon::setTestNow('2026-02-28 12:00:01');
+
+    expect($backup->isMissingExpectedRun())->toBeTrue();
+
+    Carbon::setTestNow();
 });

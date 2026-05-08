@@ -24,8 +24,6 @@ class Backup extends Model
         'remote_storage_path',
         'interval_id',
         'first_run_at',
-        'last_history_at',
-        'stale_at',
         'max_amount_backups',
         'exclude_folder_files',
         'password',
@@ -66,7 +64,7 @@ class Backup extends Model
         return $this->hasOne(BackupHistory::class)->latestOfMany();
     }
 
-    public function expectedIntervalMinutes(): ?int
+    public function addExpectedInterval(CarbonInterface $date): ?CarbonInterface
     {
         $interval = $this->interval;
 
@@ -75,10 +73,10 @@ class Backup extends Model
         }
 
         return match (true) {
-            str_contains($interval->unit, 'hour') => $interval->value * 60,
-            str_contains($interval->unit, 'day') => $interval->value * 1440,
-            str_contains($interval->unit, 'week') => $interval->value * 10080,
-            str_contains($interval->unit, 'month') => $interval->value * 43200,
+            str_contains($interval->unit, 'hour') => $date->copy()->addHours($interval->value),
+            str_contains($interval->unit, 'day') => $date->copy()->addDays($interval->value),
+            str_contains($interval->unit, 'week') => $date->copy()->addWeeks($interval->value),
+            str_contains($interval->unit, 'month') => $date->copy()->addMonthsNoOverflow($interval->value),
             default => null,
         };
     }
@@ -90,17 +88,13 @@ class Backup extends Model
 
     public function freshnessThresholdAt(): ?CarbonInterface
     {
-        $intervalMinutes = $this->expectedIntervalMinutes();
-
-        if (! $intervalMinutes) {
-            return null;
-        }
-
         $referenceTime = $this->latestHistoryReceivedAt()
             ?? $this->first_run_at
             ?? $this->created_at;
 
-        return $referenceTime?->copy()->addMinutes($intervalMinutes);
+        return $referenceTime
+            ? $this->addExpectedInterval($referenceTime)
+            : null;
     }
 
     public function isMissingExpectedRun(): bool

@@ -25,9 +25,9 @@ test('command marks backups stale when no run arrives after the configured inter
         'remote_storage_path' => '/',
         'interval_id' => (string) $interval->id,
         'first_run_at' => now()->subDays(3),
-        'last_history_at' => now()->subDays(2),
         'compression_type' => 'zip',
     ]);
+    $backup->forceFill(['last_history_at' => now()->subDays(2)])->save();
 
     BackupHistory::query()->create([
         'backup_id' => $backup->id,
@@ -76,9 +76,9 @@ test('command does not duplicate missed backup alerts while stale state is activ
         'remote_storage_path' => '/',
         'interval_id' => (string) $interval->id,
         'first_run_at' => now()->subHours(3),
-        'stale_at' => now()->subHour(),
         'compression_type' => 'zip',
     ]);
+    $backup->forceFill(['stale_at' => now()->subHour()])->save();
 
     NotificationSetting::factory()
         ->globalScope()

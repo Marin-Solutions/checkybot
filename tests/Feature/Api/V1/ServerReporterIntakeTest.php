@@ -263,9 +263,9 @@ test('backup history intake clears missed run state and sends recovery notificat
         'remote_storage_id' => 1,
         'remote_storage_path' => '/',
         'interval_id' => '1',
-        'stale_at' => now()->subHour(),
         'compression_type' => 'zip',
     ]);
+    $backup->forceFill(['stale_at' => now()->subHour()])->save();
 
     NotificationSetting::factory()
         ->globalScope()
