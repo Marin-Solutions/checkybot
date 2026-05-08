@@ -17,13 +17,13 @@ class ProjectComponentNotificationService
 {
     use ChecksWebhookResponses;
 
-    public function notify(ProjectComponent $component, string $event, string $status): void
+    public function notify(ProjectComponent $component, string $event, string $status): bool
     {
         if (
             ! in_array($status, ['warning', 'danger'], true)
             && ! in_array($event, ['stale', 'recovered'], true)
         ) {
-            return;
+            return true;
         }
 
         if ($this->isSilencedNow($component)) {
@@ -34,7 +34,7 @@ class ProjectComponentNotificationService
                 'status' => $status,
             ]);
 
-            return;
+            return true;
         }
 
         $settings = NotificationSetting::query()
@@ -48,6 +48,8 @@ class ProjectComponentNotificationService
             ->get();
 
         $payload = $this->buildPayload($component, $event, $status);
+        $attempts = 0;
+        $failures = 0;
 
         foreach ($settings as $setting) {
             if ($setting->channel_type === NotificationChannelTypesEnum::WEBHOOK) {
@@ -71,6 +73,8 @@ class ProjectComponentNotificationService
                     continue;
                 }
 
+                $attempts++;
+
                 try {
                     $response = $channel->sendWebhookNotification([
                         'message' => $payload['message'],
@@ -86,6 +90,8 @@ class ProjectComponentNotificationService
                     );
 
                     if (! $this->webhookResponseWasSuccessful($response)) {
+                        $failures++;
+
                         Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
                             'setting_id' => $setting->id,
                             'project_component_id' => $component->id,
@@ -96,6 +102,8 @@ class ProjectComponentNotificationService
                         ]);
                     }
                 } catch (Throwable $exception) {
+                    $failures++;
+
                     $setting->recordDeliveryAttempt(
                         kind: 'send',
                         succeeded: false,
@@ -119,6 +127,7 @@ class ProjectComponentNotificationService
                 continue;
             }
 
+            $attempts++;
             $mailException = null;
 
             try {
@@ -136,6 +145,8 @@ class ProjectComponentNotificationService
             }
 
             if ($mailException) {
+                $failures++;
+
                 $setting->recordDeliveryAttempt(
                     kind: 'send',
                     succeeded: false,
@@ -153,6 +164,12 @@ class ProjectComponentNotificationService
                 summary: 'Email accepted by configured mail transport.',
             );
         }
+
+        if ($attempts === 0) {
+            return true;
+        }
+
+        return $failures < $attempts;
     }
 
     /**

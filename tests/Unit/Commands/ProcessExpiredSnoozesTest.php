@@ -9,6 +9,7 @@ use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
+use App\Services\ProjectComponentNotificationService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -252,6 +253,31 @@ test('command preserves silenced_until when every channel fails so the next run 
         ->assertSuccessful();
 
     expect($website->refresh()->silenced_until)->not->toBeNull();
+
+    Log::shouldHaveReceived('warning')->once();
+});
+
+test('command preserves project component silenced_until when every channel fails so the next run retries', function () {
+    Log::spy();
+
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $project->created_by,
+        'current_status' => 'danger',
+        'summary' => 'Heartbeat expired.',
+        'is_stale' => true,
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    $this->mock(ProjectComponentNotificationService::class, function ($mock): void {
+        $mock->shouldReceive('notify')->once()->andReturn(false);
+    });
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($component->refresh()->silenced_until)->not->toBeNull();
 
     Log::shouldHaveReceived('warning')->once();
 });
