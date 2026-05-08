@@ -28,7 +28,7 @@ class MonitorApis extends Model
 
     public const LEGACY_RAW_BODY_KEY = 'raw_body';
 
-    private const INTERACTIVE_RUN_KEY = 'interactive';
+    public const INTERACTIVE_RUN_KEY = 'interactive';
 
     protected $fillable = [
         'title',
