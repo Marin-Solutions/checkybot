@@ -6,6 +6,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\Website;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -245,13 +246,10 @@ class CheckSyncService
                     'last_synced_at' => $syncedAt,
                 ]);
 
-            $deleteQuery = (clone $query)->where('ssl_check', false);
-            $deleted = (clone $deleteQuery)->count();
-
-            (clone $deleteQuery)->update(['last_synced_at' => $syncedAt]);
-            $deleteQuery->delete();
-
-            return $deleted;
+            return $this->disableFullyOrphanedWebsites(
+                (clone $query)->where('ssl_check', false),
+                $syncedAt
+            );
         }
 
         if ($ssl) {
@@ -262,37 +260,44 @@ class CheckSyncService
                     'last_synced_at' => $syncedAt,
                 ]);
 
-            $deleteQuery = (clone $query)->where('uptime_check', false);
-            $deleted = (clone $deleteQuery)->count();
-
-            (clone $deleteQuery)->update(['last_synced_at' => $syncedAt]);
-            $deleteQuery->delete();
-
-            return $deleted;
+            return $this->disableFullyOrphanedWebsites(
+                (clone $query)->where('uptime_check', false),
+                $syncedAt
+            );
         }
 
-        $deleted = (clone $query)->count();
-
-        (clone $query)->update(['last_synced_at' => $syncedAt]);
-        $query->delete();
-
-        return $deleted;
+        return $this->disableFullyOrphanedWebsites($query, $syncedAt);
     }
 
     protected function pruneOrphanedApis(Project $project, array $keepNames, Carbon $syncedAt): int
     {
         $query = MonitorApis::where('project_id', $project->id)
-            ->where('source', 'package');
+            ->where('source', 'package')
+            ->where('is_enabled', true);
 
         if (! empty($keepNames)) {
             $query->whereNotIn('package_name', $keepNames);
         }
 
-        $deleted = (clone $query)->count();
+        return $query->update([
+            'is_enabled' => false,
+            'current_status' => 'unknown',
+            'status_summary' => 'Disabled because it was missing from the latest package sync.',
+            'last_synced_at' => $syncedAt,
+        ]);
+    }
 
-        (clone $query)->update(['last_synced_at' => $syncedAt]);
-        $query->delete();
-
-        return $deleted;
+    protected function disableFullyOrphanedWebsites(Builder $query, Carbon $syncedAt): int
+    {
+        return $query->update([
+            'uptime_check' => false,
+            'ssl_check' => false,
+            'current_status' => 'unknown',
+            'status_summary' => 'Disabled because it was missing from the latest package sync.',
+            'package_interval' => null,
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'last_synced_at' => $syncedAt,
+        ]);
     }
 }
