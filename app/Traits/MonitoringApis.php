@@ -12,6 +12,7 @@ trait MonitoringApis
         $validatedData = $form->getState();
         $validatedData['id'] = $monitorId;
         $validatedData['request_body'] = $validatedData['request_body'] ?? null;
+        $validatedData['interactive'] = true;
 
         if ($form->validate()) {
             $result = \App\Models\MonitorApis::testApi($validatedData);

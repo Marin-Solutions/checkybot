@@ -6,6 +6,7 @@ use App\Models\MonitorApis;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 test('monitor api belongs to user', function () {
     $user = User::factory()->create();
@@ -250,6 +251,68 @@ test('test api returns response time in milliseconds when the request throws a c
         ->and($result['error'])->toStartWith('Timeout:')
         ->and($result['transport_error_type'])->toBe('timeout')
         ->and($result['transport_error_message'])->toBe('timeout');
+});
+
+test('interactive api tests cap configured timeout and retries', function () {
+    config([
+        'monitor.api_retries' => 3,
+        'monitor.api_interactive_timeout' => 4,
+        'monitor.api_interactive_retries' => 0,
+    ]);
+
+    $attempts = 0;
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => $message === 'Transport error while testing API'
+            && $context['timeout'] === 4
+            && $context['retries'] === 0)
+        ->andReturnNull();
+
+    Http::fake(function () use (&$attempts): never {
+        $attempts++;
+
+        throw new \Illuminate\Http\Client\ConnectionException('timeout');
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/interactive-timeout',
+        'method' => 'GET',
+        'expected_status' => 200,
+        'timeout_seconds' => 120,
+        'interactive' => true,
+    ]);
+
+    expect($attempts)->toBe(1)
+        ->and($result['error'])->toStartWith('Timeout:');
+});
+
+test('scheduled api tests keep the monitor timeout and configured retries', function () {
+    config([
+        'monitor.api_retries' => 2,
+        'monitor.api_interactive_timeout' => 4,
+        'monitor.api_interactive_retries' => 0,
+    ]);
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => $message === 'Transport error while testing API'
+            && $context['timeout'] === 120
+            && $context['retries'] === 2)
+        ->andReturnNull();
+
+    Http::fake(function (): never {
+        throw new \Illuminate\Http\Client\ConnectionException('timeout');
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/scheduled-timeout',
+        'method' => 'GET',
+        'expected_status' => 200,
+        'timeout_seconds' => 120,
+    ]);
+
+    expect($result['error'])->toStartWith('Timeout:');
 });
 
 test('test api redacts sensitive query parameters before persisting transport errors', function () {
@@ -730,6 +793,44 @@ test('preview assertion runs fresh test when monitor has no prior result', funct
     expect($preview['source'])->toBe('fresh_test')
         ->and($preview['passed'])->toBeTrue()
         ->and($preview['actual'])->toBe('active');
+});
+
+test('preview assertion caps fresh test timeout for interactive rendering', function () {
+    config([
+        'monitor.api_retries' => 3,
+        'monitor.api_interactive_timeout' => 4,
+        'monitor.api_interactive_retries' => 0,
+    ]);
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => $message === 'Transport error while testing API'
+            && $context['timeout'] === 4
+            && $context['retries'] === 0)
+        ->andReturnNull();
+
+    Http::fake(function (): never {
+        throw new \Illuminate\Http\Client\ConnectionException('timeout');
+    });
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.test/orders',
+        'timeout_seconds' => 120,
+    ]);
+
+    $assertion = MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'data_path' => 'data.status',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '=',
+        'expected_value' => 'active',
+    ]);
+
+    $preview = $monitor->previewAssertion($assertion);
+
+    expect($preview['source'])->toBe('fresh_test')
+        ->and($preview['passed'])->toBeFalse()
+        ->and($preview['error'])->toStartWith('Timeout:');
 });
 
 test('preview assertion falls back to fresh test when latest saved body only contains error metadata', function () {

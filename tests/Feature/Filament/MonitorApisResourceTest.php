@@ -13,6 +13,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -733,6 +734,41 @@ test('check api action treats server errors as danger', function () {
         ->assertNotified('API request failed');
 
     Http::assertSent(fn ($request) => $request->method() === 'GET' && $request->url() === 'https://example.com/broken-health');
+});
+
+test('check api action caps interactive timeout and disables interactive retries', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $this->actingAsSuperAdmin();
+
+    config([
+        'monitor.api_retries' => 3,
+        'monitor.api_interactive_timeout' => 4,
+        'monitor.api_interactive_retries' => 0,
+    ]);
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => $message === 'Transport error while testing API'
+            && $context['timeout'] === 4
+            && $context['retries'] === 0)
+        ->andReturnNull();
+
+    Http::fake(function (): never {
+        throw new \Illuminate\Http\Client\ConnectionException('timeout');
+    });
+
+    Livewire::test(CreateMonitorApis::class)
+        ->fillForm([
+            'title' => 'Slow API',
+            'url' => 'https://example.com/slow-health',
+            'http_method' => 'GET',
+            'expected_status' => 200,
+            'timeout_seconds' => 120,
+            'data_path' => null,
+        ])
+        ->call('doMonitoring')
+        ->assertNotified('API request failed');
 });
 
 test('check api action uses degraded title for expected status mismatches without assertion failures', function () {
