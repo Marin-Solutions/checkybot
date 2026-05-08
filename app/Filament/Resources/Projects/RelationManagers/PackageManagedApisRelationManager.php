@@ -89,7 +89,7 @@ class PackageManagedApisRelationManager extends RelationManager
     private function monitoringStateDescription(MonitorApis $record): ?string
     {
         if ($record->is_enabled === false) {
-            return 'Package sync disabled this check. Scheduled runs are paused.';
+            return 'This check is disabled. Scheduled runs are paused.';
         }
 
         return null;

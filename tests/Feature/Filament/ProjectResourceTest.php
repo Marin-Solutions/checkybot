@@ -770,7 +770,7 @@ test('application record shows package-managed external checks including archive
         ->assertSee('Fresh')
         ->assertSee('Awaiting heartbeat')
         ->assertSee('Disabled')
-        ->assertSee('Package sync disabled this check. Scheduled runs are paused.')
+        ->assertSee('This check is disabled. Scheduled runs are paused.')
         ->assertSee('Monitor is disabled. Heartbeats are not expected.');
 
     expect(ProjectResource::getRelations())
