@@ -395,7 +395,7 @@ class CheckybotApiDocumentation
      *             @OA\Property(property="type", type="string", nullable=true, enum={"api"}, example="api"),
      *             @OA\Property(property="name", type="string", example="Health endpoint"),
      *             @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
-     *             @OA\Property(property="url", type="string", example="/health"),
+     *             @OA\Property(property="url", type="string", description="HTTP(S) URL or relative path resolved against the project base_url.", example="/health"),
      *             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
      *             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
