@@ -754,6 +754,16 @@ class WebsiteResource extends Resource
             ]);
     }
 
+    protected static function scopeUnhealthyNavigationBadgeQuery(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->where('uptime_check', true)
+                ->orWhere('ssl_check', true)
+                ->orWhere('outbound_check', true);
+        });
+    }
+
     public static function getModelLabel(): string
     {
         return __('Website');

@@ -1498,6 +1498,29 @@ test('api monitor navigation badge highlights unhealthy count in danger color', 
         ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBe('danger');
 });
 
+test('api monitor navigation badge excludes disabled monitors from unhealthy count', function () {
+    $user = $this->actingAsSuperAdmin();
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'warning',
+        'is_enabled' => false,
+    ]);
+    MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+        'is_enabled' => true,
+    ]);
+
+    \App\Filament\Resources\MonitorApisResource::flushUnhealthyNavigationBadgeCache();
+
+    expect(\App\Filament\Resources\MonitorApisResource::getNavigationBadge())->toBe('1/3')
+        ->and(\App\Filament\Resources\MonitorApisResource::getNavigationBadgeColor())->toBe('danger');
+});
+
 test('api monitor navigation badge is scoped to the current user', function () {
     $user = $this->actingAsSuperAdmin();
     $otherUser = User::factory()->create();
