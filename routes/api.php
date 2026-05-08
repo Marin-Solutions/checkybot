@@ -38,6 +38,7 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
         Route::put('/projects/{project}/checks/{check}', [CheckybotControlController::class, 'upsertCheck'])->where('check', '[A-Za-z0-9_-]+');
         Route::patch('/projects/{project}/checks/{check}/disable', [CheckybotControlController::class, 'disableCheck'])->where('check', '[A-Za-z0-9_-]+');
         Route::post('/projects/{project}/runs', [CheckybotControlController::class, 'triggerProjectRun']);
+        Route::get('/projects/{project}/runs/{batch}', [CheckybotControlController::class, 'projectRunBatch'])->where('batch', '[^/]+');
         Route::post('/projects/{project}/checks/{check}/runs', [CheckybotControlController::class, 'triggerCheckRun'])->where('check', '[A-Za-z0-9_-]+');
         Route::get('/runs', [CheckybotControlController::class, 'runs']);
         Route::get('/projects/{project}/runs', [CheckybotControlController::class, 'projectRuns']);

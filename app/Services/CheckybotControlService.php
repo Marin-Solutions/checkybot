@@ -200,7 +200,11 @@ class CheckybotControlService
         $batch = Bus::batch(
             $checks->map(fn (MonitorApis $check): RunApiMonitorDiagnosticJob => new RunApiMonitorDiagnosticJob($check->withoutRelations()))
         )
-            ->name("Control project run: {$project->package_key}")
+            ->name($this->controlProjectRunBatchName($project))
+            ->withOption('checkybot_control', [
+                'project_id' => $project->id,
+                'user_id' => $project->created_by,
+            ])
             ->allowFailures()
             ->dispatch();
 
@@ -209,6 +213,26 @@ class CheckybotControlService
             'status' => 'queued',
             'triggered_at' => now()->toISOString(),
             'checks_queued' => $checks->count(),
+            'run_batch' => $this->runBatchPayload($batch),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function projectRunBatch(User $user, string|int $projectKey, string $batchId): array
+    {
+        $project = $this->findProject($user, $projectKey);
+        $batch = Bus::findBatch($batchId);
+
+        if (! $batch instanceof Batch
+            || (int) Arr::get($batch->options, 'checkybot_control.project_id') !== $project->id
+            || (int) Arr::get($batch->options, 'checkybot_control.user_id') !== $user->id) {
+            abort(404, 'Project run batch not found.');
+        }
+
+        return [
+            'project' => $this->projectIdentity($project),
             'run_batch' => $this->runBatchPayload($batch),
         ];
     }
@@ -502,6 +526,11 @@ class CheckybotControlService
         }
 
         return $batch->pendingJobs < $batch->totalJobs ? 'running' : 'pending';
+    }
+
+    private function controlProjectRunBatchName(Project $project): string
+    {
+        return "Control project run: {$project->package_key}";
     }
 
     private function resolveUrl(?string $baseUrl, string $url): string

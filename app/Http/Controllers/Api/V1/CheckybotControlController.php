@@ -81,6 +81,13 @@ class CheckybotControlController extends Controller
         ], $result['status'] === 'queued' ? 202 : 200);
     }
 
+    public function projectRunBatch(Request $request, string $project, string $batch): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->control->projectRunBatch($request->user(), $project, $batch),
+        ]);
+    }
+
     public function triggerCheckRun(Request $request, string $project, string $check): JsonResponse
     {
         return response()->json([

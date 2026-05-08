@@ -15,6 +15,7 @@ test('swagger documentation can be generated', function () {
             '/v1/control/projects/{project}/checks',
             '/v1/control/projects/{project}/checks/{check}',
             '/v1/control/projects/{project}/runs',
+            '/v1/control/projects/{project}/runs/{batch}',
             '/v1/control/failures',
             '/v1/mcp',
             '/v1/package/register',
@@ -27,6 +28,7 @@ test('swagger documentation can be generated', function () {
         ->and($documentation['paths']['/v1/projects/{project}/checks/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
         ->and($documentation['paths']['/v1/projects/{project}/components/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
         ->and($documentation['paths']['/v1/control/projects/{project}/checks/{check}/runs']['post']['responses'])->toHaveKeys(['200', '401', '404', '409'])
+        ->and($documentation['paths']['/v1/control/projects/{project}/runs/{batch}']['get']['responses'])->toHaveKeys(['200', '401', '404'])
         ->and($documentation['paths']['/v1/control/runs']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
         ->and($documentation['paths']['/v1/control/failures']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
         ->and($documentation['paths']['/v1/mcp']['post']['requestBody']['content']['application/json']['schema']['properties']['id']['oneOf'])->sequence(
@@ -73,5 +75,5 @@ test('swagger documentation can be generated', function () {
             fn ($schema) => $schema->type->toBe('object'),
             fn ($schema) => $schema->type->toBe('array'),
         )
-        ->and($documentation['paths'])->toHaveCount(19);
+        ->and($documentation['paths'])->toHaveCount(20);
 });
