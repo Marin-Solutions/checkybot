@@ -136,6 +136,18 @@ class SeoHealthCheckService
             'failure_reason' => $failureContext['failure_reason'] ?? 'manual_startup_failed',
             'summary' => $summary,
         ]);
+        $logContext = [
+            'website_id' => $website->id,
+            'website_url' => $website->url,
+            'seo_check_id' => $seoCheck?->id,
+            'failure_reason' => $failureContext['failure_reason'] ?? 'manual_startup_failed',
+        ];
+
+        if (($failureContext['failure_reason'] ?? null) === 'no_crawlable_urls') {
+            Log::warning('Manual SEO check could not start: no crawlable URLs found.', $logContext);
+        } else {
+            Log::error('Manual SEO check could not start.', $logContext);
+        }
 
         if ($seoCheck) {
             $seoCheck->update([

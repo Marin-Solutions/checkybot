@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\Website;
 use App\Policies\SeoCheckPolicy;
 use App\Services\RobotsSitemapService;
+use App\Services\SeoHealthCheckService;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -479,6 +480,57 @@ test('website scoped seo checks list records failed manual start when url discov
             'summary' => 'Manual SEO check could not start: robots service unavailable',
         ])
         ->and($seoCheck->robots_txt_checked)->toBeFalse()
+        ->and($seoCheck->started_at)->not->toBeNull()
+        ->and($seoCheck->finished_at)->not->toBeNull();
+});
+
+test('manual seo check marks pending check failed when dispatch throws', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Dispatch failure site',
+        'url' => 'https://dispatch-failure.example.com',
+    ]);
+
+    $robotsService = $this->mock(RobotsSitemapService::class);
+    $robotsService->shouldReceive('getCrawlableUrls')
+        ->once()
+        ->with($website->url)
+        ->andReturn([$website->url]);
+
+    $dispatcher = Mockery::mock(\Illuminate\Contracts\Bus\Dispatcher::class);
+    $dispatcher->shouldReceive('dispatch')
+        ->once()
+        ->andThrow(new RuntimeException('queue unavailable'));
+    app()->instance(\Illuminate\Contracts\Bus\Dispatcher::class, $dispatcher);
+
+    try {
+        app(SeoHealthCheckService::class)->startManualCheck($website);
+        $this->fail('Expected manual SEO check dispatch to throw.');
+    } catch (RuntimeException $exception) {
+        expect($exception->getMessage())->toBe('queue unavailable');
+    }
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->sole();
+
+    expect($seoCheck->status)->toBe(SeoCheck::STATUS_FAILED)
+        ->and($seoCheck->failure_summary)->toBe('Manual SEO check could not be dispatched: queue unavailable')
+        ->and($seoCheck->failure_context)->toMatchArray([
+            'failure_reason' => 'manual_dispatch_failed',
+            'website_url' => $website->url,
+            'manual_by' => $user->id,
+            'exception_class' => RuntimeException::class,
+            'exception_message' => 'queue unavailable',
+            'seo_check_id' => $seoCheck->id,
+        ])
+        ->and($seoCheck->crawl_summary)->toMatchArray([
+            'manual_by' => $user->id,
+            'is_manual' => true,
+            'failure_reason' => 'manual_dispatch_failed',
+            'summary' => 'Manual SEO check could not be dispatched: queue unavailable',
+        ])
+        ->and($seoCheck->robots_txt_checked)->toBeTrue()
+        ->and($seoCheck->total_crawlable_urls)->toBe(1)
         ->and($seoCheck->started_at)->not->toBeNull()
         ->and($seoCheck->finished_at)->not->toBeNull();
 });
