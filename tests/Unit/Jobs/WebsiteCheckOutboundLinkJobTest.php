@@ -154,6 +154,28 @@ test('job records on demand scan source in crawler startup failure evidence', fu
         ->and($link->transport_error_message)->toContain('Outbound on demand scan failed before crawling started');
 });
 
+test('job records unknown transport error when crawler startup failure cannot be classified', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    $job = new class($website) extends WebsiteCheckOutboundLinkJob
+    {
+        public function createCrawler(): Crawler
+        {
+            throw new RuntimeException('Crawler bootstrap failed');
+        }
+    };
+
+    $job->handle();
+
+    $link = $website->outboundLinks()->sole();
+
+    expect($link->transport_error_type)->toBe('unknown')
+        ->and($link->transport_error_code)->toBeNull()
+        ->and($link->transport_error_message)->toContain('Crawler bootstrap failed');
+});
+
 test('job stores website property', function () {
     $website = Website::factory()->create();
 
