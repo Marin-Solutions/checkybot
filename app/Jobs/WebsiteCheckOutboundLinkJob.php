@@ -3,10 +3,14 @@
 namespace App\Jobs;
 
 use App\Crawlers\WebsiteOutboundLinkCrawler;
+use App\Models\OutboundLink;
 use App\Models\Website;
+use App\Support\ApiMonitorEvidenceRedactor;
+use App\Support\UptimeTransportError;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Spatie\Crawler\Crawler;
 
@@ -54,11 +58,47 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
     public function handle(): void
     {
         try {
-            Crawler::create()
+            $this->createCrawler()
                 ->setCrawlObserver(new WebsiteOutboundLinkCrawler($this->website))
                 ->startCrawling($this->website->getBaseURL());
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            $this->recordStartupFailure($e);
+
             Log::error('Outbound link check failed for website '.$this->website->url.': '.$e->getMessage());
         }
+    }
+
+    public function createCrawler(): Crawler
+    {
+        return Crawler::create();
+    }
+
+    private function recordStartupFailure(\Throwable $exception): void
+    {
+        $checkedAt = Carbon::now();
+        $baseUrl = $this->website->getBaseURL();
+        $transportError = UptimeTransportError::fromThrowable($exception);
+        $scanSource = str_replace('-', ' ', $this->source);
+
+        OutboundLink::query()->updateOrCreate(
+            [
+                'website_id' => $this->website->id,
+                'found_on' => $baseUrl,
+                'outgoing_url' => $baseUrl,
+            ],
+            [
+                'http_status_code' => null,
+                'transport_error_type' => $transportError['type']->value,
+                'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage(
+                    "Outbound {$scanSource} scan failed before crawling started: {$transportError['message']}"
+                ),
+                'transport_error_code' => $transportError['code'],
+                'last_checked_at' => $checkedAt,
+            ],
+        );
+
+        $this->website->forceFill([
+            'last_outbound_checked_at' => $checkedAt,
+        ])->save();
     }
 }

@@ -3,6 +3,7 @@
 use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\Website;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Spatie\Crawler\Crawler;
@@ -90,6 +91,67 @@ test('job handle method initiates crawler', function () {
     $property->setAccessible(true);
 
     expect($property->getValue($job)->id)->toBe($website->id);
+});
+
+test('job records outbound evidence when crawler startup fails', function () {
+    Carbon::setTestNow('2026-05-08 12:34:56');
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'last_outbound_checked_at' => null,
+    ]);
+
+    $job = new class($website) extends WebsiteCheckOutboundLinkJob
+    {
+        public function createCrawler(): Crawler
+        {
+            throw new RuntimeException('cURL error 6: Could not resolve host: example.com?token=secret');
+        }
+    };
+
+    $job->handle();
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $website->id,
+        'found_on' => 'https://example.com',
+        'outgoing_url' => 'https://example.com',
+        'http_status_code' => null,
+        'transport_error_type' => 'dns',
+        'transport_error_code' => 6,
+        'last_checked_at' => '2026-05-08 12:34:56',
+    ]);
+
+    $link = $website->outboundLinks()->sole();
+
+    expect($link->transport_error_message)
+        ->toContain('Outbound scheduled scan failed before crawling started')
+        ->toContain('token=[redacted]')
+        ->not->toContain('token=secret')
+        ->and($website->refresh()->last_outbound_checked_at?->toDateTimeString())->toBe('2026-05-08 12:34:56');
+
+    Carbon::setTestNow();
+});
+
+test('job records on demand scan source in crawler startup failure evidence', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    $job = new class($website, WebsiteCheckOutboundLinkJob::SOURCE_ON_DEMAND) extends WebsiteCheckOutboundLinkJob
+    {
+        public function createCrawler(): Crawler
+        {
+            throw new RuntimeException('Operation timed out after 10000 milliseconds', 28);
+        }
+    };
+
+    $job->handle();
+
+    $link = $website->outboundLinks()->sole();
+
+    expect($link->transport_error_type)->toBe('timeout')
+        ->and($link->transport_error_code)->toBe(28)
+        ->and($link->transport_error_message)->toContain('Outbound on demand scan failed before crawling started');
 });
 
 test('job stores website property', function () {
