@@ -8,6 +8,7 @@ use App\Mail\ProjectComponentAlertMail;
 use App\Models\NotificationSetting;
 use App\Models\ProjectComponent;
 use App\Traits\ChecksWebhookResponses;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
@@ -22,6 +23,17 @@ class ProjectComponentNotificationService
             ! in_array($status, ['warning', 'danger'], true)
             && ! in_array($event, ['stale', 'recovered'], true)
         ) {
+            return;
+        }
+
+        if ($this->isSilencedNow($component)) {
+            Log::info('Skipping project component notification while component is snoozed', [
+                'project_component_id' => $component->id,
+                'silenced_until' => optional($component->silenced_until)->toIso8601String(),
+                'event' => $event,
+                'status' => $status,
+            ]);
+
             return;
         }
 
@@ -160,5 +172,22 @@ class ProjectComponentNotificationService
             'message' => "{$component->project->name} / {$component->name} reported {$eventLabel}.",
             'details' => $component->summary ?? 'No additional summary was provided.',
         ];
+    }
+
+    private function isSilencedNow(ProjectComponent $component): bool
+    {
+        if ($component->isDirty('silenced_until')) {
+            return $component->isSilenced();
+        }
+
+        $persistedSilencedUntil = ProjectComponent::query()
+            ->whereKey($component->getKey())
+            ->value('silenced_until');
+
+        if ($persistedSilencedUntil === null) {
+            return false;
+        }
+
+        return Carbon::parse($persistedSilencedUntil)->isFuture();
     }
 }

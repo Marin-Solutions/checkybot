@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasSnooze;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class ProjectComponent extends Model
 {
     /** @use HasFactory<\Database\Factories\ProjectComponentFactory> */
-    use HasFactory;
+    use HasFactory, HasSnooze;
 
     public const ARCHIVE_REASON_PACKAGE = 'package';
 
@@ -32,6 +33,7 @@ class ProjectComponent extends Model
         'is_archived',
         'archived_at',
         'archive_reason',
+        'silenced_until',
         'created_by',
     ];
 
@@ -44,6 +46,7 @@ class ProjectComponent extends Model
             'is_stale' => 'boolean',
             'is_archived' => 'boolean',
             'archived_at' => 'datetime',
+            'silenced_until' => 'datetime',
         ];
     }
 
