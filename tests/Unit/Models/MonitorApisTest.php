@@ -291,6 +291,27 @@ test('test api does not record transport evidence for unexpected application exc
         ->and($result['transport_error_code'])->toBeNull();
 });
 
+test('test api redacts sensitive query parameters before persisting unexpected application exceptions', function () {
+    $url = 'https://api.example.test/invalid-request?token=secret-token&plain=value';
+
+    Http::fake(function () use ($url): never {
+        throw new \RuntimeException("Request builder failed for {$url}");
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => $url,
+        'method' => 'GET',
+        'expected_status' => 200,
+    ]);
+
+    expect($result['error'])
+        ->toBe('Unexpected error: Request builder failed for https://api.example.test/invalid-request?token=%5Bredacted%5D&plain=value')
+        ->not->toContain('secret-token')
+        ->and($result['transport_error_type'])->toBeNull()
+        ->and($result['transport_error_message'])->toBeNull()
+        ->and($result['transport_error_code'])->toBeNull();
+});
+
 test('test api preserves final http error status after retries', function () {
     Http::fake([
         'https://api.example.test/*' => Http::response(['message' => 'forbidden'], 403),

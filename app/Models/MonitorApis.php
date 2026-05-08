@@ -321,9 +321,11 @@ class MonitorApis extends Model
                 'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
             ]);
 
+            $sanitizedMessage = self::sanitizeLogMessage($exception->getMessage(), $url);
+
             $responseData['code'] = 0;
             $responseData['body'] = null;
-            $responseData['error'] = 'Unexpected error: '.$exception->getMessage();
+            $responseData['error'] = 'Unexpected error: '.$sanitizedMessage;
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
             return $responseData;
