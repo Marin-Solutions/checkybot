@@ -21,9 +21,22 @@ class RunApiMonitorDiagnosticJob implements ShouldQueue
     public function handle(ApiMonitorExecutionService $executionService): void
     {
         if ($this->batch()?->cancelled()) {
+            $this->clearQueuedDiagnostic();
+
             return;
         }
 
-        $executionService->execute($this->monitor, onDemand: true);
+        try {
+            $executionService->execute($this->monitor, onDemand: true);
+        } finally {
+            $this->clearQueuedDiagnostic();
+        }
+    }
+
+    private function clearQueuedDiagnostic(): void
+    {
+        MonitorApis::query()
+            ->whereKey($this->monitor->getKey())
+            ->update(['diagnostic_queued_at' => null]);
     }
 }

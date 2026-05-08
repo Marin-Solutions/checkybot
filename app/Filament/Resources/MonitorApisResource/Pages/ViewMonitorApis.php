@@ -27,10 +27,36 @@ class ViewMonitorApis extends ViewRecord
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->is_enabled)
+                ->disabled(fn (): bool => $this->record->hasQueuedDiagnostic())
                 ->action(function (): void {
+                    $queuedStatePersisted = false;
+
                     try {
+                        $this->record->refresh();
+
+                        if ($this->record->hasQueuedDiagnostic()) {
+                            Notification::make()
+                                ->title('Diagnostic already queued')
+                                ->body('Checkybot is already waiting for this API monitor diagnostic to finish.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
+
+                        $this->record->forceFill([
+                            'diagnostic_queued_at' => now(),
+                        ])->save();
+                        $queuedStatePersisted = true;
+
                         RunApiMonitorDiagnosticJob::dispatch($this->record->withoutRelations());
                     } catch (\Throwable $e) {
+                        if ($queuedStatePersisted) {
+                            $this->record->forceFill([
+                                'diagnostic_queued_at' => null,
+                            ])->save();
+                        }
+
                         Log::error('Run Now API monitor diagnostic dispatch failed', [
                             'monitor_api_id' => $this->record->id,
                             'exception' => $e,

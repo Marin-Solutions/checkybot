@@ -76,6 +76,8 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
     public function handle(SslCertificateService $sslCertificateService): void
     {
         if (! $this->shouldRunForWebsite()) {
+            $this->clearQueuedDiagnostic();
+
             return;
         }
 
@@ -200,7 +202,20 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         } catch (\Exception $e) {
             Log::error('Error creating log for website '.$this->website->url.': '.$e->getMessage());
             throw $e;
+        } finally {
+            $this->clearQueuedDiagnostic();
         }
+    }
+
+    private function clearQueuedDiagnostic(): void
+    {
+        if (! $this->isOnDemand()) {
+            return;
+        }
+
+        Website::query()
+            ->whereKey($this->website->getKey())
+            ->update(['diagnostic_queued_at' => null]);
     }
 
     private function shouldRunForWebsite(): bool
