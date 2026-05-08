@@ -84,7 +84,7 @@ class NotificationChannels extends Model
             return $responseData;
         } catch (ConnectionException $exception) {
             $responseData['code'] = 0;
-            $responseData['body'] = $exception->getMessage();
+            $responseData['body'] = self::redactWebhookUrlTextForLogs($exception->getMessage(), $url);
 
             return $responseData;
         }
@@ -180,7 +180,7 @@ class NotificationChannels extends Model
             ]);
 
             $responseData['code'] = 0;
-            $responseData['body'] = $exception->getMessage();
+            $responseData['body'] = self::redactWebhookUrlTextForLogs($exception->getMessage(), $url);
 
             $this->recordDeliveryAttempt(
                 kind: $deliveryKind,

@@ -232,12 +232,14 @@ test('send webhook notification preserves a 4xx status code so operators can deb
 });
 
 test('send webhook notification records connection exceptions as failed delivery evidence', function () {
+    $url = 'https://missing.example/webhook/secret-token?signature=secret-signature';
+
     Http::shouldReceive('POST')
         ->once()
-        ->andThrow(new ConnectionException('cURL error 6: Could not resolve host: missing.example'));
+        ->andThrow(new ConnectionException('cURL error 6: Could not resolve host for '.$url));
 
     $channel = NotificationChannels::factory()->create([
-        'url' => 'https://missing.example/webhook',
+        'url' => $url,
         'method' => 'POST',
     ]);
 
@@ -254,22 +256,28 @@ test('send webhook notification records connection exceptions as failed delivery
     expect($channel->last_delivery_response_code)->toBeNull();
     expect($channel->last_delivery_summary)->toContain('No response');
     expect($channel->last_delivery_summary)->toContain('Could not resolve host');
+    expect($channel->last_delivery_summary)->not->toContain('secret-token');
+    expect($channel->last_delivery_summary)->not->toContain('secret-signature');
 });
 
 test('test webhook returns connection exceptions as no response failures', function () {
+    $url = 'https://example.com/webhook/secret-token?signature=secret-signature';
+
     Http::shouldReceive('POST')
         ->once()
-        ->andThrow(new ConnectionException('cURL error 28: Operation timed out'));
+        ->andThrow(new ConnectionException('cURL error 28: Operation timed out for '.$url));
 
     $result = NotificationChannels::testWebhook([
         'method' => 'post',
-        'url' => 'https://example.com/webhook',
+        'url' => $url,
         'description' => 'Test webhook',
         'request_body' => ['message' => '{message}'],
     ]);
 
     expect($result['code'])->toBe(0);
     expect($result['body'])->toContain('Operation timed out');
+    expect($result['body'])->not->toContain('secret-token');
+    expect($result['body'])->not->toContain('secret-signature');
 });
 
 test('send webhook notification redacts webhook secrets from request logs without changing delivery', function () {

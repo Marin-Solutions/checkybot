@@ -187,9 +187,11 @@ test('webhook channel list send test action records failed delivery evidence', f
 });
 
 test('webhook channel list send test action records connection failure evidence', function () {
+    $url = 'https://example.com/webhook/secret-token?signature=secret-signature';
+
     Http::shouldReceive('POST')
         ->once()
-        ->andThrow(new ConnectionException('cURL error 6: Could not resolve host: example.com'));
+        ->andThrow(new ConnectionException('cURL error 6: Could not resolve host for '.$url));
 
     $user = $this->actingAsSuperAdmin();
 
@@ -197,7 +199,7 @@ test('webhook channel list send test action records connection failure evidence'
         'created_by' => $user->id,
         'title' => 'Incident webhook',
         'method' => 'POST',
-        'url' => 'https://example.com/webhook',
+        'url' => $url,
     ]);
 
     Livewire::test(ListNotificationChannels::class)
@@ -211,6 +213,8 @@ test('webhook channel list send test action records connection failure evidence'
     expect($channel->last_delivery_response_code)->toBeNull();
     expect($channel->last_delivery_summary)->toContain('No response');
     expect($channel->last_delivery_summary)->toContain('Could not resolve host');
+    expect($channel->last_delivery_summary)->not->toContain('secret-token');
+    expect($channel->last_delivery_summary)->not->toContain('secret-signature');
 });
 
 test('webhook channel list masks webhook path query and request body values', function () {
