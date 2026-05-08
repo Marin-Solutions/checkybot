@@ -15,6 +15,7 @@ if (config('telescope.enabled')) {
     Schedule::command('telescope:prune --hours=24')->hourly();
 }
 Schedule::command('server:check-rules')->everyMinute();
+Schedule::command('monitor-actions:expire-stuck')->everyMinute()->withoutOverlapping();
 Schedule::command('monitor:check-apis')->everyMinute()->withoutOverlapping();
 Schedule::command('seo:expire-stuck')->everyMinute()->withoutOverlapping();
 Schedule::command('seo:run-scheduled')->everyMinute()->withoutOverlapping();
