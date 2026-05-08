@@ -90,9 +90,25 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
         $baseUrl = $this->failureEvidenceUrl();
         $transportError = UptimeTransportError::fromThrowable($exception);
         $scanSource = $this->sourceLabel();
+        $failureEvidence = $this->startupFailureEvidence($checkedAt, $scanSource, $transportError);
         $shouldNotify = false;
 
-        DB::transaction(function () use ($baseUrl, $checkedAt, $scanSource, $transportError, &$shouldNotify): void {
+        DB::transaction(function () use ($baseUrl, $checkedAt, $failureEvidence, &$shouldNotify): void {
+            $inserted = OutboundLink::query()->insertOrIgnore([array_merge([
+                'website_id' => $this->website->id,
+                'found_on' => $baseUrl,
+                'outgoing_url' => $baseUrl,
+                'created_at' => $checkedAt,
+                'updated_at' => $checkedAt,
+            ], $failureEvidence)]);
+
+            if ($inserted === 1) {
+                $shouldNotify = true;
+                $this->markOutboundStartupFailureRecorded($checkedAt);
+
+                return;
+            }
+
             $link = OutboundLink::query()
                 ->where('website_id', $this->website->id)
                 ->where('found_on', $baseUrl)
@@ -102,26 +118,9 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
 
             $shouldNotify = ! $this->isBrokenEvidence($link);
 
-            $link ??= new OutboundLink([
-                'website_id' => $this->website->id,
-                'found_on' => $baseUrl,
-                'outgoing_url' => $baseUrl,
-            ]);
+            $link?->forceFill($failureEvidence)->save();
 
-            $link->forceFill([
-                'http_status_code' => null,
-                'transport_error_type' => $transportError['type']->value,
-                'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage(
-                    "Outbound {$scanSource} scan failed before crawling started: {$transportError['message']}"
-                ),
-                'transport_error_code' => $transportError['code'],
-                'last_checked_at' => $checkedAt,
-            ])->save();
-
-            $this->website->forceFill([
-                'last_outbound_checked_at' => $checkedAt,
-                'outbound_scan_queued_at' => null,
-            ])->save();
+            $this->markOutboundStartupFailureRecorded($checkedAt);
         });
 
         if ($shouldNotify) {
@@ -132,6 +131,27 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
                 $this->startupFailureSummary($baseUrl, $transportError['type']->value),
             );
         }
+    }
+
+    private function startupFailureEvidence(Carbon $checkedAt, string $scanSource, array $transportError): array
+    {
+        return [
+            'http_status_code' => null,
+            'transport_error_type' => $transportError['type']->value,
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage(
+                "Outbound {$scanSource} scan failed before crawling started: {$transportError['message']}"
+            ),
+            'transport_error_code' => $transportError['code'],
+            'last_checked_at' => $checkedAt,
+        ];
+    }
+
+    private function markOutboundStartupFailureRecorded(Carbon $checkedAt): void
+    {
+        $this->website->forceFill([
+            'last_outbound_checked_at' => $checkedAt,
+            'outbound_scan_queued_at' => null,
+        ])->save();
     }
 
     private function isBrokenEvidence(?OutboundLink $link): bool
