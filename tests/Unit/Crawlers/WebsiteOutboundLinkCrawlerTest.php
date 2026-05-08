@@ -249,7 +249,7 @@ test('sends notification setting alert for newly failed outbound transport', fun
         return $mail->hasTo('alerts@example.com')
             && $mail->event === 'outbound_link_broken'
             && $mail->status === 'danger'
-            && str_contains($mail->summary, 'https://external.com/page could not be reached (dns) from https://example.com/source');
+            && str_contains($mail->summary, 'https://external.com/page could not be reached (DNS failure) from https://example.com/source');
     });
 });
 

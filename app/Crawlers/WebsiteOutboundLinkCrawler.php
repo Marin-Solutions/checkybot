@@ -327,7 +327,7 @@ class WebsiteOutboundLinkCrawler extends CrawlObserver
     protected function brokenOutboundLinkSummaryLine(array $link): string
     {
         if (! empty($link['transport_error_type'])) {
-            $reason = str_replace('_', ' ', $link['transport_error_type']);
+            $reason = UptimeTransportError::label($link['transport_error_type']);
 
             return "{$link['outgoing_url']} could not be reached ({$reason}) from {$link['found_on']}";
         }
