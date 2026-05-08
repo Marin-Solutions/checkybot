@@ -213,6 +213,32 @@ test('control api rejects malformed and unsupported check urls', function (strin
     'fragment only' => ['#health'],
 ]);
 
+test('control api normalizes surrounding whitespace before storing check urls', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/trimmed-absolute-url', [
+            'name' => 'Trimmed absolute URL',
+            'url' => ' https://status.scrappa.test/health ',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.check.url', 'https://status.scrappa.test/health');
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/trimmed-relative-url', [
+            'name' => 'Trimmed relative URL',
+            'url' => ' /health ',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.check.url', 'https://api.scrappa.test/health');
+
+    expect(MonitorApis::query()
+        ->whereIn('package_name', ['trimmed-absolute-url', 'trimmed-relative-url'])
+        ->pluck('request_path', 'package_name')
+        ->all())->toBe([
+            'trimmed-absolute-url' => 'https://status.scrappa.test/health',
+            'trimmed-relative-url' => '/health',
+        ]);
+});
+
 test('control api rejects invalid regex assertion patterns', function () {
     $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/regex-health', [

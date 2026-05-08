@@ -95,9 +95,7 @@ class UpsertControlCheckRequest extends FormRequest
 
     private function isValidControlCheckUrl(string $url): bool
     {
-        $url = trim($url);
-
-        if ($url === '' || preg_match('/\s/', $url) === 1) {
+        if ($url === '' || trim($url) !== $url || preg_match('/\s/', $url) === 1) {
             return false;
         }
 
