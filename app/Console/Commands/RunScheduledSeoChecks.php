@@ -8,6 +8,7 @@ use App\Models\SeoSchedule;
 use App\Services\RobotsSitemapService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class RunScheduledSeoChecks extends Command
 {
@@ -46,6 +47,8 @@ class RunScheduledSeoChecks extends Command
         $bar->start();
 
         foreach ($schedules as $schedule) {
+            $seoCheck = null;
+
             try {
                 $website = $schedule->website;
 
@@ -133,10 +136,10 @@ class RunScheduledSeoChecks extends Command
                 $this->line("Started scheduled SEO check for: {$schedule->website->url}");
 
                 Log::info("Scheduled SEO check started for website: {$schedule->website->url} (Schedule ID: {$schedule->id})");
-            } catch (\Exception $e) {
-                $this->error("Failed to start SEO check for {$schedule->website->url}: ".$e->getMessage());
+            } catch (Throwable $e) {
+                $this->recordStartupFailure($schedule, $e, $seoCheck);
 
-                Log::error("Failed to start scheduled SEO check for website {$schedule->website->url}: ".$e->getMessage());
+                $this->error("Failed to start SEO check for {$schedule->website->url}: ".$e->getMessage());
             }
 
             $bar->advance();
@@ -147,5 +150,78 @@ class RunScheduledSeoChecks extends Command
         $this->info('Scheduled SEO checks processing completed.');
 
         return Command::SUCCESS;
+    }
+
+    protected function recordStartupFailure(SeoSchedule $schedule, Throwable $exception, ?SeoCheck $seoCheck = null): void
+    {
+        $website = $schedule->website;
+        $failedAt = now();
+        $summary = 'Scheduled SEO check could not start: '.$exception->getMessage();
+        $failureContext = [
+            'failure_reason' => 'scheduled_startup_failed',
+            'website_url' => $website->url,
+            'schedule_id' => $schedule->id,
+            'scheduled_by' => $schedule->created_by,
+            'exception_class' => get_class($exception),
+            'exception_message' => $exception->getMessage(),
+            'checked_at' => $failedAt->toIso8601String(),
+        ];
+        $crawlSummary = array_merge($seoCheck?->crawl_summary ?? [], [
+            'scheduled_by' => $schedule->created_by,
+            'schedule_id' => $schedule->id,
+            'is_scheduled' => true,
+            'failure_reason' => 'scheduled_startup_failed',
+            'summary' => $summary,
+        ]);
+
+        try {
+            if ($seoCheck) {
+                $seoCheck->update([
+                    'status' => 'failed',
+                    'progress' => 0,
+                    'started_at' => $seoCheck->started_at ?? $failedAt,
+                    'finished_at' => $failedAt,
+                    'failure_summary' => $summary,
+                    'failure_context' => $failureContext,
+                    'crawl_summary' => $crawlSummary,
+                ]);
+            } else {
+                SeoCheck::create([
+                    'website_id' => $schedule->website_id,
+                    'status' => 'failed',
+                    'progress' => 0,
+                    'total_urls_crawled' => 0,
+                    'total_crawlable_urls' => 0,
+                    'sitemap_used' => false,
+                    'robots_txt_checked' => false,
+                    'started_at' => $failedAt,
+                    'finished_at' => $failedAt,
+                    'failure_summary' => $summary,
+                    'failure_context' => $failureContext,
+                    'crawl_summary' => $crawlSummary,
+                ]);
+            }
+        } catch (Throwable $recordException) {
+            Log::error("Failed to record scheduled SEO startup failure for website {$website->url}: ".$recordException->getMessage(), [
+                'schedule_id' => $schedule->id,
+                'original_exception' => $exception->getMessage(),
+            ]);
+        }
+
+        try {
+            $schedule->updateNextRun();
+        } catch (Throwable $scheduleException) {
+            Log::error("Failed to advance scheduled SEO check after startup failure for website {$website->url}: ".$scheduleException->getMessage(), [
+                'schedule_id' => $schedule->id,
+                'original_exception' => $exception->getMessage(),
+            ]);
+
+            return;
+        }
+
+        Log::error("Failed to start scheduled SEO check for website {$website->url}: ".$exception->getMessage()." Schedule advanced to {$schedule->next_run_at}.", [
+            'schedule_id' => $schedule->id,
+            'seo_check_id' => $seoCheck?->id,
+        ]);
     }
 }

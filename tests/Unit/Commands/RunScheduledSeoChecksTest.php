@@ -349,7 +349,7 @@ test('command handles exceptions gracefully', function () {
         'url' => 'https://example.com',
     ]);
 
-    SeoSchedule::create([
+    $schedule = SeoSchedule::create([
         'website_id' => $website->id,
         'created_by' => $user->id,
         'frequency' => 'daily',
@@ -357,15 +357,56 @@ test('command handles exceptions gracefully', function () {
         'is_active' => true,
         'next_run_at' => now()->subHour(),
     ]);
+    $originalNextRun = $schedule->next_run_at->copy();
 
     $mockService = $this->mock(RobotsSitemapService::class);
     $mockService->shouldReceive('getCrawlableUrls')
-        ->andThrow(new \Exception('Service error'));
+        ->with($website->url)
+        ->andThrow(new \RuntimeException('Service error'));
 
     $this->artisan('seo:run-scheduled')
         ->assertSuccessful();
 
-    Log::shouldHaveReceived('error')->once();
+    Queue::assertNotPushed(SeoHealthCheckJob::class);
+
+    $schedule->refresh();
+
+    expect($schedule->last_run_at)->not->toBeNull();
+    expect($schedule->next_run_at->equalTo($originalNextRun))->toBeFalse();
+    expect($schedule->next_run_at->isFuture())->toBeTrue();
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->first();
+
+    expect($seoCheck)->not->toBeNull()
+        ->and($seoCheck->status)->toBe('failed')
+        ->and($seoCheck->total_urls_crawled)->toBe(0)
+        ->and($seoCheck->total_crawlable_urls)->toBe(0)
+        ->and($seoCheck->robots_txt_checked)->toBeFalse()
+        ->and($seoCheck->started_at)->not->toBeNull()
+        ->and($seoCheck->finished_at)->not->toBeNull()
+        ->and($seoCheck->finished_at->equalTo($seoCheck->started_at))->toBeTrue()
+        ->and($seoCheck->failure_summary)->toBe('Scheduled SEO check could not start: Service error')
+        ->and($seoCheck->failure_context)->toMatchArray([
+            'failure_reason' => 'scheduled_startup_failed',
+            'website_url' => $website->url,
+            'schedule_id' => $schedule->id,
+            'scheduled_by' => $user->id,
+            'exception_class' => RuntimeException::class,
+            'exception_message' => 'Service error',
+        ])
+        ->and($seoCheck->failure_context['checked_at'])->not->toBeEmpty()
+        ->and($seoCheck->crawl_summary['scheduled_by'])->toBe($user->id)
+        ->and($seoCheck->crawl_summary['schedule_id'])->toBe($schedule->id)
+        ->and($seoCheck->crawl_summary['is_scheduled'])->toBeTrue()
+        ->and($seoCheck->crawl_summary['failure_reason'])->toBe('scheduled_startup_failed')
+        ->and($seoCheck->crawl_summary['summary'])->toBe('Scheduled SEO check could not start: Service error');
+
+    Log::shouldHaveReceived('error')
+        ->withArgs(function ($message) use ($schedule, $website) {
+            return str_contains($message, "Failed to start scheduled SEO check for website {$website->url}: Service error")
+                && str_contains($message, (string) $schedule->next_run_at);
+        })
+        ->once();
 });
 
 test('command displays progress bar', function () {
