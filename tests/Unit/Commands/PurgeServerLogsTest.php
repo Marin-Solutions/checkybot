@@ -2,7 +2,9 @@
 
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
+use App\Models\ServerLogFileHistory;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Storage;
 
 test('command can be executed', function () {
     $this->artisan('app:purge-server-logs')
@@ -272,6 +274,98 @@ test('command deletes matching records across multiple chunks', function () {
 
     assertDatabaseHas('server_information_history', ['id' => $keepLog->id]);
     expect(ServerInformationHistory::count())->toBe(1);
+});
+
+test('command deletes expired uploaded server log files and history rows', function () {
+    Storage::fake();
+    config(['monitor.server_log_file_retention_days' => 30]);
+
+    $expired = ServerLogFileHistory::factory()->create([
+        'log_file_name' => 'ServerLogFiles/expired.log',
+        'created_at' => now()->subDays(31),
+    ]);
+    $recent = ServerLogFileHistory::factory()->create([
+        'log_file_name' => 'ServerLogFiles/recent.log',
+        'created_at' => now()->subDays(29),
+    ]);
+
+    Storage::put($expired->log_file_name, 'expired log');
+    Storage::put($recent->log_file_name, 'recent log');
+
+    $this->artisan('app:purge-server-logs')
+        ->expectsOutput('Purged 1 uploaded server log files older than 30 days.')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('server_log_file_histories', ['id' => $expired->id]);
+    assertDatabaseHas('server_log_file_histories', ['id' => $recent->id]);
+    Storage::assertMissing($expired->log_file_name);
+    Storage::assertExists($recent->log_file_name);
+});
+
+test('command deletes expired uploaded server log histories across multiple chunks', function () {
+    Storage::fake();
+    config(['monitor.server_log_file_retention_days' => 30]);
+
+    foreach ([1, 2, 3] as $index) {
+        $history = ServerLogFileHistory::factory()->create([
+            'log_file_name' => "ServerLogFiles/expired-{$index}.log",
+            'created_at' => now()->subDays(45),
+        ]);
+
+        Storage::put($history->log_file_name, "expired log {$index}");
+    }
+
+    $this->artisan('app:purge-server-logs --chunk=2')
+        ->expectsOutput('Purged 3 uploaded server log files older than 30 days.')
+        ->assertSuccessful();
+
+    expect(ServerLogFileHistory::count())->toBe(0);
+    Storage::assertMissing('ServerLogFiles/expired-1.log');
+    Storage::assertMissing('ServerLogFiles/expired-2.log');
+    Storage::assertMissing('ServerLogFiles/expired-3.log');
+});
+
+test('command only deletes managed server log file paths from storage', function () {
+    Storage::fake();
+    config(['monitor.server_log_file_retention_days' => 30]);
+
+    $managed = ServerLogFileHistory::factory()->create([
+        'log_file_name' => 'ServerLogFiles/expired.log',
+        'created_at' => now()->subDays(31),
+    ]);
+    $unmanaged = ServerLogFileHistory::factory()->create([
+        'log_file_name' => 'other/expired.log',
+        'created_at' => now()->subDays(31),
+    ]);
+
+    Storage::put($managed->log_file_name, 'managed log');
+    Storage::put($unmanaged->log_file_name, 'unmanaged log');
+
+    $this->artisan('app:purge-server-logs')
+        ->assertSuccessful();
+
+    assertDatabaseMissing('server_log_file_histories', ['id' => $managed->id]);
+    assertDatabaseMissing('server_log_file_histories', ['id' => $unmanaged->id]);
+    Storage::assertMissing($managed->log_file_name);
+    Storage::assertExists($unmanaged->log_file_name);
+});
+
+test('command skips uploaded server log file purge when retention is disabled', function () {
+    Storage::fake();
+    config(['monitor.server_log_file_retention_days' => 0]);
+
+    $expired = ServerLogFileHistory::factory()->create([
+        'log_file_name' => 'ServerLogFiles/expired.log',
+        'created_at' => now()->subDays(31),
+    ]);
+
+    Storage::put($expired->log_file_name, 'expired log');
+
+    $this->artisan('app:purge-server-logs')
+        ->assertSuccessful();
+
+    assertDatabaseHas('server_log_file_histories', ['id' => $expired->id]);
+    Storage::assertExists($expired->log_file_name);
 });
 
 test('scheduled server log purge uses hourly overlap protection', function () {
