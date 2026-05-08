@@ -189,6 +189,8 @@ test('super admin can update api monitor execution settings', function () {
         'expected_status' => 200,
         'timeout_seconds' => null,
         'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'API heartbeat failed.',
         'save_failed_response' => true,
         'request_body_type' => null,
         'request_body' => null,
@@ -216,6 +218,8 @@ test('super admin can update api monitor execution settings', function () {
         ->and($monitor->timeout_seconds)->toBe(30)
         ->and($monitor->package_interval)->toBe('15m')
         ->and($monitor->is_enabled)->toBeFalse()
+        ->and($monitor->current_status)->toBe('unknown')
+        ->and($monitor->status_summary)->toBe('Disabled in Checkybot admin.')
         ->and($monitor->request_body_type)->toBe('raw')
         ->and($monitor->request_body)->toBe('status=active')
         ->and($monitor->save_failed_response)->toBeFalse();
@@ -516,13 +520,17 @@ test('super admin can toggle is_enabled inline from the api monitors table', fun
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
         'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'API heartbeat failed.',
     ]);
 
     Livewire::test(ListMonitorApis::class)
         ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), false)
         ->assertNotified();
 
-    expect($monitor->refresh()->is_enabled)->toBeFalse();
+    expect($monitor->refresh()->is_enabled)->toBeFalse()
+        ->and($monitor->current_status)->toBe('unknown')
+        ->and($monitor->status_summary)->toBe('Disabled in Checkybot admin.');
 
     Livewire::test(ListMonitorApis::class)
         ->call('updateTableColumnState', 'is_enabled', $monitor->getKey(), true)
@@ -1013,13 +1021,17 @@ test('super admin can bulk disable api monitors', function () {
     $monitors = MonitorApis::factory()->count(3)->create([
         'created_by' => $user->id,
         'is_enabled' => true,
+        'current_status' => 'warning',
+        'status_summary' => 'API heartbeat returned warning.',
     ]);
 
     Livewire::test(ListMonitorApis::class)
         ->callTableBulkAction('disable', $monitors);
 
     foreach ($monitors as $monitor) {
-        expect($monitor->refresh()->is_enabled)->toBeFalse();
+        expect($monitor->refresh()->is_enabled)->toBeFalse()
+            ->and($monitor->current_status)->toBe('unknown')
+            ->and($monitor->status_summary)->toBe('Disabled in Checkybot admin.');
     }
 });
 
