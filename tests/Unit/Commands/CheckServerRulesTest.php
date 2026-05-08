@@ -147,6 +147,48 @@ test('command skips stale server reporter data without recovering triggered aler
     expect($rule->last_reported_at->toDateTimeString())->toBe($reportedAt->toDateTimeString());
 });
 
+test('command records skipped evidence when rule metric is unreadable', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $server = Server::factory()->create();
+    $reportedAt = now()->subMinute();
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 5,
+        'created_at' => $reportedAt,
+    ]);
+
+    $rule = ServerRule::factory()->create([
+        'server_id' => $server->id,
+        'metric' => 'swap_usage',
+        'operator' => '>',
+        'value' => 90,
+        'is_triggered' => true,
+        'triggered_at' => now()->subMinutes(10),
+        'last_evaluated_value' => 95,
+        'last_evaluated_at' => now()->subMinutes(2),
+        'last_evaluation_status' => 'evaluated',
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Could not get current value for swap_usage on server {$server->name}")
+        ->assertSuccessful();
+
+    Http::assertNothingSent();
+
+    $rule->refresh();
+
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->last_evaluated_value)->toBeNull();
+    expect($rule->last_evaluated_at)->not->toBeNull();
+    expect($rule->last_evaluation_status)->toBe('skipped_unreadable_metric');
+    expect($rule->last_evaluation_reason)->toBe('Latest reporter data does not include a readable swap_usage sample for this rule.');
+    expect($rule->last_reported_at->toDateTimeString())->toBe($reportedAt->toDateTimeString());
+});
+
 test('command evaluates cpu usage rule', function () {
     $server = Server::factory()->create(['cpu_cores' => 4]);
 

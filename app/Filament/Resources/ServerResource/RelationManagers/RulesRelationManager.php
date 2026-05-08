@@ -90,6 +90,7 @@ class RulesRelationManager extends RelationManager
                     ->color(fn (string $state): string => match ($state) {
                         'Triggered' => 'danger',
                         'Reporter stale' => 'warning',
+                        'Metric unreadable' => 'warning',
                         'Recovered' => 'success',
                         'Inactive' => 'gray',
                         'Awaiting data' => 'gray',
@@ -171,6 +172,10 @@ class RulesRelationManager extends RelationManager
             return 'Reporter stale';
         }
 
+        if ($record->last_evaluation_status === 'skipped_unreadable_metric') {
+            return 'Metric unreadable';
+        }
+
         if ($record->last_evaluation_status === 'skipped_missing_reporter') {
             return 'Awaiting data';
         }
@@ -184,11 +189,13 @@ class RulesRelationManager extends RelationManager
 
     private function stateDescription($record): ?string
     {
-        if (in_array($record->last_evaluation_status, ['skipped_missing_reporter', 'skipped_stale_reporter'], true)) {
+        if (in_array($record->last_evaluation_status, ['skipped_missing_reporter', 'skipped_stale_reporter', 'skipped_unreadable_metric'], true)) {
             if ($record->is_triggered) {
-                return $record->last_evaluation_status === 'skipped_missing_reporter'
-                    ? 'Reporter data is missing; alert remains triggered until fresh data confirms recovery.'
-                    : 'Reporter data is stale; alert remains triggered until a fresh sample confirms recovery.';
+                return match ($record->last_evaluation_status) {
+                    'skipped_missing_reporter' => 'Reporter data is missing; alert remains triggered until fresh data confirms recovery.',
+                    'skipped_stale_reporter' => 'Reporter data is stale; alert remains triggered until a fresh sample confirms recovery.',
+                    default => 'Reporter data is unreadable; alert remains triggered until a readable sample confirms recovery.',
+                };
             }
 
             return $record->last_evaluation_reason;
@@ -211,6 +218,12 @@ class RulesRelationManager extends RelationManager
 
         if ($record->last_evaluation_status === 'skipped_missing_reporter') {
             return 'No reporter samples received';
+        }
+
+        if ($record->last_evaluation_status === 'skipped_unreadable_metric') {
+            return $record->last_reported_at instanceof Carbon
+                ? 'Latest reporter sample '.$record->last_reported_at->diffForHumans()
+                : 'Reporter sample is unreadable';
         }
 
         return $record->last_evaluated_at?->diffForHumans();
