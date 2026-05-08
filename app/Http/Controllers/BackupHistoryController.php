@@ -59,6 +59,7 @@ class BackupHistoryController extends Controller
         ]);
 
         $server->recordReporterMetadata($request);
+        $wasMissingExpectedRun = $backup->markHistoryReceived($backupHistory->created_at);
 
         if (! $backupHistory->is_zipped || ! $backupHistory->is_uploaded) {
             $notifications->notifyBackup(
@@ -66,6 +67,13 @@ class BackupHistoryController extends Controller
                 'backup_failed',
                 'danger',
                 $this->failureSummary($backupHistory),
+            );
+        } elseif ($wasMissingExpectedRun) {
+            $notifications->notifyBackup(
+                $backup,
+                'recovered',
+                'healthy',
+                'Backup reporter recovered. Latest run reported at '.$backupHistory->created_at->toDayDateTimeString().'.',
             );
         }
 

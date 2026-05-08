@@ -250,6 +250,56 @@ test('backup history intake does not send notification when backup succeeds', fu
     Mail::assertNothingSent();
 });
 
+test('backup history intake clears missed run state and sends recovery notification', function () {
+    Mail::fake();
+
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+    $backup = Backup::query()->create([
+        'server_id' => $server->id,
+        'dir_path' => '/var/www/html',
+        'remote_storage_id' => 1,
+        'remote_storage_path' => '/',
+        'interval_id' => '1',
+        'compression_type' => 'zip',
+    ]);
+    $backup->forceFill(['stale_at' => now()->subHour()])->save();
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $server->created_by,
+            'inspection' => WebsiteServicesEnum::BACKUP_MONITOR,
+        ]);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer server-token',
+        'User-Agent' => 'checkybot-backup-reporter/1.0',
+    ])
+        ->postJson('/api/v1/backup-history', [
+            'bi' => $backup->id,
+            'nf' => 'site-backup.zip',
+            'sf' => 2048,
+            'iz' => 1,
+            'iu' => 1,
+        ])
+        ->assertOk();
+
+    $backup->refresh();
+
+    expect($backup->stale_at)->toBeNull()
+        ->and($backup->last_history_at)->not->toBeNull();
+
+    Mail::assertSent(HealthStatusAlert::class, function (HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->status === 'healthy'
+            && str_contains($mail->summary, 'Backup reporter recovered');
+    });
+});
+
 test('server reporter intake still rejects invalid tokens', function () {
     $server = Server::factory()->create([
         'ip' => '192.0.2.10',

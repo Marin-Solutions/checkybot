@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\URL;
@@ -33,6 +35,8 @@ class Backup extends Model
     protected $casts = [
         'delete_local_on_fail' => 'boolean',
         'first_run_at' => 'datetime',
+        'last_history_at' => 'datetime',
+        'stale_at' => 'datetime',
     ];
 
     public function server(): \Illuminate\Database\Eloquent\Relations\BelongsTo
@@ -53,6 +57,111 @@ class Backup extends Model
     public function histories(): HasMany
     {
         return $this->hasMany(BackupHistory::class);
+    }
+
+    public function latestHistory(): HasOne
+    {
+        return $this->hasOne(BackupHistory::class)->latestOfMany();
+    }
+
+    public function addExpectedInterval(CarbonInterface $date): ?CarbonInterface
+    {
+        $interval = $this->interval;
+
+        if (! $interval) {
+            return null;
+        }
+
+        return match (true) {
+            str_contains($interval->unit, 'hour') => $date->copy()->addHours($interval->value),
+            str_contains($interval->unit, 'day') => $date->copy()->addDays($interval->value),
+            str_contains($interval->unit, 'week') => $date->copy()->addWeeks($interval->value),
+            str_contains($interval->unit, 'month') => $date->copy()->addMonthsNoOverflow($interval->value),
+            default => null,
+        };
+    }
+
+    public function latestHistoryReceivedAt(): ?CarbonInterface
+    {
+        return $this->last_history_at ?? $this->latestHistory?->created_at;
+    }
+
+    public function freshnessThresholdAt(): ?CarbonInterface
+    {
+        $referenceTime = $this->latestHistoryReceivedAt()
+            ?? $this->first_run_at
+            ?? $this->created_at;
+
+        return $referenceTime
+            ? $this->addExpectedInterval($referenceTime)
+            : null;
+    }
+
+    public function isMissingExpectedRun(): bool
+    {
+        if ($this->stale_at !== null) {
+            return true;
+        }
+
+        $thresholdAt = $this->freshnessThresholdAt();
+
+        return $thresholdAt !== null && $thresholdAt->lt(now());
+    }
+
+    public function freshnessState(): string
+    {
+        if ($this->isMissingExpectedRun()) {
+            return 'Missed run';
+        }
+
+        if ($this->latestHistoryReceivedAt() === null) {
+            return 'Awaiting first run';
+        }
+
+        return 'Fresh';
+    }
+
+    public function freshnessSummary(): string
+    {
+        $thresholdAt = $this->freshnessThresholdAt();
+        $lastHistoryAt = $this->latestHistoryReceivedAt();
+
+        if ($this->isMissingExpectedRun()) {
+            return 'No backup run has reported since '.($lastHistoryAt?->diffForHumans() ?? 'setup').'. Expected by '.($thresholdAt?->toDayDateTimeString() ?? 'the configured interval').'.';
+        }
+
+        if ($lastHistoryAt === null) {
+            return $thresholdAt
+                ? 'First run expected by '.$thresholdAt->toDayDateTimeString().'.'
+                : 'No interval is configured for freshness tracking.';
+        }
+
+        return 'Last run reported '.$lastHistoryAt->diffForHumans().'.';
+    }
+
+    public function missedRunSummary(): string
+    {
+        $thresholdAt = $this->freshnessThresholdAt();
+        $lastHistoryAt = $this->latestHistoryReceivedAt();
+        $intervalLabel = $this->interval?->label ?? 'configured';
+
+        if ($lastHistoryAt === null) {
+            return "No backup run has reported after the expected {$intervalLabel} interval. Expected by ".($thresholdAt?->toDayDateTimeString() ?? 'the configured schedule').'.';
+        }
+
+        return "No backup run has reported since {$lastHistoryAt->toDayDateTimeString()}. Expected another run by ".($thresholdAt?->toDayDateTimeString() ?? "the {$intervalLabel} interval").'.';
+    }
+
+    public function markHistoryReceived(CarbonInterface $receivedAt): bool
+    {
+        $wasStale = $this->stale_at !== null;
+
+        $this->forceFill([
+            'last_history_at' => $receivedAt,
+            'stale_at' => null,
+        ])->save();
+
+        return $wasStale;
     }
 
     public static function copyCommand(Backup $backup): string
