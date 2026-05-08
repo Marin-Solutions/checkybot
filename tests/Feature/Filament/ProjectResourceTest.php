@@ -769,7 +769,9 @@ test('application record shows package-managed external checks including archive
         ->assertSee('Awaiting first package heartbeat.')
         ->assertSee('Fresh')
         ->assertSee('Awaiting heartbeat')
-        ->assertSee('Disabled');
+        ->assertSee('Disabled')
+        ->assertSee('This check is disabled. Scheduled runs are paused.')
+        ->assertSee('Monitor is disabled. Heartbeats are not expected.');
 
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)

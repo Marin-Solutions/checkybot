@@ -39,9 +39,15 @@ class PackageManagedApisRelationManager extends RelationManager
                     }),
                 TextColumn::make('deleted_at')
                     ->label('State')
-                    ->state(fn (MonitorApis $record): string => $record->deleted_at ? 'Archived' : 'Active')
+                    ->state(fn (MonitorApis $record): string => $this->monitoringState($record))
                     ->badge()
-                    ->color(fn (string $state): string => $state === 'Archived' ? 'gray' : 'success'),
+                    ->color(fn (string $state): string => match ($state) {
+                        'Active' => 'success',
+                        'Disabled' => 'warning',
+                        'Archived' => 'gray',
+                        default => 'gray',
+                    })
+                    ->description(fn (MonitorApis $record): ?string => $this->monitoringStateDescription($record)),
                 TextColumn::make('status_summary')
                     ->label('Summary')
                     ->wrap()
@@ -69,5 +75,23 @@ class PackageManagedApisRelationManager extends RelationManager
                     SoftDeletingScope::class,
                 ]))
             ->defaultSort('title');
+    }
+
+    private function monitoringState(MonitorApis $record): string
+    {
+        if ($record->is_enabled === false) {
+            return 'Disabled';
+        }
+
+        return $record->deleted_at ? 'Archived' : 'Active';
+    }
+
+    private function monitoringStateDescription(MonitorApis $record): ?string
+    {
+        if ($record->is_enabled === false) {
+            return 'This check is disabled. Scheduled runs are paused.';
+        }
+
+        return null;
     }
 }
