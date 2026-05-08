@@ -61,9 +61,11 @@ class ListSeoChecks extends ListRecords
                             'record' => $seoCheck,
                         ]));
                     } catch (\Exception $e) {
+                        report($e);
+
                         Notification::make()
                             ->title('Error Starting SEO Check')
-                            ->body('Failed to start SEO check: '.$e->getMessage())
+                            ->body('Failed to start SEO check. Please try again in a moment.')
                             ->danger()
                             ->send();
                     }
