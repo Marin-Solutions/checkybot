@@ -359,3 +359,34 @@ test('formats ploi site import summary with server counts', function () {
     expect(PloiSiteImportService::formatImportSummary($summary))
         ->toBe('Imported/updated 2 sites. 1 server imported. 1 server skipped. 1 server failed. Failed servers: Failing Server.');
 });
+
+test('formats ploi site import summary without failed servers when all servers are healthy', function () {
+    $summary = [
+        'imported' => 4,
+        'imported_servers' => 2,
+        'skipped_servers' => 0,
+        'failed_servers' => 0,
+        'failures' => [],
+    ];
+
+    expect(PloiSiteImportService::formatImportSummary($summary))
+        ->toBe('Imported/updated 4 sites. 2 servers imported. 0 servers skipped. 0 servers failed.');
+});
+
+test('formats ploi site import summary with first three failed servers', function () {
+    $summary = [
+        'imported' => 0,
+        'imported_servers' => 0,
+        'skipped_servers' => 0,
+        'failed_servers' => 4,
+        'failures' => [
+            ['server_id' => 100, 'server_name' => 'First Server', 'message' => 'Failed'],
+            ['server_id' => 200, 'server_name' => 'Second Server', 'message' => 'Failed'],
+            ['server_id' => 300, 'server_name' => 'Third Server', 'message' => 'Failed'],
+            ['server_id' => 400, 'server_name' => 'Fourth Server', 'message' => 'Failed'],
+        ],
+    ];
+
+    expect(PloiSiteImportService::formatImportSummary($summary))
+        ->toBe('Imported/updated 0 sites. 0 servers imported. 0 servers skipped. 4 servers failed. Failed servers: First Server, Second Server, Third Server.');
+});

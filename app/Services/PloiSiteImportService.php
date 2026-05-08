@@ -136,7 +136,6 @@ class PloiSiteImportService
             $failedServers = collect($summary['failures'])
                 ->take(3)
                 ->map(fn (array $failure): string => $failure['server_name'] ?: (string) $failure['server_id'])
-                ->filter()
                 ->join(', ');
 
             if ($failedServers !== '') {

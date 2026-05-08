@@ -118,9 +118,10 @@ class ServersRelationManager extends RelationManager
                             $summary = $service->importWithSummary($record);
 
                             \Filament\Notifications\Notification::make()
-                                ->title($summary['failed_servers'] > 0 ? 'Import failed' : 'Import complete')
+                                ->title($summary['failed_servers'] > 0 ? 'Import completed with failures' : 'Import complete')
                                 ->body(\App\Services\PloiSiteImportService::formatImportSummary($summary))
-                                ->status($summary['failed_servers'] > 0 ? 'danger' : 'success')
+                                ->status($summary['failed_servers'] > 0 ? 'warning' : 'success')
+                                ->persistent()
                                 ->send();
                         } catch (\Exception $e) {
                             \Filament\Notifications\Notification::make()
