@@ -77,7 +77,7 @@ class SyncProjectChecksRequest extends FormRequest
             'api_checks.*.assertions.*.assertion_type' => ['required', 'in:exists,not_exists,type_check,value_compare,array_length,regex_match'],
             'api_checks.*.assertions.*.expected_type' => ['nullable', 'string'],
             'api_checks.*.assertions.*.comparison_operator' => ['nullable', 'in:=,!=,>,>=,<,<=,contains'],
-            'api_checks.*.assertions.*.expected_value' => ['nullable', 'string'],
+            'api_checks.*.assertions.*.expected_value' => ['nullable'],
             'api_checks.*.assertions.*.regex_pattern' => ['nullable', 'string'],
             'api_checks.*.assertions.*.sort_order' => ['integer', 'min:1'],
             'api_checks.*.assertions.*.is_active' => ['boolean'],
@@ -108,6 +108,12 @@ class SyncProjectChecksRequest extends FormRequest
                 if (! is_array($check) || ! is_array($check['assertions'] ?? null)) {
                     continue;
                 }
+
+                $this->addExpectedValueShapeValidationErrors(
+                    $validator,
+                    $check['assertions'],
+                    "api_checks.{$checkIndex}.assertions"
+                );
 
                 $this->addRegexAssertionValidationErrors(
                     $validator,

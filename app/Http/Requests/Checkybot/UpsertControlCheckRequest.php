@@ -79,6 +79,12 @@ class UpsertControlCheckRequest extends FormRequest
                 return;
             }
 
+            $this->addExpectedValueShapeValidationErrors(
+                $validator,
+                $assertions,
+                'assertions'
+            );
+
             $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');
         });
     }

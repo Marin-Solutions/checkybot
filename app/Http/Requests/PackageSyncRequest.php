@@ -129,6 +129,12 @@ class PackageSyncRequest extends FormRequest
                 }
 
                 if (is_array($check['assertions'] ?? null)) {
+                    $this->addExpectedValueShapeValidationErrors(
+                        $validator,
+                        $check['assertions'],
+                        "checks.{$index}.assertions"
+                    );
+
                     $this->addRegexAssertionValidationErrors(
                         $validator,
                         $check['assertions'],
