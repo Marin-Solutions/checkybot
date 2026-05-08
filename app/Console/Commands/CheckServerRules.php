@@ -79,7 +79,7 @@ class CheckServerRules extends Command
                 if ($conditionIsMet && ! $rule->is_triggered) {
                     $this->info("Rule condition met for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
 
-                    if ($this->sendNotification($rule->server, $rule, $currentValue)) {
+                    if ($this->sendNotification($rule->server, $rule, $currentValue, 'alert')) {
                         $rule->forceFill($stateUpdates + [
                             'is_triggered' => true,
                             'triggered_at' => $evaluatedAt,
@@ -89,12 +89,16 @@ class CheckServerRules extends Command
                         $rule->forceFill($stateUpdates)->save();
                     }
                 } elseif (! $conditionIsMet && $rule->is_triggered) {
-                    $rule->forceFill($stateUpdates + [
-                        'is_triggered' => false,
-                        'recovered_at' => $evaluatedAt,
-                    ])->save();
-
                     $this->info("Rule recovered for server {$rule->server->name}: {$rule->metric} = {$currentValue}");
+
+                    if ($this->sendNotification($rule->server, $rule, $currentValue, 'recovery')) {
+                        $rule->forceFill($stateUpdates + [
+                            'is_triggered' => false,
+                            'recovered_at' => $evaluatedAt,
+                        ])->save();
+                    } else {
+                        $rule->forceFill($stateUpdates)->save();
+                    }
                 } else {
                     $rule->forceFill($stateUpdates)->save();
                 }
@@ -139,7 +143,7 @@ class CheckServerRules extends Command
         };
     }
 
-    private function sendNotification($server, $rule, $currentValue): bool
+    private function sendNotification($server, $rule, $currentValue, string $eventType): bool
     {
         try {
             $channel = NotificationChannels::query()
@@ -151,23 +155,28 @@ class CheckServerRules extends Command
                 return false;
             }
 
-            $message = "Alert for {$server->name} ({$server->ip})\n";
-            $message .= ucfirst(str_replace('_', ' ', $rule->metric))." is {$currentValue}% {$rule->operator} {$rule->value}%";
+            $metric = ucfirst(str_replace('_', ' ', $rule->metric));
+            $description = $eventType === 'recovery'
+                ? 'Server Monitoring Recovery'
+                : 'Server Monitoring Alert';
+            $message = $eventType === 'recovery'
+                ? "Recovery for {$server->name} ({$server->ip})\n{$metric} is back to {$currentValue}% (threshold: {$rule->operator} {$rule->value}%)"
+                : "Alert for {$server->name} ({$server->ip})\n{$metric} is {$currentValue}% {$rule->operator} {$rule->value}%";
 
             $response = $channel->sendWebhookNotification([
                 'message' => $message,
-                'description' => 'Server Monitoring Alert',
-            ]);
+                'description' => $description,
+            ], $eventType === 'recovery' ? 'server_rule_recovery' : 'send');
 
             if (! $this->webhookResponseWasSuccessful($response)) {
                 $code = (int) ($response['code'] ?? 0);
 
-                $this->error("Webhook notification failed for server {$server->name} with response code {$code}");
+                $this->error("Webhook {$eventType} notification failed for server {$server->name} with response code {$code}");
 
                 return false;
             }
 
-            $this->info("Notification sent for server {$server->name}");
+            $this->info(ucfirst($eventType)." notification sent for server {$server->name}");
 
             return true;
         } catch (\Exception $e) {

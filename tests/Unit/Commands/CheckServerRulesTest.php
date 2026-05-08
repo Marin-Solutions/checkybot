@@ -242,7 +242,7 @@ test('command reports webhook notification failure when server rule destination 
 
     $this->artisan('server:check-rules')
         ->expectsOutput("Rule condition met for server {$server->name}: ram_usage = 95")
-        ->expectsOutput("Webhook notification failed for server {$server->name} with response code 401")
+        ->expectsOutput("Webhook alert notification failed for server {$server->name} with response code 401")
         ->assertSuccessful();
 
     Http::assertSentCount(1);
@@ -279,7 +279,7 @@ test('command sends server rule notification only when threshold transitions to 
 
     $this->artisan('server:check-rules')
         ->expectsOutput("Rule condition met for server {$server->name}: ram_usage = 95")
-        ->expectsOutput("Notification sent for server {$server->name}")
+        ->expectsOutput("Alert notification sent for server {$server->name}")
         ->assertSuccessful();
 
     $this->artisan('server:check-rules')
@@ -322,17 +322,70 @@ test('command resets server rule state when threshold recovers', function () {
 
     $this->artisan('server:check-rules')
         ->expectsOutput("Rule recovered for server {$server->name}: ram_usage = 80")
+        ->expectsOutput("Recovery notification sent for server {$server->name}")
         ->assertSuccessful();
 
-    Http::assertSentCount(0);
+    Http::assertSentCount(1);
+    Http::assertSent(function ($request) use ($server) {
+        return $request->url() === 'https://example.com/server-rule-webhook'
+            && str_contains($request->data()['message'], "Recovery for {$server->name} ({$server->ip})")
+            && str_contains($request->data()['message'], 'Ram usage is back to 80% (threshold: > 90%)')
+            && $request->data()['description'] === 'Server Monitoring Recovery';
+    });
 
     $rule->refresh();
+    $channel->refresh();
 
     expect($rule->is_triggered)->toBeFalse();
     expect($rule->triggered_at)->not->toBeNull();
     expect($rule->recovered_at)->not->toBeNull();
     expect($rule->last_evaluated_value)->toBe(80.0);
     expect($rule->last_evaluated_at)->not->toBeNull();
+    expect($channel->last_delivery_kind)->toBe('server_rule_recovery');
+    expect($channel->last_delivery_succeeded)->toBeTrue();
+});
+
+test('command keeps server rule triggered when recovery notification fails', function () {
+    Http::fake([
+        '*' => Http::response(['error' => 'unavailable'], 503),
+    ]);
+
+    $server = Server::factory()->create();
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $server->created_by,
+        'url' => 'https://example.com/server-rule-webhook',
+    ]);
+    $triggeredAt = now()->subMinutes(5);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $server->id,
+        'ram_free_percentage' => 20,
+    ]);
+
+    $rule = ServerRule::factory()->ramUsage()->create([
+        'server_id' => $server->id,
+        'value' => 90,
+        'channel' => (string) $channel->id,
+        'is_triggered' => true,
+        'triggered_at' => $triggeredAt,
+    ]);
+
+    $this->artisan('server:check-rules')
+        ->expectsOutput("Rule recovered for server {$server->name}: ram_usage = 80")
+        ->expectsOutput("Webhook recovery notification failed for server {$server->name} with response code 503")
+        ->assertSuccessful();
+
+    Http::assertSentCount(1);
+
+    $rule->refresh();
+    $channel->refresh();
+
+    expect($rule->is_triggered)->toBeTrue();
+    expect($rule->triggered_at->toDateTimeString())->toBe($triggeredAt->toDateTimeString());
+    expect($rule->recovered_at)->toBeNull();
+    expect($rule->last_evaluated_value)->toBe(80.0);
+    expect($channel->last_delivery_kind)->toBe('server_rule_recovery');
+    expect($channel->last_delivery_succeeded)->toBeFalse();
 });
 
 test('command sends server rule notification again after recovery and new breach', function () {
@@ -379,7 +432,7 @@ test('command sends server rule notification again after recovery and new breach
     $this->artisan('server:check-rules')
         ->assertSuccessful();
 
-    Http::assertSentCount(2);
+    Http::assertSentCount(3);
 });
 
 test('command sends server rule notification when re-enabled rule is still breached', function () {
@@ -411,7 +464,7 @@ test('command sends server rule notification when re-enabled rule is still breac
 
     $this->artisan('server:check-rules')
         ->expectsOutput("Rule condition met for server {$server->name}: ram_usage = 95")
-        ->expectsOutput("Notification sent for server {$server->name}")
+        ->expectsOutput("Alert notification sent for server {$server->name}")
         ->assertSuccessful();
 
     Http::assertSentCount(1);
