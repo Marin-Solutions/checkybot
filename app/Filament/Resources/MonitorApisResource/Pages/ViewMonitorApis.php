@@ -28,13 +28,22 @@ class ViewMonitorApis extends ViewRecord
                 ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->is_enabled)
                 ->action(function (): void {
-                    try {
-                        RunApiMonitorDiagnosticJob::dispatch($this->record->withoutRelations());
+                    $queuedStatePersisted = false;
 
+                    try {
                         $this->record->forceFill([
                             'diagnostic_queued_at' => now(),
                         ])->save();
+                        $queuedStatePersisted = true;
+
+                        RunApiMonitorDiagnosticJob::dispatch($this->record->withoutRelations());
                     } catch (\Throwable $e) {
+                        if ($queuedStatePersisted) {
+                            $this->record->forceFill([
+                                'diagnostic_queued_at' => null,
+                            ])->save();
+                        }
+
                         Log::error('Run Now API monitor diagnostic dispatch failed', [
                             'monitor_api_id' => $this->record->id,
                             'exception' => $e,

@@ -28,13 +28,22 @@ class ViewWebsite extends ViewRecord
                 ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->uptime_check || (bool) $this->record->ssl_check)
                 ->action(function (): void {
-                    try {
-                        LogUptimeSslJob::dispatch($this->record->withoutRelations(), onDemand: true);
+                    $queuedStatePersisted = false;
 
+                    try {
                         $this->record->forceFill([
                             'diagnostic_queued_at' => now(),
                         ])->save();
+                        $queuedStatePersisted = true;
+
+                        LogUptimeSslJob::dispatch($this->record->withoutRelations(), onDemand: true);
                     } catch (\Throwable $e) {
+                        if ($queuedStatePersisted) {
+                            $this->record->forceFill([
+                                'diagnostic_queued_at' => null,
+                            ])->save();
+                        }
+
                         Log::error('Run Now uptime/SSL diagnostic dispatch failed', [
                             'website_id' => $this->record->id,
                             'exception' => $e,

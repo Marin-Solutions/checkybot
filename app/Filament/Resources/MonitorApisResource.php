@@ -485,13 +485,22 @@ class MonitorApisResource extends Resource
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                     ->visible(fn (MonitorApis $record): bool => (bool) $record->is_enabled)
                     ->action(function (MonitorApis $record): void {
-                        try {
-                            RunApiMonitorDiagnosticJob::dispatch($record->withoutRelations());
+                        $queuedStatePersisted = false;
 
+                        try {
                             $record->forceFill([
                                 'diagnostic_queued_at' => now(),
                             ])->save();
+                            $queuedStatePersisted = true;
+
+                            RunApiMonitorDiagnosticJob::dispatch($record->withoutRelations());
                         } catch (\Throwable $e) {
+                            if ($queuedStatePersisted) {
+                                $record->forceFill([
+                                    'diagnostic_queued_at' => null,
+                                ])->save();
+                            }
+
                             Log::error('Run Now API monitor diagnostic dispatch failed from table action', [
                                 'monitor_api_id' => $record->id,
                                 'exception' => $e,
