@@ -69,6 +69,11 @@ class NotificationChannelsResource extends Resource
                     ->reactive()
                     ->rules([
                         fn (\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
+                            if (! self::hasValidWebhookUrl($value)) {
+                                $fail('The webhook URL must be a valid HTTP or HTTPS URL.');
+
+                                return;
+                            }
 
                             if ($get('method') === WebhookHttpMethod::GET->value) {
                                 if (! preg_match(self::$urlPattern, $value)) {
@@ -110,6 +115,23 @@ class NotificationChannelsResource extends Resource
                 Textarea::make('description')
                     ->columnSpanFull(),
             ]);
+    }
+
+    private static function hasValidWebhookUrl(mixed $value): bool
+    {
+        if (! is_string($value) || $value === '') {
+            return false;
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $parts = parse_url($value);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+
+        return in_array($scheme, ['http', 'https'], true)
+            && filled($parts['host'] ?? null);
     }
 
     public static function table(Table $table): Table
