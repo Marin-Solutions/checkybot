@@ -12,6 +12,10 @@ class ProjectComponent extends Model
     /** @use HasFactory<\Database\Factories\ProjectComponentFactory> */
     use HasFactory;
 
+    public const ARCHIVE_REASON_PACKAGE = 'package';
+
+    public const ARCHIVE_REASON_USER = 'user';
+
     protected $fillable = [
         'project_id',
         'name',
@@ -27,6 +31,7 @@ class ProjectComponent extends Model
         'is_stale',
         'is_archived',
         'archived_at',
+        'archive_reason',
         'created_by',
     ];
 

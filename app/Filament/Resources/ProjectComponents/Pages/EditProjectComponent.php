@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ProjectComponents\Pages;
 
 use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Services\IntervalParser;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\ViewAction;
@@ -38,6 +39,9 @@ class EditProjectComponent extends EditRecord
         $data['last_reported_status'] = $data['current_status'];
         $data['archived_at'] = $data['is_archived']
             ? ($this->record->archived_at ?? now())
+            : null;
+        $data['archive_reason'] = $data['is_archived']
+            ? ProjectComponent::ARCHIVE_REASON_USER
             : null;
 
         return $data;

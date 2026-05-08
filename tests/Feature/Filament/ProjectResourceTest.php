@@ -119,7 +119,44 @@ test('operator can update manual component status interval and archive state', f
         ->and($component->current_status)->toBe('warning')
         ->and($component->last_reported_status)->toBe('warning')
         ->and($component->is_archived)->toBeTrue()
+        ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
         ->and($component->archived_at)->not->toBeNull();
+});
+
+test('editing a package archived component classifies the archive as user managed', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    $component = ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'source' => 'package',
+        'name' => 'worker:old',
+        'declared_interval' => '5m',
+        'interval_minutes' => 5,
+        'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
+    ]);
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->id])
+        ->fillForm([
+            'name' => 'worker:reports',
+            'declared_interval' => '10m',
+            'current_status' => $component->current_status,
+            'is_archived' => true,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $component->refresh();
+
+    expect($component->is_archived)->toBeTrue()
+        ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
+        ->and($component->declared_interval)->toBe('10m')
+        ->and($component->interval_minutes)->toBe(10);
 });
 
 test('operator cannot reset a reporting component to awaiting data', function () {

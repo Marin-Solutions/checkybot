@@ -4,6 +4,7 @@ namespace App\Filament\Resources\ProjectComponents\Pages;
 
 use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Services\IntervalParser;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Validation\ValidationException;
@@ -33,6 +34,7 @@ class CreateProjectComponent extends CreateRecord
         $data['is_stale'] = false;
         $data['stale_detected_at'] = null;
         $data['archived_at'] = $data['is_archived'] ? now() : null;
+        $data['archive_reason'] = $data['is_archived'] ? ProjectComponent::ARCHIVE_REASON_USER : null;
 
         return $data;
     }

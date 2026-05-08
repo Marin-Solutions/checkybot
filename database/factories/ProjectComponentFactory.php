@@ -33,6 +33,7 @@ class ProjectComponentFactory extends Factory
             'is_stale' => false,
             'is_archived' => false,
             'archived_at' => null,
+            'archive_reason' => null,
             'created_by' => User::factory(),
         ];
     }
@@ -42,6 +43,7 @@ class ProjectComponentFactory extends Factory
         return $this->state(fn (): array => [
             'is_archived' => true,
             'archived_at' => now()->subHour(),
+            'archive_reason' => \App\Models\ProjectComponent::ARCHIVE_REASON_USER,
         ]);
     }
 }

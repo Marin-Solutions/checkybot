@@ -411,6 +411,7 @@ class ProjectsTable
                 ->update([
                     'is_archived' => ! $enable,
                     'archived_at' => $enable ? null : now(),
+                    'archive_reason' => $enable ? null : ProjectComponent::ARCHIVE_REASON_USER,
                 ]);
 
             return [
