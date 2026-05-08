@@ -48,9 +48,15 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     }),
                 TextColumn::make('deleted_at')
                     ->label('State')
-                    ->state(fn (Website $record): string => $record->deleted_at ? 'Archived' : 'Active')
+                    ->state(fn (Website $record): string => $this->monitoringState($record))
                     ->badge()
-                    ->color(fn (string $state): string => $state === 'Archived' ? 'gray' : 'success'),
+                    ->color(fn (string $state): string => match ($state) {
+                        'Active' => 'success',
+                        'Disabled' => 'warning',
+                        'Archived' => 'gray',
+                        default => 'gray',
+                    })
+                    ->description(fn (Website $record): ?string => $this->monitoringStateDescription($record)),
                 TextColumn::make('status_summary')
                     ->label('Summary')
                     ->wrap()
@@ -78,5 +84,27 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     SoftDeletingScope::class,
                 ]))
             ->defaultSort('name');
+    }
+
+    private function monitoringState(Website $record): string
+    {
+        if ($record->deleted_at) {
+            return 'Archived';
+        }
+
+        if (! $record->uptime_check && ! $record->ssl_check) {
+            return 'Disabled';
+        }
+
+        return 'Active';
+    }
+
+    private function monitoringStateDescription(Website $record): ?string
+    {
+        if (! $record->deleted_at && ! $record->uptime_check && ! $record->ssl_check) {
+            return 'Both uptime and SSL checks are disabled. Scheduled runs are paused.';
+        }
+
+        return null;
     }
 }
