@@ -13,6 +13,8 @@ use InvalidArgumentException;
 
 class CheckSyncService
 {
+    private const MISSING_PACKAGE_SYNC_STATUS_SUMMARY = 'Disabled because it was missing from the latest package sync.';
+
     public function syncChecks(Project $project, array $payload): array
     {
         return DB::transaction(function () use ($project, $payload) {
@@ -144,6 +146,10 @@ class CheckSyncService
 
         foreach ($checks as $check) {
             $monitorApi = $existingApis->get($check['name']);
+            $wasDisabledByMissingPackageSync = $this->wasDisabledByMissingPackageSync($monitorApi);
+            $isEnabled = array_key_exists('enabled', $check)
+                ? ($check['enabled'] ?? true)
+                : ($wasDisabledByMissingPackageSync ? true : ($monitorApi?->is_enabled ?? true));
 
             $data = [
                 'project_id' => $project->id,
@@ -167,15 +173,20 @@ class CheckSyncService
                     ? ($check['save_failed_response'] ?? true)
                     : ($monitorApi?->save_failed_response ?? true),
                 'package_schedule' => $check['interval'],
-                'is_enabled' => array_key_exists('enabled', $check)
-                    ? ($check['enabled'] ?? true)
-                    : ($monitorApi?->is_enabled ?? true),
+                'is_enabled' => $isEnabled,
                 'source' => 'package',
                 'package_name' => $check['name'],
                 'package_interval' => $check['interval'],
                 'created_by' => $project->created_by,
                 'last_synced_at' => $syncedAt,
             ];
+
+            if ($isEnabled && $wasDisabledByMissingPackageSync) {
+                $data['current_status'] = 'unknown';
+                $data['status_summary'] = null;
+                $data['last_heartbeat_at'] = null;
+                $data['stale_at'] = null;
+            }
 
             if ($monitorApi) {
                 if ($monitorApi->trashed()) {
@@ -282,7 +293,9 @@ class CheckSyncService
         return $query->update([
             'is_enabled' => false,
             'current_status' => 'unknown',
-            'status_summary' => 'Disabled because it was missing from the latest package sync.',
+            'status_summary' => self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY,
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
             'last_synced_at' => $syncedAt,
         ]);
     }
@@ -293,11 +306,19 @@ class CheckSyncService
             'uptime_check' => false,
             'ssl_check' => false,
             'current_status' => 'unknown',
-            'status_summary' => 'Disabled because it was missing from the latest package sync.',
+            'status_summary' => self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY,
             'package_interval' => null,
             'last_heartbeat_at' => null,
             'stale_at' => null,
             'last_synced_at' => $syncedAt,
         ]);
+    }
+
+    protected function wasDisabledByMissingPackageSync(?MonitorApis $monitorApi): bool
+    {
+        return $monitorApi instanceof MonitorApis
+            && ! $monitorApi->trashed()
+            && ! $monitorApi->is_enabled
+            && $monitorApi->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
     }
 }

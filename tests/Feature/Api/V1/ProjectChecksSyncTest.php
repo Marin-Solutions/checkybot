@@ -248,6 +248,68 @@ test('preserves existing api execution settings when legacy sync omits them', fu
     ]);
 });
 
+test('re-enables orphaned api checks when legacy sync reintroduces them without enabled flag', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '10m',
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'package_interval' => '10m',
+        'is_enabled' => true,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'deleted_at' => null,
+    ]);
+});
+
 test('legacy sync defaults nullable expected status to success status', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
@@ -419,6 +481,8 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'is_enabled' => false,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
         'deleted_at' => null,
     ]);
 
