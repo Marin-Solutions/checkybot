@@ -29,6 +29,64 @@ test('backup edit page exposes recent backup history', function () {
         ->toContain(HistoriesRelationManager::class);
 });
 
+test('backup edit rejects mismatched zip password confirmation', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup', 'Update:Backup']);
+    $backup = createBackupResourceBackupForUser($user->id, [
+        'password' => 'current-password',
+    ]);
+
+    Livewire::test(EditBackups::class, ['record' => $backup->id])
+        ->fillForm([
+            'password' => 'new-password',
+            'confirm_password' => 'different-password',
+        ])
+        ->call('save')
+        ->assertNotified('Passwords do not match');
+
+    expect($backup->refresh()->password)->toBe('current-password');
+});
+
+test('backup edit saves matching zip password confirmation', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup', 'Update:Backup']);
+    $backup = createBackupResourceBackupForUser($user->id, [
+        'password' => 'current-password',
+    ]);
+
+    Livewire::test(EditBackups::class, ['record' => $backup->id])
+        ->fillForm([
+            'password' => 'new-password',
+            'confirm_password' => 'new-password',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    expect($backup->refresh()->password)->toBe('new-password');
+});
+
+test('backup edit allows unrelated changes when zip password is unchanged', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup', 'Update:Backup']);
+    $backup = createBackupResourceBackupForUser($user->id, [
+        'password' => 'current-password',
+    ]);
+
+    Livewire::test(EditBackups::class, ['record' => $backup->id])
+        ->fillForm([
+            'remote_storage_path' => '/archives',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $backup->refresh();
+
+    expect($backup->remote_storage_path)->toBe('/archives')
+        ->and($backup->password)->toBe('current-password');
+});
+
 test('backup history relation manager shows run evidence for the selected backup', function () {
     $user = $this->actingAsSuperAdmin();
     $user->givePermissionTo(['View:Backup', 'Update:Backup']);
@@ -61,7 +119,7 @@ test('backup history relation manager shows run evidence for the selected backup
         ->assertSee('FTP upload timed out after creating the archive.');
 });
 
-function createBackupResourceBackupForUser(int $userId): Backup
+function createBackupResourceBackupForUser(int $userId, array $attributes = []): Backup
 {
     $server = Server::factory()->create(['created_by' => $userId]);
     $storageType = BackupRemoteStorageType::query()->forceCreate([
@@ -83,7 +141,7 @@ function createBackupResourceBackupForUser(int $userId): Backup
         'expression' => '0 2 * * *',
     ]);
 
-    return Backup::query()->create([
+    return Backup::query()->create(array_merge([
         'server_id' => $server->id,
         'dir_path' => '/var/www/html',
         'remote_storage_id' => $remoteStorage->id,
@@ -93,7 +151,7 @@ function createBackupResourceBackupForUser(int $userId): Backup
         'max_amount_backups' => 5,
         'compression_type' => 'zip',
         'delete_local_on_fail' => false,
-    ]);
+    ], $attributes));
 }
 
 function createBackupResourceHistory(Backup $backup, array $attributes = []): BackupHistory
