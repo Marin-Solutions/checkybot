@@ -21,6 +21,7 @@ class MonitorApisFactory extends Factory
                 'User-Agent' => 'CheckyBot/1.0',
             ]),
             'is_enabled' => true,
+            'project_paused_monitoring' => false,
             'save_failed_response' => true,
             'created_by' => User::factory(),
             'current_status' => 'healthy',

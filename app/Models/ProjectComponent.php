@@ -31,6 +31,7 @@ class ProjectComponent extends Model
         'stale_detected_at',
         'is_stale',
         'is_archived',
+        'project_paused_monitoring',
         'archived_at',
         'archive_reason',
         'silenced_until',
@@ -45,9 +46,19 @@ class ProjectComponent extends Model
             'stale_detected_at' => 'datetime',
             'is_stale' => 'boolean',
             'is_archived' => 'boolean',
+            'project_paused_monitoring' => 'boolean',
             'archived_at' => 'datetime',
             'silenced_until' => 'datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (ProjectComponent $component): void {
+            if ($component->exists && $component->isDirty('is_archived') && $component->project_paused_monitoring) {
+                $component->project_paused_monitoring = false;
+            }
+        });
     }
 
     public function project(): BelongsTo
