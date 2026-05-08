@@ -126,6 +126,74 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('Resolved');
     });
 
+    it('resolves website incidents when website checks are disabled', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Suppressed homepage',
+            'uptime_check' => false,
+            'ssl_check' => false,
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Last scheduled website failure',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'website')
+            ->where('subject_id', $website->id)
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->state)->toBe('resolved');
+    });
+
+    it('resolves api incidents when the API monitor is disabled', function () {
+        $api = MonitorApis::factory()->disabled()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Suppressed API',
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $api->id,
+            'summary' => 'Last scheduled API failure',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'api')
+            ->where('subject_id', $api->id)
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->state)->toBe('resolved');
+    });
+
+    it('resolves component incidents when the component is archived', function () {
+        $component = ProjectComponent::factory()->archived()->create([
+            'created_by' => $this->user->id,
+            'name' => 'archived-worker',
+        ]);
+
+        ProjectComponentHeartbeat::factory()->create([
+            'project_component_id' => $component->id,
+            'component_name' => 'archived-worker',
+            'status' => 'danger',
+            'summary' => 'Last component failure before archive',
+            'observed_at' => now()->subMinutes(4),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'component')
+            ->where('subject_id', $component->id)
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->state)->toBe('resolved');
+    });
+
     it('does not treat an already-open incident from before the feed window as a new incident', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
