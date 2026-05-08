@@ -97,6 +97,17 @@ class SeoSchedule extends Model
     }
 
     /**
+     * Normalize schedule times from form input or stored records to database format.
+     */
+    public static function normalizeScheduleTime(?string $scheduleTime): string
+    {
+        $time = $scheduleTime ?: '02:00';
+        [$hours, $minutes, $seconds] = array_pad(explode(':', $time, 4), 3, 0);
+
+        return sprintf('%02d:%02d:%02d', (int) $hours, (int) $minutes, (int) $seconds);
+    }
+
+    /**
      * Calculate next weekly run based on selected day.
      */
     protected static function calculateNextWeeklyRunAt(?string $scheduleDay, int $hours, int $minutes): Carbon
@@ -119,7 +130,7 @@ class SeoSchedule extends Model
      */
     protected static function parseScheduleTime(?string $scheduleTime): array
     {
-        $time = $scheduleTime ?? '02:00:00';
+        $time = self::normalizeScheduleTime($scheduleTime);
         [$hours, $minutes] = array_pad(explode(':', $time), 2, 0);
 
         return [(int) $hours, (int) $minutes];
