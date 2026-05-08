@@ -184,7 +184,7 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("COALESCE(NULLIF(website_log_history.status, ''), 'unknown') as normalized_status")
             ->selectRaw('
                 CASE
-                    WHEN websites.uptime_check = 1 OR websites.ssl_check = 1 THEN 1
+                    WHEN websites.uptime_check OR websites.ssl_check THEN 1
                     ELSE 0
                 END as current_monitoring_enabled
             ')
@@ -218,7 +218,7 @@ class IncidentFeedWidget extends BaseWidget
             ")
             ->selectRaw('
                 CASE
-                    WHEN monitor_apis.is_enabled = 1 THEN 1
+                    WHEN monitor_apis.is_enabled THEN 1
                     ELSE 0
                 END as current_monitoring_enabled
             ')
@@ -238,7 +238,7 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.status, ''), 'unknown') as normalized_status")
             ->selectRaw('
                 CASE
-                    WHEN project_components.is_archived = 0 THEN 1
+                    WHEN NOT project_components.is_archived THEN 1
                     ELSE 0
                 END as current_monitoring_enabled
             ')
