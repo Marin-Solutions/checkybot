@@ -8,6 +8,7 @@ use App\Mail\ProjectComponentAlertMail;
 use App\Models\NotificationSetting;
 use App\Models\ProjectComponent;
 use App\Traits\ChecksWebhookResponses;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
@@ -16,13 +17,24 @@ class ProjectComponentNotificationService
 {
     use ChecksWebhookResponses;
 
-    public function notify(ProjectComponent $component, string $event, string $status): void
+    public function notify(ProjectComponent $component, string $event, string $status): bool
     {
         if (
             ! in_array($status, ['warning', 'danger'], true)
             && ! in_array($event, ['stale', 'recovered'], true)
         ) {
-            return;
+            return true;
+        }
+
+        if ($this->isSilencedNow($component)) {
+            Log::info('Skipping project component notification while component is snoozed', [
+                'project_component_id' => $component->id,
+                'silenced_until' => optional($component->silenced_until)->toIso8601String(),
+                'event' => $event,
+                'status' => $status,
+            ]);
+
+            return true;
         }
 
         $settings = NotificationSetting::query()
@@ -36,6 +48,8 @@ class ProjectComponentNotificationService
             ->get();
 
         $payload = $this->buildPayload($component, $event, $status);
+        $attempts = 0;
+        $failures = 0;
 
         foreach ($settings as $setting) {
             if ($setting->channel_type === NotificationChannelTypesEnum::WEBHOOK) {
@@ -59,6 +73,8 @@ class ProjectComponentNotificationService
                     continue;
                 }
 
+                $attempts++;
+
                 try {
                     $response = $channel->sendWebhookNotification([
                         'message' => $payload['message'],
@@ -74,6 +90,8 @@ class ProjectComponentNotificationService
                     );
 
                     if (! $this->webhookResponseWasSuccessful($response)) {
+                        $failures++;
+
                         Log::error('Failed to deliver project component notification webhook; continuing with other channels', [
                             'setting_id' => $setting->id,
                             'project_component_id' => $component->id,
@@ -84,6 +102,8 @@ class ProjectComponentNotificationService
                         ]);
                     }
                 } catch (Throwable $exception) {
+                    $failures++;
+
                     $setting->recordDeliveryAttempt(
                         kind: 'send',
                         succeeded: false,
@@ -107,6 +127,7 @@ class ProjectComponentNotificationService
                 continue;
             }
 
+            $attempts++;
             $mailException = null;
 
             try {
@@ -124,6 +145,8 @@ class ProjectComponentNotificationService
             }
 
             if ($mailException) {
+                $failures++;
+
                 $setting->recordDeliveryAttempt(
                     kind: 'send',
                     succeeded: false,
@@ -141,6 +164,12 @@ class ProjectComponentNotificationService
                 summary: 'Email accepted by configured mail transport.',
             );
         }
+
+        if ($attempts === 0) {
+            return true;
+        }
+
+        return $failures < $attempts;
     }
 
     /**
@@ -160,5 +189,22 @@ class ProjectComponentNotificationService
             'message' => "{$component->project->name} / {$component->name} reported {$eventLabel}.",
             'details' => $component->summary ?? 'No additional summary was provided.',
         ];
+    }
+
+    private function isSilencedNow(ProjectComponent $component): bool
+    {
+        if ($component->isDirty('silenced_until')) {
+            return $component->isSilenced();
+        }
+
+        $persistedSilencedUntil = ProjectComponent::query()
+            ->whereKey($component->getKey())
+            ->value('silenced_until');
+
+        if ($persistedSilencedUntil === null) {
+            return false;
+        }
+
+        return Carbon::parse($persistedSilencedUntil)->isFuture();
     }
 }

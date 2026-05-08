@@ -2,10 +2,14 @@
 
 use App\Enums\WebsiteServicesEnum;
 use App\Mail\HealthStatusAlert;
+use App\Mail\ProjectComponentAlertMail;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
+use App\Services\ProjectComponentNotificationService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -59,6 +63,35 @@ test('command clears expired snooze on an api monitor that is still unhealthy an
     Mail::assertSent(HealthStatusAlert::class, 1);
 });
 
+test('command clears expired snooze on a project component that is still unhealthy and re-fires the alert', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $project->created_by,
+        'current_status' => 'danger',
+        'summary' => 'Heartbeat expired.',
+        'is_stale' => true,
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($component->refresh()->silenced_until)->toBeNull();
+
+    Mail::assertSent(ProjectComponentAlertMail::class, 1);
+});
+
 test('command clears expired snooze without notifying when the monitor recovered to healthy', function () {
     Mail::fake();
 
@@ -104,6 +137,33 @@ test('command leaves an active snooze untouched and sends no alert', function ()
 
     expect($website->refresh()->silenced_until)->not->toBeNull()
         ->and($website->silenced_until->isFuture())->toBeTrue();
+
+    Mail::assertNothingSent();
+});
+
+test('command clears expired snooze on a recovered project component without notifying', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $project->created_by,
+        'current_status' => 'healthy',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($component->refresh()->silenced_until)->toBeNull();
 
     Mail::assertNothingSent();
 });
@@ -193,6 +253,31 @@ test('command preserves silenced_until when every channel fails so the next run 
         ->assertSuccessful();
 
     expect($website->refresh()->silenced_until)->not->toBeNull();
+
+    Log::shouldHaveReceived('warning')->once();
+});
+
+test('command preserves project component silenced_until when every channel fails so the next run retries', function () {
+    Log::spy();
+
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $project->created_by,
+        'current_status' => 'danger',
+        'summary' => 'Heartbeat expired.',
+        'is_stale' => true,
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    $this->mock(ProjectComponentNotificationService::class, function ($mock): void {
+        $mock->shouldReceive('notify')->once()->andReturn(false);
+    });
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($component->refresh()->silenced_until)->not->toBeNull();
 
     Log::shouldHaveReceived('warning')->once();
 });

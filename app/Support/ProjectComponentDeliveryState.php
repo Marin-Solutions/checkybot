@@ -9,6 +9,8 @@ class ProjectComponentDeliveryState
 {
     public const ARCHIVED = 'archived';
 
+    public const SNOOZED = 'snoozed';
+
     public const STALE = 'stale';
 
     public const AWAITING_FIRST_HEARTBEAT = 'awaiting_first_heartbeat';
@@ -21,6 +23,7 @@ class ProjectComponentDeliveryState
     public static function options(): array
     {
         return [
+            self::SNOOZED => 'Snoozed',
             self::STALE => 'Stale',
             self::AWAITING_FIRST_HEARTBEAT => 'Awaiting first heartbeat',
             self::RECEIVING_HEARTBEATS => 'Receiving heartbeats',
@@ -32,6 +35,7 @@ class ProjectComponentDeliveryState
     {
         return match (true) {
             $component->is_archived => self::ARCHIVED,
+            $component->isSilenced() => self::SNOOZED,
             $component->is_stale => self::STALE,
             $component->last_heartbeat_at === null => self::AWAITING_FIRST_HEARTBEAT,
             default => self::RECEIVING_HEARTBEATS,
@@ -49,6 +53,7 @@ class ProjectComponentDeliveryState
             'Receiving heartbeats', self::RECEIVING_HEARTBEATS => 'success',
             'Awaiting first heartbeat', self::AWAITING_FIRST_HEARTBEAT => 'warning',
             'Stale', self::STALE => 'danger',
+            'Snoozed', self::SNOOZED => 'warning',
             default => 'gray',
         };
     }
@@ -57,15 +62,31 @@ class ProjectComponentDeliveryState
     {
         return match ($state) {
             self::ARCHIVED => $query->where('is_archived', true),
+            self::SNOOZED => $query
+                ->where('is_archived', false)
+                ->whereNotNull('silenced_until')
+                ->where('silenced_until', '>', now()),
             self::STALE => $query
                 ->where('is_archived', false)
+                ->where(function (Builder $query): void {
+                    $query->whereNull('silenced_until')
+                        ->orWhere('silenced_until', '<=', now());
+                })
                 ->where('is_stale', true),
             self::AWAITING_FIRST_HEARTBEAT => $query
                 ->where('is_archived', false)
+                ->where(function (Builder $query): void {
+                    $query->whereNull('silenced_until')
+                        ->orWhere('silenced_until', '<=', now());
+                })
                 ->where('is_stale', false)
                 ->whereNull('last_heartbeat_at'),
             self::RECEIVING_HEARTBEATS => $query
                 ->where('is_archived', false)
+                ->where(function (Builder $query): void {
+                    $query->whereNull('silenced_until')
+                        ->orWhere('silenced_until', '<=', now());
+                })
                 ->where('is_stale', false)
                 ->whereNotNull('last_heartbeat_at'),
             default => $query,

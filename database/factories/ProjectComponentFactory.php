@@ -34,6 +34,7 @@ class ProjectComponentFactory extends Factory
             'is_archived' => false,
             'archived_at' => null,
             'archive_reason' => null,
+            'silenced_until' => null,
             'created_by' => User::factory(),
         ];
     }
