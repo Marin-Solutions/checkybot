@@ -471,6 +471,69 @@ test('job skips fallback ssl reminder email while website is snoozed', function 
     Mail::assertNothingSent();
 });
 
+test('job does not overwrite a newer snooze when saving ssl reminder timestamp', function () {
+    $newSnoozeUntil = now()->addHour()->startOfSecond();
+    $expiryDate = now()->addDays(7);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) use ($expiryDate) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://concurrent-snooze.example')
+            ->andReturn('concurrent-snooze.example');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://concurrent-snooze.example')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('concurrent-snooze.example', 443)
+            ->andReturn($expiryDate);
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://concurrent-snooze.example',
+        'ssl_check' => true,
+        'ssl_expiry_date' => $expiryDate,
+        'ssl_expiry_reminder_sent_at' => null,
+        'silenced_until' => now()->subMinute(),
+    ]);
+    $queuedWebsite = Website::findOrFail($website->id);
+
+    $website->update(['silenced_until' => null]);
+
+    $channel = NotificationChannels::factory()->create([
+        'method' => 'POST',
+        'url' => 'https://example.com/ssl-webhook',
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->webhook()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+            'notification_channel_id' => $channel->id,
+        ]);
+
+    Http::fake(function () use ($website, $newSnoozeUntil) {
+        Website::query()
+            ->whereKey($website->id)
+            ->update(['silenced_until' => $newSnoozeUntil]);
+
+        return Http::response(['ok' => true], 200);
+    });
+
+    $job = new CheckSslExpiryDateJob($queuedWebsite);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect($website->ssl_expiry_reminder_sent_at)->not->toBeNull()
+        ->and($website->silenced_until?->equalTo($newSnoozeUntil))->toBeTrue();
+});
+
 test('job does not throttle ssl reminders when all webhook deliveries fail', function () {
     Http::fake([
         '*' => Http::response(['ok' => false], 500),

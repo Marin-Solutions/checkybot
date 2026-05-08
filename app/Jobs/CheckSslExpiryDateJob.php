@@ -169,11 +169,11 @@ class CheckSslExpiryDateJob implements ShouldQueue
             return $this->website->isSilenced();
         }
 
-        $this->website->silenced_until = Website::query()
+        $silencedUntil = Website::query()
             ->whereKey($this->website->getKey())
             ->value('silenced_until');
 
-        return $this->website->isSilenced();
+        return $silencedUntil !== null && Carbon::parse($silencedUntil)->isFuture();
     }
 
     private function recordSslOnlyHealth(
