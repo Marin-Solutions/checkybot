@@ -421,6 +421,27 @@ test('view seo check page shows failure details for failed checks', function () 
         ->assertSee('URLs Crawled');
 });
 
+test('view seo check page shows live progress section for pending checks', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Queued site',
+        'url' => 'https://queued.example.com',
+    ]);
+    $seoCheck = SeoCheck::factory()->create([
+        'website_id' => $website->id,
+        'status' => SeoCheck::STATUS_PENDING,
+    ]);
+
+    Livewire::test(ViewSeoCheck::class, ['record' => $seoCheck->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Live Progress')
+        ->assertSee('SEO Health Check Pending')
+        ->assertSee('SEO Health Check is pending.')
+        ->assertSeeHtml('display: block;" class="completion-section"')
+        ->assertDontSee('SEO Health Check in Progress');
+});
+
 test('seo issue table exposes issue detail action with evidence and fix guidance', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([

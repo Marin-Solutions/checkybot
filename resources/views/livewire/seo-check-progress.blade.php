@@ -108,7 +108,7 @@
     </div>
     @else
     <!-- Completed/Failed State -->
-    <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: none;" class="completion-section">
+    <div style="background: white; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: {{ $seoCheck->isPending() ? 'block' : 'none' }};" class="completion-section">
         <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
             <h3 style="font-size: 18px; font-weight: 600; color: #111827; display: flex; align-items: center; margin: 0;">
                 @if($seoCheck->isCompleted())
