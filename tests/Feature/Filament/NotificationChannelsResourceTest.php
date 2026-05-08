@@ -6,6 +6,7 @@ use App\Filament\Resources\NotificationChannelsResource\Pages\ListNotificationCh
 use App\Models\NotificationChannels;
 use App\Models\User;
 use App\Policies\NotificationChannelsPolicy;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 
@@ -141,6 +142,24 @@ test('webhook channel list send test action delivers saved webhook payload and r
     expect($channel->last_delivery_attempted_at)->not->toBeNull();
 });
 
+test('webhook channel list send test action requires channel update permission', function () {
+    $this->createResourcePermissions('NotificationChannels');
+
+    $user = $this->actingAsUser();
+    $user->givePermissionTo([
+        'ViewAny:NotificationChannels',
+        'View:NotificationChannels',
+    ]);
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->assertCanSeeTableRecords([$channel])
+        ->assertTableActionHidden('sendTest', $channel);
+});
+
 test('webhook channel list send test action records failed delivery evidence', function () {
     Http::fake([
         '*' => Http::response(['error' => 'unauthorized'], 401),
@@ -165,6 +184,33 @@ test('webhook channel list send test action records failed delivery evidence', f
     expect($channel->last_delivery_succeeded)->toBeFalse();
     expect($channel->last_delivery_response_code)->toBe(401);
     expect($channel->last_delivery_summary)->toContain('HTTP 401');
+});
+
+test('webhook channel list send test action records connection failure evidence', function () {
+    Http::shouldReceive('POST')
+        ->once()
+        ->andThrow(new ConnectionException('cURL error 6: Could not resolve host: example.com'));
+
+    $user = $this->actingAsSuperAdmin();
+
+    $channel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Incident webhook',
+        'method' => 'POST',
+        'url' => 'https://example.com/webhook',
+    ]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->callTableAction('sendTest', $channel)
+        ->assertNotified('Test webhook failed');
+
+    $channel->refresh();
+
+    expect($channel->last_delivery_kind)->toBe('test');
+    expect($channel->last_delivery_succeeded)->toBeFalse();
+    expect($channel->last_delivery_response_code)->toBeNull();
+    expect($channel->last_delivery_summary)->toContain('No response');
+    expect($channel->last_delivery_summary)->toContain('Could not resolve host');
 });
 
 test('webhook channel list masks webhook path query and request body values', function () {

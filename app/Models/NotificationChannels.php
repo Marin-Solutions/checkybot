@@ -6,6 +6,7 @@ use App\Enums\WebhookHttpMethod;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -79,6 +80,11 @@ class NotificationChannels extends Model
             $handlerContext = $exception->getHandlerContext();
             $responseData['code'] = $handlerContext['errno'];
             $responseData['body'] = $handlerContext['error'];
+
+            return $responseData;
+        } catch (ConnectionException $exception) {
+            $responseData['code'] = 0;
+            $responseData['body'] = $exception->getMessage();
 
             return $responseData;
         }
@@ -161,6 +167,25 @@ class NotificationChannels extends Model
                 kind: $deliveryKind,
                 succeeded: false,
                 responseCode: (int) ($responseData['code'] ?? 0) ?: null,
+                summary: self::summarizeDeliveryResponse($responseData),
+            );
+
+            return $responseData;
+        } catch (ConnectionException $exception) {
+            Log::error('Webhook request failed', [
+                'error_message' => self::redactWebhookUrlTextForLogs($exception->getMessage(), $url),
+                'url' => self::redactWebhookUrlForLogs($url),
+                'method' => $method,
+                'request_body' => self::redactPayloadForLogs($requestBody),
+            ]);
+
+            $responseData['code'] = 0;
+            $responseData['body'] = $exception->getMessage();
+
+            $this->recordDeliveryAttempt(
+                kind: $deliveryKind,
+                succeeded: false,
+                responseCode: null,
                 summary: self::summarizeDeliveryResponse($responseData),
             );
 

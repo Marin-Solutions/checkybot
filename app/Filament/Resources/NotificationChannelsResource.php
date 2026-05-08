@@ -164,6 +164,7 @@ class NotificationChannelsResource extends Resource
                     ->label('Send Test')
                     ->icon('heroicon-o-paper-airplane')
                     ->color('warning')
+                    ->authorize(fn (NotificationChannels $record): bool => auth()->user()?->can('update', $record) ?? false)
                     ->requiresConfirmation()
                     ->modalHeading('Send a test webhook?')
                     ->modalDescription(fn (NotificationChannels $record): string => 'A sample Checkybot payload will be sent to "'.$record->title.'". The result will be saved as this channel\'s latest delivery evidence.')

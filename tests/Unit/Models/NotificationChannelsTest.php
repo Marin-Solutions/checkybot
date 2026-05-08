@@ -3,6 +3,7 @@
 use App\Models\NotificationChannels;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request as GuzzleRequest;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -228,6 +229,47 @@ test('send webhook notification preserves a 4xx status code so operators can deb
     expect($channel->last_delivery_succeeded)->toBeFalse();
     expect($channel->last_delivery_response_code)->toBe(401);
     expect($channel->last_delivery_summary)->toContain('HTTP 401');
+});
+
+test('send webhook notification records connection exceptions as failed delivery evidence', function () {
+    Http::shouldReceive('POST')
+        ->once()
+        ->andThrow(new ConnectionException('cURL error 6: Could not resolve host: missing.example'));
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://missing.example/webhook',
+        'method' => 'POST',
+    ]);
+
+    $result = $channel->sendWebhookNotification([
+        'message' => 'Test',
+    ], 'test');
+
+    expect($result['code'])->toBe(0);
+    expect($result['body'])->toContain('Could not resolve host');
+
+    $channel->refresh();
+    expect($channel->last_delivery_kind)->toBe('test');
+    expect($channel->last_delivery_succeeded)->toBeFalse();
+    expect($channel->last_delivery_response_code)->toBeNull();
+    expect($channel->last_delivery_summary)->toContain('No response');
+    expect($channel->last_delivery_summary)->toContain('Could not resolve host');
+});
+
+test('test webhook returns connection exceptions as no response failures', function () {
+    Http::shouldReceive('POST')
+        ->once()
+        ->andThrow(new ConnectionException('cURL error 28: Operation timed out'));
+
+    $result = NotificationChannels::testWebhook([
+        'method' => 'post',
+        'url' => 'https://example.com/webhook',
+        'description' => 'Test webhook',
+        'request_body' => ['message' => '{message}'],
+    ]);
+
+    expect($result['code'])->toBe(0);
+    expect($result['body'])->toContain('Operation timed out');
 });
 
 test('send webhook notification redacts webhook secrets from request logs without changing delivery', function () {
