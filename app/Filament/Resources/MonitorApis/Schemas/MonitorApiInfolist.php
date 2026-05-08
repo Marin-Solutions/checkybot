@@ -225,8 +225,62 @@ class MonitorApiInfolist
                             ->hidden(fn (MonitorApis $record): bool => blank($record->latestDiagnosticResult?->transport_error_type))
                             ->badge()
                             ->color(fn (?string $state): string => UptimeTransportError::color($state)),
+                        TextEntry::make('latest_diagnostic_transport_error_code')
+                            ->label('cURL Error Code')
+                            ->state(fn (MonitorApis $record): ?int => $record->latestDiagnosticResult?->transport_error_code)
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestDiagnosticResult?->transport_error_type))
+                            ->default('-')
+                            ->copyable(),
+                        TextEntry::make('latest_diagnostic_transport_error_message')
+                            ->label('Transport Message')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->transport_error_message)
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestDiagnosticResult?->transport_error_type))
+                            ->copyable()
+                            ->columnSpanFull(),
+                        RepeatableEntry::make('latest_diagnostic_failed_assertions')
+                            ->label('Failed Assertions')
+                            ->state(fn (MonitorApis $record): array => ApiMonitorEvidenceFormatter::normalizeAssertions($record->latestDiagnosticResult?->failed_assertions))
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestDiagnosticResult?->failed_assertions))
+                            ->schema([
+                                TextEntry::make('path')
+                                    ->badge()
+                                    ->color('danger'),
+                                TextEntry::make('type')
+                                    ->badge()
+                                    ->color('gray'),
+                                TextEntry::make('message')
+                                    ->columnSpanFull(),
+                                TextEntry::make('expected')
+                                    ->label('Expected')
+                                    ->icon('heroicon-o-flag')
+                                    ->iconColor('info')
+                                    ->copyable(),
+                                TextEntry::make('actual')
+                                    ->label('Actual')
+                                    ->icon('heroicon-o-x-circle')
+                                    ->iconColor('danger')
+                                    ->copyable(),
+                            ])
+                            ->contained(false)
+                            ->columns(2)
+                            ->columnSpanFull(),
+                        KeyValueEntry::make('latest_diagnostic_request_headers')
+                            ->label('Request Headers Snapshot')
+                            ->state(fn (MonitorApis $record): array => $record->latestDiagnosticResult?->request_headers ?? [])
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestDiagnosticResult?->request_headers)),
+                        KeyValueEntry::make('latest_diagnostic_response_headers')
+                            ->label('Response Headers Snapshot')
+                            ->state(fn (MonitorApis $record): array => $record->latestDiagnosticResult?->response_headers ?? [])
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestDiagnosticResult?->response_headers)),
+                        TextEntry::make('latest_diagnostic_response_body')
+                            ->label('Saved Failure Payload')
+                            ->state(fn (MonitorApis $record): string => ApiMonitorEvidenceFormatter::formatPayload($record->latestDiagnosticResult?->response_body))
+                            ->hidden(fn (MonitorApis $record): bool => blank($record->latestDiagnosticResult?->response_body))
+                            ->html()
+                            ->formatStateUsing(fn (string $state) => ApiMonitorEvidenceFormatter::formatAsPreHtml($state))
+                            ->columnSpanFull(),
                     ])
-                    ->columns(4),
+                    ->columns(2),
             ]);
     }
 }

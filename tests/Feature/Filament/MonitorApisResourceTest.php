@@ -1013,6 +1013,64 @@ test('api monitor view separates scheduled latest evidence from newer diagnostic
         ->and($monitor->latestDiagnosticResult->summary)->toBe('Diagnostic API heartbeat failed.');
 });
 
+test('api monitor view exposes latest diagnostic evidence blocks', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Checkout API',
+        'current_status' => 'healthy',
+        'status_summary' => 'Scheduler says the API is healthy.',
+    ]);
+
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'danger',
+        'summary' => 'Diagnostic API heartbeat failed with assertion evidence.',
+        'http_code' => 200,
+        'response_time_ms' => 860,
+        'failed_assertions' => [[
+            'path' => 'data.status',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed: expected = active',
+            'actual' => 'pending',
+            'expected' => '= active',
+        ]],
+        'request_headers' => [
+            'Authorization' => '[redacted]',
+            'X-Env' => 'staging',
+        ],
+        'response_headers' => [
+            'content-type' => 'application/json',
+            'x-request-id' => 'diagnostic-req-123',
+        ],
+        'response_body' => [
+            'error' => 'invalid state',
+            'trace_id' => 'diagnostic-trace-123',
+        ],
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Diagnostic API heartbeat failed with assertion evidence.')
+        ->assertSee('Failed Assertions')
+        ->assertSee('Value comparison failed: expected = active')
+        ->assertSee('Expected')
+        ->assertSee('= active')
+        ->assertSee('Actual')
+        ->assertSee('pending')
+        ->assertSee('Request Headers Snapshot')
+        ->assertSee('X-Env')
+        ->assertSee('staging')
+        ->assertSee('Response Headers Snapshot')
+        ->assertSee('diagnostic-req-123')
+        ->assertSee('Saved Failure Payload')
+        ->assertSee('diagnostic-trace-123');
+});
+
 test('super admin can bulk disable api monitors', function () {
     $this->createResourcePermissions('MonitorApis');
 
