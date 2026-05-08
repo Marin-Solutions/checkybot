@@ -1807,7 +1807,7 @@ test('bulk resume restores only api monitors disabled by the project action', fu
         ->and($manuallyDisabled->project_paused_monitoring)->toBeFalse();
 });
 
-test('manual api disable while project is paused is not undone by project resume', function () {
+test('editing a project-paused api monitor does not clear its resume marker', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
     $this->createResourcePermissions('MonitorApis');
@@ -1831,7 +1831,7 @@ test('manual api disable while project is paused is not undone by project resume
         ->fillForm([
             'title' => $monitor->title,
             'url' => $monitor->url,
-            'data_path' => $monitor->data_path,
+            'data_path' => 'data.changed',
             'project_id' => $project->id,
             'package_interval' => $monitor->package_interval ?? '5m',
             'is_enabled' => false,
@@ -1840,12 +1840,13 @@ test('manual api disable while project is paused is not undone by project resume
         ->assertHasNoFormErrors();
 
     expect($monitor->refresh()->is_enabled)->toBeFalse()
-        ->and($monitor->project_paused_monitoring)->toBeFalse();
+        ->and($monitor->data_path)->toBe('data.changed')
+        ->and($monitor->project_paused_monitoring)->toBeTrue();
 
     Livewire::test(ListProjects::class)
         ->callTableBulkAction('enable', collect([$project]));
 
-    expect($monitor->refresh()->is_enabled)->toBeFalse()
+    expect($monitor->refresh()->is_enabled)->toBeTrue()
         ->and($monitor->project_paused_monitoring)->toBeFalse();
 });
 
@@ -1878,7 +1879,7 @@ test('bulk resume restores only components archived by the project action', func
         ->and($manuallyArchived->project_paused_monitoring)->toBeFalse();
 });
 
-test('manual component archive while project is paused is not undone by project resume', function () {
+test('editing a project-paused component does not clear its resume marker', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
     $this->createResourcePermissions('MonitorApis');
@@ -1898,10 +1899,12 @@ test('manual component archive while project is paused is not undone by project 
     expect($component->refresh()->is_archived)->toBeTrue()
         ->and($component->project_paused_monitoring)->toBeTrue();
 
+    $originalName = $component->name;
+
     Livewire::test(EditProjectComponent::class, ['record' => $component->id])
         ->fillForm([
             'project_id' => $project->id,
-            'name' => $component->name,
+            'name' => 'renamed-'.$originalName,
             'declared_interval' => $component->declared_interval,
             'current_status' => $component->current_status,
             'is_archived' => true,
@@ -1910,12 +1913,13 @@ test('manual component archive while project is paused is not undone by project 
         ->assertHasNoFormErrors();
 
     expect($component->refresh()->is_archived)->toBeTrue()
-        ->and($component->project_paused_monitoring)->toBeFalse();
+        ->and($component->name)->toBe('renamed-'.$originalName)
+        ->and($component->project_paused_monitoring)->toBeTrue();
 
     Livewire::test(ListProjects::class)
         ->callTableBulkAction('enable', collect([$project]));
 
-    expect($component->refresh()->is_archived)->toBeTrue()
+    expect($component->refresh()->is_archived)->toBeFalse()
         ->and($component->project_paused_monitoring)->toBeFalse();
 });
 

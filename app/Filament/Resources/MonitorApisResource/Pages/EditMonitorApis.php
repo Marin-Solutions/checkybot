@@ -52,10 +52,6 @@ class EditMonitorApis extends EditRecord
             $data['status_summary'] = 'Disabled in Checkybot admin.';
         }
 
-        if ($this->record->project_paused_monitoring && ($data['is_enabled'] ?? true) === false) {
-            $data['project_paused_monitoring'] = false;
-        }
-
         return $data;
     }
 

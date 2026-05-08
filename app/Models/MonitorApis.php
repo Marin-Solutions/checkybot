@@ -75,7 +75,7 @@ class MonitorApis extends Model
     protected static function booted(): void
     {
         static::saving(function (MonitorApis $api): void {
-            if ($api->exists && $api->isDirty('is_enabled') && $api->is_enabled === false && $api->project_paused_monitoring) {
+            if ($api->exists && $api->isDirty('is_enabled') && $api->project_paused_monitoring) {
                 $api->project_paused_monitoring = false;
             }
         });

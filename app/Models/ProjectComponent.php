@@ -55,7 +55,7 @@ class ProjectComponent extends Model
     protected static function booted(): void
     {
         static::saving(function (ProjectComponent $component): void {
-            if ($component->exists && $component->isDirty('is_archived') && $component->is_archived === true && $component->project_paused_monitoring) {
+            if ($component->exists && $component->isDirty('is_archived') && $component->project_paused_monitoring) {
                 $component->project_paused_monitoring = false;
             }
         });
