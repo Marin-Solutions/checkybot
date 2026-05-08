@@ -20,6 +20,7 @@ use App\Models\NotificationSetting;
 use App\Models\OutboundLink;
 use App\Models\Project;
 use App\Models\SeoCheck;
+use App\Models\SeoSchedule;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -244,6 +245,35 @@ test('super admin can update website', function () {
         'name' => 'New Name',
         'project_id' => $project->id,
     ]);
+});
+
+test('edit website preserves normalized seo schedule time with existing seconds', function () {
+    Carbon::setTestNow(Carbon::parse('2026-04-29 10:00:00'));
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'name' => 'Scheduled Site',
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+    ]);
+
+    SeoSchedule::factory()->daily()->create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'schedule_time' => '02:00:00',
+        'next_run_at' => Carbon::parse('2026-04-30 02:00:00'),
+    ]);
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm([
+            'name' => 'Scheduled Site Updated',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $schedule = $website->seoSchedule()->firstOrFail();
+
+    expect($schedule->schedule_time)->toBe('02:00:00')
+        ->and($schedule->next_run_at->toDateTimeString())->toBe('2026-04-30 02:00:00');
 });
 
 test('website edit page exposes website notification management', function () {

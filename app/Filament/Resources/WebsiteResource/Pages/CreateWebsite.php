@@ -64,7 +64,7 @@ class CreateWebsite extends CreateRecord
         $website = $this->getRecord();
         $scheduleEnabled = $this->data['seo_schedule_enabled'] ?? false;
         $scheduleFrequency = $this->data['seo_schedule_frequency'] ?? null;
-        $scheduleTime = $this->data['seo_schedule_time'] ?? '02:00';
+        $scheduleTime = SeoSchedule::normalizeScheduleTime($this->data['seo_schedule_time'] ?? '02:00');
         $scheduleDay = $this->data['seo_schedule_day'] ?? 'Monday';
 
         if ($scheduleEnabled && $scheduleFrequency) {
@@ -72,7 +72,7 @@ class CreateWebsite extends CreateRecord
                 'website_id' => $website->id,
                 'created_by' => Auth::id(),
                 'frequency' => $scheduleFrequency,
-                'schedule_time' => $scheduleTime.':00',
+                'schedule_time' => $scheduleTime,
                 'schedule_day' => $scheduleFrequency === 'weekly' ? $scheduleDay : null,
                 'is_active' => true,
                 'next_run_at' => SeoSchedule::calculateNextRunAt($scheduleFrequency, $scheduleTime, $scheduleDay),
