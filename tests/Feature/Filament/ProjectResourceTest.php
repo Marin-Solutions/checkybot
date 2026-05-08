@@ -790,7 +790,7 @@ test('application record shows package-managed external checks including archive
 
     Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
         ->assertSuccessful()
-        ->assertSeeInOrder(['Synced Checks', '6'])
+        ->assertSeeInOrder(['Synced Checks', '7'])
         ->assertSee('Package-managed Websites')
         ->assertSee('Package-managed APIs');
 
