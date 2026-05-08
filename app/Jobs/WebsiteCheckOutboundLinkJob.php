@@ -78,15 +78,13 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
         $checkedAt = Carbon::now();
         $baseUrl = $this->website->getBaseURL();
         $transportError = UptimeTransportError::fromThrowable($exception);
-        $scanSource = str_replace('-', ' ', $this->source);
+        $scanSource = $this->sourceLabel();
 
-        OutboundLink::query()->updateOrCreate(
-            [
+        OutboundLink::query()->upsert(
+            [[
                 'website_id' => $this->website->id,
                 'found_on' => $baseUrl,
                 'outgoing_url' => $baseUrl,
-            ],
-            [
                 'http_status_code' => null,
                 'transport_error_type' => $transportError['type']->value,
                 'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage(
@@ -94,11 +92,27 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
                 ),
                 'transport_error_code' => $transportError['code'],
                 'last_checked_at' => $checkedAt,
+            ]],
+            ['website_id', 'found_on', 'outgoing_url'],
+            [
+                'http_status_code',
+                'transport_error_type',
+                'transport_error_message',
+                'transport_error_code',
+                'last_checked_at',
             ],
         );
 
         $this->website->update([
             'last_outbound_checked_at' => $checkedAt,
         ]);
+    }
+
+    private function sourceLabel(): string
+    {
+        return match ($this->source) {
+            self::SOURCE_ON_DEMAND => 'on demand',
+            default => 'scheduled',
+        };
     }
 }
