@@ -527,6 +527,46 @@ test('component sync keeps user archived components archived and ignores their h
     ]);
 });
 
+test('component sync keeps user archived components archived when they are declared without heartbeat data', function () {
+    $component = ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'scheduler',
+        'source' => 'package',
+        'current_status' => 'unknown',
+        'last_reported_status' => 'unknown',
+        'declared_interval' => '5m',
+        'interval_minutes' => 5,
+        'last_heartbeat_at' => null,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'scheduler',
+                    'interval' => '15m',
+                ],
+            ],
+            'components' => [],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.created', 0)
+        ->assertJsonPath('summary.components.updated', 1)
+        ->assertJsonPath('summary.heartbeats.recorded', 0);
+
+    $component->refresh();
+
+    expect($component->is_archived)->toBeTrue()
+        ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
+        ->and($component->declared_interval)->toBe('15m')
+        ->and($component->interval_minutes)->toBe(15)
+        ->and($component->last_heartbeat_at?->toISOString())->toBeNull();
+});
+
 test('component sync revives package archived components when they return in the manifest', function () {
     $component = ProjectComponent::factory()->archived()->create([
         'project_id' => $this->project->id,
