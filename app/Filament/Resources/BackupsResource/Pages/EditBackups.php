@@ -25,7 +25,11 @@ class EditBackups extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        if (($data['password'] ?? null) !== ($data['confirm_password'] ?? null)) {
+        $password = $data['password'] ?? null;
+        $confirmPassword = $data['confirm_password'] ?? null;
+        $storedPassword = $this->record->getOriginal('password');
+
+        if ($password !== $storedPassword && $password !== $confirmPassword) {
             Notification::make()
                 ->title('Passwords do not match')
                 ->body('Please confirm your password.')
