@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
+use App\Models\MonitorApis;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\User;
@@ -20,6 +21,7 @@ class NotificationSettingFactory extends Factory
         return [
             'user_id' => User::factory(),
             'website_id' => null,
+            'monitor_api_id' => null,
             'scope' => NotificationScopesEnum::GLOBAL,
             'inspection' => WebsiteServicesEnum::ALL_CHECK,
             'channel_type' => NotificationChannelTypesEnum::MAIL,
@@ -34,6 +36,7 @@ class NotificationSettingFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'scope' => NotificationScopesEnum::GLOBAL,
             'website_id' => null,
+            'monitor_api_id' => null,
         ]);
     }
 
@@ -42,6 +45,16 @@ class NotificationSettingFactory extends Factory
         return $this->state(fn (array $attributes) => [
             'scope' => NotificationScopesEnum::WEBSITE,
             'website_id' => Website::factory(),
+            'monitor_api_id' => null,
+        ]);
+    }
+
+    public function apiMonitorScope(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'scope' => NotificationScopesEnum::API_MONITOR,
+            'website_id' => null,
+            'monitor_api_id' => MonitorApis::factory(),
         ]);
     }
 

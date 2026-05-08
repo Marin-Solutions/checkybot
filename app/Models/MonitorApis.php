@@ -123,6 +123,16 @@ class MonitorApis extends Model
         return $this->hasMany(MonitorApiResult::class, 'monitor_api_id');
     }
 
+    public function notificationSettings(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'monitor_api_id')->apiMonitorScope();
+    }
+
+    public function notificationChannels(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'monitor_api_id')->apiMonitorScope()->active();
+    }
+
     public function latestResult(): HasOne
     {
         return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->latestOfMany();
