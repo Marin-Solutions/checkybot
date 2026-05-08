@@ -62,9 +62,13 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
                 ->setCrawlObserver(new WebsiteOutboundLinkCrawler($this->website))
                 ->startCrawling($this->website->getBaseURL());
         } catch (\Throwable $e) {
-            $this->recordStartupFailure($e);
-
             Log::error('Outbound link check failed for website '.$this->website->url.': '.$e->getMessage());
+
+            try {
+                $this->recordStartupFailure($e);
+            } catch (\Throwable $recordingException) {
+                Log::error('Failed to record outbound link startup failure evidence for website '.$this->website->url.': '.$recordingException->getMessage());
+            }
         }
     }
 
@@ -76,7 +80,7 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
     private function recordStartupFailure(\Throwable $exception): void
     {
         $checkedAt = Carbon::now();
-        $baseUrl = $this->website->getBaseURL();
+        $baseUrl = $this->failureEvidenceUrl();
         $transportError = UptimeTransportError::fromThrowable($exception);
         $scanSource = $this->sourceLabel();
 
@@ -106,6 +110,15 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
         $this->website->update([
             'last_outbound_checked_at' => $checkedAt,
         ]);
+    }
+
+    private function failureEvidenceUrl(): string
+    {
+        try {
+            return $this->website->getBaseURL();
+        } catch (\Throwable) {
+            return $this->website->url ?: "website:{$this->website->getKey()}";
+        }
     }
 
     private function sourceLabel(): string

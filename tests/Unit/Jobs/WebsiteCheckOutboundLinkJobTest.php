@@ -4,6 +4,7 @@ use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\Website;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Spatie\Crawler\Crawler;
@@ -169,6 +170,35 @@ test('job records startup failure evidence with fallback source label', function
     $link = $website->outboundLinks()->sole();
 
     expect($link->transport_error_message)->toContain('Outbound unknown source scan failed before crawling started');
+});
+
+test('job records startup failure evidence when website base url cannot be normalized', function () {
+    Log::spy();
+
+    $website = Website::factory()->create([
+        'url' => 'not-a-valid-url',
+    ]);
+
+    $job = new class($website) extends WebsiteCheckOutboundLinkJob
+    {
+        public function createCrawler(): Crawler
+        {
+            throw new \RuntimeException('Crawler bootstrap failed');
+        }
+    };
+
+    $job->handle();
+
+    assertDatabaseHas('outbound_link', [
+        'website_id' => $website->id,
+        'found_on' => 'not-a-valid-url',
+        'outgoing_url' => 'not-a-valid-url',
+        'transport_error_type' => 'unknown',
+    ]);
+
+    Log::shouldHaveReceived('error')
+        ->with('Outbound link check failed for website not-a-valid-url: Crawler bootstrap failed')
+        ->once();
 });
 
 test('job records unknown transport error when crawler startup failure cannot be classified', function () {
