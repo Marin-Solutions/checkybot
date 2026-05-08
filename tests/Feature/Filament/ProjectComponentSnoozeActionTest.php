@@ -80,13 +80,15 @@ test('user without Update:ProjectComponent permission cannot see component snooz
     $this->actingAs($user);
 
     $project = Project::factory()->create(['created_by' => $user->id]);
-    ProjectComponent::factory()->create([
+    $component = ProjectComponent::factory()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
     ]);
 
     Livewire::test(ListProjectComponents::class)
         ->assertTableActionHidden('snooze')
+        ->assertTableActionHidden('unsnooze', $component)
         ->assertTableBulkActionHidden('snooze')
         ->assertTableBulkActionHidden('unsnooze');
 });
