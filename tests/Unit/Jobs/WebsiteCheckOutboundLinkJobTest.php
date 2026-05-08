@@ -1,7 +1,9 @@
 <?php
 
 use App\Jobs\WebsiteCheckOutboundLinkJob;
+use App\Models\OutboundLink;
 use App\Models\Website;
+use App\Services\HealthEventNotificationService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -130,6 +132,63 @@ test('job records outbound evidence when crawler startup fails', function () {
         ->and($website->outbound_scan_queued_at)->toBeNull();
 
     Carbon::setTestNow();
+});
+
+test('job notifies website when crawler startup failure is newly broken outbound evidence', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    $this->mock(HealthEventNotificationService::class, function ($mock) use ($website): void {
+        $mock->shouldReceive('notifyWebsite')
+            ->once()
+            ->withArgs(function (Website $notifiedWebsite, string $event, string $status, string $summary) use ($website): bool {
+                return $notifiedWebsite->is($website)
+                    && $event === 'outbound_link_broken'
+                    && $status === 'danger'
+                    && str_contains($summary, 'Outbound link check found 1 newly broken external link.')
+                    && str_contains($summary, 'https://example.com could not be reached (DNS failure) from https://example.com');
+            })
+            ->andReturn(true);
+    });
+
+    $job = new class($website) extends WebsiteCheckOutboundLinkJob
+    {
+        public function createCrawler(): Crawler
+        {
+            throw new \RuntimeException('cURL error 6: Could not resolve host: example.com', 6);
+        }
+    };
+
+    $job->handle();
+});
+
+test('job does not notify website when crawler startup failure updates existing broken outbound evidence', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    OutboundLink::factory()->create([
+        'website_id' => $website->id,
+        'found_on' => 'https://example.com',
+        'outgoing_url' => 'https://example.com',
+        'http_status_code' => null,
+        'transport_error_type' => 'timeout',
+    ]);
+
+    $this->mock(HealthEventNotificationService::class, function ($mock): void {
+        $mock->shouldNotReceive('notifyWebsite');
+    });
+
+    $job = new class($website) extends WebsiteCheckOutboundLinkJob
+    {
+        public function createCrawler(): Crawler
+        {
+            throw new \RuntimeException('Operation timed out after 10000 milliseconds', 28);
+        }
+    };
+
+    $job->handle();
 });
 
 test('job records on demand scan source in crawler startup failure evidence', function () {

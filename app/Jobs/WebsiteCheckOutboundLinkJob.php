@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Crawlers\WebsiteOutboundLinkCrawler;
 use App\Models\OutboundLink;
 use App\Models\Website;
+use App\Services\HealthEventNotificationService;
 use App\Support\ApiMonitorEvidenceRedactor;
 use App\Support\UptimeTransportError;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -17,6 +18,10 @@ use Spatie\Crawler\Crawler;
 class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
+
+    private const BROKEN_STATUS_CODE_MIN = 400;
+
+    private const BROKEN_STATUS_CODE_MAX = 599;
 
     public const SOURCE_SCHEDULED = 'scheduled';
 
@@ -84,6 +89,7 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
         $baseUrl = $this->failureEvidenceUrl();
         $transportError = UptimeTransportError::fromThrowable($exception);
         $scanSource = $this->sourceLabel();
+        $wasAlreadyBroken = $this->hasExistingBrokenEvidence($baseUrl);
 
         OutboundLink::query()->upsert(
             [[
@@ -112,6 +118,39 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
             'last_outbound_checked_at' => $checkedAt,
             'outbound_scan_queued_at' => null,
         ])->save();
+
+        if (! $wasAlreadyBroken) {
+            app(HealthEventNotificationService::class)->notifyWebsite(
+                $this->website,
+                'outbound_link_broken',
+                'danger',
+                $this->startupFailureSummary($baseUrl, $transportError['type']->value),
+            );
+        }
+    }
+
+    private function hasExistingBrokenEvidence(string $url): bool
+    {
+        return OutboundLink::query()
+            ->where('website_id', $this->website->id)
+            ->where('found_on', $url)
+            ->where('outgoing_url', $url)
+            ->where(function ($query): void {
+                $query
+                    ->whereBetween('http_status_code', [
+                        self::BROKEN_STATUS_CODE_MIN,
+                        self::BROKEN_STATUS_CODE_MAX,
+                    ])
+                    ->orWhereNotNull('transport_error_type');
+            })
+            ->exists();
+    }
+
+    private function startupFailureSummary(string $url, string $transportErrorType): string
+    {
+        $reason = UptimeTransportError::label($transportErrorType);
+
+        return "Outbound link check found 1 newly broken external link.\n\n{$url} could not be reached ({$reason}) from {$url}";
     }
 
     private function clearQueuedOutboundScan(): void
