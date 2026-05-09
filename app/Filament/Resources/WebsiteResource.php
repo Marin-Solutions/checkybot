@@ -7,6 +7,7 @@ use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Filament\Support\HealthStatusFilter;
+use App\Jobs\LogUptimeSslJob;
 use App\Models\Project;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
@@ -21,6 +22,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\Log;
 
 class WebsiteResource extends Resource
 {
@@ -513,6 +515,67 @@ class WebsiteResource extends Resource
                         Notification::make()
                             ->title('Notifications resumed')
                             ->body("{$record->name} will alert again on the next status change.")
+                            ->success()
+                            ->send();
+                    }),
+                \Filament\Actions\Action::make('run_now')
+                    ->label('Run check now')
+                    ->color('primary')
+                    ->icon('heroicon-o-bolt')
+                    ->requiresConfirmation()
+                    ->modalIcon('heroicon-o-bolt')
+                    ->modalHeading('Run website diagnostics now')
+                    ->modalDescription('Checkybot will queue the enabled diagnostics for this website and append the result to its diagnostic history when they complete. The website\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalSubmitActionLabel('Run now')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                    ->visible(fn (Website $record): bool => (bool) $record->uptime_check || (bool) $record->ssl_check)
+                    ->disabled(fn (Website $record): bool => $record->hasQueuedDiagnostic())
+                    ->action(function (Website $record): void {
+                        $queuedStatePersisted = false;
+
+                        try {
+                            $record->refresh();
+
+                            if ($record->hasQueuedDiagnostic()) {
+                                Notification::make()
+                                    ->title('Diagnostic already queued')
+                                    ->body('Checkybot is already waiting for this website diagnostic to finish.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            $record->forceFill([
+                                'diagnostic_queued_at' => now(),
+                            ])->save();
+                            $queuedStatePersisted = true;
+
+                            LogUptimeSslJob::dispatch($record->withoutRelations(), onDemand: true);
+                        } catch (\Throwable $e) {
+                            if ($queuedStatePersisted) {
+                                $record->forceFill([
+                                    'diagnostic_queued_at' => null,
+                                ])->save();
+                            }
+
+                            Log::error('Run Now uptime/SSL diagnostic dispatch failed from table action', [
+                                'website_id' => $record->id,
+                                'exception' => $e,
+                            ]);
+
+                            Notification::make()
+                                ->title('Diagnostic could not be queued')
+                                ->body('Checkybot could not queue the on-demand check. Check the application logs for details.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        Notification::make()
+                            ->title('Diagnostic queued')
+                            ->body('Checkybot will run this website check in the background and add the evidence to diagnostic history.')
                             ->success()
                             ->send();
                     }),
