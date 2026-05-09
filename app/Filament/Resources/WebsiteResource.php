@@ -799,8 +799,7 @@ class WebsiteResource extends Resource
         return $query->where(function (Builder $query): void {
             $query
                 ->where('uptime_check', true)
-                ->orWhere('ssl_check', true)
-                ->orWhere('outbound_check', true);
+                ->orWhere('ssl_check', true);
         });
     }
 
