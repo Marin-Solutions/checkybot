@@ -28,6 +28,7 @@ class CheckSyncService
 
             $project->fill([
                 'last_synced_at' => $syncedAt,
+                'latest_package_sync_summary' => $summary,
             ])->save();
 
             return $summary;

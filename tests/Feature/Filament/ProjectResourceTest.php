@@ -586,6 +586,26 @@ test('application detail shows package sync status metadata', function () {
         'base_url' => 'https://checkout.example.com',
         'repository' => 'marin-solutions/checkout',
         'last_synced_at' => $syncedAt,
+        'latest_package_sync_summary' => [
+            'created' => 2,
+            'updated' => 1,
+            'disabled_missing' => 1,
+            'api_checks' => [
+                'created' => 1,
+                'updated' => 0,
+                'disabled_missing' => 1,
+            ],
+            'uptime_checks' => [
+                'created' => 1,
+                'updated' => 1,
+                'disabled_missing' => 0,
+            ],
+            'ssl_checks' => [
+                'created' => 0,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+        ],
     ]);
 
     Website::factory()->create([
@@ -644,7 +664,11 @@ test('application detail shows package sync status metadata', function () {
         ->assertSee('https://checkout.example.com')
         ->assertSee('marin-solutions/checkout')
         ->assertSeeInOrder(['Synced Checks', '3'])
-        ->assertSeeInOrder(['Synced Components', '2']);
+        ->assertSeeInOrder(['Synced Components', '2'])
+        ->assertSeeInOrder(['Last Sync Changes', '2 created, 1 updated, 1 disabled'])
+        ->assertSee('API checks: 1 created, 1 disabled')
+        ->assertSee('Uptime checks: 1 created, 1 updated')
+        ->assertSee('SSL checks: no changes');
 });
 
 test('application detail shows sdk version for registered applications before package sync', function () {

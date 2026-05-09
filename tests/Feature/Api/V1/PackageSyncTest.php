@@ -114,6 +114,7 @@ test('package sync creates a project and api check definitions', function () {
     ]);
 
     $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+    $project = Project::query()->findOrFail($projectId);
 
     expect($monitor->headers)->toBe([
         'Accept' => 'application/json',
@@ -123,7 +124,27 @@ test('package sync creates a project and api check definitions', function () {
         ->and($monitor->request_body_type)->toBe('json')
         ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->assertions->first()->assertion_type)->toBe('exists')
-        ->and($monitor->assertions->first()->data_path)->toBe('data');
+        ->and($monitor->assertions->first()->data_path)->toBe('data')
+        ->and($project->latest_package_sync_summary)->toMatchArray([
+            'created' => 1,
+            'updated' => 0,
+            'disabled_missing' => 0,
+            'api_checks' => [
+                'created' => 1,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+            'uptime_checks' => [
+                'created' => 0,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+            'ssl_checks' => [
+                'created' => 0,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+        ]);
 });
 
 test('package sync rejects invalid regex assertion patterns', function () {

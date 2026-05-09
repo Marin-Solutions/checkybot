@@ -29,11 +29,16 @@ class PackageSyncService
             $sslSummary = $this->syncWebsiteChecks($project, $payload, 'ssl', $syncedAt);
             $this->recalculateUptimeOnlyPackageIntervals($project);
             $this->resetStatusForFullyDisabledWebsites($project);
+            $summary = $this->summarize($apiSummary, $uptimeSummary, $sslSummary);
+
+            $project->forceFill([
+                'latest_package_sync_summary' => $summary,
+            ])->save();
 
             return [
                 'project' => $project,
                 'project_created' => $project->wasRecentlyCreated,
-                'summary' => $this->summarize($apiSummary, $uptimeSummary, $sslSummary),
+                'summary' => $summary,
                 'synced_at' => $syncedAt,
             ];
         });
