@@ -59,6 +59,24 @@ test('on-demand uptime jobs use a short diagnostic unique lock', function () {
     expect($job->uniqueFor())->toBe(60);
 });
 
+test('job skips diagnostics and clears queued state when batch is cancelled', function () {
+    Http::preventStrayRequests();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    [$job] = (new LogUptimeSslJob($website, onDemand: true))
+        ->withFakeBatch(cancelledAt: now()->toImmutable());
+
+    $job->handle(app(SslCertificateService::class));
+
+    expect($website->fresh()->diagnostic_queued_at)->toBeNull()
+        ->and($website->logHistory()->count())->toBe(0);
+});
+
 test('job creates log history for successful check', function () {
     Http::fake([
         '*' => Http::response('', 200),

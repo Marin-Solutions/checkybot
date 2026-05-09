@@ -11,6 +11,7 @@ use App\Services\SslCertificateService;
 use App\Support\UptimeTransportError;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -21,7 +22,7 @@ use Illuminate\Support\Str;
 
 class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 {
-    use Queueable;
+    use Batchable, Queueable;
 
     /**
      * @param  bool  $onDemand  When true, the job is treated as an operator-triggered diagnostic run:
@@ -75,6 +76,12 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
      */
     public function handle(SslCertificateService $sslCertificateService): void
     {
+        if ($this->batch()?->cancelled()) {
+            $this->clearQueuedDiagnostic();
+
+            return;
+        }
+
         if (! $this->shouldRunForWebsite()) {
             $this->clearQueuedDiagnostic();
 

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Jobs\LogUptimeSslJob;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
@@ -186,12 +187,22 @@ class CheckybotControlService
     public function triggerProjectRun(User $user, string|int $projectKey): array
     {
         $project = $this->findProject($user, $projectKey);
-        $checks = $project->packageManagedApis()
+        $apiChecks = $project->packageManagedApis()
             ->where('is_enabled', true)
             ->orderBy('package_name')
             ->get();
+        $websiteChecks = $project->packageManagedWebsites()
+            ->where(function (Builder $query): void {
+                $query->where('uptime_check', true)
+                    ->orWhere('ssl_check', true);
+            })
+            ->orderBy('package_name')
+            ->get();
+        $jobs = $apiChecks
+            ->map(fn (MonitorApis $check): RunApiMonitorDiagnosticJob => new RunApiMonitorDiagnosticJob($check->withoutRelations()))
+            ->merge($websiteChecks->map(fn (Website $website): LogUptimeSslJob => new LogUptimeSslJob($website->withoutRelations(), onDemand: true)));
 
-        if ($checks->isEmpty()) {
+        if ($jobs->isEmpty()) {
             return [
                 'project' => $this->projectIdentity($project),
                 'status' => 'no_enabled_checks',
@@ -201,9 +212,7 @@ class CheckybotControlService
             ];
         }
 
-        $batch = Bus::batch(
-            $checks->map(fn (MonitorApis $check): RunApiMonitorDiagnosticJob => new RunApiMonitorDiagnosticJob($check->withoutRelations()))
-        )
+        $batch = Bus::batch($jobs)
             ->name($this->controlProjectRunBatchName($project))
             ->withOption('checkybot_control', [
                 'project_id' => $project->id,
@@ -216,7 +225,7 @@ class CheckybotControlService
             'project' => $this->projectIdentity($project),
             'status' => 'queued',
             'triggered_at' => now()->toISOString(),
-            'checks_queued' => $checks->count(),
+            'checks_queued' => $jobs->count(),
             'run_batch' => $this->runBatchPayload($batch),
         ];
     }
