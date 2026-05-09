@@ -71,6 +71,16 @@ class ProjectComponent extends Model
         return $this->hasMany(ProjectComponentHeartbeat::class)->latest('observed_at');
     }
 
+    public function notificationSettings(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'project_component_id')->projectComponentScope();
+    }
+
+    public function notificationChannels(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'project_component_id')->projectComponentScope()->active();
+    }
+
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

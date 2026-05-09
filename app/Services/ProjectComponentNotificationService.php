@@ -38,8 +38,16 @@ class ProjectComponentNotificationService
         }
 
         $settings = NotificationSetting::query()
-            ->where('user_id', $component->project->created_by)
             ->active()
+            ->where(function ($query) use ($component): void {
+                $query->where(function ($inner) use ($component): void {
+                    $inner->projectComponentScope()
+                        ->where('project_component_id', $component->id);
+                })->orWhere(function ($inner) use ($component): void {
+                    $inner->globalScope()
+                        ->where('user_id', $component->project->created_by);
+                });
+            })
             ->whereIn('inspection', [
                 WebsiteServicesEnum::APPLICATION_HEALTH->value,
                 WebsiteServicesEnum::ALL_CHECK->value,

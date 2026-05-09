@@ -26,6 +26,7 @@ class NotificationSetting extends Model
         'user_id',
         'website_id',
         'monitor_api_id',
+        'project_component_id',
         'scope',
         'inspection',
         'channel_type',
@@ -77,6 +78,11 @@ class NotificationSetting extends Model
         return $this->belongsTo(MonitorApis::class, 'monitor_api_id');
     }
 
+    public function projectComponent(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ProjectComponent::class, 'project_component_id');
+    }
+
     public function user(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -95,6 +101,11 @@ class NotificationSetting extends Model
     public function scopeApiMonitorScope(Builder $query): void
     {
         $query->where('scope', NotificationScopesEnum::API_MONITOR->value);
+    }
+
+    public function scopeProjectComponentScope(Builder $query): void
+    {
+        $query->where('scope', NotificationScopesEnum::PROJECT_COMPONENT->value);
     }
 
     public function scopeActive(Builder $query): void

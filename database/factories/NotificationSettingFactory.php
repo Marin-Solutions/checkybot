@@ -8,6 +8,7 @@ use App\Enums\WebsiteServicesEnum;
 use App\Models\MonitorApis;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -22,6 +23,7 @@ class NotificationSettingFactory extends Factory
             'user_id' => User::factory(),
             'website_id' => null,
             'monitor_api_id' => null,
+            'project_component_id' => null,
             'scope' => NotificationScopesEnum::GLOBAL,
             'inspection' => WebsiteServicesEnum::ALL_CHECK,
             'channel_type' => NotificationChannelTypesEnum::MAIL,
@@ -37,6 +39,7 @@ class NotificationSettingFactory extends Factory
             'scope' => NotificationScopesEnum::GLOBAL,
             'website_id' => null,
             'monitor_api_id' => null,
+            'project_component_id' => null,
         ]);
     }
 
@@ -46,6 +49,7 @@ class NotificationSettingFactory extends Factory
             'scope' => NotificationScopesEnum::WEBSITE,
             'website_id' => Website::factory(),
             'monitor_api_id' => null,
+            'project_component_id' => null,
         ]);
     }
 
@@ -55,6 +59,17 @@ class NotificationSettingFactory extends Factory
             'scope' => NotificationScopesEnum::API_MONITOR,
             'website_id' => null,
             'monitor_api_id' => MonitorApis::factory(),
+            'project_component_id' => null,
+        ]);
+    }
+
+    public function projectComponentScope(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'scope' => NotificationScopesEnum::PROJECT_COMPONENT,
+            'website_id' => null,
+            'monitor_api_id' => null,
+            'project_component_id' => ProjectComponent::factory(),
         ]);
     }
 

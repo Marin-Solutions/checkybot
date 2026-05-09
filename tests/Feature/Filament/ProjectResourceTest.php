@@ -1,11 +1,16 @@
 <?php
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\NotificationScopesEnum;
+use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\MonitorApisResource\Pages\EditMonitorApis;
 use App\Filament\Resources\ProjectComponents\Pages\CreateProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
+use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
 use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelationManager;
+use App\Filament\Resources\ProjectComponents\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\ProjectResource;
@@ -14,6 +19,8 @@ use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationM
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Models\MonitorApis;
+use App\Models\NotificationChannels;
+use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
@@ -480,6 +487,97 @@ test('project component detail shows stale threshold with configured grace windo
         ->assertSee('Expires');
 
     $this->travelBack();
+});
+
+test('project component edit page exposes component notification management', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $component = ProjectComponent::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(EditProjectComponent::class, ['record' => $component->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Component Notifications');
+
+    expect(ProjectComponentResource::getRelations())
+        ->toContain(NotificationSettingsRelationManager::class);
+});
+
+test('component notification relation manager only shows alerts for the current component', function () {
+    $user = $this->actingAsSuperAdmin();
+    $component = ProjectComponent::factory()->create(['created_by' => $user->id]);
+    $otherComponent = ProjectComponent::factory()->create(['created_by' => $user->id]);
+
+    $visibleSetting = NotificationSetting::factory()->projectComponentScope()->email()->create([
+        'user_id' => $user->id,
+        'project_component_id' => $component->id,
+    ]);
+    $hiddenSetting = NotificationSetting::factory()->projectComponentScope()->email()->create([
+        'user_id' => $user->id,
+        'project_component_id' => $otherComponent->id,
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => EditProjectComponent::class,
+    ])
+        ->assertSuccessful()
+        ->assertCanSeeTableRecords([$visibleSetting])
+        ->assertCanNotSeeTableRecords([$hiddenSetting]);
+});
+
+test('super admin can create component-scoped email notification from component page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $component = ProjectComponent::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => EditProjectComponent::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+            'address' => 'workers@example.com',
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'website_id' => null,
+        'monitor_api_id' => null,
+        'project_component_id' => $component->id,
+        'scope' => NotificationScopesEnum::PROJECT_COMPONENT->value,
+        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH->value,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+        'address' => 'workers@example.com',
+        'flag_active' => true,
+    ]);
+});
+
+test('component-scoped webhook notification cannot reuse another users channel', function () {
+    $user = $this->actingAsSuperAdmin();
+    $component = ProjectComponent::factory()->create(['created_by' => $user->id]);
+    $otherChannel = NotificationChannels::factory()->create([
+        'title' => 'External Hook',
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => EditProjectComponent::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $otherChannel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasTableActionErrors(['notification_channel_id']);
+
+    $this->assertDatabaseMissing('notification_settings', [
+        'project_component_id' => $component->id,
+        'notification_channel_id' => $otherChannel->id,
+    ]);
 });
 
 test('project component detail omits grace hint when stale grace is disabled', function () {
