@@ -1256,6 +1256,45 @@ test('api monitor view separates scheduled latest evidence from newer diagnostic
         ->and($monitor->latestDiagnosticResult->summary)->toBe('Diagnostic API heartbeat failed.');
 });
 
+test('api monitor view exposes latest scheduled failed assertion expected and actual values', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Checkout API',
+        'current_status' => 'danger',
+        'status_summary' => 'Scheduler says the API assertion failed.',
+    ]);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'danger',
+        'summary' => 'Scheduled API heartbeat failed with assertion evidence.',
+        'http_code' => 200,
+        'response_time_ms' => 860,
+        'failed_assertions' => [[
+            'path' => 'data.status',
+            'type' => 'value_compare',
+            'message' => 'Value comparison failed: expected = active',
+            'actual' => 'pending',
+            'expected' => '= active',
+        ]],
+    ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertSuccessful()
+        ->assertSee('Latest Scheduled Run Evidence')
+        ->assertSee('Scheduled API heartbeat failed with assertion evidence.')
+        ->assertSee('Failed Assertions')
+        ->assertSee('Value comparison failed: expected = active')
+        ->assertSee('Expected')
+        ->assertSee('= active')
+        ->assertSee('Actual')
+        ->assertSee('pending');
+});
+
 test('api monitor view exposes latest diagnostic evidence blocks', function () {
     $this->createResourcePermissions('MonitorApis');
 
