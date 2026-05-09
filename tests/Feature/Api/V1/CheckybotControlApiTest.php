@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\RunSource;
+use App\Jobs\LogUptimeSslJob;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
@@ -999,23 +1000,48 @@ test('control api queues all enabled project checks as a diagnostic batch', func
         'is_enabled' => false,
     ]);
 
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'landing-page',
+        'name' => 'Landing page',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'paused-landing-page',
+        'name' => 'Paused landing page',
+        'url' => 'https://paused.scrappa.test',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/control/projects/scrappa/runs')
         ->assertAccepted()
         ->assertJsonPath('message', 'Project run queued.')
         ->assertJsonPath('data.status', 'queued')
-        ->assertJsonPath('data.checks_queued', 1)
+        ->assertJsonPath('data.checks_queued', 2)
         ->assertJsonPath('data.run_batch.status', 'pending')
         ->assertJsonPath('data.run_batch.name', 'Control project run: scrappa')
-        ->assertJsonPath('data.run_batch.total_jobs', 1)
-        ->assertJsonPath('data.run_batch.pending_jobs', 1)
+        ->assertJsonPath('data.run_batch.total_jobs', 2)
+        ->assertJsonPath('data.run_batch.pending_jobs', 2)
         ->assertJsonPath('data.run_batch.failed_jobs', 0);
 
     Bus::assertBatched(function ($batch): bool {
         return $batch->name === 'Control project run: scrappa'
-            && $batch->jobs->count() === 1
-            && $batch->jobs->first() instanceof RunApiMonitorDiagnosticJob
-            && $batch->jobs->first()->monitor->package_name === 'search-health'
+            && $batch->jobs->count() === 2
+            && $batch->jobs->contains(fn ($job): bool => $job instanceof RunApiMonitorDiagnosticJob
+                && $job->monitor->package_name === 'search-health')
+            && $batch->jobs->contains(fn ($job): bool => $job instanceof LogUptimeSslJob
+                && $job->website->package_name === 'landing-page'
+                && $job->onDemand === true)
             && ($batch->options['checkybot_control']['project_id'] ?? null) === $this->project->id
             && ($batch->options['checkybot_control']['user_id'] ?? null) === $this->user->id
             && ($batch->options['allowFailures'] ?? false) === true;
