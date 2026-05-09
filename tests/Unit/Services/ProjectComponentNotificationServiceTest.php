@@ -82,3 +82,19 @@ test('project component notification service includes component scoped channels 
     Http::assertSent(fn ($request): bool => $request->url() === 'https://hooks.example.test/global');
     Http::assertNotSent(fn ($request): bool => $request->url() === 'https://hooks.example.test/other-component');
 });
+
+test('project component notification service fails gracefully when project relationship is missing', function () {
+    Http::fake();
+
+    $component = ProjectComponent::factory()->create([
+        'name' => 'orphaned-worker',
+    ]);
+    $component->setRelation('project', null);
+
+    $delivered = app(ProjectComponentNotificationService::class)
+        ->notify($component, 'heartbeat', 'danger');
+
+    expect($delivered)->toBeFalse();
+
+    Http::assertNothingSent();
+});

@@ -37,15 +37,28 @@ class ProjectComponentNotificationService
             return true;
         }
 
+        $project = $component->project;
+
+        if ($project === null) {
+            Log::error('Skipping project component notification because the project relationship is missing', [
+                'project_component_id' => $component->id,
+                'project_id' => $component->project_id,
+                'event' => $event,
+                'status' => $status,
+            ]);
+
+            return false;
+        }
+
         $settings = NotificationSetting::query()
             ->active()
-            ->where(function ($query) use ($component): void {
+            ->where(function ($query) use ($component, $project): void {
                 $query->where(function ($inner) use ($component): void {
                     $inner->projectComponentScope()
                         ->where('project_component_id', $component->id);
-                })->orWhere(function ($inner) use ($component): void {
+                })->orWhere(function ($inner) use ($project): void {
                     $inner->globalScope()
-                        ->where('user_id', $component->project->created_by);
+                        ->where('user_id', $project->created_by);
                 });
             })
             ->whereIn('inspection', [
