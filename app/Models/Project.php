@@ -32,6 +32,7 @@ class Project extends Model
         'repository',
         'sync_defaults',
         'last_synced_at',
+        'latest_package_sync_summary',
         'token',
         'created_by',
     ];
@@ -41,6 +42,7 @@ class Project extends Model
         return [
             'sync_defaults' => 'array',
             'last_synced_at' => 'datetime',
+            'latest_package_sync_summary' => 'array',
         ];
     }
 

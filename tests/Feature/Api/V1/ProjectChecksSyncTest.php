@@ -38,6 +38,24 @@ test('syncs uptime checks successfully', function () {
         'deleted' => 0,
     ]);
 
+    expect($this->project->refresh()->latest_package_sync_summary)->toMatchArray([
+        'uptime_checks' => [
+            'created' => 1,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'ssl_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'api_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+    ]);
+
     $this->assertDatabaseHas('websites', [
         'project_id' => $this->project->id,
         'name' => 'homepage-uptime',

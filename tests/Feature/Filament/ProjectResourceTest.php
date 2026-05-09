@@ -586,6 +586,26 @@ test('application detail shows package sync status metadata', function () {
         'base_url' => 'https://checkout.example.com',
         'repository' => 'marin-solutions/checkout',
         'last_synced_at' => $syncedAt,
+        'latest_package_sync_summary' => [
+            'created' => 2,
+            'updated' => 1,
+            'disabled_missing' => 1,
+            'api_checks' => [
+                'created' => 1,
+                'updated' => 0,
+                'disabled_missing' => 1,
+            ],
+            'uptime_checks' => [
+                'created' => 1,
+                'updated' => 1,
+                'disabled_missing' => 0,
+            ],
+            'ssl_checks' => [
+                'created' => 0,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+        ],
     ]);
 
     Website::factory()->create([
@@ -644,7 +664,11 @@ test('application detail shows package sync status metadata', function () {
         ->assertSee('https://checkout.example.com')
         ->assertSee('marin-solutions/checkout')
         ->assertSeeInOrder(['Synced Checks', '3'])
-        ->assertSeeInOrder(['Synced Components', '2']);
+        ->assertSeeInOrder(['Synced Components', '2'])
+        ->assertSeeInOrder(['Last Sync Changes', '2 created, 1 updated, 1 disabled'])
+        ->assertSee('API checks: 1 created, 1 disabled')
+        ->assertSee('Uptime checks: 1 created, 1 updated')
+        ->assertSee('SSL checks: no changes');
 });
 
 test('application detail shows sdk version for registered applications before package sync', function () {
@@ -665,6 +689,42 @@ test('application detail shows sdk version for registered applications before pa
         ->assertSeeInOrder(['Last Synced', 'Never'])
         ->assertSeeInOrder(['SDK Version', '1.2.3'])
         ->assertSeeInOrder(['Package Key', '-']);
+});
+
+test('application detail summarizes legacy package sync changes from per type buckets', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Legacy Sync App',
+        'created_by' => $user->id,
+        'package_key' => 'legacy-sync-app',
+        'last_synced_at' => now()->subMinutes(4),
+        'latest_package_sync_summary' => [
+            'uptime_checks' => [
+                'created' => 1,
+                'updated' => 0,
+                'deleted' => 1,
+            ],
+            'ssl_checks' => [
+                'created' => 0,
+                'updated' => 2,
+                'deleted' => 0,
+            ],
+            'api_checks' => [
+                'created' => 3,
+                'updated' => 0,
+                'deleted' => 1,
+            ],
+        ],
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSeeInOrder(['Last Sync Changes', '4 created, 2 updated, 2 disabled'])
+        ->assertSee('Uptime checks: 1 created, 1 disabled')
+        ->assertSee('SSL checks: 2 updated')
+        ->assertSee('API checks: 3 created, 1 disabled');
 });
 
 test('application detail hides package sync status for manual applications', function () {
