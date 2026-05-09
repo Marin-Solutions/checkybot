@@ -73,12 +73,44 @@ test('website list exposes freshness for package and manual monitors', function 
         'stale_at' => null,
     ]);
 
+    $manualStale = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual stale website',
+        'source' => 'manual',
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'stale_at' => now()->subMinutes(2),
+    ]);
+
+    $manualAwaiting = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual awaiting website',
+        'source' => 'manual',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+    ]);
+
+    $manualDisabled = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual disabled website',
+        'source' => 'manual',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'last_heartbeat_at' => now()->subMinutes(4),
+        'stale_at' => null,
+    ]);
+
     Livewire::test(ListWebsites::class)
         ->assertTableColumnExists('freshness_evidence')
         ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
         ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
+        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $manualStale)
+        ->assertTableColumnStateSet('freshness_evidence', 'Awaiting heartbeat', $manualAwaiting)
+        ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $manualDisabled)
         ->assertSee('Expired 7 minutes ago.')
-        ->assertSee('Last heartbeat 3 minutes ago.');
+        ->assertSee('Last heartbeat 3 minutes ago.')
+        ->assertSee('Marked stale 2 minutes ago.')
+        ->assertSee('No scheduled heartbeat has been recorded yet.')
+        ->assertSee('Scheduled checks are paused. Heartbeats are not expected.');
 });
 
 test('super admin can search websites', function () {

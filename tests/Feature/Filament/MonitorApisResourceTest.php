@@ -456,12 +456,43 @@ test('api monitor list exposes freshness for package and manual monitors', funct
         'stale_at' => null,
     ]);
 
+    $manualStale = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Manual stale API',
+        'source' => 'manual',
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'stale_at' => now()->subMinutes(2),
+    ]);
+
+    $manualAwaiting = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Manual awaiting API',
+        'source' => 'manual',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+    ]);
+
+    $manualDisabled = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Manual disabled API',
+        'source' => 'manual',
+        'is_enabled' => false,
+        'last_heartbeat_at' => now()->subMinutes(4),
+        'stale_at' => null,
+    ]);
+
     Livewire::test(ListMonitorApis::class)
         ->assertTableColumnExists('freshness_evidence')
         ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
         ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
+        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $manualStale)
+        ->assertTableColumnStateSet('freshness_evidence', 'Awaiting heartbeat', $manualAwaiting)
+        ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $manualDisabled)
         ->assertSee('Expired 7 minutes ago.')
-        ->assertSee('Last heartbeat 3 minutes ago.');
+        ->assertSee('Last heartbeat 3 minutes ago.')
+        ->assertSee('Marked stale 2 minutes ago.')
+        ->assertSee('No scheduled heartbeat has been recorded yet.')
+        ->assertSee('Scheduled checks are paused. Heartbeats are not expected.');
 });
 
 test('api monitor edit page exposes api notification management', function () {

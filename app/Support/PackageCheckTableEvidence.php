@@ -13,6 +13,8 @@ class PackageCheckTableEvidence
 
     public const STATE_AWAITING_HEARTBEAT = 'Awaiting heartbeat';
 
+    public const STATE_HEARTBEAT_RECEIVED = 'Heartbeat received';
+
     public const STATE_STALE = 'Stale';
 
     public const STATE_SCHEDULE_UNKNOWN = 'Schedule unknown';
@@ -84,13 +86,13 @@ class PackageCheckTableEvidence
             return self::STATE_AWAITING_HEARTBEAT;
         }
 
-        return 'Heartbeat received';
+        return self::STATE_HEARTBEAT_RECEIVED;
     }
 
     public static function mainMonitorFreshnessColor(string $state): string
     {
         return match ($state) {
-            'Heartbeat received' => 'success',
+            self::STATE_HEARTBEAT_RECEIVED => 'success',
             default => static::freshnessColor($state),
         };
     }
