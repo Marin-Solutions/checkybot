@@ -50,13 +50,14 @@ class CheckSyncService
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
             $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
+            $isEnabled = $check['enabled'] ?? true;
 
             $data = [
                 'project_id' => $project->id,
                 'name' => $check['name'],
                 'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'description' => '',
-                'uptime_check' => true,
+                'uptime_check' => $isEnabled,
                 'ssl_check' => ($website && ! $website->trashed()) ? $website->ssl_check : false,
                 'uptime_interval' => IntervalParser::toMinutes($check['interval']),
                 'source' => 'package',
@@ -106,6 +107,7 @@ class CheckSyncService
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
             $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
+            $isEnabled = $check['enabled'] ?? true;
 
             $data = [
                 'project_id' => $project->id,
@@ -113,7 +115,7 @@ class CheckSyncService
                 'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'description' => '',
                 'uptime_check' => ($website && ! $website->trashed()) ? $website->uptime_check : false,
-                'ssl_check' => true,
+                'ssl_check' => $isEnabled,
                 'uptime_interval' => ($website && ! $website->trashed() && $website->uptime_check)
                     ? $website->uptime_interval
                     : IntervalParser::toMinutes($check['interval']),

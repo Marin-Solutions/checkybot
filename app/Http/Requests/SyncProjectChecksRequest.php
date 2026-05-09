@@ -65,11 +65,13 @@ class SyncProjectChecksRequest extends FormRequest
             'uptime_checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'uptime_checks.*.interval' => $this->intervalRules(),
             'uptime_checks.*.max_redirects' => ['integer', 'min:0', 'max:20'],
+            'uptime_checks.*.enabled' => ['nullable', 'boolean'],
 
             'ssl_checks' => ['array', 'max:100'],
             'ssl_checks.*.name' => $this->checkNameRules(),
             'ssl_checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'ssl_checks.*.interval' => $this->intervalRules(),
+            'ssl_checks.*.enabled' => ['nullable', 'boolean'],
 
             'api_checks' => ['array', 'max:100'],
             'api_checks.*.name' => $this->checkNameRules(),

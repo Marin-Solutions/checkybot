@@ -173,7 +173,8 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="name", type="string", example="Homepage"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
      *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="every_5_minutes"),
-     *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5)
+     *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5),
+     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true)
      *                 )
      *             ),
      *             @OA\Property(
@@ -187,7 +188,8 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Certificate"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
-     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="1d")
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="1d"),
+     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true)
      *                 )
      *             ),
      *             @OA\Property(
