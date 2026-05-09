@@ -482,7 +482,7 @@ test('api monitor list exposes freshness for package and manual monitors', funct
     ]);
 
     Livewire::test(ListMonitorApis::class)
-        ->assertTableColumnExists('freshness_evidence')
+        ->assertTableColumnExists('freshness_evidence', fn ($column): bool => $column->isToggleable())
         ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
         ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
         ->assertTableColumnStateSet('freshness_evidence', 'Stale', $manualStale)
@@ -492,7 +492,7 @@ test('api monitor list exposes freshness for package and manual monitors', funct
         ->assertSee('Last heartbeat 3 minutes ago.')
         ->assertSee('Marked stale 2 minutes ago.')
         ->assertSee('No scheduled heartbeat has been recorded yet.')
-        ->assertSee('Scheduled checks are paused. Heartbeats are not expected.');
+        ->assertSee('Monitor is disabled. Heartbeats are not expected.');
 });
 
 test('api monitor edit page exposes api notification management', function () {

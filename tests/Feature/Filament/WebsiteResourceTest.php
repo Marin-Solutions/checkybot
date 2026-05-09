@@ -100,7 +100,7 @@ test('website list exposes freshness for package and manual monitors', function 
     ]);
 
     Livewire::test(ListWebsites::class)
-        ->assertTableColumnExists('freshness_evidence')
+        ->assertTableColumnExists('freshness_evidence', fn ($column): bool => $column->isToggleable())
         ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
         ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
         ->assertTableColumnStateSet('freshness_evidence', 'Stale', $manualStale)
@@ -110,7 +110,7 @@ test('website list exposes freshness for package and manual monitors', function 
         ->assertSee('Last heartbeat 3 minutes ago.')
         ->assertSee('Marked stale 2 minutes ago.')
         ->assertSee('No scheduled heartbeat has been recorded yet.')
-        ->assertSee('Scheduled checks are paused. Heartbeats are not expected.');
+        ->assertSee('Monitor is disabled. Heartbeats are not expected.');
 });
 
 test('super admin can search websites', function () {

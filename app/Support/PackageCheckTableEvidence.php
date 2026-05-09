@@ -102,7 +102,7 @@ class PackageCheckTableEvidence
         }
 
         if (static::isMonitoringDisabled($record)) {
-            return 'Scheduled checks are paused. Heartbeats are not expected.';
+            return 'Monitor is disabled. Heartbeats are not expected.';
         }
 
         if ($record->stale_at !== null) {
