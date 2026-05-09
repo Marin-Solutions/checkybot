@@ -62,6 +62,9 @@ class CheckybotControlService
                 'packageManagedApis as checks_count',
                 'packageManagedApis as enabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', true),
                 'packageManagedApis as disabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', false),
+                'packageManagedWebsites as website_checks_count',
+                'packageManagedWebsites as enabled_website_checks_count' => fn (Builder $query) => $this->activeWebsiteCheckConstraint($query),
+                'packageManagedWebsites as disabled_website_checks_count' => fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query),
             ])
             ->latest('updated_at')
             ->get()
@@ -79,6 +82,9 @@ class CheckybotControlService
                 'packageManagedApis as checks_count',
                 'packageManagedApis as enabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', true),
                 'packageManagedApis as disabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', false),
+                'packageManagedWebsites as website_checks_count',
+                'packageManagedWebsites as enabled_website_checks_count' => fn (Builder $query) => $this->activeWebsiteCheckConstraint($query),
+                'packageManagedWebsites as disabled_website_checks_count' => fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query),
             ]);
 
         return array_merge($this->projectSummary($project), [
@@ -94,11 +100,25 @@ class CheckybotControlService
     {
         $project = $this->findProject($user, $projectKey);
 
-        return $project->packageManagedApis()
+        $apiChecks = $project->packageManagedApis()
             ->with(['assertions', 'latestResult'])
             ->orderBy('package_name')
             ->get()
-            ->map(fn (MonitorApis $check): array => $this->checkPayload($check))
+            ->map(fn (MonitorApis $check): array => $this->checkPayload($check));
+
+        $websiteChecks = $project->packageManagedWebsites()
+            ->with('latestLogHistory')
+            ->orderBy('package_name')
+            ->get()
+            ->map(fn (Website $website): array => $this->websiteCheckPayload($website));
+
+        return $apiChecks
+            ->merge($websiteChecks)
+            ->sortBy([
+                ['key', 'asc'],
+                ['type', 'asc'],
+            ])
+            ->values()
             ->all();
     }
 
@@ -468,9 +488,9 @@ class CheckybotControlService
             'environment' => $project->environment,
             'base_url' => $project->base_url,
             'repository' => $project->repository,
-            'checks_count' => (int) ($project->checks_count ?? $project->packageManagedApis()->count()),
-            'enabled_checks_count' => (int) ($project->enabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', true)->count()),
-            'disabled_checks_count' => (int) ($project->disabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', false)->count()),
+            'checks_count' => $this->totalPackageChecksCount($project),
+            'enabled_checks_count' => $this->enabledPackageChecksCount($project),
+            'disabled_checks_count' => $this->disabledPackageChecksCount($project),
             'created_at' => $project->created_at?->toISOString(),
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
@@ -488,6 +508,42 @@ class CheckybotControlService
         ];
     }
 
+    private function totalPackageChecksCount(Project $project): int
+    {
+        return (int) ($project->checks_count ?? $project->packageManagedApis()->count())
+            + (int) ($project->website_checks_count ?? $project->packageManagedWebsites()->count());
+    }
+
+    private function enabledPackageChecksCount(Project $project): int
+    {
+        return (int) ($project->enabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', true)->count())
+            + (int) ($project->enabled_website_checks_count ?? $project->packageManagedWebsites()
+                ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
+                ->count());
+    }
+
+    private function disabledPackageChecksCount(Project $project): int
+    {
+        return (int) ($project->disabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', false)->count())
+            + (int) ($project->disabled_website_checks_count ?? $project->packageManagedWebsites()
+                ->where(fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query))
+                ->count());
+    }
+
+    private function activeWebsiteCheckConstraint(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query->where('uptime_check', true)
+                ->orWhere('ssl_check', true);
+        });
+    }
+
+    private function disabledWebsiteCheckConstraint(Builder $query): Builder
+    {
+        return $query->where('uptime_check', false)
+            ->where('ssl_check', false);
+    }
+
     /**
      * @return array<string, int>
      */
@@ -501,7 +557,19 @@ class CheckybotControlService
             ->map(fn ($count): int => (int) $count)
             ->all();
 
-        $counts['disabled'] = (int) ($project->disabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', false)->count());
+        $websiteCounts = $project->packageManagedWebsites()
+            ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
+            ->selectRaw("coalesce(current_status, 'unknown') as status, count(*) as aggregate")
+            ->groupBy('status')
+            ->pluck('aggregate', 'status')
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+
+        foreach ($websiteCounts as $status => $count) {
+            $counts[$status] = (int) ($counts[$status] ?? 0) + $count;
+        }
+
+        $counts['disabled'] = $this->disabledPackageChecksCount($project);
 
         return $counts;
     }
@@ -537,6 +605,60 @@ class CheckybotControlService
             'latest_result' => $latestResult instanceof MonitorApiResult ? $this->resultPayload($latestResult) : null,
             'updated_at' => $check->updated_at?->toISOString(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function websiteCheckPayload(Website $website): array
+    {
+        $latestResult = $website->relationLoaded('latestLogHistory')
+            ? $website->latestLogHistory
+            : $website->latestLogHistory()->first();
+
+        if ($latestResult instanceof WebsiteLogHistory) {
+            $latestResult->setRelation('website', $website);
+        }
+
+        return [
+            'id' => $website->id,
+            'key' => $website->package_name,
+            'type' => 'website',
+            'check_types' => $this->websiteCheckTypes($website),
+            'name' => $website->name,
+            'url' => $website->url,
+            'method' => 'GET',
+            'request_path' => $website->url,
+            'expected_status' => null,
+            'timeout_seconds' => null,
+            'schedule' => $website->package_interval,
+            'enabled' => (bool) $website->uptime_check || (bool) $website->ssl_check,
+            'status' => $website->current_status ?? 'unknown',
+            'status_summary' => $website->status_summary,
+            'last_synced_at' => $website->last_synced_at?->toISOString(),
+            'last_heartbeat_at' => $website->last_heartbeat_at?->toISOString(),
+            'stale_at' => $website->stale_at?->toISOString(),
+            'headers' => [],
+            'request_body_type' => null,
+            'has_request_body' => false,
+            'assertions' => [],
+            'latest_result' => $latestResult instanceof WebsiteLogHistory ? $this->websiteResultPayload($latestResult) : null,
+            'updated_at' => $website->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function websiteCheckTypes(Website $website): array
+    {
+        return collect([
+            $website->uptime_check ? 'uptime' : null,
+            $website->ssl_check ? 'ssl' : null,
+        ])
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**

@@ -923,6 +923,81 @@ test('control api project status counts exclude disabled checks and report them 
     expect($response->json('data.status_counts'))->not->toHaveKey('danger');
 });
 
+test('control api project summaries include package managed website checks', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'current_status' => 'healthy',
+        'is_enabled' => true,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'landing-page',
+        'name' => 'Landing page',
+        'url' => 'https://scrappa.test',
+        'current_status' => 'danger',
+        'status_summary' => 'Website DNS lookup failed.',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'package_interval' => '5m',
+    ]);
+
+    WebsiteLogHistory::factory()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'summary' => 'Website DNS lookup failed.',
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'removed-landing-page',
+        'name' => 'Removed landing page',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects')
+        ->assertOk()
+        ->assertJsonPath('data.0.checks_count', 3)
+        ->assertJsonPath('data.0.enabled_checks_count', 2)
+        ->assertJsonPath('data.0.disabled_checks_count', 1);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.checks_count', 3)
+        ->assertJsonPath('data.enabled_checks_count', 2)
+        ->assertJsonPath('data.disabled_checks_count', 1)
+        ->assertJsonPath('data.status_counts.healthy', 1)
+        ->assertJsonPath('data.status_counts.danger', 1)
+        ->assertJsonPath('data.status_counts.disabled', 1)
+        ->assertJsonPath('data.latest_failure.check.key', 'landing-page');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/checks')
+        ->assertOk()
+        ->assertJsonPath('data.0.key', 'api-health')
+        ->assertJsonPath('data.0.type', 'api')
+        ->assertJsonPath('data.1.key', 'landing-page')
+        ->assertJsonPath('data.1.type', 'website')
+        ->assertJsonPath('data.1.check_types', ['uptime', 'ssl'])
+        ->assertJsonPath('data.1.enabled', true)
+        ->assertJsonPath('data.1.status', 'danger')
+        ->assertJsonPath('data.1.latest_result.transport_error_type', 'dns')
+        ->assertJsonPath('data.2.key', 'removed-landing-page')
+        ->assertJsonPath('data.2.type', 'website')
+        ->assertJsonPath('data.2.check_types', [])
+        ->assertJsonPath('data.2.enabled', false);
+});
+
 test('control api returns latest result for each listed check', function () {
     $alpha = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
