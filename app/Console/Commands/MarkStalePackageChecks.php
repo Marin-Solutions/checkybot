@@ -77,6 +77,10 @@ class MarkStalePackageChecks extends Command
     {
         return Website::query()
             ->where('source', 'package')
+            ->where(function (Builder $query): void {
+                $query->where('uptime_check', true)
+                    ->orWhere('ssl_check', true);
+            })
             ->whereNull('stale_at')
             ->whereNotNull('last_heartbeat_at')
             ->whereNotNull('package_interval')
