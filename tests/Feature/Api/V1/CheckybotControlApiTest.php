@@ -1300,6 +1300,35 @@ test('mcp endpoint rejects invalid schedules with a field validation error', fun
         ->assertJsonPath('error.data.errors.schedule.0', 'The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
 });
 
+test('mcp endpoint rejects malformed and unsupported check urls before upserting definitions', function (string $url) {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 30,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'bad-url',
+                    'name' => 'Bad URL',
+                    'url' => $url,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonValidationErrorFor('url', 'error.data.errors');
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'bad-url',
+    ]);
+})->with([
+    'unsupported scheme' => ['ftp://api.scrappa.test/health'],
+    'protocol relative url' => ['//api.scrappa.test/health'],
+    'missing scheme separator' => ['https//api.scrappa.test/health'],
+]);
+
 test('mcp endpoint rejects invalid regex assertion patterns', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [

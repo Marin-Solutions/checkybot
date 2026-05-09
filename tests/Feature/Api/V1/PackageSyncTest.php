@@ -354,6 +354,35 @@ test('package sync returns validation errors for malformed payloads', function (
         ]);
 });
 
+test('package sync rejects malformed and unsupported check urls before storing definitions', function (string $url) {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'bad-url',
+                    'type' => 'api',
+                    'name' => 'Bad URL',
+                    'method' => 'GET',
+                    'url' => $url,
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['checks.0.url']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'bad-url',
+    ]);
+})->with([
+    'unsupported scheme' => ['ftp://api.scrappa.test/health'],
+    'javascript scheme' => ['javascript:alert(1)'],
+    'protocol relative url' => ['//api.scrappa.test/health'],
+    'missing scheme separator' => ['https//api.scrappa.test/health'],
+    'space in path' => ['/api/health check'],
+    'fragment only' => ['#health'],
+]);
+
 test('package sync rejects invalid schedules', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Checkybot;
 
+use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
@@ -23,6 +24,11 @@ class UpsertControlCheckRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $schedule = $this->input('schedule');
+        $url = $this->input('url');
+
+        if (is_string($url)) {
+            $this->merge(['url' => trim($url)]);
+        }
 
         if ($this->has('schedule') && ($schedule === null || (is_string($schedule) && blank($schedule)))) {
             $this->merge(['schedule' => IntervalParser::DEFAULT_API_INTERVAL]);
@@ -35,11 +41,7 @@ class UpsertControlCheckRequest extends FormRequest
             'type' => ['nullable', Rule::in(['api'])],
             'name' => ['required', 'string', 'max:255'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'url' => ['required', 'string', 'max:1000', function (string $attribute, mixed $value, \Closure $fail): void {
-                if (! is_string($value) || ! $this->isValidControlCheckUrl($value)) {
-                    $fail('The url must be an HTTP(S) URL or a valid relative path.');
-                }
-            }],
+            'url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'headers' => ['nullable', 'array'],
             'headers.*' => ['nullable', 'string', 'max:2000'],
             'request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
@@ -91,33 +93,5 @@ class UpsertControlCheckRequest extends FormRequest
 
             $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');
         });
-    }
-
-    private function isValidControlCheckUrl(string $url): bool
-    {
-        if ($url === '' || trim($url) !== $url || preg_match('/\s/', $url) === 1) {
-            return false;
-        }
-
-        if (filter_var($url, FILTER_VALIDATE_URL) !== false) {
-            $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
-
-            return in_array($scheme, ['http', 'https'], true);
-        }
-
-        if (
-            str_contains($url, '://')
-            || str_starts_with($url, '//')
-            || str_starts_with($url, '#')
-            || preg_match('/^https?\/\//i', $url) === 1
-        ) {
-            return false;
-        }
-
-        if (preg_match('/^[a-z][a-z0-9+.-]*:/i', $url) === 1) {
-            return false;
-        }
-
-        return parse_url($url) !== false;
     }
 }

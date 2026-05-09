@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
+use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
@@ -180,12 +181,16 @@ class CheckybotMcpController extends Controller
      */
     private function validateCheckArguments(array $arguments): array
     {
+        if (isset($arguments['url']) && is_string($arguments['url'])) {
+            $arguments['url'] = trim($arguments['url']);
+        }
+
         $validator = Validator::make($arguments, [
             'key' => ['required', 'string', 'alpha_dash', 'max:150'],
             'type' => ['nullable', Rule::in(['api'])],
             'name' => ['required', 'string', 'max:255'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'url' => ['required', 'string', 'max:1000'],
+            'url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'headers' => ['nullable', 'array'],
             'headers.*' => ['nullable', 'string', 'max:2000'],
             'request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
