@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\RunSource;
 use App\Jobs\LogUptimeSslJob;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
@@ -19,6 +20,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -285,7 +287,15 @@ class CheckybotControlService
      */
     public function triggerCheckRun(User $user, string|int $projectKey, string $checkKey): array
     {
-        $check = $this->findCheck($user, $projectKey, $checkKey);
+        $check = $this->findRunnableCheck($user, $projectKey, $checkKey);
+
+        if ($check instanceof Website) {
+            if (! $this->websiteHasEnabledStatusCheck($check)) {
+                abort(409, 'Check is disabled. Enable uptime or SSL checks before triggering a run.');
+            }
+
+            return $this->queueWebsiteCheck($check);
+        }
 
         if (! $check->is_enabled) {
             abort(409, 'Check is disabled. Enable or upsert the check before triggering a run.');
@@ -513,6 +523,24 @@ class CheckybotControlService
             ->firstOrFail();
     }
 
+    private function findRunnableCheck(User $user, string|int $projectKey, string $checkKey): MonitorApis|Website
+    {
+        $project = $this->findProject($user, $projectKey);
+
+        $apiCheck = $project->packageManagedApis()
+            ->with(['assertions', 'latestResult'])
+            ->where('package_name', $checkKey)
+            ->first();
+
+        if ($apiCheck instanceof MonitorApis) {
+            return $apiCheck;
+        }
+
+        return $project->packageManagedWebsites()
+            ->where('package_name', $checkKey)
+            ->firstOrFail();
+    }
+
     private function projectQuery(User $user): Builder
     {
         return Project::query()->where('created_by', $user->id);
@@ -596,6 +624,11 @@ class CheckybotControlService
     {
         return $query->where('uptime_check', false)
             ->where('ssl_check', false);
+    }
+
+    private function websiteHasEnabledStatusCheck(Website $website): bool
+    {
+        return (bool) $website->uptime_check || (bool) $website->ssl_check;
     }
 
     /**
@@ -853,6 +886,58 @@ class CheckybotControlService
                 'name' => $check->title,
             ],
             'result' => $this->resultPayload($result->load('monitorApi.project')),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function queueWebsiteCheck(Website $website): array
+    {
+        $website->refresh();
+
+        if ($website->hasQueuedDiagnostic()) {
+            return $this->queuedWebsiteCheckPayload($website, false);
+        }
+
+        $queuedAt = now();
+
+        $website->forceFill([
+            'diagnostic_queued_at' => $queuedAt,
+        ])->save();
+
+        try {
+            LogUptimeSslJob::dispatch($website->withoutRelations(), onDemand: true);
+        } catch (\Throwable $e) {
+            $website->forceFill([
+                'diagnostic_queued_at' => null,
+            ])->save();
+
+            Log::error('Control API website diagnostic dispatch failed', [
+                'website_id' => $website->id,
+                'project_id' => $website->project_id,
+                'package_name' => $website->package_name,
+                'exception' => $e,
+            ]);
+
+            throw $e;
+        }
+
+        return $this->queuedWebsiteCheckPayload($website->fresh(['latestLogHistory', 'latestDiagnosticLogHistory']), true);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function queuedWebsiteCheckPayload(Website $website, bool $queued): array
+    {
+        return [
+            'status' => 'queued',
+            'queued' => $queued,
+            'queued_at' => $website->diagnostic_queued_at?->toISOString(),
+            'run_source' => RunSource::OnDemand->value,
+            'check' => $this->websiteCheckPayload($website),
+            'result' => null,
         ];
     }
 

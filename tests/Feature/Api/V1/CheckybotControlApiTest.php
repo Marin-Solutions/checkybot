@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -376,6 +377,99 @@ test('control api disables checks without deleting data', function () {
     $this->assertDatabaseHas('monitor_api_results', [
         'monitor_api_id' => $monitor->id,
     ]);
+});
+
+test('control api queues listed website checks by package key', function () {
+    Queue::fake();
+    $this->travelTo(now()->setTime(12, 15, 0));
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'marketing-site',
+        'name' => 'Marketing site',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/marketing-site/runs')
+        ->assertAccepted()
+        ->assertJsonPath('message', 'Check run queued.')
+        ->assertJsonPath('data.status', 'queued')
+        ->assertJsonPath('data.queued', true)
+        ->assertJsonPath('data.run_source', RunSource::OnDemand->value)
+        ->assertJsonPath('data.check.key', 'marketing-site')
+        ->assertJsonPath('data.check.type', 'website')
+        ->assertJsonPath('data.check.enabled', true)
+        ->assertJsonPath('data.result', null);
+
+    $website->refresh();
+
+    expect($website->diagnostic_queued_at?->toDateTimeString())->toBe(now()->toDateTimeString());
+
+    Queue::assertPushed(LogUptimeSslJob::class, function (LogUptimeSslJob $job): bool {
+        return $job->website->package_name === 'marketing-site'
+            && $job->onDemand === true
+            && $job->diagnosticRunId !== '';
+    });
+
+    $this->assertDatabaseMissing('website_log_history', [
+        'website_id' => $website->id,
+    ]);
+});
+
+test('control api reports already queued website diagnostic runs without dispatching another job', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'marketing-site',
+        'name' => 'Marketing site',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/marketing-site/runs')
+        ->assertAccepted()
+        ->assertJsonPath('message', 'Check run queued.')
+        ->assertJsonPath('data.status', 'queued')
+        ->assertJsonPath('data.queued', false)
+        ->assertJsonPath('data.check.key', 'marketing-site');
+
+    Queue::assertNotPushed(LogUptimeSslJob::class);
+});
+
+test('control api rejects disabled website diagnostic runs', function () {
+    Queue::fake();
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'paused-site',
+        'name' => 'Paused site',
+        'url' => 'https://paused.scrappa.test',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/paused-site/runs')
+        ->assertConflict()
+        ->assertJsonPath('message', 'Check is disabled. Enable uptime or SSL checks before triggering a run.');
+
+    Queue::assertNotPushed(LogUptimeSslJob::class);
 });
 
 test('control api triggers a diagnostic check run without moving live status or latest failures', function () {
