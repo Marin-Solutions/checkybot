@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\RunSource;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class WebsiteLogHistory extends Model
 {
@@ -36,5 +37,10 @@ class WebsiteLogHistory extends Model
             'run_source' => RunSource::class,
             'is_on_demand' => 'boolean',
         ];
+    }
+
+    public function website(): BelongsTo
+    {
+        return $this->belongsTo(Website::class);
     }
 }

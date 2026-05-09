@@ -8,7 +8,11 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Project;
+use App\Models\ProjectComponent;
+use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
+use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -493,6 +497,121 @@ test('control api latest failures only returns currently failing latest schedule
         ->assertJsonPath('data.0.summary', 'Current scheduled failure.');
 
     expect(json_encode($response->json()))->not->toContain('Historical failure that has recovered');
+});
+
+test('control api latest failures includes website and component failures', function () {
+    $apiMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'current_status' => 'danger',
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $apiMonitor->id,
+        'summary' => 'API is down.',
+        'created_at' => now()->subMinutes(3),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'Marketing site',
+        'url' => 'https://scrappa.test',
+        'source' => 'package',
+        'package_name' => 'marketing-uptime',
+        'current_status' => 'danger',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'summary' => 'Website DNS lookup failed.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue-worker',
+        'current_status' => 'warning',
+        'is_archived' => false,
+    ]);
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'queue-worker',
+        'status' => 'warning',
+        'event' => 'heartbeat',
+        'summary' => 'Queue latency is above threshold.',
+        'metrics' => ['latency_seconds' => 91],
+        'observed_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('data.0.check.type', 'component')
+        ->assertJsonPath('data.0.check.key', 'queue-worker')
+        ->assertJsonPath('data.0.metrics.latency_seconds', 91)
+        ->assertJsonPath('data.1.check.type', 'website')
+        ->assertJsonPath('data.1.check.key', 'marketing-uptime')
+        ->assertJsonPath('data.1.transport_error_type', 'dns')
+        ->assertJsonPath('data.2.check.key', 'api-health');
+});
+
+test('control api latest failures excludes recovered website and component rows', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'Recovered website',
+        'source' => 'package',
+        'package_name' => 'recovered-website',
+        'current_status' => 'healthy',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Historical website failure.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Website recovered.',
+        'status' => 'healthy',
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'scheduler',
+        'current_status' => 'healthy',
+        'is_archived' => false,
+    ]);
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'scheduler',
+        'status' => 'danger',
+        'summary' => 'Historical component failure.',
+        'observed_at' => now()->subMinutes(10),
+    ]);
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'scheduler',
+        'status' => 'healthy',
+        'summary' => 'Component recovered.',
+        'observed_at' => now()->subMinutes(5),
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/failures?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    expect(json_encode($response->json()))->not->toContain('Historical website failure')
+        ->and(json_encode($response->json()))->not->toContain('Historical component failure');
 });
 
 test('control api diagnostic check run does not send failure notifications', function () {
@@ -1276,6 +1395,56 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         'package_schedule' => '5m',
         'package_interval' => '5m',
     ]);
+});
+
+test('mcp latest failures tool includes website and component failures', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'App website',
+        'source' => 'package',
+        'package_name' => 'app-uptime',
+        'current_status' => 'danger',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->transportError('tls')->create([
+        'website_id' => $website->id,
+        'summary' => 'Website TLS handshake failed.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'billing-worker',
+        'current_status' => 'danger',
+        'is_archived' => false,
+    ]);
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'billing-worker',
+        'status' => 'danger',
+        'summary' => 'Billing worker stopped reporting.',
+        'observed_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 4,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'latest_failures',
+                'arguments' => [
+                    'project' => 'scrappa',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.0.check.type', 'component')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'billing-worker')
+        ->assertJsonPath('result.structuredContent.1.check.type', 'website')
+        ->assertJsonPath('result.structuredContent.1.check.key', 'app-uptime');
 });
 
 test('mcp endpoint rejects invalid schedules with a field validation error', function () {
