@@ -724,16 +724,41 @@ test('control api returns project detail and recent runs', function () {
         ->assertJsonPath('data.status_counts.warning', 1)
         ->assertJsonPath('data.latest_failure.check.key', 'search-health');
 
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'landing-page',
+        'name' => 'Landing page',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'summary' => 'Website diagnostic completed.',
+        'created_at' => now()->addMinute(),
+    ]);
+
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/runs?project=scrappa')
         ->assertOk()
-        ->assertJsonPath('data.0.check.key', 'search-health')
-        ->assertJsonPath('data.0.status', 'warning');
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.check.key', 'landing-page')
+        ->assertJsonPath('data.0.check.type', 'website')
+        ->assertJsonPath('data.0.summary', 'Website diagnostic completed.')
+        ->assertJsonPath('data.1.check.key', 'search-health')
+        ->assertJsonPath('data.1.check.type', 'api')
+        ->assertJsonPath('data.1.status', 'warning');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/projects/scrappa/runs')
         ->assertOk()
-        ->assertJsonPath('data.0.check.key', 'search-health');
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.check.key', 'landing-page')
+        ->assertJsonPath('data.1.check.key', 'search-health');
 });
 
 test('control api result payloads include safe api failure evidence', function () {
@@ -1546,6 +1571,54 @@ test('mcp latest failures tool includes website and component failures', functio
         ->assertJsonPath('result.structuredContent.0.check.key', 'billing-worker')
         ->assertJsonPath('result.structuredContent.1.check.type', 'website')
         ->assertJsonPath('result.structuredContent.1.check.key', 'app-uptime');
+});
+
+test('mcp recent runs tool includes website diagnostics', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $monitor->id,
+        'summary' => 'API diagnostic completed.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'app-uptime',
+        'name' => 'App website',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'summary' => 'Website diagnostic completed.',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 5,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'recent_runs',
+                'arguments' => [
+                    'project' => 'scrappa',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.0.check.type', 'website')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'app-uptime')
+        ->assertJsonPath('result.structuredContent.0.summary', 'Website diagnostic completed.')
+        ->assertJsonPath('result.structuredContent.1.check.type', 'api')
+        ->assertJsonPath('result.structuredContent.1.check.key', 'api-health');
 });
 
 test('mcp endpoint rejects invalid schedules with a field validation error', function () {

@@ -289,17 +289,54 @@ class CheckybotControlService
      */
     public function recentRuns(User $user, ?string $projectKey = null, int $limit = 25): array
     {
+        $limit = min(max($limit, 1), 100);
+        $project = $projectKey !== null ? $this->findProject($user, $projectKey) : null;
+
+        return collect([
+            ...$this->recentApiRuns($user, $project, $limit),
+            ...$this->recentWebsiteRuns($user, $project, $limit),
+        ])
+            ->sortByDesc(fn (array $run): string => (string) ($run['checked_at'] ?? $run['created_at'] ?? ''))
+            ->values()
+            ->take($limit)
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function recentApiRuns(User $user, ?Project $project, int $limit): array
+    {
         $query = $this->resultQuery($user);
 
-        if ($projectKey !== null) {
-            $project = $this->findProject($user, $projectKey);
+        if ($project instanceof Project) {
             $query->whereHas('monitorApi', fn (Builder $monitorQuery) => $monitorQuery->where('project_id', $project->id));
         }
 
-        return $query->latest()
-            ->limit(min(max($limit, 1), 100))
+        return $query->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit($limit)
             ->get()
             ->map(fn (MonitorApiResult $result): array => $this->resultPayload($result))
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function recentWebsiteRuns(User $user, ?Project $project, int $limit): array
+    {
+        $query = $this->websiteResultQuery($user);
+
+        if ($project instanceof Project) {
+            $query->whereHas('website', fn (Builder $websiteQuery) => $websiteQuery->where('project_id', $project->id));
+        }
+
+        return $query->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result))
             ->all();
     }
 
@@ -476,6 +513,13 @@ class CheckybotControlService
         return MonitorApiResult::query()
             ->with('monitorApi.project')
             ->whereHas('monitorApi', fn (Builder $monitorQuery) => $monitorQuery->where('created_by', $user->id));
+    }
+
+    private function websiteResultQuery(User $user): Builder
+    {
+        return WebsiteLogHistory::query()
+            ->with('website.project')
+            ->whereHas('website', fn (Builder $websiteQuery) => $websiteQuery->where('created_by', $user->id));
     }
 
     /**
@@ -696,6 +740,7 @@ class CheckybotControlService
             'check' => $check instanceof MonitorApis ? [
                 'id' => $check->id,
                 'key' => $check->package_name,
+                'type' => 'api',
                 'name' => $check->title,
             ] : null,
             'success' => $result->is_success,

@@ -136,6 +136,8 @@ class CheckybotMcpController extends Controller
                 $this->requiredString($arguments, 'project'),
                 $this->requiredString($arguments, 'batch'),
             ),
+            'recent_runs',
+            'checkybot_recent_runs' => $this->recentRuns($request, $arguments),
             'latest_failures',
             'checkybot_latest_failures' => $this->latestFailures($request, $arguments),
             default => throw ValidationException::withMessages(['name' => ['Unknown Checkybot MCP tool.']]),
@@ -150,6 +152,19 @@ class CheckybotMcpController extends Controller
             ],
             'structuredContent' => $result,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<int, array<string, mixed>>
+     */
+    private function recentRuns(Request $request, array $arguments): array
+    {
+        return $this->control->recentRuns(
+            $request->user(),
+            isset($arguments['project']) ? $this->requiredString($arguments, 'project') : null,
+            (int) ($arguments['limit'] ?? 25),
+        );
     }
 
     /**
@@ -284,6 +299,10 @@ class CheckybotMcpController extends Controller
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
                 'batch' => ['type' => 'string', 'description' => 'Laravel batch id returned by trigger_run.'],
             ], ['project', 'batch']),
+            $this->tool('recent_runs', 'List recent API and website check run results.', [
+                'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
+                'limit' => ['type' => 'integer', 'default' => 25],
+            ]),
             $this->tool('latest_failures', 'List latest warning or danger check results.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
