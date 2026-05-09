@@ -5,6 +5,7 @@ namespace App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\Support\ValidatesProjectAssignment;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\SeoSchedule;
+use App\Models\Website;
 use App\Services\WebsiteUrlValidator;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
@@ -65,7 +66,10 @@ class EditWebsite extends EditRecord
         $this->validateProjectAssignment($data['project_id'] ?? null);
 
         if (! $this->isUrlChanged()) {
-            return $data;
+            return [
+                ...$data,
+                ...$this->disabledLiveHealthAttributesForSave($data),
+            ];
         }
 
         $this->setupValidationResult ??= WebsiteUrlValidator::inspect(
@@ -73,10 +77,33 @@ class EditWebsite extends EditRecord
             $this->getRecord()->id,
         );
 
-        return [
+        $data = [
             ...$data,
             ...($this->setupValidationResult['warning_state'] ?? []),
+            ...$this->disabledLiveHealthAttributesForSave($data),
         ];
+
+        return $data;
+    }
+
+    protected function disabledLiveHealthAttributesForSave(array $data): array
+    {
+        if ((bool) ($data['uptime_check'] ?? false) || (bool) ($data['ssl_check'] ?? false)) {
+            return [];
+        }
+
+        $record = $this->getRecord();
+
+        if (
+            ! (bool) $record->uptime_check
+            && ! (bool) $record->ssl_check
+            && $record->current_status === 'unknown'
+            && $record->stale_at === null
+        ) {
+            return Website::disabledLiveHealthAttributes($record->status_summary);
+        }
+
+        return Website::disabledLiveHealthAttributes();
     }
 
     protected function beforeSave(): void
