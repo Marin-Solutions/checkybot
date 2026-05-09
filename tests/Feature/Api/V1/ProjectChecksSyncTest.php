@@ -721,6 +721,104 @@ test('accepts interval parser formats at the request boundary', function () {
     ]);
 });
 
+test('sync accepts relative check paths at the request boundary', function () {
+    $this->project->update(['base_url' => 'https://checks.example.com']);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'relative-uptime',
+                    'url' => '/status',
+                    'interval' => '5m',
+                ],
+            ],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'relative-api',
+                    'url' => 'api/health',
+                    'interval' => '5m',
+                ],
+            ],
+        ]);
+
+    $response->assertOk();
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'relative-uptime',
+        'url' => 'https://checks.example.com/status',
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'relative-api',
+        'url' => 'https://checks.example.com/api/health',
+        'request_path' => 'api/health',
+    ]);
+});
+
+test('sync rejects relative check paths when the project has no base url', function (string $field, string $url) {
+    $payload = [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ];
+
+    $payload[$field] = [
+        [
+            'name' => 'relative-without-base-url',
+            'url' => $url,
+            'interval' => '5m',
+        ],
+    ];
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(["{$field}.0.url"]);
+
+    $this->assertDatabaseMissing($field === 'api_checks' ? 'monitor_apis' : 'websites', [
+        'package_name' => 'relative-without-base-url',
+    ]);
+})->with([
+    'uptime relative path' => ['uptime_checks', '/status'],
+    'ssl relative path' => ['ssl_checks', '/status'],
+    'api relative path' => ['api_checks', 'api/health'],
+]);
+
+test('sync rejects malformed and unsupported check urls before storing definitions', function (string $field, string $url) {
+    $payload = [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ];
+
+    $payload[$field] = [
+        [
+            'name' => 'bad-url',
+            'url' => $url,
+            'interval' => '5m',
+        ],
+    ];
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(["{$field}.0.url"]);
+
+    $this->assertDatabaseMissing($field === 'api_checks' ? 'monitor_apis' : 'websites', [
+        'package_name' => 'bad-url',
+    ]);
+})->with([
+    'uptime unsupported scheme' => ['uptime_checks', 'ftp://example.com/status'],
+    'ssl malformed absolute' => ['ssl_checks', 'https//example.com/status'],
+    'api protocol relative' => ['api_checks', '//api.example.com/health'],
+]);
+
 test('rejects zero intervals at the request boundary', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
@@ -795,13 +893,13 @@ test('rejects unsupported legacy check families at the request boundary', functi
     ],
 ]);
 
-test('validates url format', function () {
+test('validates malformed absolute url format', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
             'uptime_checks' => [
                 [
                     'name' => 'test',
-                    'url' => 'not-a-url',
+                    'url' => 'https//example.com',
                     'interval' => '5m',
                 ],
             ],

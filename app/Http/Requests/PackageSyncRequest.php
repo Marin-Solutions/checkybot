@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Console\Commands\LogJobCheckUptimeSsl;
+use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
@@ -32,7 +33,15 @@ class PackageSyncRequest extends FormRequest
 
         foreach ($checks as $index => $check) {
             if (! is_array($check) || ($check['type'] ?? null) !== 'api') {
+                if (is_array($check) && isset($check['url']) && is_string($check['url'])) {
+                    $checks[$index]['url'] = trim($check['url']);
+                }
+
                 continue;
+            }
+
+            if (isset($check['url']) && is_string($check['url'])) {
+                $checks[$index]['url'] = trim($check['url']);
             }
 
             if (
@@ -67,7 +76,7 @@ class PackageSyncRequest extends FormRequest
             'checks.*.type' => ['required', Rule::in(['api', 'ssl', 'uptime'])],
             'checks.*.name' => ['required', 'string', 'max:255'],
             'checks.*.method' => ['required_if:checks.*.type,api', 'nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'checks.*.url' => ['required', 'string', 'max:1000'],
+            'checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'checks.*.headers' => ['nullable', 'array'],
             'checks.*.headers.*' => ['nullable', 'string', 'max:2000'],
             'checks.*.request_body_type' => ['exclude_unless:checks.*.type,api', new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],

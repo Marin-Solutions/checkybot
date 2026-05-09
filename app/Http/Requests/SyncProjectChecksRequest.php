@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
@@ -28,19 +29,29 @@ class SyncProjectChecksRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (! is_array($this->input('api_checks'))) {
-            return;
-        }
+        $payload = [];
 
-        $this->merge([
-            'api_checks' => array_map(function (mixed $check): mixed {
+        foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
+            if (! is_array($this->input($checkGroup))) {
+                continue;
+            }
+
+            $payload[$checkGroup] = array_map(function (mixed $check): mixed {
                 if (is_array($check) && isset($check['method']) && is_string($check['method'])) {
                     $check['method'] = strtoupper($check['method']);
                 }
 
+                if (is_array($check) && isset($check['url']) && is_string($check['url'])) {
+                    $check['url'] = trim($check['url']);
+                }
+
                 return $check;
-            }, $this->input('api_checks')),
-        ]);
+            }, $this->input($checkGroup));
+        }
+
+        if ($payload !== []) {
+            $this->merge($payload);
+        }
     }
 
     public function rules(): array
@@ -51,18 +62,18 @@ class SyncProjectChecksRequest extends FormRequest
 
             'uptime_checks' => ['array', 'max:100'],
             'uptime_checks.*.name' => $this->checkNameRules(),
-            'uptime_checks.*.url' => ['required', 'url', 'max:1000'],
+            'uptime_checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'uptime_checks.*.interval' => $this->intervalRules(),
             'uptime_checks.*.max_redirects' => ['integer', 'min:0', 'max:20'],
 
             'ssl_checks' => ['array', 'max:100'],
             'ssl_checks.*.name' => $this->checkNameRules(),
-            'ssl_checks.*.url' => ['required', 'url', 'max:1000'],
+            'ssl_checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'ssl_checks.*.interval' => $this->intervalRules(),
 
             'api_checks' => ['array', 'max:100'],
             'api_checks.*.name' => $this->checkNameRules(),
-            'api_checks.*.url' => ['required', 'url', 'max:1000'],
+            'api_checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'api_checks.*.interval' => $this->intervalRules(),
             'api_checks.*.method' => ['nullable', 'string', 'in:GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS'],
             'api_checks.*.headers' => ['array'],
@@ -122,6 +133,31 @@ class SyncProjectChecksRequest extends FormRequest
                     'assertion_type'
                 );
             }
+
+            $project = $this->route('project');
+
+            if (! $project || filled($project->base_url)) {
+                return;
+            }
+
+            foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
+                $checks = $this->input($checkGroup, []);
+
+                if (! is_array($checks)) {
+                    continue;
+                }
+
+                foreach ($checks as $checkIndex => $check) {
+                    $url = is_array($check) ? ($check['url'] ?? null) : null;
+
+                    if (is_string($url) && $this->isRelativeCheckUrl($url)) {
+                        $validator->errors()->add(
+                            "{$checkGroup}.{$checkIndex}.url",
+                            'Relative check URLs require the project to have a base_url. Provide an absolute URL or set the project base_url.'
+                        );
+                    }
+                }
+            }
         });
     }
 
@@ -147,5 +183,10 @@ class SyncProjectChecksRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    private function isRelativeCheckUrl(string $url): bool
+    {
+        return preg_match('/^https?:\/\//i', $url) !== 1;
     }
 }
