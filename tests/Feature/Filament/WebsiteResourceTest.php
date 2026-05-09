@@ -96,7 +96,7 @@ test('website list exposes freshness for package and manual monitors', function 
         'uptime_check' => false,
         'ssl_check' => false,
         'last_heartbeat_at' => now()->subMinutes(4),
-        'stale_at' => null,
+        'stale_at' => now()->subMinute(),
     ]);
 
     Livewire::test(ListWebsites::class)

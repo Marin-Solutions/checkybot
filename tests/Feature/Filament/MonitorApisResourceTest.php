@@ -478,7 +478,7 @@ test('api monitor list exposes freshness for package and manual monitors', funct
         'source' => 'manual',
         'is_enabled' => false,
         'last_heartbeat_at' => now()->subMinutes(4),
-        'stale_at' => null,
+        'stale_at' => now()->subMinute(),
     ]);
 
     Livewire::test(ListMonitorApis::class)

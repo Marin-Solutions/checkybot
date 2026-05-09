@@ -61,7 +61,8 @@ class PackageCheckTableEvidence
     public static function freshnessColor(string $state): string
     {
         return match ($state) {
-            self::STATE_FRESH => 'success',
+            self::STATE_FRESH,
+            self::STATE_HEARTBEAT_RECEIVED => 'success',
             self::STATE_AWAITING_HEARTBEAT => 'warning',
             self::STATE_STALE => 'danger',
             default => 'gray',
