@@ -193,6 +193,15 @@ class PackageCheckTableEvidence
 
     private static function isMonitoringDisabled(object $record): bool
     {
-        return ($record->is_enabled ?? true) === false;
+        if (($record->is_enabled ?? true) === false) {
+            return true;
+        }
+
+        if (! property_exists($record, 'uptime_check') || ! property_exists($record, 'ssl_check')) {
+            return false;
+        }
+
+        return in_array($record->uptime_check, [false, 0, '0'], true)
+            && in_array($record->ssl_check, [false, 0, '0'], true);
     }
 }
