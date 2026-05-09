@@ -39,6 +39,11 @@ class ProjectComponentResource extends Resource
             ->with(['project']);
     }
 
+    protected static function scopeUnhealthyNavigationBadgeQuery(Builder $query): Builder
+    {
+        return $query->where('is_archived', false);
+    }
+
     public static function form(Schema $schema): Schema
     {
         return ProjectComponentForm::configure($schema);

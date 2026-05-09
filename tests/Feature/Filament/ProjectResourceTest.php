@@ -2337,6 +2337,25 @@ test('project component navigation badge highlights unhealthy count in danger co
         ->and(\App\Filament\Resources\ProjectComponents\ProjectComponentResource::getNavigationBadgeColor())->toBe('danger');
 });
 
+test('project component navigation badge ignores archived unhealthy components', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    expect(ProjectComponentResource::getNavigationBadge())->toBe('2')
+        ->and(ProjectComponentResource::getNavigationBadgeColor())->toBeNull();
+});
+
 test('project component navigation badge is scoped to the current user', function () {
     $user = $this->actingAsSuperAdmin();
     $otherUser = User::factory()->create();
