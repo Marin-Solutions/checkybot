@@ -53,7 +53,7 @@ class CheckSyncService
             $data = [
                 'project_id' => $project->id,
                 'name' => $check['name'],
-                'url' => $check['url'],
+                'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'description' => '',
                 'uptime_check' => true,
                 'ssl_check' => ($website && ! $website->trashed()) ? $website->ssl_check : false,
@@ -109,7 +109,7 @@ class CheckSyncService
             $data = [
                 'project_id' => $project->id,
                 'name' => $check['name'],
-                'url' => $check['url'],
+                'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'description' => '',
                 'uptime_check' => ($website && ! $website->trashed()) ? $website->uptime_check : false,
                 'ssl_check' => true,
@@ -170,7 +170,7 @@ class CheckSyncService
             $data = [
                 'project_id' => $project->id,
                 'title' => $check['name'],
-                'url' => $check['url'],
+                'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'http_method' => array_key_exists('method', $check)
                     ? strtoupper($check['method'] ?? 'GET')
                     : ($monitorApi?->http_method ?? 'GET'),
@@ -242,6 +242,15 @@ class CheckSyncService
                 'is_active' => $assertion['is_active'] ?? true,
             ]);
         }
+    }
+
+    private function resolveUrl(?string $baseUrl, string $url): string
+    {
+        if (preg_match('/^https?:\/\//i', $url) === 1) {
+            return $url;
+        }
+
+        return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
     }
 
     protected function pruneOrphanedWebsites(Project $project, array $keepNames, Carbon $syncedAt, bool $uptime = false, bool $ssl = false): int

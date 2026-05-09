@@ -133,6 +133,31 @@ class SyncProjectChecksRequest extends FormRequest
                     'assertion_type'
                 );
             }
+
+            $project = $this->route('project');
+
+            if (! $project || filled($project->base_url)) {
+                return;
+            }
+
+            foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
+                $checks = $this->input($checkGroup, []);
+
+                if (! is_array($checks)) {
+                    continue;
+                }
+
+                foreach ($checks as $checkIndex => $check) {
+                    $url = is_array($check) ? ($check['url'] ?? null) : null;
+
+                    if (is_string($url) && $this->isRelativeCheckUrl($url)) {
+                        $validator->errors()->add(
+                            "{$checkGroup}.{$checkIndex}.url",
+                            'Relative check URLs require the project to have a base_url. Provide an absolute URL or set the project base_url.'
+                        );
+                    }
+                }
+            }
         });
     }
 
@@ -158,5 +183,10 @@ class SyncProjectChecksRequest extends FormRequest
                 }
             },
         ];
+    }
+
+    private function isRelativeCheckUrl(string $url): bool
+    {
+        return preg_match('/^https?:\/\//i', $url) !== 1;
     }
 }
