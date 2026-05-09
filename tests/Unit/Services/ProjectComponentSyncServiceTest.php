@@ -99,6 +99,119 @@ test('project component sync does not archive when full manifest is the string f
     ]);
 });
 
+test('project component sync records stale heartbeats without regressing live state', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+        ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'worker-stale',
+        'source' => 'package',
+        'created_by' => $project->created_by,
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+        'summary' => 'Worker is healthy now.',
+        'metrics' => ['latency' => 12],
+        'last_heartbeat_at' => '2026-03-21T12:05:00Z',
+        'is_stale' => false,
+        'stale_detected_at' => null,
+    ]);
+
+    $summary = app(ProjectComponentSyncService::class)->sync($project, [
+        'components' => [
+            [
+                'name' => 'worker-stale',
+                'status' => 'danger',
+                'summary' => 'Delayed failure payload.',
+                'interval' => '5m',
+                'observed_at' => '2026-03-21T12:00:00Z',
+                'metrics' => ['latency' => 2500],
+            ],
+        ],
+    ]);
+
+    $component->refresh();
+
+    expect($summary['components']['updated'])->toBe(0)
+        ->and($summary['heartbeats']['recorded'])->toBe(1)
+        ->and($component->current_status)->toBe('healthy')
+        ->and($component->last_reported_status)->toBe('healthy')
+        ->and($component->summary)->toBe('Worker is healthy now.')
+        ->and($component->metrics)->toBe(['latency' => 12])
+        ->and($component->last_heartbeat_at?->toISOString())->toBe('2026-03-21T12:05:00.000000Z')
+        ->and($component->is_stale)->toBeFalse()
+        ->and($component->stale_detected_at)->toBeNull();
+
+    assertDatabaseHas('project_component_heartbeats', [
+        'project_component_id' => $component->id,
+        'component_name' => 'worker-stale',
+        'status' => 'danger',
+        'event' => 'heartbeat',
+        'summary' => 'Delayed failure payload.',
+    ]);
+
+    Mail::assertNothingSent();
+});
+
+test('project component sync applies only strictly newer heartbeats to live state', function () {
+    $project = Project::factory()->create();
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'worker-order',
+        'source' => 'package',
+        'created_by' => $project->created_by,
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+        'summary' => 'Current heartbeat.',
+        'metrics' => ['latency' => 10],
+        'last_heartbeat_at' => '2026-03-21T12:05:00Z',
+    ]);
+
+    $summary = app(ProjectComponentSyncService::class)->sync($project, [
+        'components' => [
+            [
+                'name' => 'worker-order',
+                'status' => 'warning',
+                'summary' => 'Same timestamp should not win.',
+                'interval' => '5m',
+                'observed_at' => '2026-03-21T12:05:00Z',
+                'metrics' => ['latency' => 900],
+            ],
+            [
+                'name' => 'worker-order',
+                'status' => 'danger',
+                'summary' => 'New failure should win.',
+                'interval' => '5m',
+                'observed_at' => '2026-03-21T12:06:00Z',
+                'metrics' => ['latency' => 1500],
+            ],
+        ],
+    ]);
+
+    $component->refresh();
+
+    expect($summary['components']['updated'])->toBe(1)
+        ->and($summary['heartbeats']['recorded'])->toBe(2)
+        ->and($component->current_status)->toBe('danger')
+        ->and($component->last_reported_status)->toBe('danger')
+        ->and($component->summary)->toBe('New failure should win.')
+        ->and($component->metrics)->toBe(['latency' => 1500])
+        ->and($component->last_heartbeat_at?->toISOString())->toBe('2026-03-21T12:06:00.000000Z');
+
+    expect($component->heartbeats()->where('status', 'warning')->exists())->toBeTrue();
+    expect($component->heartbeats()->where('status', 'danger')->exists())->toBeTrue();
+});
+
 test('project component sync sends recovery notifications when a component returns to healthy', function () {
     Mail::fake();
 
