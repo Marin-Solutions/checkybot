@@ -92,10 +92,7 @@ class PackageCheckTableEvidence
 
     public static function mainMonitorFreshnessColor(string $state): string
     {
-        return match ($state) {
-            self::STATE_HEARTBEAT_RECEIVED => 'success',
-            default => static::freshnessColor($state),
-        };
+        return static::freshnessColor($state);
     }
 
     public static function mainMonitorFreshnessDescription(object $record): ?string
