@@ -13,6 +13,8 @@ class PackageCheckTableEvidence
 
     public const STATE_AWAITING_HEARTBEAT = 'Awaiting heartbeat';
 
+    public const STATE_HEARTBEAT_RECEIVED = 'Heartbeat received';
+
     public const STATE_STALE = 'Stale';
 
     public const STATE_SCHEDULE_UNKNOWN = 'Schedule unknown';
@@ -59,11 +61,59 @@ class PackageCheckTableEvidence
     public static function freshnessColor(string $state): string
     {
         return match ($state) {
-            self::STATE_FRESH => 'success',
+            self::STATE_FRESH,
+            self::STATE_HEARTBEAT_RECEIVED => 'success',
             self::STATE_AWAITING_HEARTBEAT => 'warning',
             self::STATE_STALE => 'danger',
             default => 'gray',
         };
+    }
+
+    public static function mainMonitorFreshnessState(object $record): string
+    {
+        if (($record->source ?? null) === 'package') {
+            return static::freshnessState($record);
+        }
+
+        if (static::isMonitoringDisabled($record)) {
+            return self::STATE_DISABLED;
+        }
+
+        if ($record->stale_at !== null) {
+            return self::STATE_STALE;
+        }
+
+        if ($record->last_heartbeat_at === null) {
+            return self::STATE_AWAITING_HEARTBEAT;
+        }
+
+        return self::STATE_HEARTBEAT_RECEIVED;
+    }
+
+    public static function mainMonitorFreshnessColor(string $state): string
+    {
+        return static::freshnessColor($state);
+    }
+
+    public static function mainMonitorFreshnessDescription(object $record): ?string
+    {
+        if (($record->source ?? null) === 'package') {
+            return static::freshnessDescription($record);
+        }
+
+        if (static::isMonitoringDisabled($record)) {
+            return 'Monitor is disabled. Heartbeats are not expected.';
+        }
+
+        if ($record->stale_at !== null) {
+            return 'Marked stale '.$record->stale_at->diffForHumans().'.';
+        }
+
+        if ($record->last_heartbeat_at === null) {
+            return 'No scheduled heartbeat has been recorded yet.';
+        }
+
+        return 'Last heartbeat '.$record->last_heartbeat_at->diffForHumans().'.';
     }
 
     public static function freshnessDescription(object $record): ?string
@@ -193,15 +243,27 @@ class PackageCheckTableEvidence
 
     private static function isMonitoringDisabled(object $record): bool
     {
-        if (($record->is_enabled ?? true) === false) {
+        if (static::attributeValue($record, 'is_enabled', true) === false) {
             return true;
         }
 
-        if (! property_exists($record, 'uptime_check') || ! property_exists($record, 'ssl_check')) {
+        $uptimeCheck = static::attributeValue($record, 'uptime_check');
+        $sslCheck = static::attributeValue($record, 'ssl_check');
+
+        if ($uptimeCheck === null || $sslCheck === null) {
             return false;
         }
 
-        return in_array($record->uptime_check, [false, 0, '0'], true)
-            && in_array($record->ssl_check, [false, 0, '0'], true);
+        return in_array($uptimeCheck, [false, 0, '0'], true)
+            && in_array($sslCheck, [false, 0, '0'], true);
+    }
+
+    private static function attributeValue(object $record, string $attribute, mixed $default = null): mixed
+    {
+        if (method_exists($record, 'getAttribute')) {
+            return $record->getAttribute($attribute) ?? $default;
+        }
+
+        return $record->{$attribute} ?? $default;
     }
 }

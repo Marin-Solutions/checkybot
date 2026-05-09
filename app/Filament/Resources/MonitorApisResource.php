@@ -363,6 +363,13 @@ class MonitorApisResource extends Resource
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('freshness_evidence')
+                    ->label('Freshness')
+                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::mainMonitorFreshnessState($record))
+                    ->badge()
+                    ->color(fn (string $state): string => PackageCheckTableEvidence::mainMonitorFreshnessColor($state))
+                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::mainMonitorFreshnessDescription($record))
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')
                     ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')

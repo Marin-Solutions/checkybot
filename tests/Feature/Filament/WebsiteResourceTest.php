@@ -51,6 +51,68 @@ test('super admin can see websites in table', function () {
         ->assertCanSeeTableRecords($websites);
 });
 
+test('website list exposes freshness for package and manual monitors', function () {
+    Carbon::setTestNow(Carbon::parse('2026-05-09 12:00:00'));
+
+    $user = $this->actingAsSuperAdmin();
+
+    $packageStale = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Package stale website',
+        'source' => 'package',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(12),
+        'stale_at' => now()->subMinutes(7),
+    ]);
+
+    $manualHeartbeat = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual heartbeat website',
+        'source' => 'manual',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => null,
+    ]);
+
+    $manualStale = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual stale website',
+        'source' => 'manual',
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'stale_at' => now()->subMinutes(2),
+    ]);
+
+    $manualAwaiting = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual awaiting website',
+        'source' => 'manual',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+    ]);
+
+    $manualDisabled = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual disabled website',
+        'source' => 'manual',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'last_heartbeat_at' => now()->subMinutes(4),
+        'stale_at' => now()->subMinute(),
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableColumnExists('freshness_evidence', fn ($column): bool => $column->isToggleable())
+        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
+        ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
+        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $manualStale)
+        ->assertTableColumnStateSet('freshness_evidence', 'Awaiting heartbeat', $manualAwaiting)
+        ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $manualDisabled)
+        ->assertSee('Expired 7 minutes ago.')
+        ->assertSee('Last heartbeat 3 minutes ago.')
+        ->assertSee('Marked stale 2 minutes ago.')
+        ->assertSee('No scheduled heartbeat has been recorded yet.')
+        ->assertSee('Monitor is disabled. Heartbeats are not expected.');
+});
+
 test('super admin can search websites', function () {
     $user = $this->actingAsSuperAdmin();
     $website1 = Website::factory()->create(['name' => 'Test Site One', 'created_by' => $user->id]);
