@@ -73,6 +73,41 @@ test('freshness evidence treats disabled api monitors as disabled instead of sta
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Heartbeats are not expected.');
 });
 
+test('freshness evidence treats package websites with no enabled checks as disabled', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $record = (object) [
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subHour(),
+        'stale_at' => now()->subMinutes(30),
+    ];
+
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Disabled')
+        ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Heartbeats are not expected.')
+        ->and(PackageCheckTableEvidence::dueState($record))->toBe('Paused')
+        ->and(PackageCheckTableEvidence::dueDescription($record))->toBe('Scheduled checks are paused until this monitor is re-enabled.');
+});
+
+test('freshness evidence does not disable package websites while one check remains enabled', function (bool $uptimeCheck, bool $sslCheck) {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $record = (object) [
+        'uptime_check' => $uptimeCheck,
+        'ssl_check' => $sslCheck,
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinute(),
+        'stale_at' => null,
+    ];
+
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+        ->and(PackageCheckTableEvidence::dueState($record))->toBe('Scheduled');
+})->with([
+    'uptime only' => [true, false],
+    'ssl only' => [false, true],
+]);
+
 test('freshness evidence stays fresh at the exact stale boundary until backend stale detection triggers', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
