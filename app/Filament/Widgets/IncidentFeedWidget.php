@@ -327,7 +327,7 @@ class IncidentFeedWidget extends BaseWidget
                 DB::query()
                     ->fromSub(clone $baseRuns, 'prior_runs')
                     ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'summary', 'occurred_at')
-                    ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
+                    ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source, source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
                     ->where('occurred_at', '<', $since),
                 'ranked_prior_runs'
             )

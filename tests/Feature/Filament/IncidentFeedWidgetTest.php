@@ -7,6 +7,8 @@ use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Support\Facades\DB;
 use Livewire\Livewire;
 
 describe('IncidentFeedWidget', function () {
@@ -218,6 +220,36 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('Outage started last week')
             ->assertDontSee('Outage still active today')
             ->assertSee('All clear');
+    });
+
+    it('keeps separate prior feed-window rows when different sources share a subject id', function () {
+        $since = now()->subDays(7);
+
+        $run = function (string $id, int $sourceRowId, string $source, int $sourceSubjectId, string $status, \Carbon\CarbonInterface $occurredAt): QueryBuilder {
+            return DB::query()
+                ->selectRaw('? as id', [$id])
+                ->selectRaw('? as source_row_id', [$sourceRowId])
+                ->selectRaw('? as source', [$source])
+                ->selectRaw('? as source_subject_id', [$sourceSubjectId])
+                ->selectRaw('? as normalized_status', [$status])
+                ->selectRaw('1 as current_monitoring_enabled')
+                ->selectRaw('? as subject', ["{$source} subject"])
+                ->selectRaw('? as subject_id', [$sourceSubjectId])
+                ->selectRaw('? as summary', ["{$source} summary"])
+                ->selectRaw('? as occurred_at', [$occurredAt->toDateTimeString()]);
+        };
+
+        $baseRuns = $run('website-prior', 10, 'website', 42, 'healthy', $since->copy()->subDays(2))
+            ->unionAll($run('api-prior', 20, 'api', 42, 'danger', $since->copy()->subDay()))
+            ->unionAll($run('website-window', 30, 'website', 42, 'danger', $since->copy()->addHour()));
+
+        $method = new ReflectionMethod(IncidentFeedWidget::class, 'limitRunsToFeedWindow');
+        $limitedRuns = $method->invoke(null, $baseRuns, $since);
+
+        expect($limitedRuns->pluck('id')->all())
+            ->toContain('website-prior')
+            ->toContain('api-prior')
+            ->toContain('website-window');
     });
 
     it('excludes on-demand website diagnostics from the incident feed', function () {
