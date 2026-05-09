@@ -7,7 +7,11 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
+use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
+use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use App\Support\ApiMonitorEvidenceRedactor;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
@@ -275,6 +279,24 @@ class CheckybotControlService
      */
     public function latestFailures(User $user, ?Project $project = null, int $limit = 25): array
     {
+        $limit = min(max($limit, 1), 100);
+
+        return collect([
+            ...$this->latestApiFailures($user, $project, $limit),
+            ...$this->latestWebsiteFailures($user, $project, $limit),
+            ...$this->latestComponentFailures($user, $project, $limit),
+        ])
+            ->sortByDesc(fn (array $failure): string => (string) ($failure['checked_at'] ?? $failure['created_at'] ?? ''))
+            ->values()
+            ->take($limit)
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function latestApiFailures(User $user, ?Project $project, int $limit): array
+    {
         $query = $this->resultQuery($user)
             ->scheduled()
             ->whereHas('monitorApi', function (Builder $monitorQuery): void {
@@ -304,9 +326,94 @@ class CheckybotControlService
         }
 
         return $query->latest()
-            ->limit(min(max($limit, 1), 100))
+            ->limit($limit)
             ->get()
             ->map(fn (MonitorApiResult $result): array => $this->resultPayload($result))
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function latestWebsiteFailures(User $user, ?Project $project, int $limit): array
+    {
+        $query = WebsiteLogHistory::query()
+            ->with('website.project')
+            ->where('is_on_demand', false)
+            ->whereHas('website', function (Builder $websiteQuery) use ($user, $project): void {
+                $websiteQuery->where('created_by', $user->id)
+                    ->whereIn('current_status', ['warning', 'danger'])
+                    ->where(function (Builder $monitoringQuery): void {
+                        $monitoringQuery->where('uptime_check', true)
+                            ->orWhere('ssl_check', true);
+                    });
+
+                if ($project instanceof Project) {
+                    $websiteQuery->where('project_id', $project->id);
+                }
+            })
+            ->whereNotExists(function ($subQuery): void {
+                $subQuery->selectRaw('1')
+                    ->from('website_log_history as newer_logs')
+                    ->whereColumn('newer_logs.website_id', 'website_log_history.website_id')
+                    ->where('newer_logs.is_on_demand', false)
+                    ->where(function ($newerLogQuery): void {
+                        $newerLogQuery->whereColumn('newer_logs.created_at', '>', 'website_log_history.created_at')
+                            ->orWhere(function ($sameTimestampQuery): void {
+                                $sameTimestampQuery->whereColumn('newer_logs.created_at', 'website_log_history.created_at')
+                                    ->whereColumn('newer_logs.id', '>', 'website_log_history.id');
+                            });
+                    });
+            })
+            ->where(function (Builder $logQuery): void {
+                $logQuery->whereIn('status', ['warning', 'danger'])
+                    ->orWhere('http_status_code', '>=', 400)
+                    ->orWhereNotNull('transport_error_type');
+            });
+
+        return $query->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result))
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function latestComponentFailures(User $user, ?Project $project, int $limit): array
+    {
+        $query = ProjectComponentHeartbeat::query()
+            ->with('component.project')
+            ->whereHas('component', function (Builder $componentQuery) use ($user, $project): void {
+                $componentQuery->where('created_by', $user->id)
+                    ->where('is_archived', false)
+                    ->whereIn('current_status', ['warning', 'danger']);
+
+                if ($project instanceof Project) {
+                    $componentQuery->where('project_id', $project->id);
+                }
+            })
+            ->whereNotExists(function ($subQuery): void {
+                $subQuery->selectRaw('1')
+                    ->from('project_component_heartbeats as newer_heartbeats')
+                    ->whereColumn('newer_heartbeats.project_component_id', 'project_component_heartbeats.project_component_id')
+                    ->where(function ($newerHeartbeatQuery): void {
+                        $newerHeartbeatQuery->whereColumn('newer_heartbeats.observed_at', '>', 'project_component_heartbeats.observed_at')
+                            ->orWhere(function ($sameTimestampQuery): void {
+                                $sameTimestampQuery->whereColumn('newer_heartbeats.observed_at', 'project_component_heartbeats.observed_at')
+                                    ->whereColumn('newer_heartbeats.id', '>', 'project_component_heartbeats.id');
+                            });
+                    });
+            })
+            ->whereIn('status', ['warning', 'danger']);
+
+        return $query->orderByDesc('observed_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (ProjectComponentHeartbeat $heartbeat): array => $this->componentHeartbeatPayload($heartbeat))
             ->all();
     }
 
@@ -476,6 +583,71 @@ class CheckybotControlService
             'response_body' => ApiMonitorEvidenceRedactor::redactResponseBody($result->response_body),
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function websiteResultPayload(WebsiteLogHistory $result): array
+    {
+        $website = $result->website;
+        $project = $website?->project;
+        $status = $result->status ?? (((int) ($result->http_status_code ?? 200)) < 400 ? 'healthy' : 'danger');
+
+        return [
+            'id' => $result->id,
+            'project' => $project instanceof Project ? $this->projectIdentity($project) : null,
+            'check' => $website instanceof Website ? [
+                'id' => $website->id,
+                'key' => $website->package_name ?? "website-{$website->id}",
+                'type' => 'website',
+                'name' => $website->name,
+                'url' => $website->url,
+            ] : null,
+            'success' => in_array($status, ['healthy', null], true)
+                && ((int) ($result->http_status_code ?? 200)) < 400,
+            'status' => $status,
+            'summary' => $result->summary,
+            'run_source' => $result->run_source->value,
+            'is_on_demand' => (bool) $result->is_on_demand,
+            'http_code' => $result->http_status_code,
+            'response_time_ms' => $result->speed,
+            'ssl_expiry_date' => $result->ssl_expiry_date?->toISOString(),
+            'transport_error_type' => $result->transport_error_type,
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($result->transport_error_message),
+            'transport_error_code' => $result->transport_error_code,
+            'checked_at' => $result->created_at?->toISOString(),
+            'created_at' => $result->created_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function componentHeartbeatPayload(ProjectComponentHeartbeat $heartbeat): array
+    {
+        $component = $heartbeat->component;
+        $project = $component?->project;
+
+        return [
+            'id' => $heartbeat->id,
+            'project' => $project instanceof Project ? $this->projectIdentity($project) : null,
+            'check' => $component instanceof ProjectComponent ? [
+                'id' => $component->id,
+                'key' => $component->name,
+                'type' => 'component',
+                'name' => $component->name,
+            ] : null,
+            'success' => $heartbeat->status === 'healthy',
+            'status' => $heartbeat->status ?? 'unknown',
+            'summary' => $heartbeat->summary,
+            'event' => $heartbeat->event,
+            'metrics' => $heartbeat->metrics,
+            'run_source' => 'heartbeat',
+            'is_on_demand' => false,
+            'checked_at' => $heartbeat->observed_at?->toISOString(),
+            'created_at' => $heartbeat->created_at?->toISOString(),
         ];
     }
 
