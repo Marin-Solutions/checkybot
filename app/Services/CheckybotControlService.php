@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\RunSource;
 use App\Jobs\LogUptimeSslJob;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
@@ -489,7 +490,6 @@ class CheckybotControlService
         }
 
         return $project->packageManagedWebsites()
-            ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
             ->where('package_name', $checkKey)
             ->firstOrFail();
     }
@@ -880,7 +880,7 @@ class CheckybotControlService
             'status' => 'queued',
             'queued' => $queued,
             'queued_at' => $website->diagnostic_queued_at?->toISOString(),
-            'run_source' => 'on_demand',
+            'run_source' => RunSource::OnDemand->value,
             'check' => $this->websiteCheckPayload($website),
             'result' => null,
         ];
