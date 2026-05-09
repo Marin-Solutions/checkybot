@@ -98,6 +98,80 @@ test('syncs ssl checks successfully', function () {
     ]);
 });
 
+test('legacy sync honors disabled uptime and ssl package checks', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'homepage-uptime',
+                    'url' => 'https://uptime-example.com',
+                    'interval' => '5m',
+                    'enabled' => false,
+                ],
+            ],
+            'ssl_checks' => [
+                [
+                    'name' => 'homepage-ssl',
+                    'url' => 'https://ssl-example.com',
+                    'interval' => '1d',
+                    'enabled' => false,
+                ],
+            ],
+            'api_checks' => [],
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('summary.uptime_checks.created', 1)
+        ->assertJsonPath('summary.ssl_checks.created', 1);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage-uptime',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'source' => 'package',
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage-ssl',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'source' => 'package',
+    ]);
+});
+
+test('legacy sync preserves package side pause for one check type on shared website', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://shared-example.com',
+                'interval' => '5m',
+                'enabled' => false,
+            ],
+        ],
+        'ssl_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://shared-example.com',
+                'interval' => '1d',
+                'enabled' => true,
+            ],
+        ],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'url' => 'https://shared-example.com',
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'source' => 'package',
+    ]);
+});
+
 test('syncs api checks with assertions successfully', function () {
     $summary = $this->syncService->syncChecks($this->project, [
         'uptime_checks' => [],
