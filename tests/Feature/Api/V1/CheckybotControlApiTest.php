@@ -1053,8 +1053,9 @@ test('control api scopes projects to the api key owner', function () {
 
 test('control api queues all enabled project checks as a diagnostic batch', function () {
     Bus::fake();
+    $this->travelTo('2026-05-09 12:00:00');
 
-    MonitorApis::factory()->create([
+    $apiMonitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'source' => 'package',
@@ -1065,7 +1066,7 @@ test('control api queues all enabled project checks as a diagnostic batch', func
         'is_enabled' => true,
     ]);
 
-    MonitorApis::factory()->create([
+    $disabledApiMonitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'source' => 'package',
@@ -1075,7 +1076,7 @@ test('control api queues all enabled project checks as a diagnostic batch', func
         'is_enabled' => false,
     ]);
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'source' => 'package',
@@ -1086,7 +1087,7 @@ test('control api queues all enabled project checks as a diagnostic batch', func
         'ssl_check' => true,
     ]);
 
-    Website::factory()->create([
+    $pausedWebsite = Website::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'source' => 'package',
@@ -1121,6 +1122,11 @@ test('control api queues all enabled project checks as a diagnostic batch', func
             && ($batch->options['checkybot_control']['user_id'] ?? null) === $this->user->id
             && ($batch->options['allowFailures'] ?? false) === true;
     });
+
+    expect($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
+        ->and($website->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
+        ->and($disabledApiMonitor->refresh()->diagnostic_queued_at)->toBeNull()
+        ->and($pausedWebsite->refresh()->diagnostic_queued_at)->toBeNull();
 
     $this->assertDatabaseMissing('monitor_api_results', [
         'monitor_api_id' => MonitorApis::query()->where('package_name', 'search-health')->value('id'),
