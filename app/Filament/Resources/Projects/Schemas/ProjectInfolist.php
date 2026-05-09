@@ -188,8 +188,8 @@ class ProjectInfolist
         }
 
         return collect([
-            static::summaryPart('created', static::summaryCount($summary, 'created')),
-            static::summaryPart('updated', static::summaryCount($summary, 'updated')),
+            static::summaryPart('created', static::summaryTotal($summary, 'created')),
+            static::summaryPart('updated', static::summaryTotal($summary, 'updated')),
             static::summaryPart('disabled', static::summaryDisabledCount($summary)),
         ])
             ->filter()
@@ -255,7 +255,22 @@ class ProjectInfolist
      */
     private static function summaryDisabledCount(array $summary): int
     {
-        return static::summaryCount($summary, 'disabled_missing')
-            + static::summaryCount($summary, 'deleted');
+        return static::summaryTotal($summary, 'disabled_missing')
+            + static::summaryTotal($summary, 'deleted');
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryTotal(array $summary, string $key): int
+    {
+        if (array_key_exists($key, $summary)) {
+            return static::summaryCount($summary, $key);
+        }
+
+        return collect(['api_checks', 'uptime_checks', 'ssl_checks'])
+            ->sum(fn (string $bucket): int => isset($summary[$bucket]) && is_array($summary[$bucket])
+                ? static::summaryCount($summary[$bucket], $key)
+                : 0);
     }
 }

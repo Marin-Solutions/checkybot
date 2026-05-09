@@ -691,6 +691,42 @@ test('application detail shows sdk version for registered applications before pa
         ->assertSeeInOrder(['Package Key', '-']);
 });
 
+test('application detail summarizes legacy package sync changes from per type buckets', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Legacy Sync App',
+        'created_by' => $user->id,
+        'package_key' => 'legacy-sync-app',
+        'last_synced_at' => now()->subMinutes(4),
+        'latest_package_sync_summary' => [
+            'uptime_checks' => [
+                'created' => 1,
+                'updated' => 0,
+                'deleted' => 1,
+            ],
+            'ssl_checks' => [
+                'created' => 0,
+                'updated' => 2,
+                'deleted' => 0,
+            ],
+            'api_checks' => [
+                'created' => 3,
+                'updated' => 0,
+                'deleted' => 1,
+            ],
+        ],
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSeeInOrder(['Last Sync Changes', '4 created, 2 updated, 2 disabled'])
+        ->assertSee('Uptime checks: 1 created, 1 disabled')
+        ->assertSee('SSL checks: 2 updated')
+        ->assertSee('API checks: 3 created, 1 disabled');
+});
+
 test('application detail hides package sync status for manual applications', function () {
     $this->createResourcePermissions('Project');
 
