@@ -166,6 +166,16 @@ class MonitorApiInfolist
                                     ->color('gray'),
                                 TextEntry::make('message')
                                     ->columnSpanFull(),
+                                TextEntry::make('expected')
+                                    ->label('Expected')
+                                    ->icon('heroicon-o-flag')
+                                    ->iconColor('info')
+                                    ->copyable(),
+                                TextEntry::make('actual')
+                                    ->label('Actual')
+                                    ->icon('heroicon-o-x-circle')
+                                    ->iconColor('danger')
+                                    ->copyable(),
                             ])
                             ->contained(false)
                             ->columns(2)
