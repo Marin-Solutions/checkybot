@@ -268,6 +268,8 @@ class WebsiteResource extends Resource
                     Tables\Columns\ToggleColumn::make('uptime_check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
+                            $record->normalizeLiveHealthWhenNoStatusChecksRemain();
+
                             $notification = Notification::make()
                                 ->title($state
                                     ? "Uptime checks enabled for {$record->name}"
@@ -298,6 +300,8 @@ class WebsiteResource extends Resource
                         ->label('SSL check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
+                            $record->normalizeLiveHealthWhenNoStatusChecksRemain();
+
                             $notification = Notification::make()
                                 ->title($state
                                     ? "SSL checks enabled for {$record->name}"
@@ -600,6 +604,14 @@ class WebsiteResource extends Resource
                             $count = $ids->isEmpty()
                                 ? 0
                                 : Website::query()->whereIn('id', $ids)->update(['uptime_check' => false]);
+
+                            if (! $ids->isEmpty()) {
+                                Website::query()
+                                    ->whereIn('id', $ids)
+                                    ->where('uptime_check', false)
+                                    ->where('ssl_check', false)
+                                    ->update(Website::disabledLiveHealthAttributes());
+                            }
 
                             Notification::make()
                                 ->title($count === 0

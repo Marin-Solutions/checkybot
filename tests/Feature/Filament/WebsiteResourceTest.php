@@ -247,6 +247,65 @@ test('super admin can update website', function () {
     ]);
 });
 
+test('website edit form resets live health when uptime and ssl are disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinutes(10),
+        'status_summary' => 'Returned HTTP 500.',
+    ]);
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm([
+            'uptime_check' => false,
+            'ssl_check' => false,
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $website->refresh();
+
+    expect($website->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeFalse()
+        ->and($website->current_status)->toBe('unknown')
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe(Website::ADMIN_DISABLED_STATUS_SUMMARY);
+});
+
+test('website edit form preserves existing disabled health reason when checks are already disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+    $packageDisabledSummary = 'Disabled because it was missing from the latest package sync.';
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Package Disabled Website',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'unknown',
+        'stale_at' => null,
+        'status_summary' => $packageDisabledSummary,
+    ]);
+
+    Livewire::test(EditWebsite::class, ['record' => $website->id])
+        ->fillForm([
+            'name' => 'Renamed Package Disabled Website',
+        ])
+        ->call('save')
+        ->assertHasNoFormErrors();
+
+    $website->refresh();
+
+    expect($website->name)->toBe('Renamed Package Disabled Website')
+        ->and($website->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeFalse()
+        ->and($website->current_status)->toBe('unknown')
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe($packageDisabledSummary);
+});
+
 test('edit website preserves normalized seo schedule time with existing seconds', function () {
     Carbon::setTestNow(Carbon::parse('2026-04-29 10:00:00'));
     $user = $this->actingAsSuperAdmin();
@@ -807,6 +866,30 @@ test('super admin can bulk disable uptime checks on websites', function () {
     }
 });
 
+test('bulk disabling uptime resets live health when ssl is already disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinute(),
+        'status_summary' => 'Website heartbeat failed before an HTTP response: DNS lookup failed.',
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->callTableBulkAction('disableUptimeCheck', [$website])
+        ->assertNotified('1 website disabled');
+
+    $website->refresh();
+
+    expect($website->uptime_check)->toBeFalse()
+        ->and($website->current_status)->toBe('unknown')
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe(Website::ADMIN_DISABLED_STATUS_SUMMARY);
+});
+
 test('super admin can bulk enable uptime checks on websites', function () {
     $user = $this->actingAsSuperAdmin();
 
@@ -917,6 +1000,30 @@ test('super admin can toggle uptime_check inline from the websites table', funct
     expect($website->refresh()->uptime_check)->toBeTrue();
 });
 
+test('inline uptime toggle resets live health when ssl is disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinutes(5),
+        'status_summary' => 'Returned HTTP 500.',
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'uptime_check', $website->getKey(), false)
+        ->assertNotified();
+
+    $website->refresh();
+
+    expect($website->uptime_check)->toBeFalse()
+        ->and($website->current_status)->toBe('unknown')
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe(Website::ADMIN_DISABLED_STATUS_SUMMARY);
+});
+
 test('super admin can toggle ssl_check and outbound_check inline from the websites table', function () {
     $user = $this->actingAsSuperAdmin();
 
@@ -953,6 +1060,30 @@ test('super admin can toggle ssl_check and outbound_check inline from the websit
     $website->refresh();
     expect($website->ssl_check)->toBeTrue()
         ->and($website->outbound_check)->toBeTrue();
+});
+
+test('inline ssl toggle resets live health when uptime is disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'stale_at' => now()->subMinutes(5),
+        'status_summary' => 'SSL certificate expired yesterday.',
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->call('updateTableColumnState', 'ssl_check', $website->getKey(), false)
+        ->assertNotified();
+
+    $website->refresh();
+
+    expect($website->ssl_check)->toBeFalse()
+        ->and($website->current_status)->toBe('unknown')
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe(Website::ADMIN_DISABLED_STATUS_SUMMARY);
 });
 
 test('user without Update:Website permission cannot toggle website columns inline', function () {

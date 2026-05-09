@@ -34,10 +34,19 @@ class CreateWebsite extends CreateRecord
         $sslExpiryDate = Website::sslExpiryDate($data['url']);
         $data['ssl_expiry_date'] = $sslExpiryDate;
 
-        return [
+        $data = [
             ...$data,
             ...($this->setupValidationResult['warning_state'] ?? []),
         ];
+
+        if (! (bool) ($data['uptime_check'] ?? false) && ! (bool) ($data['ssl_check'] ?? false)) {
+            $data = [
+                ...$data,
+                ...Website::disabledLiveHealthAttributes(),
+            ];
+        }
+
+        return $data;
     }
 
     protected function afterValidate(): void

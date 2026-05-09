@@ -22,6 +22,8 @@ class Website extends Model
     use HasSnooze;
     use SoftDeletes;
 
+    public const ADMIN_DISABLED_STATUS_SUMMARY = 'Disabled in Checkybot admin.';
+
     protected $fillable = [
         'ploi_website_id',
         'name',
@@ -79,6 +81,26 @@ class Website extends Model
                 }
             }
         });
+    }
+
+    public static function disabledLiveHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'stale_at' => null,
+            'status_summary' => $summary,
+        ];
+    }
+
+    public function normalizeLiveHealthWhenNoStatusChecksRemain(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): bool
+    {
+        if ((bool) $this->uptime_check || (bool) $this->ssl_check) {
+            return false;
+        }
+
+        $this->forceFill(self::disabledLiveHealthAttributes($summary))->save();
+
+        return true;
     }
 
     /**
