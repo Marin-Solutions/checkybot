@@ -76,6 +76,12 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
      */
     public function handle(SslCertificateService $sslCertificateService): void
     {
+        if ($this->batch()?->cancelled()) {
+            $this->clearQueuedDiagnostic();
+
+            return;
+        }
+
         if (! $this->shouldRunForWebsite()) {
             $this->clearQueuedDiagnostic();
 
