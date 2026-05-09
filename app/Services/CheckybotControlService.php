@@ -232,6 +232,16 @@ class CheckybotControlService
             ];
         }
 
+        $queuedAt = now();
+
+        MonitorApis::query()
+            ->whereKey($apiChecks->modelKeys())
+            ->update(['diagnostic_queued_at' => $queuedAt]);
+
+        Website::query()
+            ->whereKey($websiteChecks->modelKeys())
+            ->update(['diagnostic_queued_at' => $queuedAt]);
+
         $batch = Bus::batch($jobs)
             ->name($this->controlProjectRunBatchName($project))
             ->withOption('checkybot_control', [
