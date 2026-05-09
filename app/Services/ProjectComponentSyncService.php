@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Project;
 use App\Models\ProjectComponent;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class ProjectComponentSyncService
@@ -113,33 +114,37 @@ class ProjectComponentSyncService
                     continue;
                 }
 
-                $previousStatus = $component->current_status;
-                $wasStale = $component->is_stale;
+                $isLiveHeartbeat = $this->isNewerHeartbeat($component, $heartbeat['observed_at']);
 
-                $component->fill([
-                    'summary' => $heartbeat['summary'] ?? null,
-                    'current_status' => $heartbeat['status'],
-                    'last_reported_status' => $heartbeat['status'],
-                    'metrics' => $heartbeat['metrics'] ?? [],
-                    'last_heartbeat_at' => $heartbeat['observed_at'],
-                    'stale_detected_at' => null,
-                    'is_stale' => false,
-                    'is_archived' => false,
-                    'archived_at' => null,
-                    'archive_reason' => null,
-                    'declared_interval' => $heartbeat['interval'],
-                    'interval_minutes' => IntervalParser::toMinutes($heartbeat['interval']),
-                ]);
+                if ($isLiveHeartbeat) {
+                    $previousStatus = $component->current_status;
+                    $wasStale = $component->is_stale;
 
-                if ($component->isDirty()) {
-                    $component->save();
-                }
+                    $component->fill([
+                        'summary' => $heartbeat['summary'] ?? null,
+                        'current_status' => $heartbeat['status'],
+                        'last_reported_status' => $heartbeat['status'],
+                        'metrics' => $heartbeat['metrics'] ?? [],
+                        'last_heartbeat_at' => $heartbeat['observed_at'],
+                        'stale_detected_at' => null,
+                        'is_stale' => false,
+                        'is_archived' => false,
+                        'archived_at' => null,
+                        'archive_reason' => null,
+                        'declared_interval' => $heartbeat['interval'],
+                        'interval_minutes' => IntervalParser::toMinutes($heartbeat['interval']),
+                    ]);
 
-                if (
-                    ! in_array($component->name, $createdNames, true)
-                    && ! in_array($component->name, $updatedNames, true)
-                ) {
-                    $updatedNames[] = $component->name;
+                    if ($component->isDirty()) {
+                        $component->save();
+                    }
+
+                    if (
+                        ! in_array($component->name, $createdNames, true)
+                        && ! in_array($component->name, $updatedNames, true)
+                    ) {
+                        $updatedNames[] = $component->name;
+                    }
                 }
 
                 $component->heartbeats()->create([
@@ -153,27 +158,29 @@ class ProjectComponentSyncService
 
                 $recordedHeartbeats++;
 
-                if (
-                    in_array($heartbeat['status'], ['warning', 'danger'], true)
-                    && $previousStatus !== $heartbeat['status']
-                ) {
-                    $this->projectComponentNotificationService->notify(
-                        $component->loadMissing('project'),
-                        'heartbeat',
-                        $heartbeat['status']
-                    );
-                } elseif (
-                    $heartbeat['status'] === 'healthy'
-                    && (
-                        in_array($previousStatus, ['warning', 'danger'], true)
-                        || $wasStale
-                    )
-                ) {
-                    $this->projectComponentNotificationService->notify(
-                        $component->loadMissing('project'),
-                        'recovered',
-                        $heartbeat['status']
-                    );
+                if ($isLiveHeartbeat) {
+                    if (
+                        in_array($heartbeat['status'], ['warning', 'danger'], true)
+                        && $previousStatus !== $heartbeat['status']
+                    ) {
+                        $this->projectComponentNotificationService->notify(
+                            $component->loadMissing('project'),
+                            'heartbeat',
+                            $heartbeat['status']
+                        );
+                    } elseif (
+                        $heartbeat['status'] === 'healthy'
+                        && (
+                            in_array($previousStatus, ['warning', 'danger'], true)
+                            || $wasStale
+                        )
+                    ) {
+                        $this->projectComponentNotificationService->notify(
+                            $component->loadMissing('project'),
+                            'recovered',
+                            $heartbeat['status']
+                        );
+                    }
                 }
             }
 
@@ -192,6 +199,15 @@ class ProjectComponentSyncService
                 ],
             ];
         });
+    }
+
+    private function isNewerHeartbeat(ProjectComponent $component, mixed $observedAt): bool
+    {
+        if ($component->last_heartbeat_at === null) {
+            return true;
+        }
+
+        return Carbon::parse($observedAt)->gt($component->last_heartbeat_at);
     }
 
     /**
