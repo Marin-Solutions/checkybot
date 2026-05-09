@@ -233,6 +233,47 @@ test('command skips disabled package-managed api checks when marking stale', fun
     Mail::assertNothingSent();
 });
 
+test('command skips package-managed websites when uptime and ssl checks are disabled', function () {
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'disabled-homepage',
+        'package_interval' => '5m',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => now()->subMinutes(6),
+        'stale_at' => null,
+        'status_summary' => null,
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    $website->refresh();
+
+    expect($website->current_status)->toBe('unknown');
+    expect($website->stale_at)->toBeNull();
+    expect($website->status_summary)->toBeNull();
+
+    assertDatabaseMissing('website_log_history', [
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'summary' => 'Heartbeat overdue. Expected every 5 minutes.',
+    ]);
+
+    Mail::assertNothingSent();
+});
+
 test('command only marks checks after the package interval is overdue', function () {
     $this->travelTo(Carbon::parse('2026-05-06 12:00:00'));
 
