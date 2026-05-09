@@ -1217,6 +1217,120 @@ test('user without Update:Website permission cannot see website bulk actions', f
         ->assertTableBulkActionHidden('changeUptimeInterval');
 });
 
+test('website list exposes guarded run now action', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableActionExists('run_now', null, $website)
+        ->assertTableActionHasLabel('run_now', 'Run check now', $website)
+        ->assertTableActionHasIcon('run_now', 'heroicon-o-bolt', $website);
+});
+
+test('website list run now action queues a website diagnostic without running heartbeat inline', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'current_status' => null,
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+    ]);
+
+    Http::preventStrayRequests();
+
+    Livewire::test(ListWebsites::class)
+        ->callTableAction('run_now', $website)
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($website) && $job->onDemand === true);
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(0)
+        ->and($website->current_status)->toBeNull()
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->status_summary)->toBeNull()
+        ->and($website->diagnostic_queued_at?->toDateTimeString())->toBe('2026-04-24 12:00:00');
+});
+
+test('website list run now action queues failure-prone websites without moving live status', function () {
+    $user = $this->actingAsSuperAdmin();
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://broken.example',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+        'status_summary' => 'Heartbeat received successfully.',
+        'last_heartbeat_at' => now()->subMinutes(5),
+    ]);
+
+    $heartbeatBefore = $website->last_heartbeat_at;
+
+    Livewire::test(ListWebsites::class)
+        ->callTableAction('run_now', $website)
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($website) && $job->onDemand === true);
+
+    $website->refresh();
+
+    expect($website->logHistory()->count())->toBe(0)
+        ->and($website->current_status)->toBe('healthy')
+        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->status_summary)->toBe('Heartbeat received successfully.');
+});
+
+test('website list hides run now action when uptime and ssl checks are disabled', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableActionHidden('run_now', $website);
+});
+
+test('website list disables run now action while website diagnostic is queued', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableActionDisabled('run_now', $website);
+});
+
+test('website list hides run now action for users without update permission', function () {
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Website', 'View:Website']);
+    $this->actingAs($user);
+
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableActionHidden('run_now', $website);
+});
+
 test('soft-deleted websites are not counted in bulk uptime disable notification', function () {
     $user = $this->actingAsSuperAdmin();
 
