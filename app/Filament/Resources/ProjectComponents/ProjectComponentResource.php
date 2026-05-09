@@ -8,6 +8,7 @@ use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
 use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelationManager;
+use App\Filament\Resources\ProjectComponents\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\ProjectComponents\Schemas\ProjectComponentForm;
 use App\Filament\Resources\ProjectComponents\Schemas\ProjectComponentInfolist;
 use App\Filament\Resources\ProjectComponents\Tables\ProjectComponentsTable;
@@ -56,6 +57,7 @@ class ProjectComponentResource extends Resource
     public static function getRelations(): array
     {
         return [
+            NotificationSettingsRelationManager::class,
             HeartbeatsRelationManager::class,
         ];
     }

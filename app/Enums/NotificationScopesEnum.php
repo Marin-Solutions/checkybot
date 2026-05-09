@@ -7,6 +7,7 @@ enum NotificationScopesEnum: string
     case GLOBAL = 'GLOBAL';
     case WEBSITE = 'WEBSITE';
     case API_MONITOR = 'API_MONITOR';
+    case PROJECT_COMPONENT = 'PROJECT_COMPONENT';
 
     public function label(): string
     {
@@ -14,6 +15,7 @@ enum NotificationScopesEnum: string
             self::GLOBAL => 'Global',
             self::WEBSITE => 'Website',
             self::API_MONITOR => 'API Monitor',
+            self::PROJECT_COMPONENT => 'Project Component',
         };
     }
 
