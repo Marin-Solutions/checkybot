@@ -432,6 +432,38 @@ test('api monitor list shows enabled state', function () {
         ->assertTableColumnExists('is_enabled');
 });
 
+test('api monitor list exposes freshness for package and manual monitors', function () {
+    Carbon::setTestNow(Carbon::parse('2026-05-09 12:00:00'));
+
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $packageStale = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Package stale API',
+        'source' => 'package',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(12),
+        'stale_at' => now()->subMinutes(7),
+    ]);
+
+    $manualHeartbeat = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Manual heartbeat API',
+        'source' => 'manual',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => null,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertTableColumnExists('freshness_evidence')
+        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
+        ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
+        ->assertSee('Expired 7 minutes ago.')
+        ->assertSee('Last heartbeat 3 minutes ago.');
+});
+
 test('api monitor edit page exposes api notification management', function () {
     $user = $this->actingAsSuperAdmin();
     $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);

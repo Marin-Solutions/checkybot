@@ -51,6 +51,36 @@ test('super admin can see websites in table', function () {
         ->assertCanSeeTableRecords($websites);
 });
 
+test('website list exposes freshness for package and manual monitors', function () {
+    Carbon::setTestNow(Carbon::parse('2026-05-09 12:00:00'));
+
+    $user = $this->actingAsSuperAdmin();
+
+    $packageStale = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Package stale website',
+        'source' => 'package',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(12),
+        'stale_at' => now()->subMinutes(7),
+    ]);
+
+    $manualHeartbeat = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Manual heartbeat website',
+        'source' => 'manual',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => null,
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertTableColumnExists('freshness_evidence')
+        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
+        ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
+        ->assertSee('Expired 7 minutes ago.')
+        ->assertSee('Last heartbeat 3 minutes ago.');
+});
+
 test('super admin can search websites', function () {
     $user = $this->actingAsSuperAdmin();
     $website1 = Website::factory()->create(['name' => 'Test Site One', 'created_by' => $user->id]);

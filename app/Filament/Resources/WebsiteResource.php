@@ -10,6 +10,7 @@ use App\Filament\Support\HealthStatusFilter;
 use App\Models\Project;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
+use App\Support\PackageCheckTableEvidence;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -224,6 +225,13 @@ class WebsiteResource extends Resource
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\TextColumn::make('freshness_evidence')
+                    ->label('Freshness')
+                    ->state(fn (Website $record): string => PackageCheckTableEvidence::mainMonitorFreshnessState($record))
+                    ->badge()
+                    ->color(fn (string $state): string => PackageCheckTableEvidence::mainMonitorFreshnessColor($state))
+                    ->description(fn (Website $record): ?string => PackageCheckTableEvidence::mainMonitorFreshnessDescription($record))
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
