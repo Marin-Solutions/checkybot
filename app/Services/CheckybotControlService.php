@@ -67,6 +67,9 @@ class CheckybotControlService
                 'packageManagedWebsites as website_checks_count',
                 'packageManagedWebsites as enabled_website_checks_count' => fn (Builder $query) => $this->activeWebsiteCheckConstraint($query),
                 'packageManagedWebsites as disabled_website_checks_count' => fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query),
+                'components as components_count',
+                'activeComponents as active_components_count',
+                'components as archived_components_count' => fn (Builder $query) => $query->where('is_archived', true),
             ])
             ->latest('updated_at')
             ->get()
@@ -87,6 +90,9 @@ class CheckybotControlService
                 'packageManagedWebsites as website_checks_count',
                 'packageManagedWebsites as enabled_website_checks_count' => fn (Builder $query) => $this->activeWebsiteCheckConstraint($query),
                 'packageManagedWebsites as disabled_website_checks_count' => fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query),
+                'components as components_count',
+                'activeComponents as active_components_count',
+                'components as archived_components_count' => fn (Builder $query) => $query->where('is_archived', true),
             ]);
 
         return array_merge($this->projectSummary($project), [
@@ -573,6 +579,9 @@ class CheckybotControlService
             'checks_count' => $this->totalPackageChecksCount($project),
             'enabled_checks_count' => $this->enabledPackageChecksCount($project),
             'disabled_checks_count' => $this->disabledPackageChecksCount($project),
+            'components_count' => $this->totalComponentsCount($project),
+            'active_components_count' => $this->activeComponentsCount($project),
+            'archived_components_count' => $this->archivedComponentsCount($project),
             'created_at' => $project->created_at?->toISOString(),
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
@@ -593,7 +602,8 @@ class CheckybotControlService
     private function totalPackageChecksCount(Project $project): int
     {
         return (int) ($project->checks_count ?? $project->packageManagedApis()->count())
-            + (int) ($project->website_checks_count ?? $project->packageManagedWebsites()->count());
+            + (int) ($project->website_checks_count ?? $project->packageManagedWebsites()->count())
+            + $this->totalComponentsCount($project);
     }
 
     private function enabledPackageChecksCount(Project $project): int
@@ -601,7 +611,8 @@ class CheckybotControlService
         return (int) ($project->enabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', true)->count())
             + (int) ($project->enabled_website_checks_count ?? $project->packageManagedWebsites()
                 ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
-                ->count());
+                ->count())
+            + $this->activeComponentsCount($project);
     }
 
     private function disabledPackageChecksCount(Project $project): int
@@ -609,7 +620,23 @@ class CheckybotControlService
         return (int) ($project->disabled_checks_count ?? $project->packageManagedApis()->where('is_enabled', false)->count())
             + (int) ($project->disabled_website_checks_count ?? $project->packageManagedWebsites()
                 ->where(fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query))
-                ->count());
+                ->count())
+            + $this->archivedComponentsCount($project);
+    }
+
+    private function totalComponentsCount(Project $project): int
+    {
+        return (int) ($project->components_count ?? $project->components()->count());
+    }
+
+    private function activeComponentsCount(Project $project): int
+    {
+        return (int) ($project->active_components_count ?? $project->activeComponents()->count());
+    }
+
+    private function archivedComponentsCount(Project $project): int
+    {
+        return (int) ($project->archived_components_count ?? $project->components()->where('is_archived', true)->count());
     }
 
     private function activeWebsiteCheckConstraint(Builder $query): Builder
@@ -656,9 +683,35 @@ class CheckybotControlService
             $counts[$status] = (int) ($counts[$status] ?? 0) + $count;
         }
 
+        $componentCounts = $project->activeComponents()
+            ->get(['current_status', 'is_stale', 'last_heartbeat_at'])
+            ->map(fn (ProjectComponent $component): string => $this->componentStatusBucket($component))
+            ->countBy()
+            ->map(fn ($count): int => (int) $count)
+            ->all();
+
+        foreach ($componentCounts as $status => $count) {
+            $counts[$status] = (int) ($counts[$status] ?? 0) + $count;
+        }
+
         $counts['disabled'] = $this->disabledPackageChecksCount($project);
 
         return $counts;
+    }
+
+    private function componentStatusBucket(ProjectComponent $component): string
+    {
+        if ((bool) $component->is_stale) {
+            return 'danger';
+        }
+
+        if (in_array($component->current_status, ['warning', 'danger'], true)) {
+            return $component->current_status;
+        }
+
+        return $component->current_status === 'healthy' && $component->last_heartbeat_at !== null
+            ? 'healthy'
+            : 'unknown';
     }
 
     /**
