@@ -358,6 +358,7 @@ test('control api disables checks without deleting data', function () {
         'is_enabled' => true,
         'last_heartbeat_at' => now()->subMinutes(10),
         'stale_at' => now()->subMinute(),
+        'diagnostic_queued_at' => now(),
     ]);
 
     MonitorApiResult::factory()->create([
@@ -375,6 +376,7 @@ test('control api disables checks without deleting data', function () {
         'is_enabled' => false,
         'last_heartbeat_at' => null,
         'stale_at' => null,
+        'diagnostic_queued_at' => null,
         'deleted_at' => null,
     ]);
 

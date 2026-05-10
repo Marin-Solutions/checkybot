@@ -636,6 +636,7 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'status_summary' => 'HTTP 500',
         'last_heartbeat_at' => now(),
         'stale_at' => now()->addMinutes(10),
+        'diagnostic_queued_at' => now(),
     ]);
 
     $api = MonitorApis::factory()->create([
@@ -650,6 +651,7 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'status_summary' => 'Expected 200, got 500.',
         'last_heartbeat_at' => now(),
         'stale_at' => now()->addMinutes(10),
+        'diagnostic_queued_at' => now(),
         'created_by' => $this->user->id,
     ]);
 
@@ -679,6 +681,7 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
         'last_heartbeat_at' => null,
         'stale_at' => null,
+        'diagnostic_queued_at' => null,
         'deleted_at' => null,
     ]);
 
@@ -689,6 +692,7 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
         'last_heartbeat_at' => null,
         'stale_at' => null,
+        'diagnostic_queued_at' => null,
         'deleted_at' => null,
     ]);
 

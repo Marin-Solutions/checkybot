@@ -318,26 +318,19 @@ class CheckSyncService
             $query->whereNotIn('package_name', $keepNames);
         }
 
-        return $query->update([
+        return $query->update(MonitorApis::disabledHealthAttributes(self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY) + [
             'is_enabled' => false,
-            'current_status' => 'unknown',
-            'status_summary' => self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY,
-            'last_heartbeat_at' => null,
-            'stale_at' => null,
             'last_synced_at' => $syncedAt,
         ]);
     }
 
     protected function disableFullyOrphanedWebsites(Builder $query, Carbon $syncedAt): int
     {
-        return $query->update([
+        return $query->update(Website::disabledLiveHealthAttributes(self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY) + [
             'uptime_check' => false,
             'ssl_check' => false,
-            'current_status' => 'unknown',
-            'status_summary' => self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY,
             'package_interval' => null,
             'last_heartbeat_at' => null,
-            'stale_at' => null,
             'last_synced_at' => $syncedAt,
         ]);
     }

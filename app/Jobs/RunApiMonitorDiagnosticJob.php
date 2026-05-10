@@ -26,6 +26,16 @@ class RunApiMonitorDiagnosticJob implements ShouldQueue
             return;
         }
 
+        $monitor = $this->monitor->fresh();
+
+        if (! $monitor?->is_enabled) {
+            $this->clearQueuedDiagnostic();
+
+            return;
+        }
+
+        $this->monitor = $monitor;
+
         try {
             $executionService->execute($this->monitor, onDemand: true);
         } finally {
