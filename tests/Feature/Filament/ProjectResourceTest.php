@@ -1782,18 +1782,34 @@ test('super admin can bulk pause monitoring across selected applications', funct
         'uptime_check' => true,
         'ssl_check' => true,
         'outbound_check' => true,
+        'current_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'stale_at' => now()->subMinutes(5),
+        'status_summary' => 'Website heartbeat failed with HTTP status 500.',
+        'diagnostic_queued_at' => now()->subMinute(),
     ]);
 
     $monitor = MonitorApis::factory()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
         'is_enabled' => true,
+        'current_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'stale_at' => now()->subMinutes(5),
+        'status_summary' => 'API heartbeat failed with HTTP status 500.',
+        'diagnostic_queued_at' => now()->subMinute(),
     ]);
 
     $component = ProjectComponent::factory()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
         'is_archived' => false,
+        'current_status' => 'danger',
+        'last_reported_status' => 'danger',
+        'summary' => 'Heartbeat expired',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
     ]);
 
     Livewire::test(ListProjects::class)
@@ -1805,10 +1821,26 @@ test('super admin can bulk pause monitoring across selected applications', funct
         ->and($website->project_paused_uptime_check)->toBeTrue()
         ->and($website->project_paused_ssl_check)->toBeTrue()
         ->and($website->project_paused_outbound_check)->toBeTrue()
+        ->and($website->current_status)->toBe('unknown')
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe(Website::ADMIN_DISABLED_STATUS_SUMMARY)
+        ->and($website->diagnostic_queued_at)->toBeNull()
         ->and($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($monitor->project_paused_monitoring)->toBeTrue()
+        ->and($monitor->current_status)->toBe('unknown')
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->stale_at)->toBeNull()
+        ->and($monitor->status_summary)->toBe(MonitorApis::ADMIN_DISABLED_STATUS_SUMMARY)
+        ->and($monitor->diagnostic_queued_at)->toBeNull()
         ->and($component->refresh()->is_archived)->toBeTrue()
-        ->and($component->project_paused_monitoring)->toBeTrue();
+        ->and($component->project_paused_monitoring)->toBeTrue()
+        ->and($component->current_status)->toBe('unknown')
+        ->and($component->last_reported_status)->toBe('unknown')
+        ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
+        ->and($component->last_heartbeat_at)->toBeNull()
+        ->and($component->is_stale)->toBeFalse()
+        ->and($component->stale_detected_at)->toBeNull();
 });
 
 test('super admin can bulk resume monitoring across selected applications', function () {

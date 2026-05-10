@@ -412,7 +412,7 @@ class ProjectsTable
                         'is_enabled' => true,
                         'project_paused_monitoring' => false,
                     ]
-                    : [
+                    : MonitorApis::disabledHealthAttributes() + [
                         'is_enabled' => false,
                         'project_paused_monitoring' => true,
                     ]);
@@ -431,7 +431,7 @@ class ProjectsTable
                         'archived_at' => null,
                         'archive_reason' => null,
                     ]
-                    : [
+                    : ProjectComponent::disabledHealthAttributes() + [
                         'is_archived' => true,
                         'project_paused_monitoring' => true,
                         'archived_at' => now(),
@@ -525,6 +525,21 @@ class ProjectsTable
             ->update([
                 'outbound_check' => false,
                 'project_paused_outbound_check' => true,
+            ]);
+
+        Website::query()
+            ->whereIn('project_id', $projectIds)
+            ->where('uptime_check', false)
+            ->where('ssl_check', false)
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('project_paused_uptime_check', true)
+                    ->orWhere('project_paused_ssl_check', true)
+                    ->orWhere('project_paused_outbound_check', true);
+            })
+            ->update(Website::disabledLiveHealthAttributes() + [
+                'last_heartbeat_at' => null,
+                'diagnostic_queued_at' => null,
             ]);
 
         return $websitesChanged;

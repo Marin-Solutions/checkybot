@@ -13,6 +13,8 @@ class ProjectComponent extends Model
     /** @use HasFactory<\Database\Factories\ProjectComponentFactory> */
     use HasFactory, HasSnooze;
 
+    public const ADMIN_DISABLED_SUMMARY = 'Disabled in Checkybot admin.';
+
     public const ARCHIVE_REASON_PACKAGE = 'package';
 
     public const ARCHIVE_REASON_USER = 'user';
@@ -59,6 +61,18 @@ class ProjectComponent extends Model
                 $component->project_paused_monitoring = false;
             }
         });
+    }
+
+    public static function disabledHealthAttributes(?string $summary = self::ADMIN_DISABLED_SUMMARY): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'last_reported_status' => 'unknown',
+            'summary' => $summary,
+            'last_heartbeat_at' => null,
+            'stale_detected_at' => null,
+            'is_stale' => false,
+        ];
     }
 
     public function project(): BelongsTo

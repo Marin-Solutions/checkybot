@@ -26,6 +26,8 @@ class MonitorApis extends Model
     use HasSnooze;
     use SoftDeletes;
 
+    public const ADMIN_DISABLED_STATUS_SUMMARY = 'Disabled in Checkybot admin.';
+
     public const LEGACY_RAW_BODY_KEY = 'raw_body';
 
     public const INTERACTIVE_RUN_KEY = 'interactive';
@@ -79,6 +81,17 @@ class MonitorApis extends Model
                 $api->project_paused_monitoring = false;
             }
         });
+    }
+
+    public static function disabledHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'status_summary' => $summary,
+            'diagnostic_queued_at' => null,
+        ];
     }
 
     protected function headers(): Attribute
