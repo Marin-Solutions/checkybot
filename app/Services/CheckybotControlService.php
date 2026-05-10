@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Support\ApiMonitorEvidenceRedactor;
+use App\Support\ProjectComponentDeliveryState;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
@@ -120,8 +121,15 @@ class CheckybotControlService
             ->get()
             ->map(fn (Website $website): array => $this->websiteCheckPayload($website));
 
+        $componentChecks = $project->components()
+            ->with('latestHeartbeat')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (ProjectComponent $component): array => $this->componentCheckPayload($component));
+
         return $apiChecks
-            ->merge($websiteChecks)
+            ->concat($websiteChecks)
+            ->concat($componentChecks)
             ->sortBy([
                 ['key', 'asc'],
                 ['type', 'asc'],
@@ -735,6 +743,7 @@ class CheckybotControlService
             'timeout_seconds' => $check->timeout_seconds,
             'schedule' => $check->package_schedule,
             'enabled' => $check->is_enabled,
+            'supports_run' => true,
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
             'last_synced_at' => $check->last_synced_at?->toISOString(),
@@ -775,6 +784,7 @@ class CheckybotControlService
             'timeout_seconds' => null,
             'schedule' => $website->package_interval,
             'enabled' => (bool) $website->uptime_check || (bool) $website->ssl_check,
+            'supports_run' => true,
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
             'last_synced_at' => $website->last_synced_at?->toISOString(),
@@ -787,6 +797,79 @@ class CheckybotControlService
             'latest_result' => $latestResult instanceof WebsiteLogHistory ? $this->websiteResultPayload($latestResult) : null,
             'updated_at' => $website->updated_at?->toISOString(),
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function componentCheckPayload(ProjectComponent $component): array
+    {
+        $latestHeartbeat = $component->relationLoaded('latestHeartbeat')
+            ? $component->latestHeartbeat
+            : $component->latestHeartbeat()->first();
+
+        if ($latestHeartbeat instanceof ProjectComponentHeartbeat) {
+            $latestHeartbeat->setRelation('component', $component);
+        }
+
+        $deliveryState = ProjectComponentDeliveryState::value($component);
+
+        return [
+            'id' => $component->id,
+            'key' => $component->name,
+            'type' => 'component',
+            'name' => $component->name,
+            'url' => null,
+            'method' => null,
+            'request_path' => null,
+            'expected_status' => null,
+            'timeout_seconds' => null,
+            'schedule' => $component->declared_interval,
+            'declared_interval' => $component->declared_interval,
+            'interval_minutes' => $component->interval_minutes,
+            'enabled' => ! (bool) $component->is_archived,
+            'supports_run' => false,
+            'status' => $this->componentStatusBucket($component),
+            'reported_status' => $component->last_reported_status,
+            'status_summary' => $component->summary,
+            'delivery_state' => $deliveryState,
+            'delivery_state_label' => ProjectComponentDeliveryState::label($component),
+            'is_stale' => (bool) $component->is_stale,
+            'is_archived' => (bool) $component->is_archived,
+            'last_synced_at' => null,
+            'last_heartbeat_at' => $component->last_heartbeat_at?->toISOString(),
+            'stale_at' => $component->stale_detected_at?->toISOString(),
+            'stale_detected_at' => $component->stale_detected_at?->toISOString(),
+            'stale_threshold_at' => $this->componentStaleThresholdAt($component),
+            'silenced_until' => $component->silenced_until?->toISOString(),
+            'metrics' => $component->metrics,
+            'headers' => [],
+            'request_body_type' => null,
+            'has_request_body' => false,
+            'assertions' => [],
+            'latest_result' => $latestHeartbeat instanceof ProjectComponentHeartbeat ? $this->componentHeartbeatPayload($latestHeartbeat) : null,
+            'updated_at' => $component->updated_at?->toISOString(),
+        ];
+    }
+
+    private function componentStaleThresholdAt(ProjectComponent $component): ?string
+    {
+        if ($component->interval_minutes === null) {
+            return null;
+        }
+
+        $anchorAt = $component->last_heartbeat_at ?? $component->created_at;
+
+        if ($anchorAt === null) {
+            return null;
+        }
+
+        $graceMinutes = max(0, (int) config('monitor.project_component_stale_grace_minutes'));
+
+        return $anchorAt
+            ->copy()
+            ->addMinutes($component->interval_minutes + $graceMinutes)
+            ->toISOString();
     }
 
     /**
