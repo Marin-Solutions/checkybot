@@ -77,6 +77,33 @@ test('job skips diagnostics and clears queued state when batch is cancelled', fu
         ->and($website->logHistory()->count())->toBe(0);
 });
 
+test('on-demand job skips websites disabled after dispatch and clears queued state', function () {
+    Http::preventStrayRequests();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldNotReceive('extractHost');
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    $job = new LogUptimeSslJob($website, onDemand: true);
+
+    $website->update([
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
+    $job->handle(app(SslCertificateService::class));
+
+    expect($website->fresh()->diagnostic_queued_at)->toBeNull()
+        ->and($website->logHistory()->count())->toBe(0);
+});
+
 test('job creates log history for successful check', function () {
     Http::fake([
         '*' => Http::response('', 200),
