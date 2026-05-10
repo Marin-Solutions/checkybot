@@ -127,9 +127,9 @@ class CheckybotControlService
             ->get()
             ->map(fn (ProjectComponent $component): array => $this->componentCheckPayload($component));
 
-        return collect($apiChecks->all())
-            ->merge($websiteChecks->all())
-            ->merge($componentChecks->all())
+        return $apiChecks
+            ->concat($websiteChecks)
+            ->concat($componentChecks)
             ->sortBy([
                 ['key', 'asc'],
                 ['type', 'asc'],
@@ -743,6 +743,7 @@ class CheckybotControlService
             'timeout_seconds' => $check->timeout_seconds,
             'schedule' => $check->package_schedule,
             'enabled' => $check->is_enabled,
+            'supports_run' => true,
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
             'last_synced_at' => $check->last_synced_at?->toISOString(),
@@ -783,6 +784,7 @@ class CheckybotControlService
             'timeout_seconds' => null,
             'schedule' => $website->package_interval,
             'enabled' => (bool) $website->uptime_check || (bool) $website->ssl_check,
+            'supports_run' => true,
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
             'last_synced_at' => $website->last_synced_at?->toISOString(),
@@ -826,6 +828,7 @@ class CheckybotControlService
             'declared_interval' => $component->declared_interval,
             'interval_minutes' => $component->interval_minutes,
             'enabled' => ! (bool) $component->is_archived,
+            'supports_run' => false,
             'status' => $this->componentStatusBucket($component),
             'reported_status' => $component->last_reported_status,
             'status_summary' => $component->summary,

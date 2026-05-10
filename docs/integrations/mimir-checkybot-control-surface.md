@@ -117,7 +117,7 @@ Example project detail response:
 
 `{check}` is the stable package-managed check key. Disabling never deletes the definition or result history.
 
-`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project components in one list. Component rows use `"type": "component"` and include delivery state, declared heartbeat interval, stale threshold/timestamps, current metrics, and the latest heartbeat as `latest_result`.
+`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project components in one list. Component rows use `"type": "component"` and include delivery state, declared heartbeat interval, stale threshold/timestamps, current metrics, and the latest heartbeat as `latest_result`. Check rows also include `supports_run`; API and website rows can be triggered through diagnostic run endpoints, while component rows report package-sent heartbeat evidence and are not directly runnable from the control API.
 
 Example upsert request:
 
@@ -195,7 +195,7 @@ Example upsert response:
 - `POST /control/projects/{project}/runs`
 - `POST /control/projects/{project}/checks/{check}/runs`
 
-These endpoints execute synchronously and return the fresh result payload immediately. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are diagnostic: they are appended to run history, but they do not move live status, alert subscribers, or appear in latest failure feeds.
+These endpoints execute synchronously and return the fresh result payload immediately for API and website checks. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are diagnostic: they are appended to run history, but they do not move live status, alert subscribers, or appear in latest failure feeds. Components are heartbeat-driven and show `supports_run: false` in `list_checks`.
 
 ### Recent results and latest failures
 
@@ -204,7 +204,7 @@ These endpoints execute synchronously and return the fresh result payload immedi
 - `GET /control/failures?project={project}&limit={1..100}`
 - `GET /control/projects/{project}/failures?limit={1..100}`
 
-`/runs` returns recent check run results. `/failures` returns recent warning or danger results only.
+`/runs` returns recent check run results. `/failures` returns recent warning or danger results only, including component warning/danger heartbeats with their metric evidence when a component is the latest failing surface.
 
 ## MCP Endpoint
 
@@ -278,7 +278,7 @@ curl https://checkybot.example.com/api/v1/control/projects/scrappa/checks \
 
 ## Known Limitations Left Intentionally for Later
 
-- The control surface only manages package-managed API checks. Website, server, and component workflows are outside this integration scope.
+- The control surface manages package-managed API checks, website checks, and component visibility. Component definitions and heartbeats are still package-driven; the control API exposes their status and evidence but does not create or manually run component heartbeats.
 - Run triggers are synchronous HTTP calls. There is no async job dispatch or run queue surface yet.
 - The MCP endpoint is a focused tool surface, not a full general-purpose Checkybot admin API.
 - Result listing is limit-based only. Cursor pagination can be added later if Mimir needs deeper history windows.
