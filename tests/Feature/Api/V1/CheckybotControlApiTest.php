@@ -438,6 +438,40 @@ test('control api disables listed website checks by package key', function () {
     ]);
 });
 
+test('control api requires type when disabling an ambiguous check key', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'is_enabled' => true,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->patchJson('/api/v1/control/projects/scrappa/checks/shared-health/disable')
+        ->assertConflict()
+        ->assertJsonPath('message', 'Check key matches multiple check types. Pass type=api or type=website to disable a specific check.');
+
+    $this->withToken($this->apiKey->key)
+        ->patchJson('/api/v1/control/projects/scrappa/checks/shared-health/disable?type=website')
+        ->assertOk()
+        ->assertJsonPath('data.type', 'website')
+        ->assertJsonPath('data.enabled', false);
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue()
+        ->and($website->refresh()->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeFalse();
+});
+
 test('control api queues listed website checks by package key', function () {
     Queue::fake();
     $this->travelTo(now()->setTime(12, 15, 0));
@@ -1788,6 +1822,7 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         ])
         ->assertOk()
         ->assertJsonPath('result.tools.0.name', 'me')
+        ->assertJsonFragment(['description' => 'Optional check type. Required when API and website checks share the same key.'])
         ->assertJsonFragment(['name' => 'get_run_batch']);
 
     $this->withToken($this->apiKey->key)
@@ -1829,6 +1864,47 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         'package_schedule' => '5m',
         'package_interval' => '5m',
     ]);
+});
+
+test('mcp disable check accepts type to resolve ambiguous check keys', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'is_enabled' => true,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 44,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'disable_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'check' => 'shared-health',
+                    'type' => 'website',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.type', 'website')
+        ->assertJsonPath('result.structuredContent.enabled', false);
+
+    expect($monitor->refresh()->is_enabled)->toBeTrue()
+        ->and($website->refresh()->uptime_check)->toBeFalse()
+        ->and($website->ssl_check)->toBeFalse();
 });
 
 test('mcp latest failures tool includes website and component failures', function () {

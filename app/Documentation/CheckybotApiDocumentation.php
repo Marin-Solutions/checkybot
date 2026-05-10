@@ -440,15 +440,24 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/checks/{check}/disable",
      *     operationId="disableControlProjectCheck",
      *     tags={"control"},
-     *     summary="Disable a package-managed API check",
+     *     summary="Disable a package-managed API or website check",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *     @OA\Parameter(name="check", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(
+     *         name="type",
+     *         in="query",
+     *         required=false,
+     *         description="Check type to disable. Required when API and website checks share the same key.",
+     *
+     *         @OA\Schema(type="string", enum={"api", "website"})
+     *     ),
      *
      *     @OA\Response(response=200, description="Check disabled"),
      *     @OA\Response(response=401, description="Invalid API key"),
-     *     @OA\Response(response=404, description="Project or check not found")
+     *     @OA\Response(response=404, description="Project or check not found"),
+     *     @OA\Response(response=409, description="Check key matches multiple check types")
      * )
      */
     public function disableControlProjectCheck(): void {}

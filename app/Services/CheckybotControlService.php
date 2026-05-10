@@ -203,9 +203,9 @@ class CheckybotControlService
     /**
      * @return array<string, mixed>
      */
-    public function disableCheck(User $user, string|int $projectKey, string $checkKey): array
+    public function disableCheck(User $user, string|int $projectKey, string $checkKey, ?string $checkType = null): array
     {
-        $check = $this->findControllableCheck($user, $projectKey, $checkKey);
+        $check = $this->findControllableCheck($user, $projectKey, $checkKey, $checkType);
 
         if ($check instanceof Website) {
             $check->forceFill([
@@ -544,23 +544,47 @@ class CheckybotControlService
             ->firstOrFail();
     }
 
-    private function findControllableCheck(User $user, string|int $projectKey, string $checkKey): MonitorApis|Website
+    private function findControllableCheck(User $user, string|int $projectKey, string $checkKey, ?string $checkType): MonitorApis|Website
     {
         $project = $this->findProject($user, $projectKey);
+
+        if ($checkType === 'api') {
+            return $project->packageManagedApis()
+                ->with(['assertions', 'latestResult'])
+                ->where('package_name', $checkKey)
+                ->firstOrFail();
+        }
+
+        if ($checkType === 'website') {
+            return $project->packageManagedWebsites()
+                ->with('latestLogHistory')
+                ->where('package_name', $checkKey)
+                ->firstOrFail();
+        }
 
         $apiCheck = $project->packageManagedApis()
             ->with(['assertions', 'latestResult'])
             ->where('package_name', $checkKey)
             ->first();
 
+        $websiteCheck = $project->packageManagedWebsites()
+            ->with('latestLogHistory')
+            ->where('package_name', $checkKey)
+            ->first();
+
+        if ($apiCheck instanceof MonitorApis && $websiteCheck instanceof Website) {
+            abort(409, 'Check key matches multiple check types. Pass type=api or type=website to disable a specific check.');
+        }
+
         if ($apiCheck instanceof MonitorApis) {
             return $apiCheck;
         }
 
-        return $project->packageManagedWebsites()
-            ->with('latestLogHistory')
-            ->where('package_name', $checkKey)
-            ->firstOrFail();
+        if ($websiteCheck instanceof Website) {
+            return $websiteCheck;
+        }
+
+        abort(404, 'Check not found.');
     }
 
     private function findRunnableCheck(User $user, string|int $projectKey, string $checkKey): MonitorApis|Website
