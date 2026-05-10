@@ -400,6 +400,8 @@ class MonitorApisResource extends Resource
                             $record->forceFill([
                                 'current_status' => 'unknown',
                                 'status_summary' => 'Disabled in Checkybot admin.',
+                                'last_heartbeat_at' => null,
+                                'stale_at' => null,
                             ])->save();
                         }
 
@@ -606,6 +608,8 @@ class MonitorApisResource extends Resource
                                     'project_paused_monitoring' => false,
                                     'current_status' => 'unknown',
                                     'status_summary' => 'Disabled in Checkybot admin.',
+                                    'last_heartbeat_at' => null,
+                                    'stale_at' => null,
                                 ]);
 
                             Notification::make()
