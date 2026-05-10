@@ -1161,6 +1161,73 @@ test('control api returns latest result for each listed check', function () {
         ->assertJsonPath('data.1.latest_result.status', 'healthy');
 });
 
+test('control api project summaries include active component counts and status buckets', function () {
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue-worker',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'scheduler',
+        'current_status' => 'warning',
+        'last_heartbeat_at' => now()->subMinutes(2),
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'billing-sync',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now()->subMinutes(20),
+        'is_stale' => true,
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'first-heartbeat-pending',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => null,
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'retired-worker',
+        'current_status' => 'danger',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects')
+        ->assertOk()
+        ->assertJsonPath('data.0.checks_count', 5)
+        ->assertJsonPath('data.0.enabled_checks_count', 4)
+        ->assertJsonPath('data.0.disabled_checks_count', 1)
+        ->assertJsonPath('data.0.components_count', 5)
+        ->assertJsonPath('data.0.active_components_count', 4)
+        ->assertJsonPath('data.0.archived_components_count', 1);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.checks_count', 5)
+        ->assertJsonPath('data.enabled_checks_count', 4)
+        ->assertJsonPath('data.disabled_checks_count', 1)
+        ->assertJsonPath('data.components_count', 5)
+        ->assertJsonPath('data.active_components_count', 4)
+        ->assertJsonPath('data.archived_components_count', 1)
+        ->assertJsonPath('data.status_counts.healthy', 1)
+        ->assertJsonPath('data.status_counts.warning', 1)
+        ->assertJsonPath('data.status_counts.danger', 1)
+        ->assertJsonPath('data.status_counts.unknown', 1)
+        ->assertJsonPath('data.status_counts.disabled', 1);
+});
+
 test('control api scopes projects to the api key owner', function () {
     $otherUser = User::factory()->create();
     $otherApiKey = ApiKey::factory()->create(['user_id' => $otherUser->id]);
