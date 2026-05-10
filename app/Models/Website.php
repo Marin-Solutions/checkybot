@@ -89,6 +89,7 @@ class Website extends Model
             'current_status' => 'unknown',
             'stale_at' => null,
             'status_summary' => $summary,
+            'diagnostic_queued_at' => null,
         ];
     }
 

@@ -339,6 +339,7 @@ test('package sync disables missing package api checks without deleting them', f
         ->update([
             'last_heartbeat_at' => now()->subHour(),
             'stale_at' => now()->subMinutes(5),
+            'diagnostic_queued_at' => now(),
         ]);
 
     $payload = packageSyncPayload();
@@ -355,6 +356,7 @@ test('package sync disables missing package api checks without deleting them', f
         'is_enabled' => false,
         'last_heartbeat_at' => null,
         'stale_at' => null,
+        'diagnostic_queued_at' => null,
         'deleted_at' => null,
     ]);
 });
@@ -887,6 +889,7 @@ test('package sync updates and disables missing website checks by stable package
         ->update([
             'last_heartbeat_at' => now()->subHour(),
             'stale_at' => now()->subMinutes(5),
+            'diagnostic_queued_at' => now(),
         ]);
 
     $response = $this->withToken($this->apiKey->key)
@@ -927,6 +930,7 @@ test('package sync updates and disables missing website checks by stable package
         'package_interval' => null,
         'last_heartbeat_at' => null,
         'stale_at' => null,
+        'diagnostic_queued_at' => null,
         'deleted_at' => null,
     ]);
 });

@@ -397,12 +397,7 @@ class MonitorApisResource extends Resource
                     })
                     ->afterStateUpdated(function (MonitorApis $record, bool $state): void {
                         if (! $state) {
-                            $record->forceFill([
-                                'current_status' => 'unknown',
-                                'status_summary' => 'Disabled in Checkybot admin.',
-                                'last_heartbeat_at' => null,
-                                'stale_at' => null,
-                            ])->save();
+                            $record->forceFill(MonitorApis::disabledHealthAttributes())->save();
                         }
 
                         $notification = Notification::make()
@@ -606,11 +601,7 @@ class MonitorApisResource extends Resource
                                 : MonitorApis::query()->whereIn('id', $ids)->update([
                                     'is_enabled' => false,
                                     'project_paused_monitoring' => false,
-                                    'current_status' => 'unknown',
-                                    'status_summary' => 'Disabled in Checkybot admin.',
-                                    'last_heartbeat_at' => null,
-                                    'stale_at' => null,
-                                ]);
+                                ] + MonitorApis::disabledHealthAttributes());
 
                             Notification::make()
                                 ->title($count === 0

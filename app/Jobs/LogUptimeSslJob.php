@@ -82,6 +82,17 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
+        $freshWebsite = $this->website->fresh();
+
+        if (! $freshWebsite instanceof Website) {
+            $this->clearQueuedDiagnostic();
+
+            return;
+        }
+
+        $this->website->uptime_check = $freshWebsite->uptime_check;
+        $this->website->ssl_check = $freshWebsite->ssl_check;
+
         if (! $this->shouldRunForWebsite()) {
             $this->clearQueuedDiagnostic();
 

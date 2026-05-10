@@ -207,12 +207,8 @@ class CheckybotControlService
     {
         $check = $this->findCheck($user, $projectKey, $checkKey);
 
-        $check->forceFill([
+        $check->forceFill(MonitorApis::disabledHealthAttributes('Disabled by Checkybot control API.') + [
             'is_enabled' => false,
-            'current_status' => 'unknown',
-            'status_summary' => 'Disabled by Checkybot control API.',
-            'last_heartbeat_at' => null,
-            'stale_at' => null,
             'last_synced_at' => now(),
         ])->save();
 
