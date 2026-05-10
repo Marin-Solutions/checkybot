@@ -125,6 +125,7 @@ class CheckybotMcpController extends Controller
                 $user,
                 $this->requiredString($arguments, 'project'),
                 $this->requiredString($arguments, 'check'),
+                $this->optionalCheckType($arguments),
             ),
             'trigger_run',
             'checkybot_trigger_run' => isset($arguments['check'])
@@ -188,6 +189,16 @@ class CheckybotMcpController extends Controller
         return Validator::make($arguments, [
             $key => ['required', 'string', 'max:255'],
         ])->validate()[$key];
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     */
+    private function optionalCheckType(array $arguments): ?string
+    {
+        return Validator::make($arguments, [
+            'type' => ['nullable', Rule::in(['api', 'website'])],
+        ])->validate()['type'] ?? null;
     }
 
     /**
@@ -269,7 +280,7 @@ class CheckybotMcpController extends Controller
             $this->tool('get_project', 'Get project detail, check counts, and latest failure.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('list_checks', 'List package-managed API checks for a project.', [
+            $this->tool('list_checks', 'List package-managed API and website checks for a project.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
             $this->tool('upsert_check', 'Create or update a package-managed API check by stable key.', [
@@ -290,6 +301,7 @@ class CheckybotMcpController extends Controller
             $this->tool('disable_check', 'Disable a check without deleting its definition or history.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string'],
+                'type' => ['type' => 'string', 'enum' => ['api', 'website'], 'description' => 'Optional check type. Required when API and website checks share the same key.'],
             ]),
             $this->tool('trigger_run', 'Queue enabled checks for a project, or run a single check immediately.', [
                 'project' => ['type' => 'string'],
