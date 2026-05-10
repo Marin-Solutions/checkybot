@@ -334,6 +334,13 @@ test('package sync disables missing package api checks without deleting them', f
         ->postJson('/api/v1/package/sync', packageSyncPayload())
         ->assertCreated();
 
+    MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->update([
+            'last_heartbeat_at' => now()->subHour(),
+            'stale_at' => now()->subMinutes(5),
+        ]);
+
     $payload = packageSyncPayload();
     $payload['checks'] = [];
 
@@ -346,6 +353,8 @@ test('package sync disables missing package api checks without deleting them', f
     $this->assertDatabaseHas('monitor_apis', [
         'package_name' => 'google-maps-search',
         'is_enabled' => false,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
         'deleted_at' => null,
     ]);
 });

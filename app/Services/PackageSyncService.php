@@ -311,6 +311,8 @@ class PackageSyncService
             'is_enabled' => false,
             'current_status' => 'unknown',
             'status_summary' => 'Disabled because it was missing from the latest package sync.',
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
             'last_synced_at' => $syncedAt,
         ]);
     }

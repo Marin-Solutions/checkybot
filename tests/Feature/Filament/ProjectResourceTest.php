@@ -28,8 +28,14 @@ use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+
+afterEach(function () {
+    Carbon::setTestNow();
+});
 
 test('operator can create a manual application component', function () {
     $this->createResourcePermissions('ProjectComponent');
@@ -1132,6 +1138,133 @@ test('application record shows package-managed external checks including archive
         ->toContain(PackageManagedApisRelationManager::class);
 });
 
+test('package-managed relation managers queue run now diagnostics for active checks', function () {
+    Carbon::setTestNow('2026-05-10 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+    Queue::fake();
+
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '5m',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+
+    $apiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => '5m',
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionExists('run_now', null, $website)
+        ->assertTableActionHasLabel('run_now', 'Run check now', $website)
+        ->assertTableActionHasIcon('run_now', 'heroicon-o-bolt', $website)
+        ->callTableAction('run_now', $website)
+        ->assertNotified('Diagnostic queued');
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionExists('run_now', null, $apiMonitor)
+        ->assertTableActionHasLabel('run_now', 'Run check now', $apiMonitor)
+        ->assertTableActionHasIcon('run_now', 'heroicon-o-bolt', $apiMonitor)
+        ->callTableAction('run_now', $apiMonitor)
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($website) && $job->onDemand === true);
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($apiMonitor));
+
+    expect($website->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00')
+        ->and($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00');
+});
+
+test('package-managed relation managers guard run now diagnostics for inactive checks', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $queuedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'queued-homepage',
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+    $disabledWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'disabled-homepage',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+    $archivedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'archived-homepage',
+        'uptime_check' => true,
+        'created_by' => $user->id,
+    ]);
+    $archivedWebsite->delete();
+
+    $queuedApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'queued-api',
+        'is_enabled' => true,
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+    $disabledApiMonitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'disabled-api',
+        'created_by' => $user->id,
+    ]);
+    $archivedApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'archived-api',
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+    $archivedApiMonitor->delete();
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionDisabled('run_now', $queuedWebsite)
+        ->assertTableActionHidden('run_now', $disabledWebsite)
+        ->assertTableActionHidden('run_now', $archivedWebsite);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionDisabled('run_now', $queuedApiMonitor)
+        ->assertTableActionHidden('run_now', $disabledApiMonitor)
+        ->assertTableActionHidden('run_now', $archivedApiMonitor);
+});
+
 test('super admin can filter applications by current status', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
@@ -1788,18 +1921,34 @@ test('super admin can bulk pause monitoring across selected applications', funct
         'uptime_check' => true,
         'ssl_check' => true,
         'outbound_check' => true,
+        'current_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'stale_at' => now()->subMinutes(5),
+        'status_summary' => 'Website heartbeat failed with HTTP status 500.',
+        'diagnostic_queued_at' => now()->subMinute(),
     ]);
 
     $monitor = MonitorApis::factory()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
         'is_enabled' => true,
+        'current_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'stale_at' => now()->subMinutes(5),
+        'status_summary' => 'API heartbeat failed with HTTP status 500.',
+        'diagnostic_queued_at' => now()->subMinute(),
     ]);
 
     $component = ProjectComponent::factory()->create([
         'project_id' => $project->id,
         'created_by' => $user->id,
         'is_archived' => false,
+        'current_status' => 'danger',
+        'last_reported_status' => 'danger',
+        'summary' => 'Heartbeat expired',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
     ]);
 
     Livewire::test(ListProjects::class)
@@ -1811,10 +1960,26 @@ test('super admin can bulk pause monitoring across selected applications', funct
         ->and($website->project_paused_uptime_check)->toBeTrue()
         ->and($website->project_paused_ssl_check)->toBeTrue()
         ->and($website->project_paused_outbound_check)->toBeTrue()
+        ->and($website->current_status)->toBe('unknown')
+        ->and($website->last_heartbeat_at)->toBeNull()
+        ->and($website->stale_at)->toBeNull()
+        ->and($website->status_summary)->toBe(Website::ADMIN_DISABLED_STATUS_SUMMARY)
+        ->and($website->diagnostic_queued_at)->toBeNull()
         ->and($monitor->refresh()->is_enabled)->toBeFalse()
         ->and($monitor->project_paused_monitoring)->toBeTrue()
+        ->and($monitor->current_status)->toBe('unknown')
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->stale_at)->toBeNull()
+        ->and($monitor->status_summary)->toBe(MonitorApis::ADMIN_DISABLED_STATUS_SUMMARY)
+        ->and($monitor->diagnostic_queued_at)->toBeNull()
         ->and($component->refresh()->is_archived)->toBeTrue()
-        ->and($component->project_paused_monitoring)->toBeTrue();
+        ->and($component->project_paused_monitoring)->toBeTrue()
+        ->and($component->current_status)->toBe('unknown')
+        ->and($component->last_reported_status)->toBe('unknown')
+        ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
+        ->and($component->last_heartbeat_at)->toBeNull()
+        ->and($component->is_stale)->toBeFalse()
+        ->and($component->stale_detected_at)->toBeNull();
 });
 
 test('super admin can bulk resume monitoring across selected applications', function () {
