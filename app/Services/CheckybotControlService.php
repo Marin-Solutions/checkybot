@@ -205,7 +205,22 @@ class CheckybotControlService
      */
     public function disableCheck(User $user, string|int $projectKey, string $checkKey): array
     {
-        $check = $this->findCheck($user, $projectKey, $checkKey);
+        $check = $this->findControllableCheck($user, $projectKey, $checkKey);
+
+        if ($check instanceof Website) {
+            $check->forceFill([
+                'uptime_check' => false,
+                'ssl_check' => false,
+                'current_status' => 'unknown',
+                'status_summary' => 'Disabled by Checkybot control API.',
+                'last_heartbeat_at' => null,
+                'stale_at' => null,
+                'diagnostic_queued_at' => null,
+                'last_synced_at' => now(),
+            ])->save();
+
+            return $this->websiteCheckPayload($check->fresh(['latestLogHistory']));
+        }
 
         $check->forceFill([
             'is_enabled' => false,
@@ -529,12 +544,21 @@ class CheckybotControlService
             ->firstOrFail();
     }
 
-    private function findCheck(User $user, string|int $projectKey, string $checkKey): MonitorApis
+    private function findControllableCheck(User $user, string|int $projectKey, string $checkKey): MonitorApis|Website
     {
         $project = $this->findProject($user, $projectKey);
 
-        return $project->packageManagedApis()
+        $apiCheck = $project->packageManagedApis()
             ->with(['assertions', 'latestResult'])
+            ->where('package_name', $checkKey)
+            ->first();
+
+        if ($apiCheck instanceof MonitorApis) {
+            return $apiCheck;
+        }
+
+        return $project->packageManagedWebsites()
+            ->with('latestLogHistory')
             ->where('package_name', $checkKey)
             ->firstOrFail();
     }
