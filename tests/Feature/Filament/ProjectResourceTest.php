@@ -29,6 +29,7 @@ use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -775,6 +776,144 @@ test('application detail shows package sync status metadata', function () {
         ->assertSee('API checks: 1 created, 1 disabled')
         ->assertSee('Uptime checks: 1 created, 1 updated')
         ->assertSee('SSL checks: no changes');
+});
+
+test('application detail action queues enabled package managed diagnostics', function () {
+    $this->createResourcePermissions('Project');
+    Bus::fake();
+    $this->travelTo('2026-05-09 12:00:00');
+
+    $owner = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Checkout App',
+        'created_by' => $owner->id,
+        'package_key' => 'checkout-app',
+    ]);
+
+    $apiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $owner->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'is_enabled' => true,
+    ]);
+
+    $disabledApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $owner->id,
+        'source' => 'package',
+        'package_name' => 'disabled-health',
+        'is_enabled' => false,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $owner->id,
+        'source' => 'package',
+        'package_name' => 'landing-page',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    $pausedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $owner->id,
+        'source' => 'package',
+        'package_name' => 'paused-landing-page',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertActionVisible('run_diagnostics')
+        ->callAction('run_diagnostics')
+        ->assertNotified('Diagnostics queued');
+
+    Bus::assertBatched(function ($batch) use ($project): bool {
+        return $batch->name === 'Control project run: checkout-app'
+            && $batch->jobs->count() === 2
+            && $batch->jobs->contains(fn ($job): bool => $job instanceof RunApiMonitorDiagnosticJob
+                && $job->monitor->package_name === 'search-health')
+            && $batch->jobs->contains(fn ($job): bool => $job instanceof LogUptimeSslJob
+                && $job->website->package_name === 'landing-page'
+                && $job->onDemand === true)
+            && ($batch->options['checkybot_control']['project_id'] ?? null) === $project->id
+            && ($batch->options['checkybot_control']['user_id'] ?? null) === $project->created_by
+            && ($batch->options['allowFailures'] ?? false) === true;
+    });
+
+    expect($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
+        ->and($website->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
+        ->and($disabledApiMonitor->refresh()->diagnostic_queued_at)->toBeNull()
+        ->and($pausedWebsite->refresh()->diagnostic_queued_at)->toBeNull();
+});
+
+test('application detail action reports when no enabled diagnostics can be queued', function () {
+    $this->createResourcePermissions('Project');
+    Bus::fake();
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+        'package_key' => 'checkout-app',
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_name' => 'disabled-health',
+        'is_enabled' => false,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'source' => 'package',
+        'package_name' => 'paused-landing-page',
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->callAction('run_diagnostics')
+        ->assertNotified('No enabled diagnostics');
+
+    Bus::assertNothingBatched();
+});
+
+test('application detail hides diagnostics action without project update permission', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Project', 'View:Project']);
+    $this->actingAs($user);
+
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+        'package_key' => 'checkout-app',
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertActionHidden('run_diagnostics');
+});
+
+test('application detail hides diagnostics action without child monitor update permissions', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Project', 'View:Project', 'Update:Project']);
+    $this->actingAs($user);
+
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+        'package_key' => 'checkout-app',
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertActionHidden('run_diagnostics');
 });
 
 test('application detail shows sdk version for registered applications before package sync', function () {
