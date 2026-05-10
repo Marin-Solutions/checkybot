@@ -356,6 +356,8 @@ test('control api disables checks without deleting data', function () {
         'source' => 'package',
         'package_name' => 'search-health',
         'is_enabled' => true,
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'stale_at' => now()->subMinute(),
     ]);
 
     MonitorApiResult::factory()->create([
@@ -371,6 +373,8 @@ test('control api disables checks without deleting data', function () {
     $this->assertDatabaseHas('monitor_apis', [
         'id' => $monitor->id,
         'is_enabled' => false,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
         'deleted_at' => null,
     ]);
 
