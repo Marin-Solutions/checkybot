@@ -1161,6 +1161,85 @@ test('control api returns latest result for each listed check', function () {
         ->assertJsonPath('data.1.latest_result.status', 'healthy');
 });
 
+test('control api lists component checks with delivery state and latest heartbeat evidence', function () {
+    $this->travelTo(now()->setTime(9, 30, 0));
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue-worker',
+        'summary' => 'Queue latency is above threshold.',
+        'declared_interval' => '2m',
+        'interval_minutes' => 2,
+        'current_status' => 'healthy',
+        'last_reported_status' => 'warning',
+        'metrics' => ['latency_seconds' => 91],
+        'last_heartbeat_at' => now()->subMinutes(7),
+        'stale_detected_at' => now()->subMinute(),
+        'is_stale' => true,
+        'is_archived' => false,
+    ]);
+
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'queue-worker',
+        'status' => 'healthy',
+        'event' => 'heartbeat',
+        'summary' => 'Previous heartbeat was healthy.',
+        'metrics' => ['latency_seconds' => 12],
+        'observed_at' => now()->subMinutes(10),
+    ]);
+
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'queue-worker',
+        'status' => 'warning',
+        'event' => 'stale',
+        'summary' => 'Queue worker heartbeat is stale.',
+        'metrics' => ['latency_seconds' => 91],
+        'observed_at' => now()->subMinute(),
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'retired-worker',
+        'summary' => 'Removed from package configuration.',
+        'last_heartbeat_at' => null,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/checks')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.key', 'queue-worker')
+        ->assertJsonPath('data.0.type', 'component')
+        ->assertJsonPath('data.0.enabled', true)
+        ->assertJsonPath('data.0.status', 'danger')
+        ->assertJsonPath('data.0.reported_status', 'warning')
+        ->assertJsonPath('data.0.delivery_state', 'stale')
+        ->assertJsonPath('data.0.delivery_state_label', 'Stale')
+        ->assertJsonPath('data.0.declared_interval', '2m')
+        ->assertJsonPath('data.0.interval_minutes', 2)
+        ->assertJsonPath('data.0.last_heartbeat_at', now()->subMinutes(7)->toISOString())
+        ->assertJsonPath('data.0.stale_at', now()->subMinute()->toISOString())
+        ->assertJsonPath('data.0.stale_threshold_at', now()->subMinutes(4)->toISOString())
+        ->assertJsonPath('data.0.silenced_until', null)
+        ->assertJsonPath('data.0.is_stale', true)
+        ->assertJsonPath('data.0.metrics.latency_seconds', 91)
+        ->assertJsonPath('data.0.latest_result.check.type', 'component')
+        ->assertJsonPath('data.0.latest_result.status', 'warning')
+        ->assertJsonPath('data.0.latest_result.event', 'stale')
+        ->assertJsonPath('data.0.latest_result.summary', 'Queue worker heartbeat is stale.')
+        ->assertJsonPath('data.0.latest_result.metrics.latency_seconds', 91)
+        ->assertJsonPath('data.1.key', 'retired-worker')
+        ->assertJsonPath('data.1.type', 'component')
+        ->assertJsonPath('data.1.enabled', false)
+        ->assertJsonPath('data.1.delivery_state', 'archived')
+        ->assertJsonPath('data.1.delivery_state_label', 'Archived')
+        ->assertJsonPath('data.1.latest_result', null);
+});
+
 test('control api project summaries include active component counts and status buckets', function () {
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,

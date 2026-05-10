@@ -117,6 +117,8 @@ Example project detail response:
 
 `{check}` is the stable package-managed check key. Disabling never deletes the definition or result history.
 
+`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project components in one list. Component rows use `"type": "component"` and include delivery state, declared heartbeat interval, stale threshold/timestamps, current metrics, and the latest heartbeat as `latest_result`.
+
 Example upsert request:
 
 ```json

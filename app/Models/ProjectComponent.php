@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ProjectComponent extends Model
 {
@@ -83,6 +84,13 @@ class ProjectComponent extends Model
     public function heartbeats(): HasMany
     {
         return $this->hasMany(ProjectComponentHeartbeat::class)->latest('observed_at');
+    }
+
+    public function latestHeartbeat(): HasOne
+    {
+        return $this->hasOne(ProjectComponentHeartbeat::class)->ofMany(
+            ['observed_at' => 'max', 'id' => 'max'],
+        );
     }
 
     public function notificationSettings(): HasMany
