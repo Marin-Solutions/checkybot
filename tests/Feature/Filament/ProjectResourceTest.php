@@ -18,6 +18,8 @@ use App\Filament\Resources\Projects\RelationManagers\ComponentsRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
+use App\Jobs\LogUptimeSslJob;
+use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
@@ -26,7 +28,13 @@ use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
+
+afterEach(function () {
+    Carbon::setTestNow();
+});
 
 test('operator can create a manual application component', function () {
     $this->createResourcePermissions('ProjectComponent');
@@ -989,6 +997,133 @@ test('application record shows package-managed external checks including archive
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)
         ->toContain(PackageManagedApisRelationManager::class);
+});
+
+test('package-managed relation managers queue run now diagnostics for active checks', function () {
+    Carbon::setTestNow('2026-05-10 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+    Queue::fake();
+
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '5m',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+
+    $apiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'package_interval' => '5m',
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionExists('run_now', null, $website)
+        ->assertTableActionHasLabel('run_now', 'Run check now', $website)
+        ->assertTableActionHasIcon('run_now', 'heroicon-o-bolt', $website)
+        ->callTableAction('run_now', $website)
+        ->assertNotified('Diagnostic queued');
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionExists('run_now', null, $apiMonitor)
+        ->assertTableActionHasLabel('run_now', 'Run check now', $apiMonitor)
+        ->assertTableActionHasIcon('run_now', 'heroicon-o-bolt', $apiMonitor)
+        ->callTableAction('run_now', $apiMonitor)
+        ->assertNotified('Diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($website) && $job->onDemand === true);
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($apiMonitor));
+
+    expect($website->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00')
+        ->and($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00');
+});
+
+test('package-managed relation managers guard run now diagnostics for inactive checks', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $queuedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'queued-homepage',
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+    $disabledWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'disabled-homepage',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+    $archivedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'archived-homepage',
+        'uptime_check' => true,
+        'created_by' => $user->id,
+    ]);
+    $archivedWebsite->delete();
+
+    $queuedApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'queued-api',
+        'is_enabled' => true,
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+    $disabledApiMonitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'disabled-api',
+        'created_by' => $user->id,
+    ]);
+    $archivedApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'archived-api',
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+    $archivedApiMonitor->delete();
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionDisabled('run_now', $queuedWebsite)
+        ->assertTableActionHidden('run_now', $disabledWebsite)
+        ->assertTableActionHidden('run_now', $archivedWebsite);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionDisabled('run_now', $queuedApiMonitor)
+        ->assertTableActionHidden('run_now', $disabledApiMonitor)
+        ->assertTableActionHidden('run_now', $archivedApiMonitor);
 });
 
 test('super admin can filter applications by current status', function () {
