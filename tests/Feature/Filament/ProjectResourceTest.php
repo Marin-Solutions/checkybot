@@ -893,6 +893,23 @@ test('application detail hides diagnostics action without project update permiss
         ->assertActionHidden('run_diagnostics');
 });
 
+test('application detail hides diagnostics action without child monitor update permissions', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo(['ViewAny:Project', 'View:Project', 'Update:Project']);
+    $this->actingAs($user);
+
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+        'package_key' => 'checkout-app',
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertActionHidden('run_diagnostics');
+});
+
 test('application detail shows sdk version for registered applications before package sync', function () {
     $this->createResourcePermissions('Project');
 

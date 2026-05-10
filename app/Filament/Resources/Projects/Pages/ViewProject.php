@@ -69,7 +69,7 @@ class ViewProject extends ViewRecord
                 ->modalHeading('Run application diagnostics')
                 ->modalDescription('Checkybot will queue all enabled package-managed API and website diagnostics for this application. Results are appended to diagnostic history, so live status and alert notifications stay reserved for scheduled checks.')
                 ->modalSubmitActionLabel('Run diagnostics')
-                ->authorize(fn (): bool => auth()->user()?->can('Update:Project') ?? false)
+                ->authorize(fn (): bool => $this->userCanRunDiagnostics())
                 ->action(function (): void {
                     $user = auth()->user();
 
@@ -115,6 +115,23 @@ class ViewProject extends ViewRecord
                 }),
             Actions\EditAction::make(),
         ];
+    }
+
+    /**
+     * The diagnostics action stamps Website and MonitorApis rows directly through
+     * the shared control service, so project update permission is not enough.
+     */
+    protected function userCanRunDiagnostics(): bool
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            return false;
+        }
+
+        return $user->can('Update:Project')
+            && $user->can('Update:Website')
+            && $user->can('Update:MonitorApis');
     }
 
     protected function getHeaderWidgets(): array
