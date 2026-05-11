@@ -188,7 +188,7 @@ class ProjectComponentSyncService
                 ? $this->archiveMissingComponents($project, $componentNames)
                 : 0;
 
-            return [
+            $summary = [
                 'components' => [
                     'created' => count($createdNames),
                     'updated' => count($updatedNames),
@@ -198,6 +198,13 @@ class ProjectComponentSyncService
                     'recorded' => $recordedHeartbeats,
                 ],
             ];
+
+            $project->forceFill([
+                'last_component_synced_at' => now(),
+                'latest_component_sync_summary' => $summary,
+            ])->save();
+
+            return $summary;
         });
     }
 

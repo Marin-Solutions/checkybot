@@ -228,6 +228,62 @@ test('declared package components await first heartbeat until data arrives', fun
     ]);
 });
 
+test('component sync records latest application sync metadata', function () {
+    $this->travelTo('2026-05-11 10:15:00');
+
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'legacy-worker',
+        'source' => 'package',
+        'is_archived' => false,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'full_manifest' => true,
+            'declared_components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Queue workers are running',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.created', 1)
+        ->assertJsonPath('summary.components.updated', 0)
+        ->assertJsonPath('summary.components.archived', 1)
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    $this->project->refresh();
+
+    expect($this->project->last_component_synced_at?->toDateTimeString())->toBe('2026-05-11 10:15:00')
+        ->and($this->project->latest_component_sync_summary)->toMatchArray([
+            'components' => [
+                'created' => 1,
+                'updated' => 0,
+                'archived' => 1,
+            ],
+            'heartbeats' => [
+                'recorded' => 1,
+            ],
+        ]);
+
+    $this->travelBack();
+});
+
 test('component sync accepts the same parser interval formats as the project component form', function (string $interval, int $expectedMinutes) {
     $response = $this->withToken($this->apiKey->key)->postJson(
         "/api/v1/projects/{$this->project->id}/components/sync",
