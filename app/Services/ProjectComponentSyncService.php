@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 class ProjectComponentSyncService
 {
+    public const MISSING_PACKAGE_SYNC_SUMMARY = 'Disabled because it was missing from the latest package sync.';
+
     public function __construct(
         protected ProjectComponentNotificationService $projectComponentNotificationService
     ) {}
@@ -224,7 +226,7 @@ class ProjectComponentSyncService
             $query->whereNotIn('name', $activeNames);
         }
 
-        return $query->update([
+        return $query->update(ProjectComponent::disabledHealthAttributes(self::MISSING_PACKAGE_SYNC_SUMMARY) + [
             'is_archived' => true,
             'archived_at' => now(),
             'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,

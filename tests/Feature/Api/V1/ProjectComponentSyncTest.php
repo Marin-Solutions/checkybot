@@ -355,6 +355,12 @@ test('partial component sync does not archive active package components missing 
         'name' => 'old-cron',
         'source' => 'package',
         'is_archived' => false,
+        'current_status' => 'danger',
+        'last_reported_status' => 'danger',
+        'summary' => 'Heartbeat expired',
+        'last_heartbeat_at' => '2026-03-21T11:50:00Z',
+        'is_stale' => true,
+        'stale_detected_at' => '2026-03-21T11:55:00Z',
     ]);
 
     $response = $this->withToken($this->apiKey->key)->postJson(
@@ -469,6 +475,12 @@ test('full manifest component sync archives package components missing from the 
         'name' => 'old-cron',
         'is_archived' => true,
         'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
+        'current_status' => 'unknown',
+        'last_reported_status' => 'unknown',
+        'summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+        'is_stale' => false,
+        'stale_detected_at' => null,
     ]);
 });
 
