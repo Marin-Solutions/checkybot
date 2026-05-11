@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 class ProjectComponentSyncService
 {
+    public const MISSING_PACKAGE_SYNC_SUMMARY = 'Disabled because it was missing from the latest package sync.';
+
     public function __construct(
         protected ProjectComponentNotificationService $projectComponentNotificationService
     ) {}
@@ -210,6 +212,15 @@ class ProjectComponentSyncService
 
     private function isNewerHeartbeat(ProjectComponent $component, mixed $observedAt): bool
     {
+        if (
+            $component->is_archived
+            && $component->archive_reason === ProjectComponent::ARCHIVE_REASON_PACKAGE
+            && $component->last_heartbeat_at === null
+        ) {
+            return $component->archived_at !== null
+                && Carbon::parse($observedAt)->gt($component->archived_at);
+        }
+
         if ($component->last_heartbeat_at === null) {
             return true;
         }
@@ -231,7 +242,7 @@ class ProjectComponentSyncService
             $query->whereNotIn('name', $activeNames);
         }
 
-        return $query->update([
+        return $query->update(ProjectComponent::disabledHealthAttributes(self::MISSING_PACKAGE_SYNC_SUMMARY) + [
             'is_archived' => true,
             'archived_at' => now(),
             'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,

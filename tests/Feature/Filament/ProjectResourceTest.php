@@ -112,6 +112,10 @@ test('operator can update manual component status interval and archive state', f
         'interval_minutes' => 5,
         'current_status' => 'healthy',
         'last_reported_status' => 'healthy',
+        'summary' => 'Worker is failing',
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
         'is_archived' => false,
         'archived_at' => null,
     ]);
@@ -133,8 +137,12 @@ test('operator can update manual component status interval and archive state', f
         ->and($component->source)->toBe('manual')
         ->and($component->declared_interval)->toBe('2h')
         ->and($component->interval_minutes)->toBe(120)
-        ->and($component->current_status)->toBe('warning')
-        ->and($component->last_reported_status)->toBe('warning')
+        ->and($component->current_status)->toBe('unknown')
+        ->and($component->last_reported_status)->toBe('unknown')
+        ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
+        ->and($component->last_heartbeat_at)->toBeNull()
+        ->and($component->is_stale)->toBeFalse()
+        ->and($component->stale_detected_at)->toBeNull()
         ->and($component->is_archived)->toBeTrue()
         ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
         ->and($component->archived_at)->not->toBeNull();
@@ -1888,6 +1896,12 @@ test('super admin can bulk disable project components', function () {
         'project_id' => $project->id,
         'created_by' => $user->id,
         'is_archived' => false,
+        'current_status' => 'danger',
+        'last_reported_status' => 'danger',
+        'summary' => 'Heartbeat expired',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
     ]);
 
     Livewire::test(ListProjectComponents::class)
@@ -1896,6 +1910,12 @@ test('super admin can bulk disable project components', function () {
     foreach ($components as $component) {
         $component->refresh();
         expect($component->is_archived)->toBeTrue()
+            ->and($component->current_status)->toBe('unknown')
+            ->and($component->last_reported_status)->toBe('unknown')
+            ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
+            ->and($component->last_heartbeat_at)->toBeNull()
+            ->and($component->is_stale)->toBeFalse()
+            ->and($component->stale_detected_at)->toBeNull()
             ->and($component->archived_at)->not->toBeNull();
     }
 });

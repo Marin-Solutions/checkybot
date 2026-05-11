@@ -236,7 +236,7 @@ class ProjectComponentsTable
                             $ids = $records->where('is_archived', false)->pluck('id');
                             $count = $ids->isEmpty()
                                 ? 0
-                                : ProjectComponent::query()->whereIn('id', $ids)->update([
+                                : ProjectComponent::query()->whereIn('id', $ids)->update(ProjectComponent::disabledHealthAttributes() + [
                                     'is_archived' => true,
                                     'project_paused_monitoring' => false,
                                     'archived_at' => now(),
