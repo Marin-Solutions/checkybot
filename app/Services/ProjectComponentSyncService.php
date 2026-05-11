@@ -205,6 +205,15 @@ class ProjectComponentSyncService
 
     private function isNewerHeartbeat(ProjectComponent $component, mixed $observedAt): bool
     {
+        if (
+            $component->is_archived
+            && $component->archive_reason === ProjectComponent::ARCHIVE_REASON_PACKAGE
+            && $component->last_heartbeat_at === null
+            && $component->archived_at !== null
+        ) {
+            return Carbon::parse($observedAt)->gt($component->archived_at);
+        }
+
         if ($component->last_heartbeat_at === null) {
             return true;
         }
