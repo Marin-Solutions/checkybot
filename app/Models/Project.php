@@ -33,6 +33,8 @@ class Project extends Model
         'sync_defaults',
         'last_synced_at',
         'latest_package_sync_summary',
+        'last_component_synced_at',
+        'latest_component_sync_summary',
         'token',
         'created_by',
     ];
@@ -43,6 +45,8 @@ class Project extends Model
             'sync_defaults' => 'array',
             'last_synced_at' => 'datetime',
             'latest_package_sync_summary' => 'array',
+            'last_component_synced_at' => 'datetime',
+            'latest_component_sync_summary' => 'array',
         ];
     }
 

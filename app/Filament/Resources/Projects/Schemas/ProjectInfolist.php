@@ -61,14 +61,21 @@ class ProjectInfolist
                             ->columnSpanFull(),
                     ]),
                 Section::make('Package Sync Status')
-                    ->description('Latest package sync metadata for diagnosing stale or incomplete application integrations.')
-                    ->visible(fn (Project $record): bool => filled($record->package_key) || filled($record->package_version))
+                    ->description('Latest package and component sync metadata for diagnosing stale or incomplete application integrations.')
+                    ->visible(fn (Project $record): bool => filled($record->package_key)
+                        || filled($record->package_version)
+                        || $record->last_component_synced_at !== null)
                     ->schema([
                         TextEntry::make('last_synced_at')
                             ->label('Last Synced')
                             ->state(fn (Project $record): ?string => $record->last_synced_at?->toDayDateTimeString())
                             ->default('Never')
                             ->hint(fn (Project $record): ?string => $record->last_synced_at?->diffForHumans()),
+                        TextEntry::make('last_component_synced_at')
+                            ->label('Last Component Sync')
+                            ->state(fn (Project $record): ?string => $record->last_component_synced_at?->toDayDateTimeString())
+                            ->default('Never')
+                            ->hint(fn (Project $record): ?string => $record->last_component_synced_at?->diffForHumans()),
                         TextEntry::make('package_version')
                             ->label('SDK Version')
                             ->default('-')
@@ -99,6 +106,14 @@ class ProjectInfolist
                             ->state(fn (Project $record): string => static::latestSyncSummaryDetail($record))
                             ->default('No summary recorded yet')
                             ->columnSpanFull(),
+                        TextEntry::make('latest_component_sync_summary_overview')
+                            ->label('Last Component Sync Changes')
+                            ->state(fn (Project $record): string => static::latestComponentSyncSummaryOverview($record))
+                            ->default('No summary recorded yet'),
+                        TextEntry::make('latest_component_sync_summary_detail')
+                            ->label('Last Component Sync Breakdown')
+                            ->state(fn (Project $record): string => static::latestComponentSyncSummaryDetail($record))
+                            ->default('No summary recorded yet'),
                     ])->columns(2),
                 Section::make('Guided Laravel Setup')
                     ->key('guided_setup')
@@ -213,6 +228,54 @@ class ProjectInfolist
             ->implode(PHP_EOL) ?: 'No per-check breakdown recorded';
     }
 
+    private static function latestComponentSyncSummaryOverview(Project $record): string
+    {
+        $summary = $record->latest_component_sync_summary;
+
+        if (! is_array($summary) || $summary === []) {
+            return 'No summary recorded yet';
+        }
+
+        $recordedHeartbeats = static::summaryNestedCount($summary, 'heartbeats', 'recorded');
+
+        return collect([
+            static::summaryPart('created', static::summaryNestedCount($summary, 'components', 'created')),
+            static::summaryPart('updated', static::summaryNestedCount($summary, 'components', 'updated')),
+            static::summaryPart('archived', static::summaryNestedCount($summary, 'components', 'archived')),
+            static::summaryPart($recordedHeartbeats === 1 ? 'heartbeat recorded' : 'heartbeats recorded', $recordedHeartbeats),
+        ])
+            ->filter()
+            ->implode(', ') ?: 'No component changes';
+    }
+
+    private static function latestComponentSyncSummaryDetail(Project $record): string
+    {
+        $summary = $record->latest_component_sync_summary;
+
+        if (! is_array($summary) || $summary === []) {
+            return 'No summary recorded yet';
+        }
+
+        $componentParts = collect([
+            static::summaryPart('created', static::summaryNestedCount($summary, 'components', 'created')),
+            static::summaryPart('updated', static::summaryNestedCount($summary, 'components', 'updated')),
+            static::summaryPart('archived', static::summaryNestedCount($summary, 'components', 'archived')),
+        ])
+            ->filter()
+            ->implode(', ');
+
+        $heartbeatParts = collect([
+            static::summaryPart('recorded', static::summaryNestedCount($summary, 'heartbeats', 'recorded')),
+        ])
+            ->filter()
+            ->implode(', ');
+
+        return collect([
+            'Components: '.($componentParts === '' ? 'no changes' : $componentParts),
+            'Heartbeats: '.($heartbeatParts === '' ? 'none recorded' : $heartbeatParts),
+        ])->implode(PHP_EOL);
+    }
+
     /**
      * @param  array<string, mixed>  $summary
      */
@@ -257,6 +320,18 @@ class ProjectInfolist
     {
         return static::summaryTotal($summary, 'disabled_missing')
             + static::summaryTotal($summary, 'deleted');
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryNestedCount(array $summary, string $bucket, string $key): int
+    {
+        if (! isset($summary[$bucket]) || ! is_array($summary[$bucket])) {
+            return 0;
+        }
+
+        return static::summaryCount($summary[$bucket], $key);
     }
 
     /**

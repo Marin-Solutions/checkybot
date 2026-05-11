@@ -685,6 +685,7 @@ test('application detail shows package sync status metadata', function () {
 
     $user = $this->actingAsSuperAdmin();
     $syncedAt = now()->subMinutes(12);
+    $componentSyncedAt = now()->subMinutes(3);
     $project = Project::factory()->create([
         'name' => 'Checkout App',
         'created_by' => $user->id,
@@ -693,6 +694,7 @@ test('application detail shows package sync status metadata', function () {
         'base_url' => 'https://checkout.example.com',
         'repository' => 'marin-solutions/checkout',
         'last_synced_at' => $syncedAt,
+        'last_component_synced_at' => $componentSyncedAt,
         'latest_package_sync_summary' => [
             'created' => 2,
             'updated' => 1,
@@ -711,6 +713,16 @@ test('application detail shows package sync status metadata', function () {
                 'created' => 0,
                 'updated' => 0,
                 'disabled_missing' => 0,
+            ],
+        ],
+        'latest_component_sync_summary' => [
+            'components' => [
+                'created' => 2,
+                'updated' => 1,
+                'archived' => 1,
+            ],
+            'heartbeats' => [
+                'recorded' => 3,
             ],
         ],
     ]);
@@ -765,6 +777,7 @@ test('application detail shows package sync status metadata', function () {
         ->assertSuccessful()
         ->assertSee('Package Sync Status')
         ->assertSee($syncedAt->toDayDateTimeString())
+        ->assertSee($componentSyncedAt->toDayDateTimeString())
         ->assertSee('SDK Version')
         ->assertSee('1.2.3')
         ->assertSee('checkout-app')
@@ -775,7 +788,10 @@ test('application detail shows package sync status metadata', function () {
         ->assertSeeInOrder(['Last Sync Changes', '2 created, 1 updated, 1 disabled'])
         ->assertSee('API checks: 1 created, 1 disabled')
         ->assertSee('Uptime checks: 1 created, 1 updated')
-        ->assertSee('SSL checks: no changes');
+        ->assertSee('SSL checks: no changes')
+        ->assertSeeInOrder(['Last Component Sync Changes', '2 created, 1 updated, 1 archived, 3 heartbeats recorded'])
+        ->assertSee('Components: 2 created, 1 updated, 1 archived')
+        ->assertSee('Heartbeats: 3 recorded');
 });
 
 test('application detail action queues enabled package managed diagnostics', function () {
