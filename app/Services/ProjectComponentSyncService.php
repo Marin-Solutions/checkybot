@@ -209,9 +209,9 @@ class ProjectComponentSyncService
             $component->is_archived
             && $component->archive_reason === ProjectComponent::ARCHIVE_REASON_PACKAGE
             && $component->last_heartbeat_at === null
-            && $component->archived_at !== null
         ) {
-            return Carbon::parse($observedAt)->gt($component->archived_at);
+            return $component->archived_at !== null
+                && Carbon::parse($observedAt)->gt($component->archived_at);
         }
 
         if ($component->last_heartbeat_at === null) {

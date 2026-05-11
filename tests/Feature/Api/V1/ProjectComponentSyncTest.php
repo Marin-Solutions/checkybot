@@ -584,6 +584,46 @@ test('component sync ignores delayed heartbeats for package archived components 
         ->and($component->is_stale)->toBeFalse();
 });
 
+test('component sync does not revive package archived components with missing archive timestamp', function () {
+    $component = ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue',
+        'source' => 'package',
+        'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
+        'archived_at' => null,
+        'current_status' => 'unknown',
+        'last_reported_status' => 'unknown',
+        'summary' => 'Disabled because it was missing from the latest package sync.',
+        'last_heartbeat_at' => null,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '10m',
+                    'status' => 'healthy',
+                    'summary' => 'Queue workers are running',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+            ],
+        ]
+    );
+
+    $response->assertOk()
+        ->assertJsonPath('summary.components.updated', 0)
+        ->assertJsonPath('summary.heartbeats.recorded', 1);
+
+    $component->refresh();
+
+    expect($component->is_archived)->toBeTrue()
+        ->and($component->current_status)->toBe('unknown')
+        ->and($component->last_heartbeat_at)->toBeNull();
+});
+
 test('component sync keeps user archived components archived when they are declared without heartbeat data', function () {
     $component = ProjectComponent::factory()->archived()->create([
         'project_id' => $this->project->id,
