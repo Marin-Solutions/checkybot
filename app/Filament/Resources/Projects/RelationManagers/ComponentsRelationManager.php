@@ -2,11 +2,12 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
+use App\Filament\Resources\ProjectComponents\Tables\ProjectComponentsTable;
 use App\Filament\Support\HealthStatusFilter;
 use App\Models\ProjectComponent;
 use App\Support\HealthStatusLabel;
 use App\Support\ProjectComponentDeliveryState;
-use Filament\Actions\ViewAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -61,8 +62,9 @@ class ComponentsRelationManager extends RelationManager
                     activeScope: fn (Builder $query): Builder => $query->where('is_archived', false),
                 ),
             ])
-            ->recordActions([
-                ViewAction::make(),
+            ->recordActions(ProjectComponentsTable::recordActions(includeEdit: false))
+            ->toolbarActions([
+                BulkActionGroup::make(ProjectComponentsTable::bulkActions(includeDelete: false)),
             ])
             ->defaultSort('name');
     }
