@@ -28,6 +28,7 @@ use App\Models\ProjectComponent;
 use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
+use App\Support\PackageCheckTableEvidence;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
@@ -1160,6 +1161,176 @@ test('application record shows package-managed external checks including archive
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)
         ->toContain(PackageManagedApisRelationManager::class);
+});
+
+test('package-managed relation managers filter checks by freshness evidence', function () {
+    Carbon::setTestNow('2026-05-12 12:00:00');
+
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+        'package_key' => 'triage-app',
+    ]);
+
+    $freshWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'fresh-site',
+        'source' => 'package',
+        'package_name' => 'fresh-site',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => null,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+    $staleWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'stale-site',
+        'source' => 'package',
+        'package_name' => 'stale-site',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(7),
+        'stale_at' => null,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+    $awaitingWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'awaiting-site',
+        'source' => 'package',
+        'package_name' => 'awaiting-site',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+    $disabledWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'disabled-site',
+        'source' => 'package',
+        'package_name' => 'disabled-site',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subHour(),
+        'stale_at' => now()->subMinutes(30),
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+
+    $freshApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'fresh-api',
+        'source' => 'package',
+        'package_name' => 'fresh-api',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => null,
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+    $staleApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'stale-api',
+        'source' => 'package',
+        'package_name' => 'stale-api',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subMinutes(7),
+        'stale_at' => null,
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+    $awaitingApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'awaiting-api',
+        'source' => 'package',
+        'package_name' => 'awaiting-api',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+    $disabledApi = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'title' => 'disabled-api',
+        'source' => 'package',
+        'package_name' => 'disabled-api',
+        'package_interval' => '5m',
+        'last_heartbeat_at' => now()->subHour(),
+        'stale_at' => now()->subMinutes(30),
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_STALE)
+        ->assertCanSeeTableRecords([$staleWebsite])
+        ->assertCanNotSeeTableRecords([$freshWebsite, $awaitingWebsite, $disabledWebsite]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_AWAITING_HEARTBEAT)
+        ->assertCanSeeTableRecords([$awaitingWebsite])
+        ->assertCanNotSeeTableRecords([$freshWebsite, $staleWebsite, $disabledWebsite]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_FRESH)
+        ->assertCanSeeTableRecords([$freshWebsite])
+        ->assertCanNotSeeTableRecords([$staleWebsite, $awaitingWebsite, $disabledWebsite]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_DISABLED)
+        ->assertCanSeeTableRecords([$disabledWebsite])
+        ->assertCanNotSeeTableRecords([$freshWebsite, $staleWebsite, $awaitingWebsite]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_STALE)
+        ->assertCanSeeTableRecords([$staleApi])
+        ->assertCanNotSeeTableRecords([$freshApi, $awaitingApi, $disabledApi]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_AWAITING_HEARTBEAT)
+        ->assertCanSeeTableRecords([$awaitingApi])
+        ->assertCanNotSeeTableRecords([$freshApi, $staleApi, $disabledApi]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_FRESH)
+        ->assertCanSeeTableRecords([$freshApi])
+        ->assertCanNotSeeTableRecords([$staleApi, $awaitingApi, $disabledApi]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_DISABLED)
+        ->assertCanSeeTableRecords([$disabledApi])
+        ->assertCanNotSeeTableRecords([$freshApi, $staleApi, $awaitingApi]);
 });
 
 test('package-managed relation managers queue run now diagnostics for active checks', function () {

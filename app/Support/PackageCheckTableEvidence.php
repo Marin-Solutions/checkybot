@@ -4,6 +4,8 @@ namespace App\Support;
 
 use App\Services\IntervalParser;
 use Carbon\CarbonInterface;
+use Closure;
+use Illuminate\Database\Eloquent\Builder;
 
 class PackageCheckTableEvidence
 {
@@ -67,6 +69,44 @@ class PackageCheckTableEvidence
             self::STATE_STALE => 'danger',
             default => 'gray',
         };
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function freshnessFilterOptions(): array
+    {
+        return [
+            self::STATE_STALE => self::STATE_STALE,
+            self::STATE_AWAITING_HEARTBEAT => self::STATE_AWAITING_HEARTBEAT,
+            self::STATE_FRESH => self::STATE_FRESH,
+            self::STATE_DISABLED => self::STATE_DISABLED,
+        ];
+    }
+
+    public static function applyWebsiteFreshnessFilter(Builder $query, ?string $state): Builder
+    {
+        return static::applyFreshnessFilter(
+            $query,
+            $state,
+            disabledScope: fn (Builder $query): Builder => $query
+                ->where('uptime_check', false)
+                ->where('ssl_check', false),
+            activeScope: fn (Builder $query): Builder => $query
+                ->where(fn (Builder $query) => $query
+                    ->where('uptime_check', true)
+                    ->orWhere('ssl_check', true)),
+        );
+    }
+
+    public static function applyApiFreshnessFilter(Builder $query, ?string $state): Builder
+    {
+        return static::applyFreshnessFilter(
+            $query,
+            $state,
+            disabledScope: fn (Builder $query): Builder => $query->where('is_enabled', false),
+            activeScope: fn (Builder $query): Builder => $query->where('is_enabled', true),
+        );
     }
 
     public static function mainMonitorFreshnessState(object $record): string
@@ -256,6 +296,69 @@ class PackageCheckTableEvidence
 
         return in_array($uptimeCheck, [false, 0, '0'], true)
             && in_array($sslCheck, [false, 0, '0'], true);
+    }
+
+    private static function applyFreshnessFilter(
+        Builder $query,
+        ?string $state,
+        Closure $disabledScope,
+        Closure $activeScope,
+    ): Builder {
+        if ($state === null || $state === '') {
+            return $query;
+        }
+
+        if ($state === self::STATE_DISABLED) {
+            return $query->where(fn (Builder $query): Builder => $disabledScope($query));
+        }
+
+        if (! array_key_exists($state, static::freshnessFilterOptions())) {
+            return $query;
+        }
+
+        $activeScope($query);
+
+        return match ($state) {
+            self::STATE_STALE => static::applyStaleFreshnessFilter($query),
+            self::STATE_AWAITING_HEARTBEAT => static::applyAwaitingHeartbeatFreshnessFilter($query),
+            self::STATE_FRESH => static::applyFreshFreshnessFilter($query),
+            default => $query,
+        };
+    }
+
+    private static function applyStaleFreshnessFilter(Builder $query): Builder
+    {
+        [$overdueSql, $bindings] = PackageIntervalDueExpression::build($query->getConnection(), '<');
+
+        return static::whereHasPackageInterval($query)
+            ->where(fn (Builder $query): Builder => $query
+                ->whereNotNull('stale_at')
+                ->orWhere(fn (Builder $query): Builder => $query
+                    ->whereNotNull('last_heartbeat_at')
+                    ->whereRaw($overdueSql, $bindings)));
+    }
+
+    private static function applyAwaitingHeartbeatFreshnessFilter(Builder $query): Builder
+    {
+        return static::whereHasPackageInterval($query)
+            ->whereNull('last_heartbeat_at');
+    }
+
+    private static function applyFreshFreshnessFilter(Builder $query): Builder
+    {
+        [$freshSql, $bindings] = PackageIntervalDueExpression::build($query->getConnection(), '>=');
+
+        return static::whereHasPackageInterval($query)
+            ->whereNotNull('last_heartbeat_at')
+            ->whereNull('stale_at')
+            ->whereRaw($freshSql, $bindings);
+    }
+
+    private static function whereHasPackageInterval(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('package_interval')
+            ->where('package_interval', '!=', '');
     }
 
     private static function attributeValue(object $record, string $attribute, mixed $default = null): mixed
