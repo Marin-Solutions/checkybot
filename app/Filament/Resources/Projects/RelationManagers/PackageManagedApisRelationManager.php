@@ -155,16 +155,20 @@ class PackageManagedApisRelationManager extends RelationManager
 
     private function monitoringState(MonitorApis $record): string
     {
+        if ($record->deleted_at) {
+            return 'Archived';
+        }
+
         if ($record->is_enabled === false) {
             return 'Disabled';
         }
 
-        return $record->deleted_at ? 'Archived' : 'Active';
+        return 'Active';
     }
 
     private function monitoringStateDescription(MonitorApis $record): ?string
     {
-        if ($record->is_enabled === false) {
+        if (! $record->deleted_at && $record->is_enabled === false) {
             return 'This check is disabled. Scheduled runs are paused.';
         }
 
