@@ -197,7 +197,7 @@ class CheckybotMcpController extends Controller
     private function optionalCheckType(array $arguments): ?string
     {
         return Validator::make($arguments, [
-            'type' => ['nullable', Rule::in(['api', 'website'])],
+            'type' => ['nullable', Rule::in(['api', 'website', 'component'])],
         ])->validate()['type'] ?? null;
     }
 
@@ -280,7 +280,7 @@ class CheckybotMcpController extends Controller
             $this->tool('get_project', 'Get project detail, check counts, and latest failure.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('list_checks', 'List package-managed API and website checks for a project.', [
+            $this->tool('list_checks', 'List package-managed API, website, and component checks for a project.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
             $this->tool('upsert_check', 'Create or update a package-managed API check by stable key.', [
@@ -301,7 +301,7 @@ class CheckybotMcpController extends Controller
             $this->tool('disable_check', 'Disable a check without deleting its definition or history.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string'],
-                'type' => ['type' => 'string', 'enum' => ['api', 'website'], 'description' => 'Optional check type. Required when API and website checks share the same key.'],
+                'type' => ['type' => 'string', 'enum' => ['api', 'website', 'component'], 'description' => 'Optional check type. Required when multiple check surfaces share the same key.'],
             ]),
             $this->tool('trigger_run', 'Queue enabled checks for a project, or run a single check immediately.', [
                 'project' => ['type' => 'string'],

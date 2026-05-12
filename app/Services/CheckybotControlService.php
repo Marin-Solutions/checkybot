@@ -207,6 +207,17 @@ class CheckybotControlService
     {
         $check = $this->findControllableCheck($user, $projectKey, $checkKey, $checkType);
 
+        if ($check instanceof ProjectComponent) {
+            $check->forceFill(ProjectComponent::disabledHealthAttributes('Disabled by Checkybot control API.') + [
+                'is_archived' => true,
+                'project_paused_monitoring' => false,
+                'archived_at' => now(),
+                'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
+            ])->save();
+
+            return $this->componentCheckPayload($check->fresh('latestHeartbeat'));
+        }
+
         if ($check instanceof Website) {
             $check->forceFill([
                 'uptime_check' => false,
@@ -540,7 +551,7 @@ class CheckybotControlService
             ->firstOrFail();
     }
 
-    private function findControllableCheck(User $user, string|int $projectKey, string $checkKey, ?string $checkType): MonitorApis|Website
+    private function findControllableCheck(User $user, string|int $projectKey, string $checkKey, ?string $checkType): MonitorApis|Website|ProjectComponent
     {
         $project = $this->findProject($user, $projectKey);
 
@@ -558,6 +569,13 @@ class CheckybotControlService
                 ->firstOrFail();
         }
 
+        if ($checkType === 'component') {
+            return $project->components()
+                ->with('latestHeartbeat')
+                ->where('name', $checkKey)
+                ->firstOrFail();
+        }
+
         $apiCheck = $project->packageManagedApis()
             ->with(['assertions', 'latestResult'])
             ->where('package_name', $checkKey)
@@ -568,8 +586,17 @@ class CheckybotControlService
             ->where('package_name', $checkKey)
             ->first();
 
-        if ($apiCheck instanceof MonitorApis && $websiteCheck instanceof Website) {
-            abort(409, 'Check key matches multiple check types. Pass type=api or type=website to disable a specific check.');
+        $componentCheck = $project->components()
+            ->with('latestHeartbeat')
+            ->where('name', $checkKey)
+            ->first();
+
+        $matches = collect([$apiCheck, $websiteCheck, $componentCheck])
+            ->filter()
+            ->count();
+
+        if ($matches > 1) {
+            abort(409, 'Check key matches multiple check types. Pass type=api, type=website, or type=component to disable a specific check.');
         }
 
         if ($apiCheck instanceof MonitorApis) {
@@ -578,6 +605,10 @@ class CheckybotControlService
 
         if ($websiteCheck instanceof Website) {
             return $websiteCheck;
+        }
+
+        if ($componentCheck instanceof ProjectComponent) {
+            return $componentCheck;
         }
 
         abort(404, 'Check not found.');
