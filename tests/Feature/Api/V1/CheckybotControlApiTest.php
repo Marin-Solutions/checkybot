@@ -440,6 +440,63 @@ test('control api disables listed website checks by package key', function () {
     ]);
 });
 
+test('control api disables listed component checks by name', function () {
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue-worker',
+        'summary' => 'Queue backlog is high.',
+        'current_status' => 'danger',
+        'last_reported_status' => 'danger',
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'stale_detected_at' => now()->subMinute(),
+        'is_stale' => true,
+    ]);
+
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'queue-worker',
+        'status' => 'danger',
+        'summary' => 'Queue backlog is high.',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/checks')
+        ->assertOk()
+        ->assertJsonPath('data.0.key', 'queue-worker')
+        ->assertJsonPath('data.0.type', 'component')
+        ->assertJsonPath('data.0.enabled', true);
+
+    $this->withToken($this->apiKey->key)
+        ->patchJson('/api/v1/control/projects/scrappa/checks/queue-worker/disable?type=component')
+        ->assertOk()
+        ->assertJsonPath('data.key', 'queue-worker')
+        ->assertJsonPath('data.type', 'component')
+        ->assertJsonPath('data.enabled', false)
+        ->assertJsonPath('data.status', 'unknown')
+        ->assertJsonPath('data.status_summary', 'Disabled by Checkybot control API.')
+        ->assertJsonPath('data.delivery_state', 'archived')
+        ->assertJsonPath('data.is_archived', true);
+
+    $this->assertDatabaseHas('project_components', [
+        'id' => $component->id,
+        'is_archived' => true,
+        'project_paused_monitoring' => false,
+        'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
+        'current_status' => 'unknown',
+        'last_reported_status' => 'unknown',
+        'summary' => 'Disabled by Checkybot control API.',
+        'last_heartbeat_at' => null,
+        'stale_detected_at' => null,
+        'is_stale' => false,
+    ]);
+
+    $this->assertDatabaseHas('project_component_heartbeats', [
+        'project_component_id' => $component->id,
+        'component_name' => 'queue-worker',
+    ]);
+});
+
 test('control api requires type when disabling an ambiguous check key', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -461,7 +518,7 @@ test('control api requires type when disabling an ambiguous check key', function
     $this->withToken($this->apiKey->key)
         ->patchJson('/api/v1/control/projects/scrappa/checks/shared-health/disable')
         ->assertConflict()
-        ->assertJsonPath('message', 'Check key matches multiple check types. Pass type=api or type=website to disable a specific check.');
+        ->assertJsonPath('message', 'Check key matches multiple check types. Pass type=api, type=website, or type=component to disable a specific check.');
 
     $this->withToken($this->apiKey->key)
         ->patchJson('/api/v1/control/projects/scrappa/checks/shared-health/disable?type=website')
@@ -1824,7 +1881,8 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         ])
         ->assertOk()
         ->assertJsonPath('result.tools.0.name', 'me')
-        ->assertJsonFragment(['description' => 'Optional check type. Required when API and website checks share the same key.'])
+        ->assertJsonFragment(['description' => 'Optional check type. Required when multiple check surfaces share the same key.'])
+        ->assertJsonFragment(['enum' => ['api', 'component', 'website']])
         ->assertJsonFragment(['name' => 'get_run_batch']);
 
     $this->withToken($this->apiKey->key)

@@ -64,7 +64,7 @@ class CheckybotControlController extends Controller
     public function disableCheck(Request $request, string $project, string $check): JsonResponse
     {
         $data = $request->validate([
-            'type' => ['nullable', 'in:api,website'],
+            'type' => ['nullable', 'in:api,website,component'],
         ]);
 
         return response()->json([
