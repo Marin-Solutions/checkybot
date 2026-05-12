@@ -1888,6 +1888,159 @@ test('super admin can filter application components to only failing', function (
         ->assertCanNotSeeTableRecords([$healthy, $archivedWarning, $archivedDanger]);
 });
 
+test('super admin can snooze application component from application detail', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'silenced_until' => null,
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableAction('snooze', $component, data: [
+            'duration' => '1h',
+        ])
+        ->assertHasNoTableActionErrors();
+
+    expect($component->refresh()->silenced_until)->not->toBeNull()
+        ->and($component->silenced_until->isFuture())->toBeTrue();
+});
+
+test('super admin can unsnooze application component from application detail', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableAction('unsnooze', $component)
+        ->assertHasNoTableActionErrors()
+        ->assertNotified('Notifications resumed');
+
+    expect($component->refresh()->silenced_until)->toBeNull();
+});
+
+test('super admin can bulk unsnooze application components from application detail', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $components = ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('unsnooze', $components)
+        ->assertNotified('2 components unsnoozed');
+
+    foreach ($components as $component) {
+        expect($component->refresh()->silenced_until)->toBeNull();
+    }
+});
+
+test('super admin can bulk disable and enable application components from application detail', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $components = ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'is_archived' => false,
+        'current_status' => 'danger',
+        'last_reported_status' => 'danger',
+        'summary' => 'Heartbeat expired',
+        'last_heartbeat_at' => now()->subMinutes(15),
+        'is_stale' => true,
+        'stale_detected_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('disable', $components)
+        ->assertNotified('2 components disabled');
+
+    foreach ($components as $component) {
+        $component->refresh();
+
+        expect($component->is_archived)->toBeTrue()
+            ->and($component->current_status)->toBe('unknown')
+            ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY);
+    }
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('enable', $components)
+        ->assertNotified('2 components enabled');
+
+    foreach ($components as $component) {
+        $component->refresh();
+
+        expect($component->is_archived)->toBeFalse()
+            ->and($component->archived_at)->toBeNull();
+    }
+});
+
+test('admin without Update:ProjectComponent cannot see application component management actions', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo([
+        'ViewAny:Project',
+        'View:Project',
+        'ViewAny:ProjectComponent',
+        'View:ProjectComponent',
+    ]);
+    $this->actingAs($user);
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionHidden('snooze')
+        ->assertTableActionHidden('unsnooze', $component)
+        ->assertTableBulkActionHidden('snooze')
+        ->assertTableBulkActionHidden('unsnooze')
+        ->assertTableBulkActionHidden('enable')
+        ->assertTableBulkActionHidden('disable');
+});
+
 test('super admin can bulk disable project components', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
