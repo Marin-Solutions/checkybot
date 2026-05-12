@@ -1910,6 +1910,53 @@ test('super admin can snooze application component from application detail', fun
         ->and($component->silenced_until->isFuture())->toBeTrue();
 });
 
+test('super admin can unsnooze application component from application detail', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableAction('unsnooze', $component)
+        ->assertHasNoTableActionErrors()
+        ->assertNotified('Notifications resumed');
+
+    expect($component->refresh()->silenced_until)->toBeNull();
+});
+
+test('super admin can bulk unsnooze application components from application detail', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $components = ProjectComponent::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('unsnooze', $components)
+        ->assertNotified('2 components unsnoozed');
+
+    foreach ($components as $component) {
+        expect($component->refresh()->silenced_until)->toBeNull();
+    }
+});
+
 test('super admin can bulk disable and enable application components from application detail', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
