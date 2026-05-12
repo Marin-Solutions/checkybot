@@ -6,10 +6,13 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
+use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Support\ApiMonitorEvidenceRedactor;
+use App\Support\ProjectComponentDeliveryState;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
@@ -24,8 +27,10 @@ class CheckybotImportService
         $project = $this->findProject($user, $projectKey)
             ->loadCount([
                 'packageManagedApis as api_checks_count',
+                'components as component_checks_count',
             ]);
         $websiteChecksCount = $this->countWebsiteChecks($project);
+        $componentChecksCount = (int) $project->component_checks_count;
 
         return [
             'id' => $project->id,
@@ -37,9 +42,10 @@ class CheckybotImportService
             'identity_endpoint' => $project->identity_endpoint,
             'base_url' => $project->base_url,
             'repository' => $project->repository,
-            'checks_count' => (int) $project->api_checks_count + $websiteChecksCount,
+            'checks_count' => (int) $project->api_checks_count + $websiteChecksCount + $componentChecksCount,
             'api_checks_count' => (int) $project->api_checks_count,
             'website_checks_count' => $websiteChecksCount,
+            'component_checks_count' => $componentChecksCount,
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'created_at' => $project->created_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
@@ -147,6 +153,21 @@ class CheckybotImportService
                 ->all();
         }
 
+        if ($check['storage'] === 'project_component') {
+            if (! in_array($runSource, ['all', 'heartbeat'], true)) {
+                return [];
+            }
+
+            return ProjectComponentHeartbeat::query()
+                ->where('project_component_id', $check['database_id'])
+                ->orderByDesc('observed_at')
+                ->orderByDesc('id')
+                ->limit($limit)
+                ->get()
+                ->map(fn (ProjectComponentHeartbeat $heartbeat): array => $this->componentHeartbeatPayload($heartbeat))
+                ->all();
+        }
+
         $query = WebsiteLogHistory::query()
             ->where('website_id', $check['database_id']);
 
@@ -211,7 +232,16 @@ class CheckybotImportService
             ->get()
             ->map(fn (MonitorApis $check): array => $this->apiCheckPayload($check));
 
-        return $websiteChecks->concat($apiChecks)->values();
+        $componentChecks = $project->components()
+            ->with('latestHeartbeat')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (ProjectComponent $component): array => $this->componentCheckPayload($component));
+
+        return $websiteChecks
+            ->concat($apiChecks)
+            ->concat($componentChecks)
+            ->values();
     }
 
     private function countWebsiteChecks(Project $project): int
@@ -346,6 +376,91 @@ class CheckybotImportService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private function componentCheckPayload(ProjectComponent $component): array
+    {
+        $latestHeartbeat = $component->relationLoaded('latestHeartbeat')
+            ? $component->latestHeartbeat
+            : $component->latestHeartbeat()->first();
+
+        $deliveryState = ProjectComponentDeliveryState::value($component);
+
+        return [
+            'id' => "component:{$component->id}",
+            'database_id' => $component->id,
+            'key' => $component->name,
+            'type' => 'component',
+            'storage' => 'project_component',
+            'name' => $component->name,
+            'target' => null,
+            'url' => null,
+            'interval' => $component->declared_interval,
+            'declared_interval' => $component->declared_interval,
+            'interval_minutes' => $component->interval_minutes,
+            'enabled' => ! (bool) $component->is_archived,
+            'status' => $this->componentStatus($component),
+            'reported_status' => $component->last_reported_status,
+            'status_summary' => $component->summary,
+            'delivery_state' => $deliveryState,
+            'delivery_state_label' => ProjectComponentDeliveryState::label($component),
+            'is_stale' => (bool) $component->is_stale,
+            'is_archived' => (bool) $component->is_archived,
+            'last_checked_at' => $component->last_heartbeat_at?->toISOString(),
+            'last_heartbeat_at' => $component->last_heartbeat_at?->toISOString(),
+            'stale_at' => $component->stale_detected_at?->toISOString(),
+            'stale_detected_at' => $component->stale_detected_at?->toISOString(),
+            'stale_threshold_at' => $this->componentStaleThresholdAt($component),
+            'silenced_until' => $component->silenced_until?->toISOString(),
+            'metrics' => $component->metrics,
+            'latest_result' => $latestHeartbeat instanceof ProjectComponentHeartbeat
+                ? $this->componentHeartbeatPayload($latestHeartbeat)
+                : null,
+            'raw' => [
+                'project_component_id' => $component->id,
+                'source' => $component->source,
+                'archive_reason' => $component->archive_reason,
+            ],
+            'last_synced_at' => null,
+            'created_at' => $component->created_at?->toISOString(),
+            'updated_at' => $component->updated_at?->toISOString(),
+        ];
+    }
+
+    private function componentStatus(ProjectComponent $component): string
+    {
+        if ((bool) $component->is_stale) {
+            return 'danger';
+        }
+
+        if ($component->last_heartbeat_at === null && $component->current_status === 'healthy') {
+            return 'unknown';
+        }
+
+        return $component->current_status ?? 'unknown';
+    }
+
+    private function componentStaleThresholdAt(ProjectComponent $component): ?string
+    {
+        if ($component->interval_minutes === null) {
+            return null;
+        }
+
+        $anchorAt = $component->last_heartbeat_at ?? $component->created_at;
+
+        if ($anchorAt === null) {
+            return null;
+        }
+
+        $graceMinutes = max(0, (int) config('monitor.project_component_stale_grace_minutes'));
+
+        return $anchorAt
+            ->copy()
+            ->addMinutes($component->interval_minutes + $graceMinutes)
+            ->toISOString();
+    }
+
+    /**
      * @param  iterable<MonitorApiAssertion>  $assertions
      * @return array<int, array<string, mixed>>
      */
@@ -413,6 +528,27 @@ class CheckybotImportService
             'ssl_expiry_date' => $result->ssl_expiry_date,
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function componentHeartbeatPayload(ProjectComponentHeartbeat $heartbeat): array
+    {
+        return [
+            'id' => $heartbeat->id,
+            'check_id' => "component:{$heartbeat->project_component_id}",
+            'success' => $heartbeat->status === 'healthy',
+            'status' => $heartbeat->status ?? 'unknown',
+            'summary' => $heartbeat->summary,
+            'event' => $heartbeat->event,
+            'metrics' => $heartbeat->metrics,
+            'run_source' => 'heartbeat',
+            'is_on_demand' => false,
+            'checked_at' => $heartbeat->observed_at?->toISOString(),
+            'observed_at' => $heartbeat->observed_at?->toISOString(),
+            'created_at' => $heartbeat->created_at?->toISOString(),
         ];
     }
 

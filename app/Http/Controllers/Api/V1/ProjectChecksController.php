@@ -42,7 +42,7 @@ class ProjectChecksController extends Controller
     {
         $data = $request->validate([
             'limit' => ['integer', 'min:1', 'max:100'],
-            'run_source' => ['string', 'in:scheduled,on_demand,all'],
+            'run_source' => ['string', 'in:scheduled,on_demand,heartbeat,all'],
         ]);
 
         return response()->json([

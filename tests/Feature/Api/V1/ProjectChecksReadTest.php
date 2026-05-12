@@ -6,6 +6,8 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
+use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -153,6 +155,12 @@ test('project read endpoint returns project metadata without secrets', function 
         'ssl_check' => false,
     ]);
 
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue',
+    ]);
+
     $response = $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}")
         ->assertOk()
@@ -160,9 +168,10 @@ test('project read endpoint returns project metadata without secrets', function 
         ->assertJsonPath('data.key', 'checkybot-app')
         ->assertJsonPath('data.name', 'Checkybot App')
         ->assertJsonPath('data.environment', 'production')
-        ->assertJsonPath('data.checks_count', 4)
+        ->assertJsonPath('data.checks_count', 5)
         ->assertJsonPath('data.api_checks_count', 1)
-        ->assertJsonPath('data.website_checks_count', 3);
+        ->assertJsonPath('data.website_checks_count', 3)
+        ->assertJsonPath('data.component_checks_count', 1);
 
     expect(json_encode($response->json()))->not->toContain($this->project->token);
 });
@@ -287,6 +296,80 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->and(json_encode($response->json()))->not->toContain('path-secret')
         ->and(json_encode($response->json()))->not->toContain('path-auth-secret')
         ->and(json_encode($response->json()))->not->toContain('auth-header-secret');
+});
+
+test('project check read endpoints include component checks and heartbeat history', function () {
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'queue',
+        'declared_interval' => '5m',
+        'interval_minutes' => 5,
+        'current_status' => 'warning',
+        'last_reported_status' => 'warning',
+        'summary' => 'Queue depth is elevated.',
+        'metrics' => ['depth' => 42],
+        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+
+    ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'queue',
+        'status' => 'healthy',
+        'summary' => 'Queue depth recovered.',
+        'metrics' => ['depth' => 2],
+        'observed_at' => now()->subMinutes(5),
+    ]);
+
+    $latestHeartbeat = ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'queue',
+        'status' => 'warning',
+        'summary' => 'Queue depth is elevated.',
+        'metrics' => ['depth' => 42],
+        'observed_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->package_key}/checks")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', "component:{$component->id}")
+        ->assertJsonPath('data.0.database_id', $component->id)
+        ->assertJsonPath('data.0.key', 'queue')
+        ->assertJsonPath('data.0.type', 'component')
+        ->assertJsonPath('data.0.storage', 'project_component')
+        ->assertJsonPath('data.0.interval', '5m')
+        ->assertJsonPath('data.0.interval_minutes', 5)
+        ->assertJsonPath('data.0.enabled', true)
+        ->assertJsonPath('data.0.status', 'warning')
+        ->assertJsonPath('data.0.reported_status', 'warning')
+        ->assertJsonPath('data.0.status_summary', 'Queue depth is elevated.')
+        ->assertJsonPath('data.0.metrics.depth', 42)
+        ->assertJsonPath('data.0.latest_result.id', $latestHeartbeat->id)
+        ->assertJsonPath('data.0.latest_result.check_id', "component:{$component->id}")
+        ->assertJsonPath('data.0.latest_result.run_source', 'heartbeat')
+        ->assertJsonPath('data.0.latest_result.metrics.depth', 42);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/component:{$component->id}")
+        ->assertOk()
+        ->assertJsonPath('data.key', 'queue')
+        ->assertJsonPath('data.latest_result.status', 'warning');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/queue/results?limit=1")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $latestHeartbeat->id)
+        ->assertJsonPath('data.0.check_id', "component:{$component->id}")
+        ->assertJsonPath('data.0.status', 'warning')
+        ->assertJsonPath('data.0.summary', 'Queue depth is elevated.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/queue/results?run_source=scheduled")
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
 });
 
 test('single check and recent result endpoints return investigation context', function () {
