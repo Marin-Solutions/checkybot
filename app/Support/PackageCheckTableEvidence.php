@@ -316,7 +316,7 @@ class PackageCheckTableEvidence
             return $query;
         }
 
-        $activeScope($query);
+        $query = $activeScope($query);
 
         return match ($state) {
             self::STATE_STALE => static::applyStaleFreshnessFilter($query),
