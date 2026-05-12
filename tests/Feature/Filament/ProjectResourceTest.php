@@ -1199,6 +1199,18 @@ test('package-managed relation managers filter checks by freshness evidence', fu
         'ssl_check' => false,
         'created_by' => $user->id,
     ]);
+    $flaggedStaleLegacyWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'flagged-stale-legacy-site',
+        'source' => 'package',
+        'package_name' => 'flagged-stale-legacy-site',
+        'package_interval' => 'every_5_minutes',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->subMinute(),
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
     $awaitingWebsite = Website::factory()->create([
         'project_id' => $project->id,
         'name' => 'awaiting-site',
@@ -1246,6 +1258,17 @@ test('package-managed relation managers filter checks by freshness evidence', fu
         'is_enabled' => true,
         'created_by' => $user->id,
     ]);
+    $flaggedStaleLegacyApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'flagged-stale-legacy-api',
+        'source' => 'package',
+        'package_name' => 'flagged-stale-legacy-api',
+        'package_interval' => 'every_5_minutes',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->subMinute(),
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
     $awaitingApi = MonitorApis::factory()->create([
         'project_id' => $project->id,
         'title' => 'awaiting-api',
@@ -1273,7 +1296,7 @@ test('package-managed relation managers filter checks by freshness evidence', fu
         'pageClass' => ViewProject::class,
     ])
         ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_STALE)
-        ->assertCanSeeTableRecords([$staleWebsite])
+        ->assertCanSeeTableRecords([$staleWebsite, $flaggedStaleLegacyWebsite])
         ->assertCanNotSeeTableRecords([$freshWebsite, $awaitingWebsite, $disabledWebsite]);
 
     Livewire::test(PackageManagedWebsitesRelationManager::class, [
@@ -1290,7 +1313,7 @@ test('package-managed relation managers filter checks by freshness evidence', fu
     ])
         ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_FRESH)
         ->assertCanSeeTableRecords([$freshWebsite])
-        ->assertCanNotSeeTableRecords([$staleWebsite, $awaitingWebsite, $disabledWebsite]);
+        ->assertCanNotSeeTableRecords([$staleWebsite, $flaggedStaleLegacyWebsite, $awaitingWebsite, $disabledWebsite]);
 
     Livewire::test(PackageManagedWebsitesRelationManager::class, [
         'ownerRecord' => $project,
@@ -1305,7 +1328,7 @@ test('package-managed relation managers filter checks by freshness evidence', fu
         'pageClass' => ViewProject::class,
     ])
         ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_STALE)
-        ->assertCanSeeTableRecords([$staleApi])
+        ->assertCanSeeTableRecords([$staleApi, $flaggedStaleLegacyApi])
         ->assertCanNotSeeTableRecords([$freshApi, $awaitingApi, $disabledApi]);
 
     Livewire::test(PackageManagedApisRelationManager::class, [
@@ -1322,7 +1345,7 @@ test('package-managed relation managers filter checks by freshness evidence', fu
     ])
         ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_FRESH)
         ->assertCanSeeTableRecords([$freshApi])
-        ->assertCanNotSeeTableRecords([$staleApi, $awaitingApi, $disabledApi]);
+        ->assertCanNotSeeTableRecords([$staleApi, $flaggedStaleLegacyApi, $awaitingApi, $disabledApi]);
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,

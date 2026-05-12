@@ -335,7 +335,7 @@ class PackageCheckTableEvidence
                 ->whereNotNull('stale_at')
                 ->orWhere(fn (Builder $query): Builder => $query
                     ->whereNotNull('last_heartbeat_at')
-                    ->whereRaw($overdueSql, $bindings)));
+                    ->where(fn (Builder $query): Builder => $query->whereRaw($overdueSql, $bindings))));
     }
 
     private static function applyAwaitingHeartbeatFreshnessFilter(Builder $query): Builder
@@ -351,7 +351,7 @@ class PackageCheckTableEvidence
         return static::whereHasPackageInterval($query)
             ->whereNotNull('last_heartbeat_at')
             ->whereNull('stale_at')
-            ->whereRaw($freshSql, $bindings);
+            ->where(fn (Builder $query): Builder => $query->whereRaw($freshSql, $bindings));
     }
 
     private static function whereHasPackageInterval(Builder $query): Builder
