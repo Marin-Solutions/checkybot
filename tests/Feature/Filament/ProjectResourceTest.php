@@ -1147,16 +1147,16 @@ test('application record shows package-managed external checks including archive
     ])
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$apiMonitor, $archivedApiMonitor, $disabledApiMonitor])
+        ->assertTableColumnStateSet('deleted_at', 'Active', $apiMonitor)
         ->assertTableColumnStateSet('deleted_at', 'Archived', $archivedApiMonitor)
         ->assertTableColumnStateSet('deleted_at', 'Disabled', $disabledApiMonitor)
+        ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $disabledApiMonitor)
         ->assertSee('Summary')
         ->assertSee('Last Heartbeat')
         ->assertSee('Freshness')
         ->assertSee('API heartbeat succeeded with HTTP status 200.')
         ->assertSee('Awaiting first package heartbeat.')
         ->assertSee('Fresh')
-        ->assertSee('Awaiting heartbeat')
-        ->assertSee('Disabled')
         ->assertSee('This check is disabled. Scheduled runs are paused.')
         ->assertSee('Monitor is disabled. Heartbeats are not expected.');
 
