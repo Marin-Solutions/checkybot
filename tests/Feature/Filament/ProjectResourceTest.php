@@ -1099,6 +1099,7 @@ test('application record shows package-managed external checks including archive
         'source' => 'package',
         'package_name' => 'legacy-health',
         'package_interval' => '15m',
+        'is_enabled' => false,
         'last_heartbeat_at' => null,
         'status_summary' => 'Awaiting first package heartbeat.',
         'created_by' => $user->id,
@@ -1146,6 +1147,8 @@ test('application record shows package-managed external checks including archive
     ])
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$apiMonitor, $archivedApiMonitor, $disabledApiMonitor])
+        ->assertTableColumnStateSet('deleted_at', 'Archived', $archivedApiMonitor)
+        ->assertTableColumnStateSet('deleted_at', 'Disabled', $disabledApiMonitor)
         ->assertSee('Summary')
         ->assertSee('Last Heartbeat')
         ->assertSee('Freshness')
