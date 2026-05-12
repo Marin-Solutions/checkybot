@@ -10,6 +10,7 @@ use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -79,6 +80,15 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->description(fn (Website $record): ?string => PackageCheckTableEvidence::freshnessDescription($record)),
                 TextColumn::make('package_interval')
                     ->label('Interval'),
+            ])
+            ->filters([
+                SelectFilter::make('freshness_evidence')
+                    ->label('Freshness')
+                    ->options(PackageCheckTableEvidence::freshnessFilterOptions())
+                    ->query(fn (Builder $query, array $data): Builder => PackageCheckTableEvidence::applyWebsiteFreshnessFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    )),
             ])
             ->recordActions([
                 Action::make('run_now')

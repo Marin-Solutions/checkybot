@@ -12,7 +12,7 @@ class PackageIntervalDueExpression
     public static function build(ConnectionInterface $connection, string $operator = '<='): array
     {
         $now = now()->toDateTimeString();
-        $operator = in_array($operator, ['<', '<='], true) ? $operator : '<=';
+        $operator = in_array($operator, ['<', '<=', '>', '>='], true) ? $operator : '<=';
 
         // Mirrors IntervalParser formats so legacy package intervals continue to schedule.
         // Seconds are rounded up to full minutes to match IntervalParser::toMinutes().
