@@ -161,6 +161,13 @@ test('project read endpoint returns project metadata without secrets', function 
         'name' => 'queue',
     ]);
 
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'manual-cache',
+        'source' => 'manual',
+    ]);
+
     $response = $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}")
         ->assertOk()
@@ -330,6 +337,13 @@ test('project check read endpoints include component checks and heartbeat histor
         'observed_at' => now()->subMinute(),
     ]);
 
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'manual-cache',
+        'source' => 'manual',
+    ]);
+
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->package_key}/checks")
         ->assertOk()
@@ -370,6 +384,10 @@ test('project check read endpoints include component checks and heartbeat histor
         ->getJson("/api/v1/projects/{$this->project->id}/checks/queue/results?run_source=scheduled")
         ->assertOk()
         ->assertJsonCount(0, 'data');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/manual-cache")
+        ->assertNotFound();
 });
 
 test('single check and recent result endpoints return investigation context', function () {
@@ -451,6 +469,11 @@ test('recent api check results can be filtered by run source', function () {
         ->assertJsonCount(2, 'data')
         ->assertJsonPath('data.0.id', $onDemand->id)
         ->assertJsonPath('data.1.id', $scheduled->id);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?run_source=heartbeat")
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
 });
 
 test('recent website check results can be filtered by run source', function () {

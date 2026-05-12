@@ -27,7 +27,7 @@ class CheckybotImportService
         $project = $this->findProject($user, $projectKey)
             ->loadCount([
                 'packageManagedApis as api_checks_count',
-                'components as component_checks_count',
+                'components as component_checks_count' => fn (Builder $query) => $query->where('source', 'package'),
             ]);
         $websiteChecksCount = $this->countWebsiteChecks($project);
         $componentChecksCount = (int) $project->component_checks_count;
@@ -191,6 +191,12 @@ class CheckybotImportService
 
         if ($runSource === 'on_demand') {
             $query->where('is_on_demand', true);
+
+            return;
+        }
+
+        if ($runSource === 'heartbeat') {
+            $query->whereRaw('1 = 0');
         }
     }
 
@@ -233,6 +239,7 @@ class CheckybotImportService
             ->map(fn (MonitorApis $check): array => $this->apiCheckPayload($check));
 
         $componentChecks = $project->components()
+            ->where('source', 'package')
             ->with('latestHeartbeat')
             ->orderBy('name')
             ->get()
