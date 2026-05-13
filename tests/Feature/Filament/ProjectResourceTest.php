@@ -544,6 +544,14 @@ test('project component heartbeat history supports triage filters and evidence m
         'ownerRecord' => $component,
         'pageClass' => ViewProjectComponent::class,
     ])
+        ->filterTable('event', 'heartbeat')
+        ->assertCanSeeTableRecords([$healthyWithMetrics, $warningWithoutMetrics, $dangerWithoutMetrics])
+        ->assertCanNotSeeTableRecords([$staleWithMetrics]);
+
+    Livewire::test(HeartbeatsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => ViewProjectComponent::class,
+    ])
         ->filterTable('stale_only', true)
         ->assertCanSeeTableRecords([$staleWithMetrics])
         ->assertCanNotSeeTableRecords([$healthyWithMetrics, $warningWithoutMetrics, $dangerWithoutMetrics]);
@@ -554,11 +562,23 @@ test('project component heartbeat history supports triage filters and evidence m
     ])
         ->filterTable('metrics_present', true)
         ->assertCanSeeTableRecords([$healthyWithMetrics, $staleWithMetrics])
-        ->assertCanNotSeeTableRecords([$warningWithoutMetrics, $dangerWithoutMetrics])
+        ->assertCanNotSeeTableRecords([$warningWithoutMetrics, $dangerWithoutMetrics]);
+
+    Livewire::test(HeartbeatsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => ViewProjectComponent::class,
+    ])
         ->assertTableActionExists('view', null, $staleWithMetrics)
         ->assertSee('View Evidence')
         ->mountTableAction('view', $staleWithMetrics)
-        ->assertHasNoTableActionErrors();
+        ->assertHasNoTableActionErrors()
+        ->assertSchemaStateSet([
+            'status' => 'danger',
+            'event' => 'stale',
+            'component_name' => 'payments-worker',
+            'summary' => 'Heartbeat expired.',
+            'metrics' => "{\n    \"queue_depth\": 42\n}",
+        ]);
 });
 
 test('project component detail shows stale threshold with configured grace window', function () {
