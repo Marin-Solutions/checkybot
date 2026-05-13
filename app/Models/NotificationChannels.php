@@ -49,10 +49,10 @@ class NotificationChannels extends Model
 
         try {
             if (str_contains($url, '{message}')) {
-                $url = str_replace('{message}', $messageTest, $url);
+                $url = str_replace('{message}', rawurlencode($messageTest), $url);
             }
             if (str_contains($url, '{description}')) {
-                $url = str_replace('{description}', $data['description'] ?? '', $url);
+                $url = str_replace('{description}', rawurlencode($data['description'] ?? ''), $url);
             }
 
             if ($method === WebhookHttpMethod::POST->value && count($requestBody)) {
@@ -108,10 +108,10 @@ class NotificationChannels extends Model
             ]);
 
             if (str_contains($url, '{message}')) {
-                $url = str_replace('{message}', $messageText, $url);
+                $url = str_replace('{message}', rawurlencode($messageText), $url);
             }
             if (str_contains($url, '{description}')) {
-                $url = str_replace('{description}', $descriptionText, $url);
+                $url = str_replace('{description}', rawurlencode($descriptionText), $url);
             }
 
             if ($method === WebhookHttpMethod::POST->value && count($requestBody)) {
