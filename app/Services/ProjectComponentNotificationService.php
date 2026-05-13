@@ -5,8 +5,11 @@ namespace App\Services;
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\WebsiteServicesEnum;
 use App\Mail\ProjectComponentAlertMail;
+use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\ProjectComponent;
+use App\Support\MetricsPayloadFormatter;
+use App\Support\ProjectComponentDeliveryState;
 use App\Traits\ChecksWebhookResponses;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -107,7 +110,7 @@ class ProjectComponentNotificationService
                         kind: 'send',
                         succeeded: $this->webhookResponseWasSuccessful($response),
                         responseCode: $code ?: null,
-                        summary: \App\Models\NotificationChannels::summarizeDeliveryResponse($response),
+                        summary: NotificationChannels::summarizeDeliveryResponse($response),
                     );
 
                     if (! $this->webhookResponseWasSuccessful($response)) {
@@ -194,22 +197,116 @@ class ProjectComponentNotificationService
     }
 
     /**
-     * @return array<string, string>
+     * @return array<string, mixed>
      */
     private function buildPayload(ProjectComponent $component, string $event, string $status): array
     {
+        $component->loadMissing(['project', 'latestHeartbeat']);
+
         $eventLabel = match ($event) {
             'stale' => 'stale',
             'recovered' => 'recovered',
             default => $status,
         };
 
+        $latestHeartbeat = $component->latestHeartbeat;
+        $observedAt = $latestHeartbeat?->observed_at ?? $component->last_heartbeat_at;
+        $staleThresholdAt = $this->staleThresholdAt($component);
+        $deliveryState = ProjectComponentDeliveryState::value($component);
+        $deliveryStateLabel = ProjectComponentDeliveryState::label($component);
+        $metrics = $latestHeartbeat?->metrics ?? $component->metrics ?? [];
+        $formattedMetrics = MetricsPayloadFormatter::format($metrics);
+        $summary = $component->summary ?? 'No additional summary was provided.';
+        $evidence = [
+            'Observed at' => $this->formatDateTime($observedAt),
+            'Interval' => $this->formatInterval($component),
+            'Stale threshold' => $this->formatDateTime($staleThresholdAt),
+            'Delivery state' => $deliveryStateLabel,
+            'Metrics' => $formattedMetrics,
+        ];
+
         return [
             'subject' => "Application component {$eventLabel}: {$component->name}",
             'title' => "Application component {$eventLabel}",
             'message' => "{$component->project->name} / {$component->name} reported {$eventLabel}.",
-            'details' => $component->summary ?? 'No additional summary was provided.',
+            'details' => $this->formatDetails($summary, $evidence),
+            'summary' => $summary,
+            'project_name' => $component->project->name,
+            'component_name' => $component->name,
+            'event' => $event,
+            'event_label' => $eventLabel,
+            'status' => $status,
+            'observed_at' => $observedAt?->toIso8601String(),
+            'observed_at_formatted' => $this->formatDateTime($observedAt),
+            'interval' => $component->declared_interval,
+            'interval_minutes' => $component->interval_minutes,
+            'interval_formatted' => $this->formatInterval($component),
+            'stale_threshold_at' => $staleThresholdAt?->toIso8601String(),
+            'stale_threshold_at_formatted' => $this->formatDateTime($staleThresholdAt),
+            'delivery_state' => $deliveryState,
+            'delivery_state_label' => $deliveryStateLabel,
+            'metrics' => $metrics,
+            'formatted_metrics' => $formattedMetrics,
+            'evidence' => $evidence,
         ];
+    }
+
+    private function staleThresholdAt(ProjectComponent $component): ?Carbon
+    {
+        if ($component->interval_minutes === null) {
+            return null;
+        }
+
+        $anchorAt = $component->last_heartbeat_at ?? $component->created_at;
+
+        if ($anchorAt === null) {
+            return null;
+        }
+
+        return $anchorAt->copy()->addMinutes(
+            $component->interval_minutes + $this->staleGraceMinutes()
+        );
+    }
+
+    private function staleGraceMinutes(): int
+    {
+        return max(0, (int) config('monitor.project_component_stale_grace_minutes'));
+    }
+
+    private function formatDateTime(?Carbon $dateTime): string
+    {
+        return $dateTime?->toIso8601String() ?? 'Not recorded';
+    }
+
+    private function formatInterval(ProjectComponent $component): string
+    {
+        if ($component->declared_interval !== null && $component->declared_interval !== '') {
+            if ($component->interval_minutes !== null) {
+                return "{$component->declared_interval} ({$component->interval_minutes} min)";
+            }
+
+            return $component->declared_interval;
+        }
+
+        if ($component->interval_minutes !== null) {
+            return IntervalParser::fromMinutes($component->interval_minutes);
+        }
+
+        return 'Not configured';
+    }
+
+    /**
+     * @param  array<string, string>  $evidence
+     */
+    private function formatDetails(string $summary, array $evidence): string
+    {
+        $lines = [$summary, '', 'Evidence:'];
+
+        foreach ($evidence as $label => $value) {
+            $lines[] = "{$label}: {$value}";
+        }
+
+        return implode("\n", $lines);
     }
 
     private function isSilencedNow(ProjectComponent $component): bool
