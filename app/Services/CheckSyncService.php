@@ -68,10 +68,9 @@ class CheckSyncService
             ];
 
             if ($wasDisabledByMissingPackageSync) {
-                $data['current_status'] = 'unknown';
-                $data['status_summary'] = null;
-                $data['last_heartbeat_at'] = null;
-                $data['stale_at'] = null;
+                $data += $this->awaitingLiveHealthAttributes();
+            } elseif ($this->websiteTargetChanged($website, $data)) {
+                $data += $this->awaitingLiveHealthAttributes();
             }
 
             if ($website) {
@@ -127,10 +126,9 @@ class CheckSyncService
             ];
 
             if ($wasDisabledByMissingPackageSync) {
-                $data['current_status'] = 'unknown';
-                $data['status_summary'] = null;
-                $data['last_heartbeat_at'] = null;
-                $data['stale_at'] = null;
+                $data += $this->awaitingLiveHealthAttributes();
+            } elseif ($this->websiteTargetChanged($website, $data)) {
+                $data += $this->awaitingLiveHealthAttributes();
             }
 
             if ($website) {
@@ -201,10 +199,9 @@ class CheckSyncService
             ];
 
             if ($wasDisabledByMissingPackageSync) {
-                $data['current_status'] = 'unknown';
-                $data['status_summary'] = null;
-                $data['last_heartbeat_at'] = null;
-                $data['stale_at'] = null;
+                $data += $this->awaitingLiveHealthAttributes();
+            } elseif ($this->apiTargetChanged($monitorApi, $data, $check['assertions'] ?? [])) {
+                $data += $this->awaitingLiveHealthAttributes();
             }
 
             if ($monitorApi) {
@@ -239,7 +236,9 @@ class CheckSyncService
                 'assertion_type' => $assertion['assertion_type'],
                 'expected_type' => $assertion['expected_type'] ?? null,
                 'comparison_operator' => $assertion['comparison_operator'] ?? null,
-                'expected_value' => $assertion['expected_value'] ?? null,
+                'expected_value' => array_key_exists('expected_value', $assertion) && $assertion['expected_value'] !== null
+                    ? (string) $assertion['expected_value']
+                    : null,
                 'regex_pattern' => $assertion['regex_pattern'] ?? null,
                 'sort_order' => $assertion['sort_order'] ?? 1,
                 'is_active' => $assertion['is_active'] ?? true,
@@ -350,5 +349,101 @@ class CheckSyncService
             && ! $website->uptime_check
             && ! $website->ssl_check
             && $website->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function websiteTargetChanged(?Website $website, array $data): bool
+    {
+        return $website instanceof Website
+            && ! $website->trashed()
+            && $website->url !== $data['url'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array<string, mixed>>  $assertions
+     */
+    protected function apiTargetChanged(?MonitorApis $monitorApi, array $data, array $assertions): bool
+    {
+        if (! $monitorApi instanceof MonitorApis || $monitorApi->trashed()) {
+            return false;
+        }
+
+        return $monitorApi->url !== $data['url']
+            || $monitorApi->http_method !== $data['http_method']
+            || (int) $monitorApi->expected_status !== (int) $data['expected_status']
+            || $this->canonicalExistingAssertions($monitorApi) !== $this->canonicalIncomingLegacyAssertions($assertions);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function awaitingLiveHealthAttributes(): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'status_summary' => null,
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'diagnostic_queued_at' => null,
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    protected function canonicalExistingAssertions(MonitorApis $monitorApi): array
+    {
+        return MonitorApiAssertion::query()
+            ->where('monitor_api_id', $monitorApi->id)
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get([
+                'data_path',
+                'assertion_type',
+                'expected_type',
+                'comparison_operator',
+                'expected_value',
+                'regex_pattern',
+                'sort_order',
+                'is_active',
+            ])
+            ->map(fn (MonitorApiAssertion $assertion): array => [
+                'data_path' => $assertion->data_path,
+                'assertion_type' => $assertion->assertion_type,
+                'expected_type' => $assertion->expected_type,
+                'comparison_operator' => $assertion->comparison_operator,
+                'expected_value' => $assertion->expected_value,
+                'regex_pattern' => $assertion->regex_pattern,
+                'sort_order' => (int) $assertion->sort_order,
+                'is_active' => (bool) $assertion->is_active,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $assertions
+     * @return array<int, array<string, mixed>>
+     */
+    protected function canonicalIncomingLegacyAssertions(array $assertions): array
+    {
+        return collect($assertions)
+            ->map(fn (array $assertion): array => [
+                'data_path' => $assertion['data_path'],
+                'assertion_type' => $assertion['assertion_type'],
+                'expected_type' => $assertion['expected_type'] ?? null,
+                'comparison_operator' => $assertion['comparison_operator'] ?? null,
+                'expected_value' => array_key_exists('expected_value', $assertion) && $assertion['expected_value'] !== null
+                    ? (string) $assertion['expected_value']
+                    : null,
+                'regex_pattern' => $assertion['regex_pattern'] ?? null,
+                'sort_order' => (int) ($assertion['sort_order'] ?? 1),
+                'is_active' => (bool) ($assertion['is_active'] ?? true),
+            ])
+            ->values()
+            ->all();
     }
 }
