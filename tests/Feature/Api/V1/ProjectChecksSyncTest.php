@@ -389,7 +389,7 @@ test('legacy sync does not reset api live health when assertions arrive out of s
         'assertion_type' => 'value_compare',
         'comparison_operator' => '>=',
         'expected_value' => '1',
-        'sort_order' => 2,
+        'sort_order' => 1,
         'is_active' => true,
     ]);
 
@@ -409,13 +409,11 @@ test('legacy sync does not reset api live health when assertions arrive out of s
                         'assertion_type' => 'value_compare',
                         'comparison_operator' => '>=',
                         'expected_value' => '1',
-                        'sort_order' => 2,
                         'is_active' => true,
                     ],
                     [
                         'data_path' => 'data.ready',
                         'assertion_type' => 'exists',
-                        'sort_order' => 1,
                         'is_active' => true,
                     ],
                 ],

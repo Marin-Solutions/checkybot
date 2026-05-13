@@ -420,6 +420,7 @@ class CheckSyncService
                 'sort_order' => (int) $assertion->sort_order,
                 'is_active' => (bool) $assertion->is_active,
             ])
+            ->sortBy($this->assertionSortFields())
             ->values()
             ->all();
     }
@@ -443,12 +444,25 @@ class CheckSyncService
                 'sort_order' => (int) ($assertion['sort_order'] ?? 1),
                 'is_active' => (bool) ($assertion['is_active'] ?? true),
             ])
-            ->sortBy([
-                ['sort_order', 'asc'],
-                ['data_path', 'asc'],
-                ['assertion_type', 'asc'],
-            ])
+            ->sortBy($this->assertionSortFields())
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array<int, array{0: string, 1: string}>
+     */
+    protected function assertionSortFields(): array
+    {
+        return [
+            ['sort_order', 'asc'],
+            ['data_path', 'asc'],
+            ['assertion_type', 'asc'],
+            ['expected_type', 'asc'],
+            ['comparison_operator', 'asc'],
+            ['expected_value', 'asc'],
+            ['regex_pattern', 'asc'],
+            ['is_active', 'asc'],
+        ];
     }
 }
