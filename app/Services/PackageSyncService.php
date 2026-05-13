@@ -125,7 +125,7 @@ class PackageSyncService
             $schedule = $this->apiSchedule($check['schedule'] ?? null);
             $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
 
-            $monitorApi->fill([
+            $data = [
                 'project_id' => $project->id,
                 'created_by' => $project->created_by,
                 'title' => $check['name'],
@@ -146,14 +146,24 @@ class PackageSyncService
                 'source' => 'package',
                 'package_name' => $check['key'],
                 'last_synced_at' => $syncedAt,
-            ]);
+            ];
+
+            $configChanged = $wasCreated
+                || $monitorApi->wasChanged('deleted_at')
+                || $this->apiConfigurationChanged($monitorApi, $data);
+            $assertionsChanged = ! $wasCreated
+                && $this->apiAssertionsChanged($monitorApi, $check['assertions'] ?? []);
+
+            $monitorApi->fill($data);
             $monitorApi->save();
 
-            $this->syncAssertions($monitorApi, $check['assertions'] ?? []);
+            if ($wasCreated || $assertionsChanged) {
+                $this->syncAssertions($monitorApi, $check['assertions'] ?? []);
+            }
 
             if ($wasCreated) {
                 $created++;
-            } else {
+            } elseif ($configChanged || $assertionsChanged) {
                 $updated++;
             }
         }
@@ -235,12 +245,16 @@ class PackageSyncService
                 }
             }
 
+            $configChanged = $wasCreated
+                || $website->wasChanged('deleted_at')
+                || $this->websiteConfigurationChanged($website, $data);
+
             $website->fill($data);
             $website->save();
 
             if ($wasCreated || ($enabled && ! $wasRestored && ! $wasTypeEnabled)) {
                 $created++;
-            } else {
+            } elseif ($wasRestored || $configChanged) {
                 $updated++;
             }
         }
@@ -270,27 +284,131 @@ class PackageSyncService
         $timestamp = now();
 
         MonitorApiAssertion::query()->insert(
-            collect($assertions)
-                ->values()
-                ->map(fn (array $assertion, int $index): array => [
+            collect($this->incomingAssertions($assertions))
+                ->map(fn (array $assertion): array => $assertion + [
                     'monitor_api_id' => $monitorApi->id,
-                    'data_path' => $this->normalizeJsonPath($assertion['path']),
-                    'assertion_type' => $this->mapAssertionType($assertion['type']),
-                    'expected_type' => $assertion['expected_type'] ?? null,
-                    'comparison_operator' => $assertion['comparison_operator'] ?? (
-                        $assertion['type'] === 'json_path_equals' ? '=' : null
-                    ),
-                    'expected_value' => array_key_exists('expected_value', $assertion)
-                        ? (string) $assertion['expected_value']
-                        : null,
-                    'regex_pattern' => $assertion['regex_pattern'] ?? null,
-                    'sort_order' => $index + 1,
-                    'is_active' => true,
                     'created_at' => $timestamp,
                     'updated_at' => $timestamp,
                 ])
                 ->all()
         );
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function apiConfigurationChanged(MonitorApis $monitorApi, array $data): bool
+    {
+        foreach ($data as $field => $value) {
+            if ($field === 'last_synced_at') {
+                continue;
+            }
+
+            $current = match ($field) {
+                'headers' => $monitorApi->headers,
+                'request_body' => $this->normalizeRequestBodyForComparison($monitorApi->request_body),
+                default => $monitorApi->{$field},
+            };
+
+            $incoming = $field === 'request_body'
+                ? $this->normalizeRequestBodyForComparison($value)
+                : $value;
+
+            if ($current != $incoming) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $assertions
+     */
+    private function apiAssertionsChanged(MonitorApis $monitorApi, array $assertions): bool
+    {
+        return $this->storedAssertions($monitorApi) !== $this->incomingAssertions($assertions);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function storedAssertions(MonitorApis $monitorApi): array
+    {
+        return $monitorApi->assertions()
+            ->get([
+                'data_path',
+                'assertion_type',
+                'expected_type',
+                'comparison_operator',
+                'expected_value',
+                'regex_pattern',
+                'sort_order',
+                'is_active',
+            ])
+            ->map(fn (MonitorApiAssertion $assertion): array => [
+                'data_path' => $assertion->data_path,
+                'assertion_type' => $assertion->assertion_type,
+                'expected_type' => $assertion->expected_type,
+                'comparison_operator' => $assertion->comparison_operator,
+                'expected_value' => $assertion->expected_value,
+                'regex_pattern' => $assertion->regex_pattern,
+                'sort_order' => $assertion->sort_order,
+                'is_active' => (bool) $assertion->is_active,
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $assertions
+     * @return array<int, array<string, mixed>>
+     */
+    private function incomingAssertions(array $assertions): array
+    {
+        return collect($assertions)
+            ->values()
+            ->map(fn (array $assertion, int $index): array => [
+                'data_path' => $this->normalizeJsonPath($assertion['path']),
+                'assertion_type' => $this->mapAssertionType($assertion['type']),
+                'expected_type' => $assertion['expected_type'] ?? null,
+                'comparison_operator' => $assertion['comparison_operator'] ?? (
+                    $assertion['type'] === 'json_path_equals' ? '=' : null
+                ),
+                'expected_value' => array_key_exists('expected_value', $assertion)
+                    ? (string) $assertion['expected_value']
+                    : null,
+                'regex_pattern' => $assertion['regex_pattern'] ?? null,
+                'sort_order' => $index + 1,
+                'is_active' => true,
+            ])
+            ->all();
+    }
+
+    private function normalizeRequestBodyForComparison(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return json_encode($value);
+        }
+
+        return $value;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function websiteConfigurationChanged(Website $website, array $data): bool
+    {
+        foreach ($data as $field => $value) {
+            if ($field === 'last_synced_at') {
+                continue;
+            }
+
+            if ($website->{$field} != $value) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

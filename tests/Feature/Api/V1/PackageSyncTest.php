@@ -278,6 +278,109 @@ test('package sync is idempotent and updates by stable keys', function () {
     ]);
 });
 
+test('package sync does not count unchanged existing checks as updated', function () {
+    $payload = packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'google-maps-search',
+                'type' => 'api',
+                'name' => 'Google Maps search API',
+                'method' => 'GET',
+                'url' => '/api/google-maps/search',
+                'headers' => [
+                    'X-Api-Key' => 'secret-package-token',
+                ],
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'email' => 'monitor@example.com',
+                    'password' => 'secret',
+                ],
+                'expected_status' => 200,
+                'timeout_seconds' => 15,
+                'assertions' => [
+                    ['type' => 'json_path_exists', 'path' => '$.data'],
+                    ['type' => 'json_path_equals', 'path' => '$.status', 'expected_value' => 'ok'],
+                ],
+                'schedule' => 'every_5_minutes',
+                'enabled' => true,
+            ],
+            [
+                'key' => 'homepage-up',
+                'type' => 'uptime',
+                'name' => 'Homepage uptime',
+                'url' => '/',
+                'schedule' => '5m',
+                'enabled' => true,
+            ],
+            [
+                'key' => 'homepage-ssl',
+                'type' => 'ssl',
+                'name' => 'Homepage SSL',
+                'url' => '/',
+                'schedule' => '1h',
+                'enabled' => true,
+            ],
+        ],
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertCreated()
+        ->assertJsonPath('data.summary.created', 3)
+        ->assertJsonPath('data.summary.updated', 0);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload);
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.updated', 0)
+        ->assertJsonPath('data.summary.disabled_missing', 0)
+        ->assertJsonPath('data.summary.api_checks.updated', 0)
+        ->assertJsonPath('data.summary.uptime_checks.updated', 0)
+        ->assertJsonPath('data.summary.ssl_checks.updated', 0);
+
+    $project = Project::query()->where('package_key', 'scrappa')->sole();
+
+    expect($project->latest_package_sync_summary)->toMatchArray([
+        'created' => 0,
+        'updated' => 0,
+        'disabled_missing' => 0,
+        'api_checks' => ['created' => 0, 'updated' => 0, 'disabled_missing' => 0],
+        'uptime_checks' => ['created' => 0, 'updated' => 0, 'disabled_missing' => 0],
+        'ssl_checks' => ['created' => 0, 'updated' => 0, 'disabled_missing' => 0],
+    ]);
+});
+
+test('package sync counts changed assertions as an api update', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.data'],
+                    ],
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.items'],
+                    ],
+                ],
+            ],
+        ]))
+        ->assertOk()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.updated', 1)
+        ->assertJsonPath('data.summary.api_checks.updated', 1);
+});
+
 test('package sync persists api failed response body preference', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
