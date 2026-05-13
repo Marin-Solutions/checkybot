@@ -534,6 +534,63 @@ test('api notification relation manager only shows alerts for the current api mo
         ->assertCanNotSeeTableRecords([$hiddenSetting]);
 });
 
+test('api notification relation manager filters delivery outcome channel type and inactive rules', function () {
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
+
+    $failedEmail = NotificationSetting::factory()->apiMonitorScope()->email()->create([
+        'user_id' => $user->id,
+        'monitor_api_id' => $monitor->id,
+        'last_delivery_succeeded' => false,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    $untestedWebhook = NotificationSetting::factory()->apiMonitorScope()->webhook()->create([
+        'user_id' => $user->id,
+        'monitor_api_id' => $monitor->id,
+        'last_delivery_attempted_at' => null,
+    ]);
+
+    $inactiveEmail = NotificationSetting::factory()->apiMonitorScope()->email()->inactive()->create([
+        'user_id' => $user->id,
+        'monitor_api_id' => $monitor->id,
+        'last_delivery_succeeded' => true,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->filterTable('delivery_outcome', 'failed')
+        ->assertCanSeeTableRecords([$failedEmail])
+        ->assertCanNotSeeTableRecords([$untestedWebhook, $inactiveEmail]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->filterTable('delivery_outcome', 'untested')
+        ->assertCanSeeTableRecords([$untestedWebhook])
+        ->assertCanNotSeeTableRecords([$failedEmail, $inactiveEmail]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->filterTable('channel_type', NotificationChannelTypesEnum::WEBHOOK->value)
+        ->assertCanSeeTableRecords([$untestedWebhook])
+        ->assertCanNotSeeTableRecords([$failedEmail, $inactiveEmail]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => EditMonitorApis::class,
+    ])
+        ->filterTable('rule_state', 'inactive')
+        ->assertCanSeeTableRecords([$inactiveEmail])
+        ->assertCanNotSeeTableRecords([$failedEmail, $untestedWebhook]);
+});
+
 test('super admin can create api-scoped email notification from api monitor page', function () {
     $user = $this->actingAsSuperAdmin();
     $monitor = MonitorApis::factory()->create(['created_by' => $user->id]);
