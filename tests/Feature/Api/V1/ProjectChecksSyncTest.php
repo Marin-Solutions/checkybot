@@ -355,6 +355,82 @@ test('legacy sync resets api live health when target-defining settings change', 
     ]);
 });
 
+test('legacy sync does not reset api live health when assertions arrive out of sort order', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Current target is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(7),
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'data.ready',
+        'assertion_type' => 'exists',
+        'comparison_operator' => null,
+        'expected_value' => null,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'data.count',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '>=',
+        'expected_value' => '1',
+        'sort_order' => 2,
+        'is_active' => true,
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+                'method' => 'GET',
+                'expected_status' => 200,
+                'assertions' => [
+                    [
+                        'data_path' => 'data.count',
+                        'assertion_type' => 'value_compare',
+                        'comparison_operator' => '>=',
+                        'expected_value' => '1',
+                        'sort_order' => 2,
+                        'is_active' => true,
+                    ],
+                    [
+                        'data_path' => 'data.ready',
+                        'assertion_type' => 'exists',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $api->refresh();
+
+    expect($api->current_status)->toBe('healthy')
+        ->and($api->status_summary)->toBe('Current target is healthy.')
+        ->and($api->last_heartbeat_at)->not->toBeNull()
+        ->and($api->stale_at)->not->toBeNull();
+});
+
 test('preserves existing api execution settings when legacy sync omits them', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,

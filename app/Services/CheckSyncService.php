@@ -443,6 +443,11 @@ class CheckSyncService
                 'sort_order' => (int) ($assertion['sort_order'] ?? 1),
                 'is_active' => (bool) ($assertion['is_active'] ?? true),
             ])
+            ->sortBy([
+                ['sort_order', 'asc'],
+                ['data_path', 'asc'],
+                ['assertion_type', 'asc'],
+            ])
             ->values()
             ->all();
     }

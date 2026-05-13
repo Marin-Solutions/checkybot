@@ -343,6 +343,8 @@ class PackageSyncService
     private function storedAssertions(MonitorApis $monitorApi): array
     {
         return $monitorApi->assertions()
+            ->orderBy('sort_order')
+            ->orderBy('id')
             ->get([
                 'data_path',
                 'assertion_type',
