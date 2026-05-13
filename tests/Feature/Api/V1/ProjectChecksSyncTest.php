@@ -293,6 +293,142 @@ test('updates api checks with execution settings from legacy sync', function () 
     ]);
 });
 
+test('legacy sync resets api live health when target-defining settings change', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/old-health',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous target was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(7),
+        'diagnostic_queued_at' => now(),
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'status',
+        'assertion_type' => 'exists',
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/new-health',
+                'interval' => '5m',
+                'method' => 'POST',
+                'expected_status' => 201,
+                'assertions' => [
+                    [
+                        'data_path' => 'data.ready',
+                        'assertion_type' => 'exists',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $api->id,
+        'url' => 'https://api.example.com/new-health',
+        'http_method' => 'POST',
+        'expected_status' => 201,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+});
+
+test('legacy sync does not reset api live health when assertions arrive out of sort order', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Current target is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(7),
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'data.ready',
+        'assertion_type' => 'exists',
+        'comparison_operator' => null,
+        'expected_value' => null,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'data.count',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '>=',
+        'expected_value' => '1',
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+                'method' => 'GET',
+                'expected_status' => 200,
+                'assertions' => [
+                    [
+                        'data_path' => 'data.count',
+                        'assertion_type' => 'value_compare',
+                        'comparison_operator' => '>=',
+                        'expected_value' => '1',
+                        'is_active' => true,
+                    ],
+                    [
+                        'data_path' => 'data.ready',
+                        'assertion_type' => 'exists',
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $api->refresh();
+
+    expect($api->current_status)->toBe('healthy')
+        ->and($api->status_summary)->toBe('Current target is healthy.')
+        ->and($api->last_heartbeat_at)->not->toBeNull()
+        ->and($api->stale_at)->not->toBeNull();
+});
+
 test('preserves existing api execution settings when legacy sync omits them', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -509,6 +645,46 @@ test('updates existing checks', function () {
         'package_name' => 'homepage-uptime',
         'url' => 'https://new-url.com',
         'uptime_interval' => 10,
+    ]);
+});
+
+test('legacy sync resets website live health when url changes', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'homepage-uptime',
+        'url' => 'https://old-url.com',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'source' => 'package',
+        'package_name' => 'homepage-uptime',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous URL was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(4),
+        'stale_at' => now()->addMinutes(6),
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage-uptime',
+                'url' => 'https://new-url.com',
+                'interval' => '10m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'id' => $website->id,
+        'url' => 'https://new-url.com',
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
     ]);
 });
 

@@ -381,6 +381,57 @@ test('package sync counts changed assertions as an api update', function () {
         ->assertJsonPath('data.summary.api_checks.updated', 1);
 });
 
+test('package sync resets api live health when target-defining settings change', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous target was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/v2/search',
+                    'expected_status' => 201,
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.data.ready'],
+                    ],
+                    'schedule' => 'every_5_minutes',
+                ],
+            ],
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.updated', 1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $monitor->id,
+        'url' => 'https://api.scrappa.co/api/google-maps/v2/search',
+        'http_method' => 'POST',
+        'expected_status' => 201,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+});
+
 test('package sync persists api failed response body preference', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
@@ -1035,6 +1086,60 @@ test('package sync updates and disables missing website checks by stable package
         'stale_at' => null,
         'diagnostic_queued_at' => null,
         'deleted_at' => null,
+    ]);
+});
+
+test('package sync resets website live health when url changes', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $website = Website::query()
+        ->where('package_name', 'homepage-uptime')
+        ->sole();
+
+    $website->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous URL was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/status',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.uptime_checks.updated', 1);
+
+    $this->assertDatabaseHas('websites', [
+        'id' => $website->id,
+        'url' => 'https://api.scrappa.co/status',
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
     ]);
 });
 

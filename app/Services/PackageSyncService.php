@@ -124,7 +124,6 @@ class PackageSyncService
 
             $schedule = $this->apiSchedule($check['schedule'] ?? null);
             $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
-
             $data = [
                 'project_id' => $project->id,
                 'created_by' => $project->created_by,
@@ -153,6 +152,10 @@ class PackageSyncService
                 || $this->apiConfigurationChanged($monitorApi, $data);
             $assertionsChanged = ! $wasCreated
                 && $this->apiAssertionsChanged($monitorApi, $check['assertions'] ?? []);
+
+            if ($this->apiTargetChanged($monitorApi, $data, $assertionsChanged)) {
+                $data += $this->awaitingLiveHealthAttributes();
+            }
 
             $monitorApi->fill($data);
             $monitorApi->save();
@@ -249,6 +252,10 @@ class PackageSyncService
                 || $website->wasChanged('deleted_at')
                 || $this->websiteConfigurationChanged($website, $data);
 
+            if ($this->websiteTargetChanged($website, $data)) {
+                $data += $this->awaitingLiveHealthAttributes();
+            }
+
             $website->fill($data);
             $website->save();
 
@@ -336,6 +343,8 @@ class PackageSyncService
     private function storedAssertions(MonitorApis $monitorApi): array
     {
         return $monitorApi->assertions()
+            ->orderBy('sort_order')
+            ->orderBy('id')
             ->get([
                 'data_path',
                 'assertion_type',
@@ -351,9 +360,9 @@ class PackageSyncService
                 'assertion_type' => $assertion->assertion_type,
                 'expected_type' => $assertion->expected_type,
                 'comparison_operator' => $assertion->comparison_operator,
-                'expected_value' => $assertion->expected_value,
+                'expected_value' => $assertion->expected_value === null ? null : (string) $assertion->expected_value,
                 'regex_pattern' => $assertion->regex_pattern,
-                'sort_order' => $assertion->sort_order,
+                'sort_order' => (int) $assertion->sort_order,
                 'is_active' => (bool) $assertion->is_active,
             ])
             ->all();
@@ -374,7 +383,7 @@ class PackageSyncService
                 'comparison_operator' => $assertion['comparison_operator'] ?? (
                     $assertion['type'] === 'json_path_equals' ? '=' : null
                 ),
-                'expected_value' => array_key_exists('expected_value', $assertion)
+                'expected_value' => array_key_exists('expected_value', $assertion) && $assertion['expected_value'] !== null
                     ? (string) $assertion['expected_value']
                     : null,
                 'regex_pattern' => $assertion['regex_pattern'] ?? null,
@@ -462,6 +471,45 @@ class PackageSyncService
                 'package_interval' => null,
                 'last_heartbeat_at' => null,
             ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function websiteTargetChanged(Website $website, array $data): bool
+    {
+        return $website->exists
+            && ! $website->trashed()
+            && $website->url !== $data['url'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function apiTargetChanged(MonitorApis $monitorApi, array $data, bool $assertionsChanged): bool
+    {
+        if (! $monitorApi->exists || $monitorApi->trashed()) {
+            return false;
+        }
+
+        return $monitorApi->url !== $data['url']
+            || $monitorApi->http_method !== $data['http_method']
+            || (int) $monitorApi->expected_status !== (int) $data['expected_status']
+            || $assertionsChanged;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function awaitingLiveHealthAttributes(): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'status_summary' => null,
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'diagnostic_queued_at' => null,
+        ];
     }
 
     private function recalculateUptimeOnlyPackageIntervals(Project $project): void
