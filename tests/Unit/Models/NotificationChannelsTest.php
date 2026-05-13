@@ -202,6 +202,34 @@ test('send webhook notification replaces placeholders', function () {
     });
 });
 
+test('send webhook notification encodes url placeholders and preserves request body placeholders', function () {
+    Http::fake(['*' => Http::response([], 200)]);
+
+    $description = "Evidence:\nMetrics: {\n    \"queue_depth\": 42\n}";
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/webhook?text={message}&description={description}',
+        'method' => 'POST',
+        'request_body' => [
+            'message' => '{message}',
+            'description' => '{description}',
+        ],
+    ]);
+
+    $channel->sendWebhookNotification([
+        'message' => 'Application component danger: Billing queue',
+        'description' => $description,
+    ]);
+
+    Http::assertSent(function ($request) use ($description): bool {
+        $body = $request->data();
+
+        return str_contains($request->url(), 'Application%20component%20danger%3A%20Billing%20queue')
+            && str_contains($request->url(), 'Evidence%3A%0AMetrics%3A%20%7B%0A%20%20%20%20%22queue_depth%22%3A%2042%0A%7D')
+            && ($body['message'] ?? null) === 'Application component danger: Billing queue'
+            && ($body['description'] ?? null) === $description;
+    });
+});
+
 test('send webhook notification preserves the upstream http status code', function () {
     Http::fake(['*' => Http::response([], 500)]);
 

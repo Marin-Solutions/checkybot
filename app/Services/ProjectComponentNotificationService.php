@@ -218,11 +218,11 @@ class ProjectComponentNotificationService
         $formattedMetrics = MetricsPayloadFormatter::format($metrics);
         $summary = $component->summary ?? 'No additional summary was provided.';
         $evidence = [
-            'Observed at' => $this->formatDateTime($observedAt),
-            'Interval' => $this->formatInterval($component),
-            'Stale threshold' => $this->formatDateTime($staleThresholdAt),
-            'Delivery state' => $deliveryStateLabel,
-            'Metrics' => $formattedMetrics,
+            ['label' => 'Observed at', 'value' => $this->formatDateTime($observedAt), 'type' => 'text'],
+            ['label' => 'Interval', 'value' => $this->formatInterval($component), 'type' => 'text'],
+            ['label' => 'Stale threshold', 'value' => $this->formatDateTime($staleThresholdAt), 'type' => 'text'],
+            ['label' => 'Delivery state', 'value' => $deliveryStateLabel, 'type' => 'text'],
+            ['label' => 'Metrics', 'value' => $formattedMetrics, 'type' => 'code'],
         ];
 
         return [
@@ -296,14 +296,14 @@ class ProjectComponentNotificationService
     }
 
     /**
-     * @param  array<string, string>  $evidence
+     * @param  array<int, array{label: string, value: string, type: string}>  $evidence
      */
     private function formatDetails(string $summary, array $evidence): string
     {
         $lines = [$summary, '', 'Evidence:'];
 
-        foreach ($evidence as $label => $value) {
-            $lines[] = "{$label}: {$value}";
+        foreach ($evidence as $item) {
+            $lines[] = "{$item['label']}: {$item['value']}";
         }
 
         return implode("\n", $lines);

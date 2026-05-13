@@ -119,7 +119,7 @@ test('project component notification service includes observed evidence in webho
         'project_id' => $project->id,
         'created_by' => $user->id,
         'name' => 'queue',
-        'summary' => 'Queue depth is above threshold.',
+        'summary' => null,
         'declared_interval' => '5m',
         'interval_minutes' => 5,
         'current_status' => 'danger',
@@ -166,6 +166,7 @@ test('project component notification service includes observed evidence in webho
 
         return $request->url() === 'https://hooks.example.test/component'
             && str_contains($body['message'] ?? '', 'Billing / queue reported danger.')
+            && str_contains($description, 'No additional summary was provided.')
             && str_contains($description, 'Observed at: '.$observedAt->toIso8601String())
             && str_contains($description, 'Interval: 5m (5 min)')
             && str_contains($description, 'Stale threshold: '.$observedAt->copy()->addMinutes(7)->toIso8601String())
@@ -229,6 +230,11 @@ test('project component notification service includes observed evidence in mail 
             && $mail->payload['delivery_state_label'] === 'Receiving heartbeats'
             && $mail->payload['metrics'] === ['latency_ms' => 1250, 'error_rate' => 0.04]
             && str_contains($mail->payload['formatted_metrics'], '"latency_ms": 1250')
+            && $mail->payload['evidence'][4] === [
+                'label' => 'Metrics',
+                'value' => $mail->payload['formatted_metrics'],
+                'type' => 'code',
+            ]
             && str_contains($mail->payload['details'], 'Evidence:');
     });
 });

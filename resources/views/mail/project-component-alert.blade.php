@@ -8,13 +8,13 @@
 @endif
 
 @if (! empty($payload['evidence']))
-@foreach ($payload['evidence'] as $label => $value)
-@if ($label === 'Metrics')
-**{{ $label }}**
+@foreach ($payload['evidence'] as $item)
+@if (($item['type'] ?? 'text') === 'code')
+**{{ $item['label'] }}**
 
-<pre><code>{{ $value }}</code></pre>
+<pre><code>{{ $item['value'] }}</code></pre>
 @else
-**{{ $label }}:** {{ $value }}
+**{{ $item['label'] }}:** {{ $item['value'] }}
 @endif
 
 @endforeach
