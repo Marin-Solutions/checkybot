@@ -415,7 +415,7 @@ class CheckSyncService
                 'assertion_type' => $assertion->assertion_type,
                 'expected_type' => $assertion->expected_type,
                 'comparison_operator' => $assertion->comparison_operator,
-                'expected_value' => $assertion->expected_value,
+                'expected_value' => $assertion->expected_value === null ? null : (string) $assertion->expected_value,
                 'regex_pattern' => $assertion->regex_pattern,
                 'sort_order' => (int) $assertion->sort_order,
                 'is_active' => (bool) $assertion->is_active,
