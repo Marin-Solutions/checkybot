@@ -5,8 +5,6 @@
 
 @if (! empty($payload['summary']))
 {{ $payload['summary'] }}
-@elseif (! empty($payload['details']))
-{{ $payload['details'] }}
 @endif
 
 @if (! empty($payload['evidence']))
