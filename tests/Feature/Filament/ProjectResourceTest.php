@@ -475,6 +475,92 @@ test('project component detail shows newest heartbeat evidence first', function 
     expect($positions)->toBe($sortedPositions);
 });
 
+test('project component heartbeat history supports triage filters and evidence modal', function () {
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $component = ProjectComponent::factory()->create([
+        'name' => 'payments-worker',
+        'created_by' => $user->id,
+    ]);
+
+    $healthyWithMetrics = ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'payments-worker',
+        'status' => 'healthy',
+        'event' => 'heartbeat',
+        'summary' => 'Worker processed queue normally.',
+        'metrics' => ['latency_ms' => 120],
+        'observed_at' => now()->subMinutes(4),
+    ]);
+
+    $warningWithoutMetrics = ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'payments-worker',
+        'status' => 'warning',
+        'event' => 'heartbeat',
+        'summary' => 'Worker queue lag is elevated.',
+        'metrics' => [],
+        'observed_at' => now()->subMinutes(3),
+    ]);
+
+    $staleWithMetrics = ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'payments-worker',
+        'status' => 'danger',
+        'event' => 'stale',
+        'summary' => 'Heartbeat expired.',
+        'metrics' => ['queue_depth' => 42],
+        'observed_at' => now()->subMinutes(2),
+    ]);
+
+    $dangerWithoutMetrics = ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'payments-worker',
+        'status' => 'danger',
+        'event' => 'heartbeat',
+        'summary' => 'Worker heartbeat failed without metrics.',
+        'metrics' => null,
+        'observed_at' => now()->subMinute(),
+    ]);
+
+    Livewire::test(HeartbeatsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => ViewProjectComponent::class,
+    ])
+        ->filterTable('status', 'warning')
+        ->assertCanSeeTableRecords([$warningWithoutMetrics])
+        ->assertCanNotSeeTableRecords([$healthyWithMetrics, $staleWithMetrics, $dangerWithoutMetrics]);
+
+    Livewire::test(HeartbeatsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => ViewProjectComponent::class,
+    ])
+        ->filterTable('event', 'stale')
+        ->assertCanSeeTableRecords([$staleWithMetrics])
+        ->assertCanNotSeeTableRecords([$healthyWithMetrics, $warningWithoutMetrics, $dangerWithoutMetrics]);
+
+    Livewire::test(HeartbeatsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => ViewProjectComponent::class,
+    ])
+        ->filterTable('stale_only', true)
+        ->assertCanSeeTableRecords([$staleWithMetrics])
+        ->assertCanNotSeeTableRecords([$healthyWithMetrics, $warningWithoutMetrics, $dangerWithoutMetrics]);
+
+    Livewire::test(HeartbeatsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => ViewProjectComponent::class,
+    ])
+        ->filterTable('metrics_present', true)
+        ->assertCanSeeTableRecords([$healthyWithMetrics, $staleWithMetrics])
+        ->assertCanNotSeeTableRecords([$warningWithoutMetrics, $dangerWithoutMetrics])
+        ->assertTableActionExists('view', null, $staleWithMetrics)
+        ->assertSee('View Evidence')
+        ->mountTableAction('view', $staleWithMetrics)
+        ->assertHasNoTableActionErrors();
+});
+
 test('project component detail shows stale threshold with configured grace window', function () {
     config(['monitor.project_component_stale_grace_minutes' => 2]);
     $this->travelTo('2026-04-27 12:00:00');
