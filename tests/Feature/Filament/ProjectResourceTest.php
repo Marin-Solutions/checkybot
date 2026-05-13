@@ -544,6 +544,63 @@ test('component notification relation manager only shows alerts for the current 
         ->assertCanNotSeeTableRecords([$hiddenSetting]);
 });
 
+test('component notification relation manager filters delivery outcome channel type and inactive rules', function () {
+    $user = $this->actingAsSuperAdmin();
+    $component = ProjectComponent::factory()->create(['created_by' => $user->id]);
+
+    $failedEmail = NotificationSetting::factory()->projectComponentScope()->email()->create([
+        'user_id' => $user->id,
+        'project_component_id' => $component->id,
+        'last_delivery_succeeded' => false,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    $untestedWebhook = NotificationSetting::factory()->projectComponentScope()->webhook()->create([
+        'user_id' => $user->id,
+        'project_component_id' => $component->id,
+        'last_delivery_attempted_at' => null,
+    ]);
+
+    $inactiveEmail = NotificationSetting::factory()->projectComponentScope()->email()->inactive()->create([
+        'user_id' => $user->id,
+        'project_component_id' => $component->id,
+        'last_delivery_succeeded' => true,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => EditProjectComponent::class,
+    ])
+        ->filterTable('delivery_outcome', 'failed')
+        ->assertCanSeeTableRecords([$failedEmail])
+        ->assertCanNotSeeTableRecords([$untestedWebhook, $inactiveEmail]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => EditProjectComponent::class,
+    ])
+        ->filterTable('delivery_outcome', 'untested')
+        ->assertCanSeeTableRecords([$untestedWebhook])
+        ->assertCanNotSeeTableRecords([$failedEmail, $inactiveEmail]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => EditProjectComponent::class,
+    ])
+        ->filterTable('channel_type', NotificationChannelTypesEnum::MAIL->value)
+        ->assertCanSeeTableRecords([$failedEmail, $inactiveEmail])
+        ->assertCanNotSeeTableRecords([$untestedWebhook]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $component,
+        'pageClass' => EditProjectComponent::class,
+    ])
+        ->filterTable('rule_state', 'inactive')
+        ->assertCanSeeTableRecords([$inactiveEmail])
+        ->assertCanNotSeeTableRecords([$failedEmail, $untestedWebhook]);
+});
+
 test('super admin can create component-scoped email notification from component page', function () {
     $user = $this->actingAsSuperAdmin();
     $component = ProjectComponent::factory()->create(['created_by' => $user->id]);

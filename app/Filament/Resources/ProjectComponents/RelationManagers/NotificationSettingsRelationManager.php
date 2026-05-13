@@ -5,6 +5,7 @@ namespace App\Filament\Resources\ProjectComponents\RelationManagers;
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
+use App\Filament\Support\NotificationSettingFilters;
 use App\Models\NotificationSetting;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -128,6 +129,7 @@ class NotificationSettingsRelationManager extends RelationManager
                     ->placeholder('Never')
                     ->dateTime(),
             ])
+            ->filters(NotificationSettingFilters::all())
             ->headerActions([
                 \Filament\Actions\CreateAction::make()
                     ->label('Add Component Alert')

@@ -477,6 +477,63 @@ test('website notification relation manager shows destination and last delivery 
         ->assertSee('HTTP 200: delivered');
 });
 
+test('website notification relation manager filters delivery outcome channel type and inactive rules', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $failedEmail = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'last_delivery_succeeded' => false,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    $untestedWebhook = NotificationSetting::factory()->websiteScope()->webhook()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'last_delivery_attempted_at' => null,
+    ]);
+
+    $inactiveEmail = NotificationSetting::factory()->websiteScope()->email()->inactive()->create([
+        'user_id' => $user->id,
+        'website_id' => $website->id,
+        'last_delivery_succeeded' => true,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->filterTable('delivery_outcome', 'failed')
+        ->assertCanSeeTableRecords([$failedEmail])
+        ->assertCanNotSeeTableRecords([$untestedWebhook, $inactiveEmail]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->filterTable('delivery_outcome', 'untested')
+        ->assertCanSeeTableRecords([$untestedWebhook])
+        ->assertCanNotSeeTableRecords([$failedEmail, $inactiveEmail]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->filterTable('channel_type', NotificationChannelTypesEnum::MAIL->value)
+        ->assertCanSeeTableRecords([$failedEmail, $inactiveEmail])
+        ->assertCanNotSeeTableRecords([$untestedWebhook]);
+
+    Livewire::test(NotificationSettingsRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => EditWebsite::class,
+    ])
+        ->filterTable('rule_state', 'inactive')
+        ->assertCanSeeTableRecords([$inactiveEmail])
+        ->assertCanNotSeeTableRecords([$failedEmail, $untestedWebhook]);
+});
+
 test('website notification relation manager flags webhook rules with removed channels', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);

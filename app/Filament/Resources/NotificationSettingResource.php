@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\WebsiteServicesEnum;
 use App\Filament\Resources\NotificationSettingResource\Pages;
+use App\Filament\Support\NotificationSettingFilters;
 use App\Models\NotificationSetting;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -153,7 +154,7 @@ class NotificationSettingResource extends Resource
                     ->placeholder('Never')
                     ->dateTime(),
             ])
-            ->filters([])
+            ->filters(NotificationSettingFilters::all())
             ->actions([
                 \Filament\Actions\Action::make('sendTest')
                     ->label('Send Test')
