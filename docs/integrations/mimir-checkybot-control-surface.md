@@ -117,7 +117,7 @@ Example project detail response:
 
 `{check}` is the stable package-managed check key. Disabling never deletes the definition or result history.
 
-`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project components in one list. Component rows use `"type": "component"` and include delivery state, declared heartbeat interval, stale threshold/timestamps, current metrics, and the latest heartbeat as `latest_result`. Check rows also include `supports_run`; API and website rows can be triggered through diagnostic run endpoints, while component rows report package-sent heartbeat evidence and are not directly runnable from the control API.
+`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project components in one list. Component rows use `"type": "component"` and include delivery state, declared heartbeat interval, stale threshold/timestamps, current metrics, and the latest heartbeat as `latest_result`. Check rows also include `supports_run`, `diagnostic_queued`, `diagnostic_queued_at`, and `latest_diagnostic_result`; API and website rows can be triggered through diagnostic run endpoints, while component rows report package-sent heartbeat evidence and are not directly runnable from the control API.
 
 Example upsert request:
 
@@ -162,6 +162,9 @@ Example upsert response:
       "timeout_seconds": 15,
       "schedule": "every_5_minutes",
       "enabled": true,
+      "supports_run": true,
+      "diagnostic_queued": false,
+      "diagnostic_queued_at": null,
       "status": "unknown",
       "status_summary": null,
       "last_synced_at": "2026-04-21T11:59:00Z",
@@ -184,6 +187,7 @@ Example upsert response:
         }
       ],
       "latest_result": null,
+      "latest_diagnostic_result": null,
       "updated_at": "2026-04-21T11:59:00Z"
     }
   }

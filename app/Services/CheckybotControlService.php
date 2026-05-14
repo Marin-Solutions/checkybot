@@ -111,13 +111,13 @@ class CheckybotControlService
         $project = $this->findProject($user, $projectKey);
 
         $apiChecks = $project->packageManagedApis()
-            ->with(['assertions', 'latestResult'])
+            ->with(['assertions', 'latestResult', 'latestDiagnosticResult'])
             ->orderBy('package_name')
             ->get()
             ->map(fn (MonitorApis $check): array => $this->checkPayload($check));
 
         $websiteChecks = $project->packageManagedWebsites()
-            ->with('latestLogHistory')
+            ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
             ->orderBy('package_name')
             ->get()
             ->map(fn (Website $website): array => $this->websiteCheckPayload($website));
@@ -868,6 +868,9 @@ class CheckybotControlService
     private function checkPayload(MonitorApis $check): array
     {
         $latestResult = $check->relationLoaded('latestResult') ? $check->latestResult : $check->results()->latest()->first();
+        $latestDiagnosticResult = $check->relationLoaded('latestDiagnosticResult')
+            ? $check->latestDiagnosticResult
+            : $check->latestDiagnosticResult()->first();
 
         return [
             'id' => $check->id,
@@ -882,6 +885,8 @@ class CheckybotControlService
             'schedule' => $check->package_schedule,
             'enabled' => $check->is_enabled,
             'supports_run' => true,
+            'diagnostic_queued' => $check->hasQueuedDiagnostic(),
+            'diagnostic_queued_at' => $check->diagnostic_queued_at?->toISOString(),
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
             'last_synced_at' => $check->last_synced_at?->toISOString(),
@@ -892,6 +897,7 @@ class CheckybotControlService
             'has_request_body' => $check->hasRequestBody(),
             'assertions' => $this->assertionsPayload($check->assertions),
             'latest_result' => $latestResult instanceof MonitorApiResult ? $this->resultPayload($latestResult) : null,
+            'latest_diagnostic_result' => $latestDiagnosticResult instanceof MonitorApiResult ? $this->resultPayload($latestDiagnosticResult) : null,
             'updated_at' => $check->updated_at?->toISOString(),
         ];
     }
@@ -904,9 +910,16 @@ class CheckybotControlService
         $latestResult = $website->relationLoaded('latestLogHistory')
             ? $website->latestLogHistory
             : $website->latestLogHistory()->first();
+        $latestDiagnosticResult = $website->relationLoaded('latestDiagnosticLogHistory')
+            ? $website->latestDiagnosticLogHistory
+            : $website->latestDiagnosticLogHistory()->first();
 
         if ($latestResult instanceof WebsiteLogHistory) {
             $latestResult->setRelation('website', $website);
+        }
+
+        if ($latestDiagnosticResult instanceof WebsiteLogHistory) {
+            $latestDiagnosticResult->setRelation('website', $website);
         }
 
         return [
@@ -923,6 +936,8 @@ class CheckybotControlService
             'schedule' => $website->package_interval,
             'enabled' => (bool) $website->uptime_check || (bool) $website->ssl_check,
             'supports_run' => true,
+            'diagnostic_queued' => $website->hasQueuedDiagnostic(),
+            'diagnostic_queued_at' => $website->diagnostic_queued_at?->toISOString(),
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
             'last_synced_at' => $website->last_synced_at?->toISOString(),
@@ -933,6 +948,7 @@ class CheckybotControlService
             'has_request_body' => false,
             'assertions' => [],
             'latest_result' => $latestResult instanceof WebsiteLogHistory ? $this->websiteResultPayload($latestResult) : null,
+            'latest_diagnostic_result' => $latestDiagnosticResult instanceof WebsiteLogHistory ? $this->websiteResultPayload($latestDiagnosticResult) : null,
             'updated_at' => $website->updated_at?->toISOString(),
         ];
     }
