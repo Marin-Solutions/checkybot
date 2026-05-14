@@ -195,7 +195,9 @@ class PackageCheckTableEvidence
             return null;
         }
 
-        $anchorAt = $record->last_heartbeat_at ?? static::attributeValue($record, 'created_at');
+        $anchorAt = $record->last_heartbeat_at
+            ?? static::attributeValue($record, 'awaiting_heartbeat_since')
+            ?? static::attributeValue($record, 'created_at');
 
         if ($anchorAt === null) {
             return null;
@@ -344,19 +346,15 @@ class PackageCheckTableEvidence
                     ->where(fn (Builder $query): Builder => $query->whereRaw($overdueSql, $bindings)))
                 ->orWhere(fn (Builder $query): Builder => $query
                     ->whereNull('last_heartbeat_at')
-                    ->where(fn (Builder $query): Builder => $query->whereRaw(
-                        ...PackageIntervalDueExpression::build($query->getConnection(), '<', 'created_at')
-                    ))));
+                    ->where(fn (Builder $query): Builder => static::whereFirstHeartbeatInterval($query, '<'))));
     }
 
     private static function applyAwaitingHeartbeatFreshnessFilter(Builder $query): Builder
     {
-        [$freshSql, $bindings] = PackageIntervalDueExpression::build($query->getConnection(), '>=', 'created_at');
-
         return static::whereHasPackageInterval($query)
             ->whereNull('last_heartbeat_at')
             ->whereNull('stale_at')
-            ->where(fn (Builder $query): Builder => $query->whereRaw($freshSql, $bindings));
+            ->where(fn (Builder $query): Builder => static::whereFirstHeartbeatInterval($query, '>='));
     }
 
     private static function applyFreshFreshnessFilter(Builder $query): Builder
@@ -374,6 +372,22 @@ class PackageCheckTableEvidence
         return $query
             ->whereNotNull('package_interval')
             ->where('package_interval', '!=', '');
+    }
+
+    private static function whereFirstHeartbeatInterval(Builder $query, string $operator): Builder
+    {
+        [$resetSql, $resetBindings] = PackageIntervalDueExpression::build($query->getConnection(), $operator, 'awaiting_heartbeat_since');
+        [$createdSql, $createdBindings] = PackageIntervalDueExpression::build($query->getConnection(), $operator, 'created_at');
+
+        return $query
+            ->where(function (Builder $query) use ($resetSql, $resetBindings): void {
+                $query->whereNotNull('awaiting_heartbeat_since')
+                    ->whereRaw($resetSql, $resetBindings);
+            })
+            ->orWhere(function (Builder $query) use ($createdSql, $createdBindings): void {
+                $query->whereNull('awaiting_heartbeat_since')
+                    ->whereRaw($createdSql, $createdBindings);
+            });
     }
 
     private static function attributeValue(object $record, string $attribute, mixed $default = null): mixed

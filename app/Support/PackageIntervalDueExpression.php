@@ -13,7 +13,7 @@ class PackageIntervalDueExpression
     {
         $now = now()->toDateTimeString();
         $operator = in_array($operator, ['<', '<=', '>', '>='], true) ? $operator : '<=';
-        $anchorColumn = in_array($anchorColumn, ['last_heartbeat_at', 'created_at'], true)
+        $anchorColumn = in_array($anchorColumn, ['last_heartbeat_at', 'awaiting_heartbeat_since', 'created_at'], true)
             ? $anchorColumn
             : 'last_heartbeat_at';
 

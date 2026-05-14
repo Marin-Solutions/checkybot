@@ -380,6 +380,58 @@ test('command uses created at as the first-run stale threshold for never-run pac
     ]);
 });
 
+test('command uses awaiting heartbeat reset time before created at for reset package checks', function () {
+    $this->travelTo(Carbon::parse('2026-05-06 12:00:00'));
+
+    $recentlyResetWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-reset',
+        'package_interval' => '5m',
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+        'awaiting_heartbeat_since' => now()->subMinutes(2),
+        'created_at' => now()->subHour(),
+    ]);
+
+    $overdueResetWebsite = Website::factory()->create([
+        'source' => 'package',
+        'package_name' => 'homepage-reset-overdue',
+        'package_interval' => '5m',
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+        'awaiting_heartbeat_since' => now()->subMinutes(5)->subSecond(),
+        'created_at' => now()->subHour(),
+    ]);
+
+    $recentlyResetApi = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-reset',
+        'package_interval' => '5m',
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+        'awaiting_heartbeat_since' => now()->subMinutes(2),
+        'created_at' => now()->subHour(),
+    ]);
+
+    $overdueResetApi = MonitorApis::factory()->create([
+        'source' => 'package',
+        'package_name' => 'api-reset-overdue',
+        'package_interval' => '5m',
+        'current_status' => 'unknown',
+        'last_heartbeat_at' => null,
+        'awaiting_heartbeat_since' => now()->subMinutes(5)->subSecond(),
+        'created_at' => now()->subHour(),
+    ]);
+
+    $this->artisan('app:mark-stale-package-checks')
+        ->assertSuccessful();
+
+    expect($recentlyResetWebsite->fresh()->stale_at)->toBeNull()
+        ->and($recentlyResetApi->fresh()->stale_at)->toBeNull()
+        ->and($overdueResetWebsite->fresh()->stale_at)->not->toBeNull()
+        ->and($overdueResetApi->fresh()->stale_at)->not->toBeNull();
+});
+
 test('command processes overdue package websites beyond one chunk', function () {
     Website::factory()
         ->count(501)

@@ -91,6 +91,22 @@ test('freshness evidence marks never-run package checks stale after their first 
         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Overdue 2 minutes ago');
 });
 
+test('freshness evidence uses awaiting heartbeat reset time before created at', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    $record = (object) [
+        'package_interval' => '5m',
+        'last_heartbeat_at' => null,
+        'awaiting_heartbeat_since' => now()->subMinutes(2),
+        'created_at' => now()->subHour(),
+        'stale_at' => null,
+    ];
+
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Awaiting heartbeat')
+        ->and(PackageCheckTableEvidence::staleThresholdAt($record)?->toDateTimeString())->toBe('2026-04-24 12:03:00')
+        ->and(PackageCheckTableEvidence::dueState($record))->toBe('Awaiting first run');
+});
+
 test('freshness evidence treats disabled api monitors as disabled instead of stale', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 

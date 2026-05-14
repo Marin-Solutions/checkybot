@@ -92,7 +92,7 @@ class MarkStalePackageChecks extends Command
                     })
                     ->orWhere(function (Builder $query): void {
                         $query->whereNull('last_heartbeat_at');
-                        $this->wherePackageIntervalIsOverdue($query, 'created_at');
+                        $this->whereFirstHeartbeatIntervalIsOverdue($query);
                     });
             });
     }
@@ -113,7 +113,7 @@ class MarkStalePackageChecks extends Command
                     })
                     ->orWhere(function (Builder $query): void {
                         $query->whereNull('last_heartbeat_at');
-                        $this->wherePackageIntervalIsOverdue($query, 'created_at');
+                        $this->whereFirstHeartbeatIntervalIsOverdue($query);
                     });
             });
     }
@@ -123,5 +123,18 @@ class MarkStalePackageChecks extends Command
         [$intervalDueSql, $bindings] = PackageIntervalDueExpression::build($query->getConnection(), '<', $anchorColumn);
 
         $query->whereRaw($intervalDueSql, $bindings);
+    }
+
+    private function whereFirstHeartbeatIntervalIsOverdue(Builder $query): void
+    {
+        $query
+            ->where(function (Builder $query): void {
+                $query->whereNotNull('awaiting_heartbeat_since');
+                $this->wherePackageIntervalIsOverdue($query, 'awaiting_heartbeat_since');
+            })
+            ->orWhere(function (Builder $query): void {
+                $query->whereNull('awaiting_heartbeat_since');
+                $this->wherePackageIntervalIsOverdue($query, 'created_at');
+            });
     }
 }

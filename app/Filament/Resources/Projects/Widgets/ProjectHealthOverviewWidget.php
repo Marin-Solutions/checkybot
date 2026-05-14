@@ -125,12 +125,12 @@ class ProjectHealthOverviewWidget extends BaseWidget
                     ->where('uptime_check', true)
                     ->orWhere('ssl_check', true);
             })
-            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at', 'created_at']);
+            ->get(['current_status', 'last_heartbeat_at', 'awaiting_heartbeat_since', 'package_interval', 'stale_at', 'created_at']);
 
         $apis = MonitorApis::query()
             ->where('project_id', $project->getKey())
             ->where('is_enabled', true)
-            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at', 'created_at']);
+            ->get(['current_status', 'last_heartbeat_at', 'awaiting_heartbeat_since', 'package_interval', 'stale_at', 'created_at']);
 
         $componentBuckets = $components->reduce(function (array $carry, ProjectComponent $component): array {
             $carry[$this->classifyComponent($component)]++;
