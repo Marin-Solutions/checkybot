@@ -927,6 +927,55 @@ test('requires project ownership', function () {
     $response->assertStatus(403);
 });
 
+test('rejects empty sync payload without disabling package checks', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'created_by' => $this->user->id,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'homepage',
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['checks']);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+    ]);
+});
+
 test('validates interval format', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [

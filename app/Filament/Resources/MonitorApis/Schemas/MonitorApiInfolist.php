@@ -22,12 +22,12 @@ class MonitorApiInfolist
                 Section::make('Overview')
                     ->schema([
                         TextEntry::make('current_status')
-                            ->label('Latest Status')
+                            ->label('Live Scheduled Status')
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
                             ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
                         TextEntry::make('status_summary')
-                            ->label('Latest Summary')
+                            ->label('Live Scheduled Summary')
                             ->default('No runs recorded yet.')
                             ->columnSpanFull(),
                         TextEntry::make('latest_result_timestamp')
@@ -75,7 +75,8 @@ class MonitorApiInfolist
                             ->default('Next scheduler pass')
                             ->hint(fn (MonitorApis $record): string => PackageCheckTableEvidence::dueDescription($record)),
                     ])
-                    ->columns(3),
+                    ->columns(3)
+                    ->columnSpanFull(),
                 Section::make('Request Configuration')
                     ->schema([
                         TextEntry::make('title'),
@@ -112,9 +113,10 @@ class MonitorApiInfolist
                             ->badge()
                             ->color('gray'),
                     ])
-                    ->columns(3),
+                    ->columns(3)
+                    ->columnSpanFull(),
                 Section::make('Latest Scheduled Run Evidence')
-                    ->description('This scheduler-owned evidence is the signal used for live status, dashboards, and alerts.')
+                    ->description('This scheduled evidence is what controls the live status, dashboards, and alerts.')
                     ->hidden(fn (MonitorApis $record): bool => $record->latestScheduledResult === null)
                     ->schema([
                         TextEntry::make('latest_scheduled_status')
@@ -196,9 +198,10 @@ class MonitorApiInfolist
                             ->formatStateUsing(fn (string $state) => ApiMonitorEvidenceFormatter::formatAsPreHtml($state))
                             ->columnSpanFull(),
                     ])
-                    ->columns(2),
-                Section::make('Latest Diagnostic Run')
-                    ->description('Manual run evidence is appended for triage but does not drive live status, dashboards, or alerts.')
+                    ->columns(2)
+                    ->columnSpanFull(),
+                Section::make('Latest Diagnostic Run (Manual Only)')
+                    ->description('Manual diagnostics are only for troubleshooting. They do not change the live scheduled status above.')
                     ->hidden(fn (MonitorApis $record): bool => $record->latestDiagnosticResult === null && ! $record->hasQueuedDiagnostic())
                     ->schema([
                         TextEntry::make('diagnostic_queue_status')
@@ -224,6 +227,10 @@ class MonitorApiInfolist
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
                             ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                        TextEntry::make('latest_diagnostic_live_status_note')
+                            ->label('Live Status Impact')
+                            ->state(fn (MonitorApis $record): string => self::diagnosticLiveStatusNote($record))
+                            ->columnSpanFull(),
                         TextEntry::make('latest_diagnostic_http_code')
                             ->label('HTTP Code')
                             ->state(fn (MonitorApis $record): ?int => $record->latestDiagnosticResult?->http_code)
@@ -302,7 +309,24 @@ class MonitorApiInfolist
                             ->formatStateUsing(fn (string $state) => ApiMonitorEvidenceFormatter::formatAsPreHtml($state))
                             ->columnSpanFull(),
                     ])
-                    ->columns(2),
+                    ->columns(2)
+                    ->columnSpanFull(),
             ]);
+    }
+
+    private static function diagnosticLiveStatusNote(MonitorApis $record): string
+    {
+        $diagnosticStatus = $record->latestDiagnosticResult?->status;
+        $liveStatus = $record->current_status;
+
+        if (filled($diagnosticStatus) && filled($liveStatus) && $diagnosticStatus !== $liveStatus) {
+            return sprintf(
+                'Diagnostic is %s, but live scheduled status is still %s until the next scheduled run updates it.',
+                ucfirst($diagnosticStatus),
+                ucfirst($liveStatus),
+            );
+        }
+
+        return 'This diagnostic result is saved as triage evidence only. Scheduled runs still control live status.';
     }
 }

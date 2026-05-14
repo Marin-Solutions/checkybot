@@ -111,6 +111,15 @@ class SyncProjectChecksRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            if (! $this->hasAnySyncChecks()) {
+                $validator->errors()->add(
+                    'checks',
+                    'At least one uptime, SSL, or API check is required for project check sync.'
+                );
+
+                return;
+            }
+
             $apiChecks = $this->input('api_checks', []);
 
             if (! is_array($apiChecks)) {
@@ -190,5 +199,18 @@ class SyncProjectChecksRequest extends FormRequest
     private function isRelativeCheckUrl(string $url): bool
     {
         return preg_match('/^https?:\/\//i', $url) !== 1;
+    }
+
+    private function hasAnySyncChecks(): bool
+    {
+        foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
+            $checks = $this->input($checkGroup, []);
+
+            if (is_array($checks) && count($checks) > 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
