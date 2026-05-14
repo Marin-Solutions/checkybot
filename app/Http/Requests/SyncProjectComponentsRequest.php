@@ -5,6 +5,9 @@ namespace App\Http\Requests;
 use App\Services\IntervalParser;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\Validator;
+use Throwable;
 
 class SyncProjectComponentsRequest extends FormRequest
 {
@@ -53,6 +56,14 @@ class SyncProjectComponentsRequest extends FormRequest
         ];
     }
 
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $this->addDuplicateDeclarationErrors($validator);
+            $this->addDuplicateHeartbeatErrors($validator);
+        });
+    }
+
     private function intervalRule(): Closure
     {
         return function (string $attribute, mixed $value, Closure $fail): void {
@@ -60,5 +71,76 @@ class SyncProjectComponentsRequest extends FormRequest
                 $fail(self::INTERVAL_MESSAGE);
             }
         };
+    }
+
+    private function addDuplicateDeclarationErrors(Validator $validator): void
+    {
+        $declarations = $this->input('declared_components', []);
+
+        if (! is_array($declarations)) {
+            return;
+        }
+
+        $seenNames = [];
+
+        foreach ($declarations as $index => $declaration) {
+            $name = is_array($declaration) ? ($declaration['name'] ?? null) : null;
+
+            if (! is_string($name)) {
+                continue;
+            }
+
+            if (isset($seenNames[$name])) {
+                $validator->errors()->add(
+                    "declared_components.{$index}.name",
+                    'Each declared component name must be unique.'
+                );
+
+                continue;
+            }
+
+            $seenNames[$name] = true;
+        }
+    }
+
+    private function addDuplicateHeartbeatErrors(Validator $validator): void
+    {
+        $heartbeats = $this->input('components', []);
+
+        if (! is_array($heartbeats)) {
+            return;
+        }
+
+        $seenHeartbeats = [];
+
+        foreach ($heartbeats as $index => $heartbeat) {
+            if (! is_array($heartbeat)) {
+                continue;
+            }
+
+            $name = $heartbeat['name'] ?? null;
+            $observedAt = $heartbeat['observed_at'] ?? null;
+
+            if (! is_string($name) || ! is_string($observedAt)) {
+                continue;
+            }
+
+            try {
+                $identity = $name.'|'.Carbon::parse($observedAt)->toISOString();
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (isset($seenHeartbeats[$identity])) {
+                $validator->errors()->add(
+                    "components.{$index}.observed_at",
+                    'Each component heartbeat observation must be unique by component name and observed_at.'
+                );
+
+                continue;
+            }
+
+            $seenHeartbeats[$identity] = true;
+        }
     }
 }
