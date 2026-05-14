@@ -22,5 +22,6 @@ Schedule::command('seo:run-scheduled')->everyMinute()->withoutOverlapping();
 Schedule::command('app:mark-stale-package-checks')->everyMinute()->withoutOverlapping();
 Schedule::command('backups:mark-stale')->everyMinute()->withoutOverlapping();
 Schedule::command('project-components:check-stale')->everyMinute()->withoutOverlapping();
+Schedule::command('proxy-pool:sync-dashboard')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('app:process-expired-snoozes')->everyMinute()->withoutOverlapping();
 Schedule::command('app:purge-server-logs')->hourly()->withoutOverlapping();
