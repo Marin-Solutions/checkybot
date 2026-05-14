@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
  * rows are hydrated from the selected subquery projection below.
  *
  * @property string $id synthetic composite id, e.g. "website_log-42"
+ * @property int $source_row_id foreign key of the exact evidence row in its own source table
  * @property string $source one of: website | api | component
  * @property string $status one of: healthy | unknown | warning | danger
  * @property string $state one of: active | resolved
@@ -35,6 +36,7 @@ class Incident extends Model
 
     protected $casts = [
         'occurred_at' => 'datetime',
+        'source_row_id' => 'integer',
         'subject_id' => 'integer',
     ];
 }
