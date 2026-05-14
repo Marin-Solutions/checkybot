@@ -1538,6 +1538,70 @@ test('control api returns latest result for each listed check', function () {
         ->assertJsonPath('data.1.latest_result.status', 'healthy');
 });
 
+test('control api lists queued diagnostic state and latest diagnostic evidence for runnable checks', function () {
+    $this->travelTo(now()->setTime(14, 15, 0));
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    MonitorApiResult::factory()->onDemand()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Diagnostic API run failed.',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Scheduled API run is healthy.',
+        'created_at' => now()->subSeconds(30),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'name' => 'Homepage',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'diagnostic_queued_at' => now()->subMinutes(5),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Scheduled website run is healthy.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    WebsiteLogHistory::factory()->onDemand()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Diagnostic website run timed out.',
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/checks')
+        ->assertOk()
+        ->assertJsonPath('data.0.key', 'api-health')
+        ->assertJsonPath('data.0.diagnostic_queued', true)
+        ->assertJsonPath('data.0.diagnostic_queued_at', now()->toISOString())
+        ->assertJsonPath('data.0.latest_result.summary', 'Scheduled API run is healthy.')
+        ->assertJsonPath('data.0.latest_diagnostic_result.summary', 'Diagnostic API run failed.')
+        ->assertJsonPath('data.0.latest_diagnostic_result.run_source', RunSource::OnDemand->value)
+        ->assertJsonPath('data.1.key', 'homepage')
+        ->assertJsonPath('data.1.diagnostic_queued', false)
+        ->assertJsonPath('data.1.diagnostic_queued_at', now()->subMinutes(5)->toISOString())
+        ->assertJsonPath('data.1.latest_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.1.latest_diagnostic_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.1.latest_diagnostic_result.transport_error_type', 'timeout');
+});
+
 test('control api lists component checks with delivery state and latest heartbeat evidence', function () {
     $this->travelTo(now()->setTime(9, 30, 0));
 
