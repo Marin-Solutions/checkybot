@@ -226,7 +226,7 @@ test('super admin can update api monitor execution settings', function () {
         'timeout_seconds' => null,
         'is_enabled' => true,
         'current_status' => 'danger',
-        'status_summary' => 'API heartbeat failed.',
+        'status_summary' => 'API check failed.',
         'last_heartbeat_at' => now()->subMinutes(10),
         'stale_at' => now()->subMinute(),
         'save_failed_response' => true,
@@ -819,7 +819,7 @@ test('super admin can toggle is_enabled inline from the api monitors table', fun
         'created_by' => $user->id,
         'is_enabled' => true,
         'current_status' => 'danger',
-        'status_summary' => 'API heartbeat failed.',
+        'status_summary' => 'API check failed.',
         'last_heartbeat_at' => now()->subMinutes(10),
         'stale_at' => now()->subMinute(),
     ]);
@@ -1283,14 +1283,14 @@ test('api monitor view shows evidence rich latest run overview', function () {
             'X-Env' => 'staging',
         ],
         'current_status' => 'danger',
-        'status_summary' => 'API heartbeat failed with HTTP status 500.',
+        'status_summary' => 'API check failed with HTTP status 500.',
         'save_failed_response' => true,
     ]);
 
     MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'danger',
-        'summary' => 'API heartbeat failed with HTTP status 500.',
+        'summary' => 'API check failed with HTTP status 500.',
         'http_code' => 500,
         'response_time_ms' => 1450,
         'failed_assertions' => [[
@@ -1315,7 +1315,7 @@ test('api monitor view shows evidence rich latest run overview', function () {
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSee('Overview')
         ->assertSee('Latest Scheduled Run Evidence')
-        ->assertSee('API heartbeat failed with HTTP status 500.')
+        ->assertSee('API check failed with HTTP status 500.')
         ->assertSee('Expected HTTP status 200, got 500.')
         ->assertSee('[redacted]')
         ->assertSee('x-request-id')
@@ -1358,7 +1358,7 @@ test('api monitor view separates scheduled latest evidence from newer diagnostic
     MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'healthy',
-        'summary' => 'Scheduled API heartbeat succeeded.',
+        'summary' => 'Scheduled API check succeeded.',
         'http_code' => 200,
         'response_time_ms' => 120,
         'created_at' => now()->subMinutes(30),
@@ -1367,7 +1367,7 @@ test('api monitor view separates scheduled latest evidence from newer diagnostic
     MonitorApiResult::factory()->onDemand()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'danger',
-        'summary' => 'Diagnostic API heartbeat failed.',
+        'summary' => 'Diagnostic API check failed.',
         'http_code' => 500,
         'response_time_ms' => 980,
         'created_at' => now()->subMinutes(2),
@@ -1376,12 +1376,12 @@ test('api monitor view separates scheduled latest evidence from newer diagnostic
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
         ->assertSee('Latest Scheduled Run Evidence')
-        ->assertSee('Scheduled API heartbeat succeeded.')
+        ->assertSee('Scheduled API check succeeded.')
         ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic API heartbeat failed.');
+        ->assertSee('Diagnostic API check failed.');
 
-    expect($monitor->refresh()->latestScheduledResult->summary)->toBe('Scheduled API heartbeat succeeded.')
-        ->and($monitor->latestDiagnosticResult->summary)->toBe('Diagnostic API heartbeat failed.');
+    expect($monitor->refresh()->latestScheduledResult->summary)->toBe('Scheduled API check succeeded.')
+        ->and($monitor->latestDiagnosticResult->summary)->toBe('Diagnostic API check failed.');
 });
 
 test('api monitor view exposes latest scheduled failed assertion expected and actual values', function () {
@@ -1399,7 +1399,7 @@ test('api monitor view exposes latest scheduled failed assertion expected and ac
     MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'danger',
-        'summary' => 'Scheduled API heartbeat failed with assertion evidence.',
+        'summary' => 'Scheduled API check failed with assertion evidence.',
         'http_code' => 200,
         'response_time_ms' => 860,
         'failed_assertions' => [[
@@ -1414,7 +1414,7 @@ test('api monitor view exposes latest scheduled failed assertion expected and ac
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
         ->assertSee('Latest Scheduled Run Evidence')
-        ->assertSee('Scheduled API heartbeat failed with assertion evidence.')
+        ->assertSee('Scheduled API check failed with assertion evidence.')
         ->assertSee('Failed Assertions')
         ->assertSee('Value comparison failed: expected = active')
         ->assertSee('Expected')
@@ -1438,7 +1438,7 @@ test('api monitor view exposes latest diagnostic evidence blocks', function () {
     MonitorApiResult::factory()->onDemand()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'danger',
-        'summary' => 'Diagnostic API heartbeat failed with assertion evidence.',
+        'summary' => 'Diagnostic API check failed with assertion evidence.',
         'http_code' => 200,
         'response_time_ms' => 860,
         'failed_assertions' => [[
@@ -1465,7 +1465,7 @@ test('api monitor view exposes latest diagnostic evidence blocks', function () {
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
         ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic API heartbeat failed with assertion evidence.')
+        ->assertSee('Diagnostic API check failed with assertion evidence.')
         ->assertSee('Failed Assertions')
         ->assertSee('Value comparison failed: expected = active')
         ->assertSee('Expected')
@@ -1490,7 +1490,7 @@ test('super admin can bulk disable api monitors', function () {
         'created_by' => $user->id,
         'is_enabled' => true,
         'current_status' => 'warning',
-        'status_summary' => 'API heartbeat returned warning.',
+        'status_summary' => 'API check returned warning.',
         'last_heartbeat_at' => now()->subMinutes(10),
         'stale_at' => now()->subMinute(),
     ]);
@@ -1663,7 +1663,7 @@ test('api monitor results list exposes drill down action with evidence summary',
     $result = MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'warning',
-        'summary' => 'API heartbeat is degraded with HTTP status 404.',
+        'summary' => 'API check is degraded with HTTP status 404.',
         'http_code' => 404,
         'failed_assertions' => [[
             'path' => 'data.status',
@@ -1686,7 +1686,7 @@ test('api monitor results list exposes drill down action with evidence summary',
         'pageClass' => ViewMonitorApis::class,
     ])
         ->assertTableActionExists('view', null, $result)
-        ->assertSee('API heartbeat is degraded with HTTP status 404.')
+        ->assertSee('API check is degraded with HTTP status 404.')
         ->assertSee('View Evidence')
         ->assertSee('1');
 });
@@ -1703,7 +1703,7 @@ test('api monitor evidence infolist mounts cleanly for failed assertions with ac
     $result = MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'danger',
-        'summary' => 'API heartbeat failed with HTTP status 200.',
+        'summary' => 'API check failed with HTTP status 200.',
         'http_code' => 200,
         'failed_assertions' => [[
             'path' => 'data.status',

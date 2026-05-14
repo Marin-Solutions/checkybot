@@ -73,12 +73,12 @@ test('control api lists projects and package managed checks with compact status'
         'request_body_type' => 'raw',
         'request_body' => '   ',
         'current_status' => 'danger',
-        'status_summary' => 'API heartbeat failed with HTTP status 500.',
+        'status_summary' => 'API check failed with HTTP status 500.',
     ]);
 
     MonitorApiResult::factory()->failed()->create([
         'monitor_api_id' => $monitor->id,
-        'summary' => 'API heartbeat failed with HTTP status 500.',
+        'summary' => 'API check failed with HTTP status 500.',
     ]);
 
     $this->withToken($this->apiKey->key)
@@ -1099,7 +1099,7 @@ test('control api returns project detail and recent runs', function () {
     MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
         'status' => 'warning',
-        'summary' => 'API heartbeat is degraded with HTTP status 404.',
+        'summary' => 'API check is degraded with HTTP status 404.',
     ]);
 
     $this->withToken($this->apiKey->key)
@@ -1187,7 +1187,7 @@ test('control api result payloads include safe api failure evidence', function (
     MonitorApiResult::factory()->failed()->create([
         'monitor_api_id' => $monitor->id,
         'http_code' => 0,
-        'summary' => 'API heartbeat failed because DNS lookup failed.',
+        'summary' => 'API check failed because DNS lookup failed.',
         'transport_error_type' => 'dns',
         'transport_error_message' => 'Could not resolve https://user:transport-secret@api.scrappa.test/private/request-secret?debug=transport-query-secret, with Bearer transport-bearer-secret',
         'transport_error_code' => 6,
@@ -1269,7 +1269,7 @@ test('control api redacts top-level raw response body strings', function () {
 
     MonitorApiResult::factory()->failed()->create([
         'monitor_api_id' => $monitor->id,
-        'summary' => 'API heartbeat failed with a raw upstream body.',
+        'summary' => 'API check failed with a raw upstream body.',
         'response_body' => 'Token expired. Your token was: top-level-body-secret',
     ]);
 
@@ -1295,7 +1295,7 @@ test('control api result evidence preserves null bodies and truncates long strin
 
     MonitorApiResult::factory()->failed()->create([
         'monitor_api_id' => $monitor->id,
-        'summary' => 'API heartbeat failed with a very large debug payload.',
+        'summary' => 'API check failed with a very large debug payload.',
         'transport_error_message' => $longValue,
         'request_headers' => [
             'x-debug-trace' => $longValue,

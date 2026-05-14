@@ -324,10 +324,10 @@ test('command records transport evidence when api check fails before http respon
     $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
 
     expect($monitor->current_status)->toBe('danger')
-        ->and($monitor->status_summary)->toBe('API heartbeat failed before an HTTP response: DNS lookup failed.')
+        ->and($monitor->status_summary)->toBe('API check failed before an HTTP response: DNS lookup failed.')
         ->and($result?->http_code)->toBe(0)
         ->and($result?->status)->toBe('danger')
-        ->and($result?->summary)->toBe('API heartbeat failed before an HTTP response: DNS lookup failed.')
+        ->and($result?->summary)->toBe('API check failed before an HTTP response: DNS lookup failed.')
         ->and($result?->transport_error_type)->toBe('dns')
         ->and($result?->transport_error_message)->toContain('Could not resolve host')
         ->and($result?->transport_error_code)->toBe(6);
@@ -351,10 +351,10 @@ test('command treats matching expected 404 status as healthy', function () {
     $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
 
     expect($monitor->current_status)->toBe('healthy')
-        ->and($monitor->status_summary)->toBe('API heartbeat succeeded with HTTP status 404.')
+        ->and($monitor->status_summary)->toBe('API check succeeded with HTTP status 404.')
         ->and($result?->is_success)->toBeTrue()
         ->and($result?->status)->toBe('healthy')
-        ->and($result?->summary)->toBe('API heartbeat succeeded with HTTP status 404.');
+        ->and($result?->summary)->toBe('API check succeeded with HTTP status 404.');
 });
 
 test('command treats matching expected 404 with failed assertions as warning', function () {
@@ -542,7 +542,7 @@ test('command sends recovery notifications when a package-managed api monitor re
         return $mail->event === 'recovered'
             && $mail->eventLabel === 'recovered'
             && $mail->status === 'healthy'
-            && $mail->summary === 'API heartbeat succeeded with HTTP status 200.';
+            && $mail->summary === 'API check succeeded with HTTP status 200.';
     });
 });
 
@@ -666,7 +666,7 @@ test('command sends recovery notifications when a manual api monitor returns to 
         return $mail->event === 'recovered'
             && $mail->eventLabel === 'recovered'
             && $mail->status === 'healthy'
-            && $mail->summary === 'API heartbeat succeeded with HTTP status 200.';
+            && $mail->summary === 'API check succeeded with HTTP status 200.';
     });
 });
 

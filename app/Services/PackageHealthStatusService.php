@@ -144,17 +144,17 @@ class PackageHealthStatusService
 
         if ($status === 'danger') {
             if ($code === 0 && filled($result['transport_error_type'] ?? null)) {
-                return UptimeTransportError::summary($result['transport_error_type'], 'API heartbeat');
+                return UptimeTransportError::summary($result['transport_error_type'], 'API check');
             }
 
-            return "API heartbeat failed with HTTP status {$code}.";
+            return "API check failed with HTTP status {$code}.";
         }
 
         if ($status === 'warning') {
-            return "API heartbeat is degraded with HTTP status {$code}.";
+            return "API check is degraded with HTTP status {$code}.";
         }
 
-        return "API heartbeat succeeded with HTTP status {$code}.";
+        return "API check succeeded with HTTP status {$code}.";
     }
 
     public function staleSummary(string $interval): string
@@ -166,6 +166,17 @@ class PackageHealthStatusService
         }
 
         return "No heartbeat received within the expected {$displayInterval} interval.";
+    }
+
+    public function staleSummaryForApi(string $interval): string
+    {
+        try {
+            $displayInterval = IntervalParser::normalize($interval);
+        } catch (\InvalidArgumentException) {
+            $displayInterval = $interval;
+        }
+
+        return "No scheduled API check completed within the expected {$displayInterval} interval.";
     }
 
     public function isStale(?CarbonInterface $lastHeartbeatAt, ?string $interval): bool

@@ -143,7 +143,7 @@ test('record result stores header snapshots for run evidence', function () {
         'response_headers' => ['content-type' => 'application/json'],
     ];
 
-    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'danger', 'API check failed with HTTP status 500.');
 
     expect($result->request_headers)->toBe(['Authorization' => '[redacted]'])
         ->and($result->response_headers)->toBe(['content-type' => 'application/json']);
@@ -184,7 +184,7 @@ test('record result redacts raw failure payloads when json parsing fails', funct
         'error' => 'Invalid JSON response: Syntax error',
     ];
 
-    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API check failed with HTTP status 500.');
 
     expect($result->response_body)->toBe([
         MonitorApiResult::RAW_BODY_KEY => '[redacted]',
@@ -468,7 +468,7 @@ test('record result treats healthy expected 404 status as success when status is
         'assertions' => [],
     ];
 
-    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'healthy', 'API heartbeat succeeded with HTTP status 404.');
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'healthy', 'API check succeeded with HTTP status 404.');
 
     expect($result->is_success)->toBeTrue()
         ->and($result->status)->toBe('healthy')

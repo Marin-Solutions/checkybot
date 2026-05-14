@@ -23,7 +23,7 @@ class ViewMonitorApis extends ViewRecord
                 ->requiresConfirmation()
                 ->modalIcon('heroicon-o-bolt')
                 ->modalHeading('Run API monitor now')
-                ->modalDescription('Checkybot will queue a real heartbeat against this endpoint and append the result to its diagnostic history when it completes. The monitor\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
+                ->modalDescription('Checkybot will queue a real request against this endpoint and append the result to its diagnostic history when it completes. The monitor\'s live status is reserved for scheduled checks, so this manual run will not move the dashboard or alert subscribers. Use this when you are triaging an incident and cannot wait for the next scheduled run.')
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                 ->visible(fn (): bool => (bool) $this->record->is_enabled)

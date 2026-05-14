@@ -54,7 +54,7 @@ class MonitorApiInfolist
                             ->state(fn (MonitorApis $record): ?string => $record->latestScheduledResult?->response_time_ms !== null ? "{$record->latestScheduledResult->response_time_ms}ms" : null)
                             ->default('-'),
                         TextEntry::make('last_heartbeat_at')
-                            ->label('Last Heartbeat')
+                            ->label('Last Scheduled Check')
                             ->state(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
                             ->default('-')
                             ->hint(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->diffForHumans()),

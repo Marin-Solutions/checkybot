@@ -376,7 +376,7 @@ test('command uses created at as the first-run stale threshold for never-run pac
     assertDatabaseHas('monitor_api_results', [
         'monitor_api_id' => $overdueApi->id,
         'status' => 'danger',
-        'summary' => 'No heartbeat received within the expected 5m interval.',
+        'summary' => 'No scheduled API check completed within the expected 5m interval.',
     ]);
 });
 

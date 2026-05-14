@@ -1253,7 +1253,7 @@ test('application record shows package-managed external checks including archive
         'package_name' => 'health',
         'package_interval' => '5m',
         'last_heartbeat_at' => now()->subMinutes(1),
-        'status_summary' => 'API heartbeat succeeded with HTTP status 200.',
+        'status_summary' => 'API check succeeded with HTTP status 200.',
         'created_by' => $user->id,
     ]);
 
@@ -1316,9 +1316,9 @@ test('application record shows package-managed external checks including archive
         ->assertTableColumnStateSet('deleted_at', 'Disabled', $disabledApiMonitor)
         ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $disabledApiMonitor)
         ->assertSee('Summary')
-        ->assertSee('Last Heartbeat')
+        ->assertSee('Last Scheduled Check')
         ->assertSee('Freshness')
-        ->assertSee('API heartbeat succeeded with HTTP status 200.')
+        ->assertSee('API check succeeded with HTTP status 200.')
         ->assertSee('Awaiting first package heartbeat.')
         ->assertSee('Fresh')
         ->assertSee('This check is disabled. Scheduled runs are paused.')
@@ -2484,7 +2484,7 @@ test('super admin can bulk pause monitoring across selected applications', funct
         'current_status' => 'danger',
         'last_heartbeat_at' => now()->subMinutes(15),
         'stale_at' => now()->subMinutes(5),
-        'status_summary' => 'API heartbeat failed with HTTP status 500.',
+        'status_summary' => 'API check failed with HTTP status 500.',
         'diagnostic_queued_at' => now()->subMinute(),
     ]);
 

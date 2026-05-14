@@ -49,7 +49,7 @@ class MarkStalePackageChecks extends Command
         $this->overduePackageApisQuery()
             ->chunkById(self::CHUNK_SIZE, function ($monitorApis) use ($notificationService, $statusService): void {
                 $monitorApis->each(function (MonitorApis $monitorApi) use ($notificationService, $statusService): void {
-                    $summary = $statusService->staleSummary($monitorApi->package_interval);
+                    $summary = $statusService->staleSummaryForApi($monitorApi->package_interval);
 
                     $monitorApi->forceFill([
                         'current_status' => 'danger',

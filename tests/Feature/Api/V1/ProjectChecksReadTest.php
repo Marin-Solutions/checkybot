@@ -625,7 +625,7 @@ test('project check read endpoints expose redacted api transport and header evid
         'monitor_api_id' => $api->id,
         'http_code' => 0,
         'status' => 'danger',
-        'summary' => 'API heartbeat failed because DNS lookup failed.',
+        'summary' => 'API check failed because DNS lookup failed.',
         'transport_error_type' => 'dns',
         'transport_error_message' => 'Could not resolve https://user:transport-secret@api.scrappa.test/private/request-secret?debug=transport-query-secret, with Bearer transport-bearer-secret',
         'transport_error_code' => 6,
