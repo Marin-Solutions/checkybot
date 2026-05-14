@@ -6,6 +6,8 @@ test('swagger documentation can be generated', function () {
 
     $documentation = json_decode(file_get_contents(storage_path('api-docs/api-docs.json')), true, flags: JSON_THROW_ON_ERROR);
     $requestSchema = fn (string $path, string $method = 'post'): array => $documentation['paths'][$path][$method]['requestBody']['content']['application/json']['schema'];
+    $controlRunOperation = $documentation['paths']['/v1/control/projects/{project}/checks/{check}/runs']['post'];
+    $controlRunTypeParameter = collect($controlRunOperation['parameters'])->firstWhere('name', 'type');
 
     expect(storage_path('api-docs/api-docs.json'))->toBeFile()
         ->and(array_keys($documentation['paths']))->toContain(
@@ -27,7 +29,11 @@ test('swagger documentation can be generated', function () {
         ->and($documentation['paths']['/v1/package/sync']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
         ->and($documentation['paths']['/v1/projects/{project}/checks/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
         ->and($documentation['paths']['/v1/projects/{project}/components/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
-        ->and($documentation['paths']['/v1/control/projects/{project}/checks/{check}/runs']['post']['responses'])->toHaveKeys(['200', '401', '404', '409'])
+        ->and($controlRunOperation['summary'])->toContain('API or website check')
+        ->and($controlRunOperation['description'])->toContain('type=api or type=website')
+        ->and($controlRunOperation['responses'])->toHaveKeys(['200', '202', '401', '404', '409', '422'])
+        ->and($controlRunTypeParameter['in'])->toBe('query')
+        ->and($controlRunTypeParameter['schema']['enum'])->toBe(['api', 'website'])
         ->and($documentation['paths']['/v1/control/projects/{project}/runs/{batch}']['get']['responses'])->toHaveKeys(['200', '401', '404'])
         ->and($documentation['paths']['/v1/control/runs']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
         ->and($documentation['paths']['/v1/control/failures']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
