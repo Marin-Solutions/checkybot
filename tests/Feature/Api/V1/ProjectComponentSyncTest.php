@@ -836,6 +836,65 @@ test('component sync requires declarations when full manifest is true', function
     ]);
 });
 
+test('component sync rejects duplicate declared component names before persisting', function () {
+    $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                ],
+                [
+                    'name' => ' Queue ',
+                    'interval' => '10m',
+                ],
+            ],
+            'components' => [],
+        ]
+    )->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'declared_components.1.name',
+        ]);
+
+    expect(ProjectComponent::query()->where('project_id', $this->project->id)->exists())->toBeFalse();
+});
+
+test('component sync rejects duplicate heartbeat observations before persisting history', function () {
+    $this->withToken($this->apiKey->key)->postJson(
+        "/api/v1/projects/{$this->project->id}/components/sync",
+        [
+            'declared_components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                ],
+            ],
+            'components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Queue workers are running',
+                    'observed_at' => '2026-03-21T12:00:00Z',
+                ],
+                [
+                    'name' => 'Queue',
+                    'interval' => '5m',
+                    'status' => 'healthy',
+                    'summary' => 'Duplicate retry of the same observation',
+                    'observed_at' => '2026-03-21 12:00:00',
+                ],
+            ],
+        ]
+    )->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'components.1.observed_at',
+        ]);
+
+    expect(ProjectComponent::query()->where('project_id', $this->project->id)->exists())->toBeFalse();
+});
+
 test('component sync persists heartbeat state when webhook notification fails', function () {
     Log::spy();
 
