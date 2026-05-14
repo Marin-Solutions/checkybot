@@ -9,11 +9,14 @@ use App\Models\Incident;
 use App\Models\MonitorApiResult;
 use App\Models\ProjectComponentHeartbeat;
 use App\Models\WebsiteLogHistory;
+use Filament\Actions\Action;
+use Filament\Schemas\Components\View as SchemaView;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -128,6 +131,24 @@ class IncidentFeedWidget extends BaseWidget
                         return $query->where('source', $data['value']);
                     })
                     ->placeholder('All sources'),
+            ])
+            ->recordActions([
+                Action::make('viewEvidence')
+                    ->label('View Evidence')
+                    ->icon('heroicon-o-document-magnifying-glass')
+                    ->modalHeading(fn (Incident $record): string => "{$this->formatSourceLabel($record->source)} evidence")
+                    ->modalDescription(fn (Incident $record): string => "Exact supporting run for {$record->subject}.")
+                    ->modalWidth('5xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->schema([
+                        SchemaView::make('filament.widgets.incident-feed-evidence-modal')
+                            ->viewData(fn (Incident $record): array => [
+                                'incident' => $record,
+                                'evidence' => $this->resolveEvidenceRecord($record),
+                                'targetUrl' => $this->resolveTargetUrl($record),
+                            ]),
+                    ]),
             ])
             ->defaultSort('occurred_at', 'desc')
             ->paginated([10, 25, 50])
@@ -254,6 +275,7 @@ class IncidentFeedWidget extends BaseWidget
         $rankedRuns = DB::query()
             ->fromSub($runs, 'runs')
             ->selectRaw('id')
+            ->selectRaw('source_row_id')
             ->selectRaw('source')
             ->selectRaw('normalized_status as status')
             ->selectRaw('subject')
@@ -344,6 +366,54 @@ class IncidentFeedWidget extends BaseWidget
             'api' => MonitorApisResource::getUrl('view', ['record' => $record->subject_id]),
             'component' => ProjectComponentResource::getUrl('view', ['record' => $record->subject_id]),
             default => null,
+        };
+    }
+
+    protected function resolveEvidenceRecord(Incident $record): ?Model
+    {
+        $sourceRowId = (int) $record->source_row_id;
+        $projectId = $this->getScopedProjectId();
+        $userId = (int) Auth::id();
+
+        return match ($record->source) {
+            'website' => WebsiteLogHistory::query()
+                ->with('website')
+                ->whereKey($sourceRowId)
+                ->whereHas('website', function (Builder $query) use ($projectId, $userId): void {
+                    $query
+                        ->where('created_by', $userId)
+                        ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId));
+                })
+                ->first(),
+            'api' => MonitorApiResult::query()
+                ->with('monitorApi')
+                ->whereKey($sourceRowId)
+                ->whereHas('monitorApi', function (Builder $query) use ($projectId, $userId): void {
+                    $query
+                        ->where('created_by', $userId)
+                        ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId));
+                })
+                ->first(),
+            'component' => ProjectComponentHeartbeat::query()
+                ->with('component')
+                ->whereKey($sourceRowId)
+                ->whereHas('component', function (Builder $query) use ($projectId, $userId): void {
+                    $query
+                        ->where('created_by', $userId)
+                        ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId));
+                })
+                ->first(),
+            default => null,
+        };
+    }
+
+    protected function formatSourceLabel(?string $source): string
+    {
+        return match ($source) {
+            'website' => 'Website run',
+            'api' => 'API result',
+            'component' => 'Component heartbeat',
+            default => 'Incident',
         };
     }
 }

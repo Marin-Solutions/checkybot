@@ -54,6 +54,44 @@ describe('IncidentFeedWidget', function () {
             ->assertSee('Resolved');
     });
 
+    it('opens the exact website log evidence row from an incident', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Evidence homepage',
+        ]);
+
+        $log = WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Evidence homepage returned HTTP 503',
+            'http_status_code' => 503,
+            'speed' => 812,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'website')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($log->id);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertTableActionExists('viewEvidence', null, $incident->getKey())
+            ->assertSee('View Evidence');
+
+        $html = view('filament.widgets.incident-feed-evidence-modal', [
+            'incident' => $incident,
+            'evidence' => $log,
+            'targetUrl' => null,
+        ])->render();
+
+        expect($html)
+            ->toContain('Source row #'.$log->id)
+            ->toContain('Evidence homepage returned HTTP 503')
+            ->toContain('812ms');
+    });
+
     it('suppresses duplicate unhealthy rows until the severity changes', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
@@ -298,6 +336,50 @@ describe('IncidentFeedWidget', function () {
             ->assertSee('Resolved');
     });
 
+    it('opens the exact API result evidence row from an incident', function () {
+        $api = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Evidence API',
+        ]);
+
+        $result = MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $api->id,
+            'status' => 'danger',
+            'summary' => 'Evidence API failed an assertion',
+            'http_code' => 200,
+            'response_time_ms' => 431,
+            'failed_assertions' => [[
+                'path' => 'data.status',
+                'type' => 'value_compare',
+                'message' => 'Expected active status.',
+                'actual' => 'pending',
+                'expected' => 'active',
+            ]],
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'api')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($result->id);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertTableActionExists('viewEvidence', null, $incident->getKey());
+
+        $html = view('filament.widgets.incident-feed-evidence-modal', [
+            'incident' => $incident,
+            'evidence' => $result,
+            'targetUrl' => null,
+        ])->render();
+
+        expect($html)
+            ->toContain('Source row #'.$result->id)
+            ->toContain('Failed Assertions')
+            ->toContain('Expected active status.');
+    });
+
     it('does not create a new api incident row for repeated failed runs without a status change', function () {
         $api = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
@@ -376,6 +458,43 @@ describe('IncidentFeedWidget', function () {
             ->assertSee('Back to normal')
             ->assertSee('RECOVERED')
             ->assertSee('Resolved');
+    });
+
+    it('opens the exact component heartbeat evidence row from an incident', function () {
+        $component = ProjectComponent::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'evidence-worker',
+        ]);
+
+        $heartbeat = ProjectComponentHeartbeat::factory()->create([
+            'project_component_id' => $component->id,
+            'component_name' => 'evidence-worker',
+            'status' => 'warning',
+            'summary' => 'Queue depth crossed warning threshold',
+            'metrics' => ['queue_depth' => 42],
+            'observed_at' => now()->subMinutes(3),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'component')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($heartbeat->id);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertTableActionExists('viewEvidence', null, $incident->getKey());
+
+        $html = view('filament.widgets.incident-feed-evidence-modal', [
+            'incident' => $incident,
+            'evidence' => $heartbeat,
+            'targetUrl' => null,
+        ])->render();
+
+        expect($html)
+            ->toContain('Source row #'.$heartbeat->id)
+            ->toContain('Metrics Snapshot')
+            ->toContain('queue_depth');
     });
 
     it('scopes incidents to the current user', function () {
