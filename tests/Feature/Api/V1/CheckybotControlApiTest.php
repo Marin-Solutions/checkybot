@@ -1194,6 +1194,66 @@ test('control api project status counts exclude disabled checks and report them 
     expect($response->json('data.status_counts'))->not->toHaveKey('danger');
 });
 
+test('control api project status counts treat stale package api and website checks as danger', function () {
+    $this->travelTo('2026-05-14 12:00:00');
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'fresh-api',
+        'current_status' => 'healthy',
+        'is_enabled' => true,
+        'last_heartbeat_at' => now()->subMinute(),
+        'package_interval' => '5m',
+        'stale_at' => null,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'stale-api',
+        'current_status' => 'healthy',
+        'is_enabled' => true,
+        'last_heartbeat_at' => now()->subMinute(),
+        'package_interval' => '5m',
+        'stale_at' => now()->subMinute(),
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'stale-homepage',
+        'current_status' => 'healthy',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'package_interval' => '5m',
+        'stale_at' => null,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'disabled-homepage',
+        'current_status' => 'healthy',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'last_heartbeat_at' => now()->subMinutes(10),
+        'package_interval' => '5m',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa')
+        ->assertOk()
+        ->assertJsonPath('data.status_counts.healthy', 1)
+        ->assertJsonPath('data.status_counts.danger', 2)
+        ->assertJsonPath('data.status_counts.disabled', 1);
+});
+
 test('control api project summaries include package managed website checks', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
