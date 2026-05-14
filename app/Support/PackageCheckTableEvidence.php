@@ -43,10 +43,6 @@ class PackageCheckTableEvidence
             return self::STATE_SCHEDULE_UNKNOWN;
         }
 
-        if ($record->last_heartbeat_at === null) {
-            return self::STATE_AWAITING_HEARTBEAT;
-        }
-
         $thresholdAt = static::staleThresholdAt($record);
 
         if ($thresholdAt === null) {
@@ -55,6 +51,10 @@ class PackageCheckTableEvidence
 
         if ($thresholdAt->lt(now()) || $record->stale_at !== null) {
             return self::STATE_STALE;
+        }
+
+        if ($record->last_heartbeat_at === null) {
+            return self::STATE_AWAITING_HEARTBEAT;
         }
 
         return self::STATE_FRESH;
@@ -168,10 +168,6 @@ class PackageCheckTableEvidence
 
         $interval = static::displayInterval($record->package_interval);
 
-        if ($record->last_heartbeat_at === null) {
-            return "Expected every {$interval}.";
-        }
-
         $thresholdAt = static::staleThresholdAt($record);
 
         if ($thresholdAt === null) {
@@ -186,17 +182,27 @@ class PackageCheckTableEvidence
             return 'Expired '.$referenceTime->diffForHumans().'.';
         }
 
+        if ($record->last_heartbeat_at === null) {
+            return "Expected every {$interval}.";
+        }
+
         return 'Expires '.$thresholdAt->diffForHumans().'.';
     }
 
     public static function staleThresholdAt(object $record): ?CarbonInterface
     {
-        if ($record->last_heartbeat_at === null || blank($record->package_interval)) {
+        if (blank($record->package_interval)) {
+            return null;
+        }
+
+        $anchorAt = $record->last_heartbeat_at ?? static::attributeValue($record, 'created_at');
+
+        if ($anchorAt === null) {
             return null;
         }
 
         try {
-            return $record->last_heartbeat_at->copy()->addMinutes(IntervalParser::toMinutes($record->package_interval));
+            return $anchorAt->copy()->addMinutes(IntervalParser::toMinutes($record->package_interval));
         } catch (\InvalidArgumentException) {
             return null;
         }
@@ -212,18 +218,18 @@ class PackageCheckTableEvidence
             return self::DUE_STATE_MISSING;
         }
 
-        if ($record->last_heartbeat_at === null) {
-            return self::DUE_STATE_AWAITING_FIRST_RUN;
-        }
-
         $nextDueAt = static::staleThresholdAt($record);
 
         if ($nextDueAt === null) {
             return self::DUE_STATE_INVALID;
         }
 
-        return $nextDueAt->lte(now())
-            ? self::DUE_STATE_DUE
+        if ($nextDueAt->lte(now())) {
+            return self::DUE_STATE_DUE;
+        }
+
+        return $record->last_heartbeat_at === null
+            ? self::DUE_STATE_AWAITING_FIRST_RUN
             : self::DUE_STATE_SCHEDULED;
     }
 
@@ -251,10 +257,6 @@ class PackageCheckTableEvidence
 
         $interval = static::displayInterval($record->package_interval) ?? $record->package_interval;
 
-        if ($record->last_heartbeat_at === null) {
-            return "First scheduled run will happen on the next scheduler pass, then continue every {$interval}.";
-        }
-
         $nextDueAt = static::staleThresholdAt($record);
 
         if ($nextDueAt === null) {
@@ -263,6 +265,10 @@ class PackageCheckTableEvidence
 
         if ($nextDueAt->lte(now())) {
             return "Overdue {$nextDueAt->diffForHumans()}. Expected every {$interval}.";
+        }
+
+        if ($record->last_heartbeat_at === null) {
+            return "First scheduled run will happen on the next scheduler pass, then continue every {$interval}.";
         }
 
         return "Next scheduled run {$nextDueAt->diffForHumans()}. Expected every {$interval}.";
@@ -335,13 +341,22 @@ class PackageCheckTableEvidence
                 ->whereNotNull('stale_at')
                 ->orWhere(fn (Builder $query): Builder => $query
                     ->whereNotNull('last_heartbeat_at')
-                    ->where(fn (Builder $query): Builder => $query->whereRaw($overdueSql, $bindings))));
+                    ->where(fn (Builder $query): Builder => $query->whereRaw($overdueSql, $bindings)))
+                ->orWhere(fn (Builder $query): Builder => $query
+                    ->whereNull('last_heartbeat_at')
+                    ->where(fn (Builder $query): Builder => $query->whereRaw(
+                        ...PackageIntervalDueExpression::build($query->getConnection(), '<', 'created_at')
+                    ))));
     }
 
     private static function applyAwaitingHeartbeatFreshnessFilter(Builder $query): Builder
     {
+        [$freshSql, $bindings] = PackageIntervalDueExpression::build($query->getConnection(), '>=', 'created_at');
+
         return static::whereHasPackageInterval($query)
-            ->whereNull('last_heartbeat_at');
+            ->whereNull('last_heartbeat_at')
+            ->whereNull('stale_at')
+            ->where(fn (Builder $query): Builder => $query->whereRaw($freshSql, $bindings));
     }
 
     private static function applyFreshFreshnessFilter(Builder $query): Builder

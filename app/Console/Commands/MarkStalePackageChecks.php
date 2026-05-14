@@ -82,11 +82,18 @@ class MarkStalePackageChecks extends Command
                     ->orWhere('ssl_check', true);
             })
             ->whereNull('stale_at')
-            ->whereNotNull('last_heartbeat_at')
             ->whereNotNull('package_interval')
             ->where('package_interval', '!=', '')
             ->where(function (Builder $query): void {
-                $this->wherePackageIntervalIsOverdue($query);
+                $query
+                    ->where(function (Builder $query): void {
+                        $query->whereNotNull('last_heartbeat_at');
+                        $this->wherePackageIntervalIsOverdue($query, 'last_heartbeat_at');
+                    })
+                    ->orWhere(function (Builder $query): void {
+                        $query->whereNull('last_heartbeat_at');
+                        $this->wherePackageIntervalIsOverdue($query, 'created_at');
+                    });
             });
     }
 
@@ -96,17 +103,24 @@ class MarkStalePackageChecks extends Command
             ->where('source', 'package')
             ->where('is_enabled', true)
             ->whereNull('stale_at')
-            ->whereNotNull('last_heartbeat_at')
             ->whereNotNull('package_interval')
             ->where('package_interval', '!=', '')
             ->where(function (Builder $query): void {
-                $this->wherePackageIntervalIsOverdue($query);
+                $query
+                    ->where(function (Builder $query): void {
+                        $query->whereNotNull('last_heartbeat_at');
+                        $this->wherePackageIntervalIsOverdue($query, 'last_heartbeat_at');
+                    })
+                    ->orWhere(function (Builder $query): void {
+                        $query->whereNull('last_heartbeat_at');
+                        $this->wherePackageIntervalIsOverdue($query, 'created_at');
+                    });
             });
     }
 
-    private function wherePackageIntervalIsOverdue(Builder $query): void
+    private function wherePackageIntervalIsOverdue(Builder $query, string $anchorColumn): void
     {
-        [$intervalDueSql, $bindings] = PackageIntervalDueExpression::build($query->getConnection(), '<');
+        [$intervalDueSql, $bindings] = PackageIntervalDueExpression::build($query->getConnection(), '<', $anchorColumn);
 
         $query->whereRaw($intervalDueSql, $bindings);
     }
