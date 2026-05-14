@@ -87,7 +87,12 @@ test('control api lists projects and package managed checks with compact status'
         ->assertJsonPath('data.0.key', 'scrappa')
         ->assertJsonPath('data.0.checks_count', 1)
         ->assertJsonPath('data.0.enabled_checks_count', 1)
-        ->assertJsonPath('data.0.disabled_checks_count', 0);
+        ->assertJsonPath('data.0.disabled_checks_count', 0)
+        ->assertJsonPath('data.0.setup_verification.state', 'synced')
+        ->assertJsonPath('data.0.setup_verification.label', 'Synced')
+        ->assertJsonPath('data.0.setup_verification.tone', 'success')
+        ->assertJsonPath('data.0.setup_verification.summary', 'Checkybot has received both the Laravel package registration and the first package sync payload for this application.')
+        ->assertJsonPath('data.0.setup_verification.steps.1.status', 'complete');
 
     $response = $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/projects/scrappa/checks')
@@ -99,6 +104,59 @@ test('control api lists projects and package managed checks with compact status'
         ->assertJsonPath('data.0.has_request_body', true);
 
     expect(json_encode($response->json()))->not->toContain('secret-token');
+});
+
+test('control api exposes setup verification states on project payloads', function () {
+    $this->travelTo('2026-05-14 12:00:00');
+    config()->set('monitor.package_sync_stale_minutes', 15);
+
+    $waitingForRegistration = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Waiting Registration',
+        'environment' => 'production',
+    ]);
+
+    $waitingForFirstSync = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Waiting Sync',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://waiting-sync.test/checkybot/identity',
+        'package_version' => '1.2.3',
+    ]);
+
+    $staleSync = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Stale Sync',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://stale-sync.test/checkybot/identity',
+        'package_version' => '1.2.3',
+        'package_key' => 'stale-sync',
+        'base_url' => 'https://stale-sync.test',
+        'last_synced_at' => now()->subMinutes(16),
+    ]);
+
+    $projects = collect($this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects')
+        ->assertOk()
+        ->json('data'))
+        ->keyBy('id');
+
+    expect($projects[$waitingForRegistration->id]['setup_verification']['state'])->toBe('waiting_for_registration')
+        ->and($projects[$waitingForRegistration->id]['setup_verification']['steps'][0]['status'])->toBe('pending')
+        ->and($projects[$waitingForFirstSync->id]['setup_verification']['state'])->toBe('waiting_for_first_sync')
+        ->and($projects[$waitingForFirstSync->id]['setup_verification']['steps'][0]['status'])->toBe('complete')
+        ->and($projects[$waitingForFirstSync->id]['setup_verification']['steps'][1]['status'])->toBe('pending')
+        ->and($projects[$staleSync->id]['setup_verification']['state'])->toBe('sync_stale')
+        ->and($projects[$staleSync->id]['setup_verification']['steps'][1]['status'])->toBe('stale')
+        ->and($projects[$staleSync->id]['setup_verification']['summary'])->toContain('more than 15 minutes old')
+        ->and($projects[$staleSync->id]['setup_verification']['action'])->toContain('php artisan checkybot:sync');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/control/projects/{$waitingForFirstSync->id}")
+        ->assertOk()
+        ->assertJsonPath('data.setup_verification.state', 'waiting_for_first_sync')
+        ->assertJsonPath('data.setup_verification.steps.0.title', 'Laravel package registration')
+        ->assertJsonPath('data.setup_verification.steps.1.title', 'First package sync');
 });
 
 test('control api upserts checks by stable key and redacts encrypted headers', function () {
