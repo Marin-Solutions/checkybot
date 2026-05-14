@@ -846,7 +846,7 @@ test('component sync rejects duplicate declared component names before persistin
                     'interval' => '5m',
                 ],
                 [
-                    'name' => 'queue',
+                    'name' => ' Queue ',
                     'interval' => '10m',
                 ],
             ],
@@ -879,7 +879,7 @@ test('component sync rejects duplicate heartbeat observations before persisting 
                     'observed_at' => '2026-03-21T12:00:00Z',
                 ],
                 [
-                    'name' => 'queue',
+                    'name' => 'Queue',
                     'interval' => '5m',
                     'status' => 'healthy',
                     'summary' => 'Duplicate retry of the same observation',

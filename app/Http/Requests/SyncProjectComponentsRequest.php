@@ -6,6 +6,7 @@ use App\Services\IntervalParser;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Validator;
 use Throwable;
 
@@ -90,7 +91,9 @@ class SyncProjectComponentsRequest extends FormRequest
                 continue;
             }
 
-            if (isset($seenNames[$name])) {
+            $normalizedName = $this->normalizedComponentName($name);
+
+            if (isset($seenNames[$normalizedName])) {
                 $validator->errors()->add(
                     "declared_components.{$index}.name",
                     'Each declared component name must be unique.'
@@ -99,7 +102,7 @@ class SyncProjectComponentsRequest extends FormRequest
                 continue;
             }
 
-            $seenNames[$name] = true;
+            $seenNames[$normalizedName] = true;
         }
     }
 
@@ -126,7 +129,7 @@ class SyncProjectComponentsRequest extends FormRequest
             }
 
             try {
-                $identity = $name.'|'.Carbon::parse($observedAt)->toISOString();
+                $identity = $this->normalizedComponentName($name).'|'.Carbon::parse($observedAt)->toISOString();
             } catch (Throwable) {
                 continue;
             }
@@ -142,5 +145,10 @@ class SyncProjectComponentsRequest extends FormRequest
 
             $seenHeartbeats[$identity] = true;
         }
+    }
+
+    private function normalizedComponentName(string $name): string
+    {
+        return Str::lower(trim($name));
     }
 }
