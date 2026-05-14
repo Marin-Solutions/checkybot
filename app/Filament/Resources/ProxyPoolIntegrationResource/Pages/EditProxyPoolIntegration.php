@@ -1,0 +1,33 @@
+<?php
+
+namespace App\Filament\Resources\ProxyPoolIntegrationResource\Pages;
+
+use App\Filament\Resources\ProxyPoolIntegrationResource;
+use Filament\Actions;
+use Filament\Resources\Pages\EditRecord;
+
+class EditProxyPoolIntegration extends EditRecord
+{
+    protected static string $resource = ProxyPoolIntegrationResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Actions\DeleteAction::make(),
+        ];
+    }
+
+    protected function mutateFormDataBeforeSave(array $data): array
+    {
+        if (
+            $this->record->base_url !== $data['base_url']
+            || $this->record->token !== $data['token']
+        ) {
+            $data['last_sync_status'] = null;
+            $data['last_sync_error'] = null;
+            $data['last_synced_at'] = null;
+        }
+
+        return $data;
+    }
+}
