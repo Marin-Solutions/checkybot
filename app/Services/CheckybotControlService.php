@@ -353,6 +353,7 @@ class CheckybotControlService
         return collect([
             ...$this->recentApiRuns($user, $project, $limit),
             ...$this->recentWebsiteRuns($user, $project, $limit),
+            ...$this->recentComponentRuns($user, $project, $limit),
         ])
             ->sortByDesc(fn (array $run): string => (string) ($run['checked_at'] ?? $run['created_at'] ?? ''))
             ->values()
@@ -395,6 +396,29 @@ class CheckybotControlService
             ->limit($limit)
             ->get()
             ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result))
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function recentComponentRuns(User $user, ?Project $project, int $limit): array
+    {
+        $query = ProjectComponentHeartbeat::query()
+            ->with('component.project')
+            ->whereHas('component', function (Builder $componentQuery) use ($user, $project): void {
+                $componentQuery->where('created_by', $user->id);
+
+                if ($project instanceof Project) {
+                    $componentQuery->where('project_id', $project->id);
+                }
+            });
+
+        return $query->orderByDesc('observed_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (ProjectComponentHeartbeat $heartbeat): array => $this->componentHeartbeatPayload($heartbeat))
             ->all();
     }
 
