@@ -503,16 +503,20 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/checks/{check}/runs",
      *     operationId="triggerControlProjectCheckRun",
      *     tags={"control"},
-     *     summary="Run one package-managed API check as a diagnostic",
+     *     summary="Run one package-managed API or website check as a diagnostic",
+     *     description="Runs one package-managed API check immediately or queues one package-managed website check. Pass type=api or type=website when an API check and website check share the same package key.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *     @OA\Parameter(name="check", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="type", in="query", required=false, description="Runnable check surface. Required when the package key matches both an API check and a website check.", @OA\Schema(type="string", enum={"api", "website"})),
      *
      *     @OA\Response(response=200, description="Diagnostic check run completed"),
+     *     @OA\Response(response=202, description="Diagnostic website check run queued"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=404, description="Project or check not found"),
-     *     @OA\Response(response=409, description="Check is disabled")
+     *     @OA\Response(response=409, description="Check is disabled or check key matches multiple runnable check types"),
+     *     @OA\Response(response=422, description="Validation error")
      * )
      */
     public function triggerControlProjectCheckRun(): void {}
