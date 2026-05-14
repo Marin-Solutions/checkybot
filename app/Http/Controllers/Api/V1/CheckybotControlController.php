@@ -78,9 +78,11 @@ class CheckybotControlController extends Controller
         $result = $this->control->triggerProjectRun($request->user(), $project);
 
         return response()->json([
-            'message' => $result['status'] === 'queued'
-                ? 'Project run queued.'
-                : 'Project has no enabled checks to run.',
+            'message' => match ($result['status']) {
+                'queued' => 'Project run queued.',
+                'already_queued' => 'Project diagnostics are already queued.',
+                default => 'Project has no enabled checks to run.',
+            },
             'data' => $result,
         ], $result['status'] === 'queued' ? 202 : 200);
     }

@@ -249,26 +249,38 @@ class CheckybotControlService
     {
         $project = $this->findProject($user, $projectKey);
         $apiChecks = $project->packageManagedApis()
+            ->with('latestDiagnosticResult')
             ->where('is_enabled', true)
             ->orderBy('package_name')
             ->get();
         $websiteChecks = $project->packageManagedWebsites()
+            ->with('latestDiagnosticLogHistory')
             ->where(function (Builder $query): void {
                 $query->where('uptime_check', true)
                     ->orWhere('ssl_check', true);
             })
             ->orderBy('package_name')
             ->get();
-        $jobs = $apiChecks
+
+        [$queuedApiChecks, $skippedApiChecks] = $apiChecks->partition(
+            fn (MonitorApis $check): bool => ! $check->hasQueuedDiagnostic(),
+        );
+        [$queuedWebsiteChecks, $skippedWebsiteChecks] = $websiteChecks->partition(
+            fn (Website $website): bool => ! $website->hasQueuedDiagnostic(),
+        );
+
+        $checksSkippedAlreadyQueued = $skippedApiChecks->count() + $skippedWebsiteChecks->count();
+        $jobs = $queuedApiChecks
             ->map(fn (MonitorApis $check): RunApiMonitorDiagnosticJob => new RunApiMonitorDiagnosticJob($check->withoutRelations()))
-            ->merge($websiteChecks->map(fn (Website $website): LogUptimeSslJob => new LogUptimeSslJob($website->withoutRelations(), onDemand: true)));
+            ->merge($queuedWebsiteChecks->map(fn (Website $website): LogUptimeSslJob => new LogUptimeSslJob($website->withoutRelations(), onDemand: true)));
 
         if ($jobs->isEmpty()) {
             return [
                 'project' => $this->projectIdentity($project),
-                'status' => 'no_enabled_checks',
+                'status' => $checksSkippedAlreadyQueued > 0 ? 'already_queued' : 'no_enabled_checks',
                 'triggered_at' => now()->toISOString(),
                 'checks_queued' => 0,
+                'checks_skipped_already_queued' => $checksSkippedAlreadyQueued,
                 'run_batch' => null,
             ];
         }
@@ -276,11 +288,11 @@ class CheckybotControlService
         $queuedAt = now();
 
         MonitorApis::query()
-            ->whereKey($apiChecks->modelKeys())
+            ->whereKey($queuedApiChecks->modelKeys())
             ->update(['diagnostic_queued_at' => $queuedAt]);
 
         Website::query()
-            ->whereKey($websiteChecks->modelKeys())
+            ->whereKey($queuedWebsiteChecks->modelKeys())
             ->update(['diagnostic_queued_at' => $queuedAt]);
 
         $batch = Bus::batch($jobs)
@@ -297,6 +309,7 @@ class CheckybotControlService
             'status' => 'queued',
             'triggered_at' => now()->toISOString(),
             'checks_queued' => $jobs->count(),
+            'checks_skipped_already_queued' => $checksSkippedAlreadyQueued,
             'run_batch' => $this->runBatchPayload($batch),
         ];
     }
