@@ -430,6 +430,8 @@ test('package sync resets api live health when target-defining settings change',
         'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
+
+    expect($monitor->fresh()->awaiting_heartbeat_since)->not->toBeNull();
 });
 
 test('package sync persists api failed response body preference', function () {
@@ -1141,6 +1143,8 @@ test('package sync resets website live health when url changes', function () {
         'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
+
+    expect($website->fresh()->awaiting_heartbeat_since)->not->toBeNull();
 });
 
 test('package sync restores soft deleted website checks when re-added', function () {

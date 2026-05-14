@@ -55,6 +55,7 @@ class MonitorApis extends Model
         'package_interval',
         'current_status',
         'last_heartbeat_at',
+        'awaiting_heartbeat_since',
         'stale_at',
         'status_summary',
         'diagnostic_queued_at',
@@ -69,6 +70,7 @@ class MonitorApis extends Model
         'project_paused_monitoring' => 'boolean',
         'last_synced_at' => 'datetime',
         'last_heartbeat_at' => 'datetime',
+        'awaiting_heartbeat_since' => 'datetime',
         'stale_at' => 'datetime',
         'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
@@ -88,6 +90,7 @@ class MonitorApis extends Model
         return [
             'current_status' => 'unknown',
             'last_heartbeat_at' => null,
+            'awaiting_heartbeat_since' => null,
             'stale_at' => null,
             'status_summary' => $summary,
             'diagnostic_queued_at' => null,

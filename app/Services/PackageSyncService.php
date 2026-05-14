@@ -507,6 +507,7 @@ class PackageSyncService
             'current_status' => 'unknown',
             'status_summary' => null,
             'last_heartbeat_at' => null,
+            'awaiting_heartbeat_since' => now(),
             'stale_at' => null,
             'diagnostic_queued_at' => null,
         ];
