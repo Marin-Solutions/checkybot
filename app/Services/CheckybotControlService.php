@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Support\ApiMonitorEvidenceRedactor;
+use App\Support\PackageCheckTableEvidence;
 use App\Support\ProjectComponentDeliveryState;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
@@ -797,17 +798,17 @@ class CheckybotControlService
     {
         $counts = $project->packageManagedApis()
             ->where('is_enabled', true)
-            ->selectRaw("coalesce(current_status, 'unknown') as status, count(*) as aggregate")
-            ->groupBy('status')
-            ->pluck('aggregate', 'status')
+            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at'])
+            ->map(fn (MonitorApis $api): string => $this->packageCheckStatusBucket($api))
+            ->countBy()
             ->map(fn ($count): int => (int) $count)
             ->all();
 
         $websiteCounts = $project->packageManagedWebsites()
             ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
-            ->selectRaw("coalesce(current_status, 'unknown') as status, count(*) as aggregate")
-            ->groupBy('status')
-            ->pluck('aggregate', 'status')
+            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at', 'uptime_check', 'ssl_check'])
+            ->map(fn (Website $website): string => $this->packageCheckStatusBucket($website))
+            ->countBy()
             ->map(fn ($count): int => (int) $count)
             ->all();
 
@@ -829,6 +830,21 @@ class CheckybotControlService
         $counts['disabled'] = $this->disabledPackageChecksCount($project);
 
         return $counts;
+    }
+
+    private function packageCheckStatusBucket(MonitorApis|Website $check): string
+    {
+        if (PackageCheckTableEvidence::freshnessState($check) === PackageCheckTableEvidence::STATE_STALE) {
+            return 'danger';
+        }
+
+        if (in_array($check->current_status, ['warning', 'danger'], true)) {
+            return $check->current_status;
+        }
+
+        return $check->current_status === 'healthy'
+            ? 'healthy'
+            : 'unknown';
     }
 
     private function componentStatusBucket(ProjectComponent $component): string
