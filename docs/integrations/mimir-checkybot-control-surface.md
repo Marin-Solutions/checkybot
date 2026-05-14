@@ -197,6 +197,8 @@ Example upsert response:
 
 These endpoints execute synchronously and return the fresh result payload immediately for API and website checks. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are diagnostic: they are appended to run history, but they do not move live status, alert subscribers, or appear in latest failure feeds. Components are heartbeat-driven and show `supports_run: false` in `list_checks`.
 
+Single-check run triggers accept optional `type=api` or `type=website` in the query string or JSON body. The type is required when an API check and website check share the same package key so the control API cannot trigger the wrong surface.
+
 ### Recent results and latest failures
 
 - `GET /control/runs?project={project}&limit={1..100}`
@@ -229,7 +231,7 @@ Arguments:
 - `list_checks`: `{ "project": "scrappa" }`
 - `upsert_check`: `{ "project": "scrappa", "key": "maps-search", "name": "Maps search", "url": "/api/google-maps/search", ... }`
 - `disable_check`: `{ "project": "scrappa", "check": "maps-search" }`
-- `trigger_run`: `{ "project": "scrappa" }` or `{ "project": "scrappa", "check": "maps-search" }`
+- `trigger_run`: `{ "project": "scrappa" }` or `{ "project": "scrappa", "check": "maps-search", "type": "api" }`
 - `latest_failures`: `{ "project": "scrappa", "limit": 10 }`
 
 Example `tools/call` request:
