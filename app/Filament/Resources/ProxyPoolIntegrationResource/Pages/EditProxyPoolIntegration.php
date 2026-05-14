@@ -19,9 +19,13 @@ class EditProxyPoolIntegration extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $tokenChanged = array_key_exists('token', $data)
+            && filled($data['token'])
+            && $this->record->token !== $data['token'];
+
         if (
             $this->record->base_url !== $data['base_url']
-            || $this->record->token !== $data['token']
+            || $tokenChanged
         ) {
             $data['last_sync_status'] = null;
             $data['last_sync_error'] = null;

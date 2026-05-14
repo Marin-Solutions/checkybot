@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\ProxyPoolIntegration;
 use App\Services\ProxyPoolDashboardService;
 use Illuminate\Console\Command;
+use Throwable;
 
 class SyncProxyPoolDashboard extends Command
 {
@@ -33,15 +34,32 @@ class SyncProxyPoolDashboard extends Command
         }
 
         foreach ($integrations as $integration) {
-            $component = $proxyPoolDashboardService->syncIntegration($integration);
+            try {
+                $component = $proxyPoolDashboardService->syncIntegration($integration);
 
-            $this->components->info(sprintf(
-                '[%d] %s is %s: %s',
-                $integration->getKey(),
-                $component->name,
-                $component->current_status,
-                $component->summary,
-            ));
+                $this->components->info(sprintf(
+                    '[%d] %s is %s: %s',
+                    $integration->getKey(),
+                    $component->name,
+                    $component->current_status,
+                    $component->summary,
+                ));
+            } catch (Throwable $exception) {
+                report($exception);
+
+                $integration->forceFill([
+                    'last_sync_status' => 'danger',
+                    'last_sync_error' => $exception->getMessage(),
+                    'last_synced_at' => now(),
+                ])->save();
+
+                $this->components->error(sprintf(
+                    '[%d] %s failed: %s',
+                    $integration->getKey(),
+                    $integration->name,
+                    $exception->getMessage(),
+                ));
+            }
         }
 
         return self::SUCCESS;

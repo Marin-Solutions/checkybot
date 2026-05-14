@@ -5,9 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ProxyPoolIntegrationResource\Pages;
 use App\Models\Project;
 use App\Models\ProxyPoolIntegration;
-use App\Services\IntervalParser;
 use App\Services\ProxyPoolDashboardService;
-use Closure;
 use Filament\Actions;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -64,14 +62,16 @@ class ProxyPoolIntegrationResource extends Resource
                     ->label('REST API token')
                     ->password()
                     ->revealable()
-                    ->required()
-                    ->maxLength(1000),
+                    ->required(fn (string $operation): bool => $operation === 'create')
+                    ->dehydrated(fn (?string $state): bool => filled($state))
+                    ->maxLength(4000)
+                    ->helperText('Leave blank when editing to keep the existing token. The proxy pool API requires this token as a query parameter.'),
                 Forms\Components\TextInput::make('check_interval')
                     ->label('Check interval')
                     ->default('5m')
                     ->required()
                     ->maxLength(50)
-                    ->rule(static::intervalRule())
+                    ->regex('/^([1-9]\d*[smhd]|every_[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$/')
                     ->helperText('How often Checkybot expects a fresh proxy pool sync, for example 5m, 15m, or 1h.'),
                 Forms\Components\Toggle::make('is_active')
                     ->label('Active')
@@ -153,14 +153,5 @@ class ProxyPoolIntegrationResource extends Resource
             'create' => Pages\CreateProxyPoolIntegration::route('/create'),
             'edit' => Pages\EditProxyPoolIntegration::route('/{record}/edit'),
         ];
-    }
-
-    private static function intervalRule(): Closure
-    {
-        return function (string $attribute, mixed $value, Closure $fail): void {
-            if (! is_string($value) || ! IntervalParser::isValid($value)) {
-                $fail('The check interval format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
-            }
-        };
     }
 }
