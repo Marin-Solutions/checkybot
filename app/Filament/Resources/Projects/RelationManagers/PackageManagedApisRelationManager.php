@@ -65,17 +65,17 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->default('-'),
                 TextColumn::make('freshness_evidence')
                     ->label('Freshness')
-                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::freshnessState($record))
+                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::apiFreshnessState($record))
                     ->badge()
                     ->color(fn (string $state): string => PackageCheckTableEvidence::freshnessColor($state))
-                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::freshnessDescription($record)),
+                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::apiFreshnessDescription($record)),
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
             ->filters([
                 SelectFilter::make('freshness_evidence')
                     ->label('Freshness')
-                    ->options(PackageCheckTableEvidence::freshnessFilterOptions())
+                    ->options(PackageCheckTableEvidence::apiFreshnessFilterOptions())
                     ->query(fn (Builder $query, array $data): Builder => PackageCheckTableEvidence::applyApiFreshnessFilter(
                         $query,
                         $data['value'] ?? null,

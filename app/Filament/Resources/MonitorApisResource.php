@@ -365,10 +365,10 @@ class MonitorApisResource extends Resource
                     }),
                 Tables\Columns\TextColumn::make('freshness_evidence')
                     ->label('Freshness')
-                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::mainMonitorFreshnessState($record))
+                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::mainApiFreshnessState($record))
                     ->badge()
                     ->color(fn (string $state): string => PackageCheckTableEvidence::mainMonitorFreshnessColor($state))
-                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::mainMonitorFreshnessDescription($record))
+                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::mainApiFreshnessDescription($record))
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')

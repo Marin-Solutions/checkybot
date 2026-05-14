@@ -1322,7 +1322,7 @@ test('application record shows package-managed external checks including archive
         ->assertSee('Awaiting first package heartbeat.')
         ->assertSee('Fresh')
         ->assertSee('This check is disabled. Scheduled runs are paused.')
-        ->assertSee('Monitor is disabled. Heartbeats are not expected.');
+        ->assertSee('Monitor is disabled. Scheduled API checks are not expected.');
 
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)
@@ -1501,7 +1501,7 @@ test('package-managed relation managers filter checks by freshness evidence', fu
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_AWAITING_HEARTBEAT)
+        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_AWAITING_CHECK)
         ->assertCanSeeTableRecords([$awaitingApi])
         ->assertCanNotSeeTableRecords([$freshApi, $staleApi, $disabledApi]);
 

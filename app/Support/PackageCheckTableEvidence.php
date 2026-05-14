@@ -15,7 +15,11 @@ class PackageCheckTableEvidence
 
     public const STATE_AWAITING_HEARTBEAT = 'Awaiting heartbeat';
 
+    public const STATE_AWAITING_CHECK = 'Awaiting check';
+
     public const STATE_HEARTBEAT_RECEIVED = 'Heartbeat received';
+
+    public const STATE_CHECK_RECEIVED = 'Check received';
 
     public const STATE_STALE = 'Stale';
 
@@ -64,8 +68,10 @@ class PackageCheckTableEvidence
     {
         return match ($state) {
             self::STATE_FRESH,
-            self::STATE_HEARTBEAT_RECEIVED => 'success',
-            self::STATE_AWAITING_HEARTBEAT => 'warning',
+            self::STATE_HEARTBEAT_RECEIVED,
+            self::STATE_CHECK_RECEIVED => 'success',
+            self::STATE_AWAITING_HEARTBEAT,
+            self::STATE_AWAITING_CHECK => 'warning',
             self::STATE_STALE => 'danger',
             default => 'gray',
         };
@@ -101,12 +107,71 @@ class PackageCheckTableEvidence
 
     public static function applyApiFreshnessFilter(Builder $query, ?string $state): Builder
     {
+        $state = match ($state) {
+            self::STATE_AWAITING_CHECK => self::STATE_AWAITING_HEARTBEAT,
+            self::STATE_CHECK_RECEIVED => self::STATE_HEARTBEAT_RECEIVED,
+            default => $state,
+        };
+
         return static::applyFreshnessFilter(
             $query,
             $state,
             disabledScope: fn (Builder $query): Builder => $query->where('is_enabled', false),
             activeScope: fn (Builder $query): Builder => $query->where('is_enabled', true),
         );
+    }
+
+    public static function apiFreshnessState(object $record): string
+    {
+        return static::apiStateLabel(static::freshnessState($record));
+    }
+
+    public static function mainApiFreshnessState(object $record): string
+    {
+        if (($record->source ?? null) === 'package') {
+            return static::apiFreshnessState($record);
+        }
+
+        return static::apiStateLabel(static::mainMonitorFreshnessState($record));
+    }
+
+    public static function apiFreshnessDescription(object $record): ?string
+    {
+        return static::apiDescription(static::freshnessDescription($record));
+    }
+
+    public static function mainApiFreshnessDescription(object $record): ?string
+    {
+        if (($record->source ?? null) === 'package') {
+            return static::apiFreshnessDescription($record);
+        }
+
+        if (static::isMonitoringDisabled($record)) {
+            return 'Monitor is disabled. Scheduled API checks are not expected.';
+        }
+
+        if ($record->stale_at !== null) {
+            return 'Marked stale '.$record->stale_at->diffForHumans().'.';
+        }
+
+        if ($record->last_heartbeat_at === null) {
+            return 'No scheduled API check has been recorded yet.';
+        }
+
+        return 'Last scheduled API check '.$record->last_heartbeat_at->diffForHumans().'.';
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function apiFreshnessFilterOptions(): array
+    {
+        return [
+            self::STATE_STALE => self::STATE_STALE,
+            self::STATE_AWAITING_CHECK => self::STATE_AWAITING_CHECK,
+            self::STATE_FRESH => self::STATE_FRESH,
+            self::STATE_DISABLED => self::STATE_DISABLED,
+        ];
     }
 
     public static function mainMonitorFreshnessState(object $record): string
@@ -287,6 +352,26 @@ class PackageCheckTableEvidence
         } catch (\InvalidArgumentException) {
             return $interval;
         }
+    }
+
+    private static function apiStateLabel(string $state): string
+    {
+        return match ($state) {
+            self::STATE_AWAITING_HEARTBEAT => self::STATE_AWAITING_CHECK,
+            self::STATE_HEARTBEAT_RECEIVED => self::STATE_CHECK_RECEIVED,
+            default => $state,
+        };
+    }
+
+    private static function apiDescription(?string $description): ?string
+    {
+        return match ($description) {
+            'Monitor is disabled. Heartbeats are not expected.' => 'Monitor is disabled. Scheduled API checks are not expected.',
+            'No scheduled heartbeat has been recorded yet.' => 'No scheduled API check has been recorded yet.',
+            default => $description === null
+                ? null
+                : str_replace('Last heartbeat ', 'Last scheduled API check ', $description),
+        };
     }
 
     private static function isMonitoringDisabled(object $record): bool
