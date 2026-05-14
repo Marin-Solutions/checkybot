@@ -124,6 +124,7 @@ class ProxyPoolIntegrationResource extends Resource
                     ->label('Sync now')
                     ->icon('heroicon-o-arrow-path')
                     ->color('primary')
+                    ->authorize(fn (ProxyPoolIntegration $record): bool => auth()->user()?->can('update', $record) ?? false)
                     ->action(function (ProxyPoolIntegration $record): void {
                         $component = app(ProxyPoolDashboardService::class)->syncIntegration($record);
 

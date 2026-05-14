@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Resources\ProxyPoolIntegrationResource\Pages\CreateProxyPoolIntegration;
 use App\Filament\Resources\ProxyPoolIntegrationResource\Pages\EditProxyPoolIntegration;
 use App\Filament\Resources\ProxyPoolIntegrationResource\Pages\ListProxyPoolIntegrations;
 use App\Models\Project;
@@ -69,6 +70,22 @@ test('proxy pool integration can sync from the dashboard action', function () {
         'name' => 'Proxy Pool: Production Proxies',
         'current_status' => 'warning',
     ]);
+});
+
+test('proxy pool sync action requires update permission', function () {
+    $this->createResourcePermissions('ProxyPoolIntegration');
+
+    $user = $this->actingAsAdmin();
+    $user->givePermissionTo(['ViewAny:ProxyPoolIntegration', 'View:ProxyPoolIntegration']);
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $integration = ProxyPoolIntegration::factory()->create([
+        'created_by' => $user->id,
+        'project_id' => $project->id,
+        'name' => 'Production Proxies',
+    ]);
+
+    Livewire::test(ListProxyPoolIntegrations::class)
+        ->assertTableActionHidden('sync', $integration);
 });
 
 test('proxy pool integration policy denies another users integration even with permissions', function () {
@@ -185,4 +202,62 @@ test('editing credentials resets sync state', function () {
         ->last_sync_status->toBeNull()
         ->last_sync_error->toBeNull()
         ->last_synced_at->toBeNull();
+});
+
+test('creating proxy pool integrations rejects projects owned by another user', function () {
+    $this->createResourcePermissions('ProxyPoolIntegration');
+
+    $user = $this->actingAsAdmin();
+    $user->givePermissionTo([
+        'Create:ProxyPoolIntegration',
+        'ViewAny:ProxyPoolIntegration',
+    ]);
+    $otherProject = Project::factory()->create();
+
+    Livewire::test(CreateProxyPoolIntegration::class)
+        ->fillForm([
+            'name' => 'Foreign Project Proxies',
+            'project_id' => $otherProject->id,
+            'base_url' => 'https://proxy.test',
+            'token' => 'secret-token',
+            'check_interval' => '5m',
+            'is_active' => true,
+        ])
+        ->call('create')
+        ->assertHasFormErrors(['project_id']);
+
+    assertDatabaseMissing('proxy_pool_integrations', [
+        'name' => 'Foreign Project Proxies',
+    ]);
+});
+
+test('editing proxy pool integrations rejects projects owned by another user', function () {
+    $this->createResourcePermissions('ProxyPoolIntegration');
+
+    $user = $this->actingAsAdmin();
+    $user->givePermissionTo([
+        'ViewAny:ProxyPoolIntegration',
+        'View:ProxyPoolIntegration',
+        'Update:ProxyPoolIntegration',
+    ]);
+    $ownProject = Project::factory()->create(['created_by' => $user->id]);
+    $otherProject = Project::factory()->create();
+    $integration = ProxyPoolIntegration::factory()->create([
+        'created_by' => $user->id,
+        'project_id' => $ownProject->id,
+        'name' => 'Production Proxies',
+    ]);
+
+    Livewire::test(EditProxyPoolIntegration::class, ['record' => $integration->getRouteKey()])
+        ->fillForm([
+            'name' => 'Production Proxies',
+            'project_id' => $otherProject->id,
+            'base_url' => $integration->base_url,
+            'check_interval' => '5m',
+            'is_active' => true,
+        ])
+        ->call('save')
+        ->assertHasFormErrors(['project_id']);
+
+    expect($integration->refresh()->project_id)->toBe($ownProject->id);
 });

@@ -3,11 +3,14 @@
 namespace App\Filament\Resources\ProxyPoolIntegrationResource\Pages;
 
 use App\Filament\Resources\ProxyPoolIntegrationResource;
+use App\Filament\Resources\Support\ValidatesProjectAssignment;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
 
 class EditProxyPoolIntegration extends EditRecord
 {
+    use ValidatesProjectAssignment;
+
     protected static string $resource = ProxyPoolIntegrationResource::class;
 
     protected function getHeaderActions(): array
@@ -19,6 +22,8 @@ class EditProxyPoolIntegration extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $this->validateProjectAssignment($data['project_id'] ?? null);
+
         $tokenChanged = array_key_exists('token', $data)
             && filled($data['token'])
             && $this->record->token !== $data['token'];
