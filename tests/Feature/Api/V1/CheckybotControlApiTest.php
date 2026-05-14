@@ -531,6 +531,90 @@ test('control api requires type when disabling an ambiguous check key', function
         ->and($website->ssl_check)->toBeFalse();
 });
 
+test('control api requires type when triggering an ambiguous runnable check key', function () {
+    Queue::fake();
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'is_enabled' => true,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/shared-health/runs')
+        ->assertConflict()
+        ->assertJsonPath('message', 'Check key matches multiple runnable check types. Pass type=api or type=website to trigger a specific check run.');
+
+    Queue::assertNotPushed(LogUptimeSslJob::class);
+});
+
+test('control api accepts type to trigger the intended check surface for ambiguous run keys', function () {
+    Queue::fake();
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'title' => 'Shared API health',
+        'url' => 'https://api.scrappa.test/shared-health',
+        'is_enabled' => true,
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'name' => 'Shared website health',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => true,
+        'ssl_check' => true,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/shared-health/runs?type=api')
+        ->assertOk()
+        ->assertJsonPath('data.check.type', 'api')
+        ->assertJsonPath('data.check.key', 'shared-health')
+        ->assertJsonPath('data.result.run_source', RunSource::OnDemand->value);
+
+    $this->assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+        'run_source' => RunSource::OnDemand->value,
+    ]);
+
+    Queue::assertNotPushed(LogUptimeSslJob::class);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/checks/shared-health/runs?type=website')
+        ->assertAccepted()
+        ->assertJsonPath('data.check.type', 'website')
+        ->assertJsonPath('data.check.key', 'shared-health')
+        ->assertJsonPath('data.status', 'queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, function (LogUptimeSslJob $job): bool {
+        return $job->website->package_name === 'shared-health'
+            && $job->onDemand === true;
+    });
+
+    expect($website->refresh()->diagnostic_queued_at)->not->toBeNull();
+});
+
 test('control api queues listed website checks by package key', function () {
     Queue::fake();
     $this->travelTo(now()->setTime(12, 15, 0));

@@ -129,7 +129,12 @@ class CheckybotMcpController extends Controller
             ),
             'trigger_run',
             'checkybot_trigger_run' => isset($arguments['check'])
-                ? $this->control->triggerCheckRun($user, $this->requiredString($arguments, 'project'), $this->requiredString($arguments, 'check'))
+                ? $this->control->triggerCheckRun(
+                    $user,
+                    $this->requiredString($arguments, 'project'),
+                    $this->requiredString($arguments, 'check'),
+                    $this->optionalRunnableCheckType($arguments),
+                )
                 : $this->control->triggerProjectRun($user, $this->requiredString($arguments, 'project')),
             'get_run_batch',
             'checkybot_get_run_batch' => $this->control->projectRunBatch(
@@ -198,6 +203,16 @@ class CheckybotMcpController extends Controller
     {
         return Validator::make($arguments, [
             'type' => ['nullable', Rule::in(['api', 'website', 'component'])],
+        ])->validate()['type'] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     */
+    private function optionalRunnableCheckType(array $arguments): ?string
+    {
+        return Validator::make($arguments, [
+            'type' => ['nullable', Rule::in(['api', 'website'])],
         ])->validate()['type'] ?? null;
     }
 
@@ -306,6 +321,7 @@ class CheckybotMcpController extends Controller
             $this->tool('trigger_run', 'Queue enabled checks for a project, or run a single check immediately.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string', 'description' => 'Optional check key.'],
+                'type' => ['type' => 'string', 'enum' => ['api', 'website'], 'description' => 'Optional runnable check type. Required when an API and website share the same key.'],
             ], ['project']),
             $this->tool('get_run_batch', 'Get queued project diagnostic batch status.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],

@@ -323,9 +323,9 @@ class CheckybotControlService
     /**
      * @return array<string, mixed>
      */
-    public function triggerCheckRun(User $user, string|int $projectKey, string $checkKey): array
+    public function triggerCheckRun(User $user, string|int $projectKey, string $checkKey, ?string $checkType = null): array
     {
-        $check = $this->findRunnableCheck($user, $projectKey, $checkKey);
+        $check = $this->findRunnableCheck($user, $projectKey, $checkKey, $checkType);
 
         if ($check instanceof Website) {
             if (! $this->websiteHasEnabledStatusCheck($check)) {
@@ -614,22 +614,45 @@ class CheckybotControlService
         abort(404, 'Check not found.');
     }
 
-    private function findRunnableCheck(User $user, string|int $projectKey, string $checkKey): MonitorApis|Website
+    private function findRunnableCheck(User $user, string|int $projectKey, string $checkKey, ?string $checkType): MonitorApis|Website
     {
         $project = $this->findProject($user, $projectKey);
+
+        if ($checkType === 'api') {
+            return $project->packageManagedApis()
+                ->with(['assertions', 'latestResult'])
+                ->where('package_name', $checkKey)
+                ->firstOrFail();
+        }
+
+        if ($checkType === 'website') {
+            return $project->packageManagedWebsites()
+                ->where('package_name', $checkKey)
+                ->firstOrFail();
+        }
 
         $apiCheck = $project->packageManagedApis()
             ->with(['assertions', 'latestResult'])
             ->where('package_name', $checkKey)
             ->first();
 
+        $websiteCheck = $project->packageManagedWebsites()
+            ->where('package_name', $checkKey)
+            ->first();
+
+        if ($apiCheck instanceof MonitorApis && $websiteCheck instanceof Website) {
+            abort(409, 'Check key matches multiple runnable check types. Pass type=api or type=website to trigger a specific check run.');
+        }
+
         if ($apiCheck instanceof MonitorApis) {
             return $apiCheck;
         }
 
-        return $project->packageManagedWebsites()
-            ->where('package_name', $checkKey)
-            ->firstOrFail();
+        if ($websiteCheck instanceof Website) {
+            return $websiteCheck;
+        }
+
+        abort(404, 'Check not found.');
     }
 
     private function projectQuery(User $user): Builder
@@ -1096,6 +1119,7 @@ class CheckybotControlService
             'check' => [
                 'id' => $check->id,
                 'key' => $check->package_name,
+                'type' => 'api',
                 'name' => $check->title,
             ],
             'result' => $this->resultPayload($result->load('monitorApi.project')),

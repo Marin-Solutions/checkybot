@@ -94,7 +94,11 @@ class CheckybotControlController extends Controller
 
     public function triggerCheckRun(Request $request, string $project, string $check): JsonResponse
     {
-        $result = $this->control->triggerCheckRun($request->user(), $project, $check);
+        $data = $request->validate([
+            'type' => ['nullable', 'in:api,website'],
+        ]);
+
+        $result = $this->control->triggerCheckRun($request->user(), $project, $check, $data['type'] ?? null);
 
         return response()->json([
             'message' => ($result['status'] ?? null) === 'queued' ? 'Check run queued.' : 'Check run completed.',
