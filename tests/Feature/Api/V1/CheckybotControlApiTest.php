@@ -1751,6 +1751,7 @@ test('control api queues all enabled project checks as a diagnostic batch', func
         ->assertJsonPath('message', 'Project run queued.')
         ->assertJsonPath('data.status', 'queued')
         ->assertJsonPath('data.checks_queued', 2)
+        ->assertJsonPath('data.checks_skipped_already_queued', 0)
         ->assertJsonPath('data.run_batch.status', 'pending')
         ->assertJsonPath('data.run_batch.name', 'Control project run: scrappa')
         ->assertJsonPath('data.run_batch.total_jobs', 2)
@@ -1778,6 +1779,118 @@ test('control api queues all enabled project checks as a diagnostic batch', func
     $this->assertDatabaseMissing('monitor_api_results', [
         'monitor_api_id' => MonitorApis::query()->where('package_name', 'search-health')->value('id'),
     ]);
+});
+
+test('control api skips already queued project diagnostics when creating a batch', function () {
+    Bus::fake();
+    $this->travelTo('2026-05-09 12:00:00');
+
+    $apiMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'search-health',
+        'title' => 'Search health',
+        'url' => 'https://api.scrappa.test/health',
+        'is_enabled' => true,
+    ]);
+
+    $queuedApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'queued-search-health',
+        'title' => 'Queued search health',
+        'url' => 'https://api.scrappa.test/queued-health',
+        'is_enabled' => true,
+        'diagnostic_queued_at' => now()->subMinutes(2),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'landing-page',
+        'name' => 'Landing page',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => true,
+    ]);
+
+    $queuedWebsite = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'queued-landing-page',
+        'name' => 'Queued landing page',
+        'url' => 'https://queued.scrappa.test',
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now()->subMinutes(2),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/runs')
+        ->assertAccepted()
+        ->assertJsonPath('message', 'Project run queued.')
+        ->assertJsonPath('data.status', 'queued')
+        ->assertJsonPath('data.checks_queued', 2)
+        ->assertJsonPath('data.checks_skipped_already_queued', 2)
+        ->assertJsonPath('data.run_batch.total_jobs', 2);
+
+    Bus::assertBatched(function ($batch): bool {
+        return $batch->name === 'Control project run: scrappa'
+            && $batch->jobs->count() === 2
+            && $batch->jobs->contains(fn ($job): bool => $job instanceof RunApiMonitorDiagnosticJob
+                && $job->monitor->package_name === 'search-health')
+            && $batch->jobs->contains(fn ($job): bool => $job instanceof LogUptimeSslJob
+                && $job->website->package_name === 'landing-page')
+            && ! $batch->jobs->contains(fn ($job): bool => $job instanceof RunApiMonitorDiagnosticJob
+                && $job->monitor->package_name === 'queued-search-health')
+            && ! $batch->jobs->contains(fn ($job): bool => $job instanceof LogUptimeSslJob
+                && $job->website->package_name === 'queued-landing-page');
+    });
+
+    expect($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
+        ->and($website->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
+        ->and($queuedApiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 11:58:00')
+        ->and($queuedWebsite->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 11:58:00');
+});
+
+test('control api reports already queued when every project diagnostic is active', function () {
+    Bus::fake();
+    $this->travelTo('2026-05-09 12:00:00');
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'queued-search-health',
+        'title' => 'Queued search health',
+        'url' => 'https://api.scrappa.test/queued-health',
+        'is_enabled' => true,
+        'diagnostic_queued_at' => now()->subMinutes(2),
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'queued-landing-page',
+        'name' => 'Queued landing page',
+        'url' => 'https://queued.scrappa.test',
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now()->subMinutes(2),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects/scrappa/runs')
+        ->assertOk()
+        ->assertJsonPath('message', 'Project diagnostics are already queued.')
+        ->assertJsonPath('data.status', 'already_queued')
+        ->assertJsonPath('data.checks_queued', 0)
+        ->assertJsonPath('data.checks_skipped_already_queued', 2)
+        ->assertJsonPath('data.run_batch', null);
+
+    Bus::assertNothingBatched();
 });
 
 test('control api returns queued project diagnostic batch status', function () {
@@ -1903,6 +2016,7 @@ test('control api project run reports when there are no enabled checks to queue'
         ->assertJsonPath('message', 'Project has no enabled checks to run.')
         ->assertJsonPath('data.status', 'no_enabled_checks')
         ->assertJsonPath('data.checks_queued', 0)
+        ->assertJsonPath('data.checks_skipped_already_queued', 0)
         ->assertJsonPath('data.run_batch', null);
 
     Bus::assertNothingBatched();

@@ -96,8 +96,19 @@ class ViewProject extends ViewRecord
                     }
 
                     $queued = (int) ($result['checks_queued'] ?? 0);
+                    $skippedAlreadyQueued = (int) ($result['checks_skipped_already_queued'] ?? 0);
 
                     if ($queued === 0) {
+                        if ($skippedAlreadyQueued > 0) {
+                            Notification::make()
+                                ->title('Diagnostics already queued')
+                                ->body("Checkybot skipped {$skippedAlreadyQueued} already queued application ".str('diagnostic')->plural($skippedAlreadyQueued).'.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
+
                         Notification::make()
                             ->title('No enabled diagnostics')
                             ->body('This application has no enabled package-managed API or website diagnostics to run.')
@@ -109,7 +120,9 @@ class ViewProject extends ViewRecord
 
                     Notification::make()
                         ->title('Diagnostics queued')
-                        ->body("Checkybot queued {$queued} enabled application ".str('diagnostic')->plural($queued).'.')
+                        ->body($skippedAlreadyQueued > 0
+                            ? "Checkybot queued {$queued} enabled application ".str('diagnostic')->plural($queued)." and skipped {$skippedAlreadyQueued} already queued."
+                            : "Checkybot queued {$queued} enabled application ".str('diagnostic')->plural($queued).'.')
                         ->success()
                         ->send();
                 }),
