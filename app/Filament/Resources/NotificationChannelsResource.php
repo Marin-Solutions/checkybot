@@ -13,6 +13,7 @@ use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
@@ -179,7 +180,53 @@ class NotificationChannelsResource extends Resource
                     ->dateTime(),
             ])
             ->filters([
-                //
+                SelectFilter::make('delivery_evidence')
+                    ->label('Delivery Evidence')
+                    ->options([
+                        'failed' => 'Failed delivery',
+                        'no_evidence' => 'No delivery evidence',
+                        'successful' => 'Successful delivery',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'failed' => $query
+                                ->whereNotNull('last_delivery_attempted_at')
+                                ->where('last_delivery_succeeded', false),
+                            'no_evidence' => $query->whereNull('last_delivery_attempted_at'),
+                            'successful' => $query
+                                ->whereNotNull('last_delivery_attempted_at')
+                                ->where('last_delivery_succeeded', true),
+                            default => $query,
+                        };
+                    }),
+                SelectFilter::make('method')
+                    ->label('Method')
+                    ->options([
+                        WebhookHttpMethod::GET->value => 'GET',
+                        WebhookHttpMethod::POST->value => 'POST',
+                    ]),
+                SelectFilter::make('response_code')
+                    ->label('Response Code')
+                    ->options(fn (): array => [
+                        'none' => 'No response code',
+                        ...NotificationChannels::query()
+                            ->where('created_by', auth()->id())
+                            ->whereNotNull('last_delivery_response_code')
+                            ->distinct()
+                            ->orderBy('last_delivery_response_code')
+                            ->pluck('last_delivery_response_code', 'last_delivery_response_code')
+                            ->mapWithKeys(fn (int|string $code): array => [(string) $code => (string) $code])
+                            ->all(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $value = $data['value'] ?? null;
+
+                        return match ($value) {
+                            'none' => $query->whereNull('last_delivery_response_code'),
+                            null, '' => $query,
+                            default => $query->where('last_delivery_response_code', (int) $value),
+                        };
+                    }),
             ])
             ->actions([
                 \Filament\Actions\Action::make('sendTest')

@@ -146,6 +146,82 @@ test('webhook channel list shows last delivery evidence', function () {
         ->assertSee('HTTP 502: upstream unavailable');
 });
 
+test('webhook channel list filters by delivery evidence method and response code', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $failedPost = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Failed post webhook',
+        'method' => 'POST',
+        'last_delivery_kind' => 'send',
+        'last_delivery_succeeded' => false,
+        'last_delivery_response_code' => 502,
+        'last_delivery_summary' => 'HTTP 502: upstream unavailable',
+        'last_delivery_attempted_at' => now(),
+    ]);
+    $failedGet = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Failed get webhook',
+        'method' => 'GET',
+        'last_delivery_kind' => 'send',
+        'last_delivery_succeeded' => false,
+        'last_delivery_response_code' => 401,
+        'last_delivery_summary' => 'HTTP 401: unauthorized',
+        'last_delivery_attempted_at' => now(),
+    ]);
+    $noEvidence = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Untested webhook',
+        'method' => 'POST',
+        'last_delivery_attempted_at' => null,
+    ]);
+    $noResponseCode = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Timeout webhook',
+        'method' => 'POST',
+        'last_delivery_kind' => 'test',
+        'last_delivery_succeeded' => false,
+        'last_delivery_response_code' => null,
+        'last_delivery_summary' => 'No response: timeout',
+        'last_delivery_attempted_at' => now(),
+    ]);
+    $successful = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Healthy webhook',
+        'method' => 'POST',
+        'last_delivery_kind' => 'send',
+        'last_delivery_succeeded' => true,
+        'last_delivery_response_code' => 200,
+        'last_delivery_summary' => 'HTTP 200: ok',
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->filterTable('delivery_evidence', 'failed')
+        ->assertCanSeeTableRecords([$failedPost, $failedGet, $noResponseCode])
+        ->assertCanNotSeeTableRecords([$noEvidence, $successful]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->filterTable('delivery_evidence', 'no_evidence')
+        ->assertCanSeeTableRecords([$noEvidence])
+        ->assertCanNotSeeTableRecords([$failedPost, $failedGet, $noResponseCode, $successful]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->filterTable('method', 'GET')
+        ->assertCanSeeTableRecords([$failedGet])
+        ->assertCanNotSeeTableRecords([$failedPost, $noEvidence, $noResponseCode, $successful]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->filterTable('response_code', '502')
+        ->assertCanSeeTableRecords([$failedPost])
+        ->assertCanNotSeeTableRecords([$failedGet, $noEvidence, $noResponseCode, $successful]);
+
+    Livewire::test(ListNotificationChannels::class)
+        ->filterTable('response_code', 'none')
+        ->assertCanSeeTableRecords([$noEvidence, $noResponseCode])
+        ->assertCanNotSeeTableRecords([$failedPost, $failedGet, $successful]);
+});
+
 test('webhook channel list send test action delivers saved webhook payload and records evidence', function () {
     Http::fake([
         '*' => Http::response(['ok' => true], 200),
