@@ -227,13 +227,13 @@ class CheckybotImportService
     private function checksForProject(Project $project): Collection
     {
         $websiteChecks = $project->packageManagedWebsites()
-            ->with('latestLogHistory')
+            ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
             ->orderBy('package_name')
             ->get()
             ->flatMap(fn (Website $website): array => $this->websiteCheckPayloads($website));
 
         $apiChecks = $project->packageManagedApis()
-            ->with(['assertions', 'latestResult'])
+            ->with(['assertions', 'latestResult', 'latestDiagnosticResult'])
             ->orderBy('package_name')
             ->get()
             ->map(fn (MonitorApis $check): array => $this->apiCheckPayload($check));
@@ -289,11 +289,21 @@ class CheckybotImportService
         $latestResult = $website->relationLoaded('latestLogHistory')
             ? $website->latestLogHistory
             : $website->logHistory()->latest()->first();
+        $latestDiagnosticResult = $website->relationLoaded('latestDiagnosticLogHistory')
+            ? $website->latestDiagnosticLogHistory
+            : $website->latestDiagnosticLogHistory()->first();
 
         $key = $website->package_name ?: (string) $website->id;
+        $identity = [
+            'id' => "{$type}:{$website->id}",
+            'database_id' => $website->id,
+            'key' => $key,
+            'type' => $type,
+            'name' => $website->name,
+        ];
 
         return [
-            'id' => "{$type}:{$website->id}",
+            'id' => $identity['id'],
             'database_id' => $website->id,
             'key' => $key,
             'type' => $type,
@@ -311,14 +321,14 @@ class CheckybotImportService
             'last_checked_at' => $website->last_heartbeat_at?->toISOString(),
             'last_heartbeat_at' => $website->last_heartbeat_at?->toISOString(),
             'stale_at' => $website->stale_at?->toISOString(),
+            'diagnostic_queued' => $website->hasQueuedDiagnostic(),
+            'diagnostic_queued_at' => $website->diagnostic_queued_at?->toISOString(),
+            'silenced_until' => $website->silenced_until?->toISOString(),
             'latest_result' => $latestResult instanceof WebsiteLogHistory
-                ? $this->websiteResultPayload($latestResult, [
-                    'id' => "{$type}:{$website->id}",
-                    'database_id' => $website->id,
-                    'key' => $key,
-                    'type' => $type,
-                    'name' => $website->name,
-                ])
+                ? $this->websiteResultPayload($latestResult, $identity)
+                : null,
+            'latest_diagnostic_result' => $latestDiagnosticResult instanceof WebsiteLogHistory
+                ? $this->websiteResultPayload($latestDiagnosticResult, $identity)
                 : null,
             'raw' => [
                 'website_id' => $website->id,
@@ -342,6 +352,9 @@ class CheckybotImportService
         $latestResult = $check->relationLoaded('latestResult')
             ? $check->latestResult
             : $check->results()->latest()->first();
+        $latestDiagnosticResult = $check->relationLoaded('latestDiagnosticResult')
+            ? $check->latestDiagnosticResult
+            : $check->latestDiagnosticResult()->first();
 
         return [
             'id' => "api:{$check->id}",
@@ -364,11 +377,15 @@ class CheckybotImportService
             'last_checked_at' => $check->last_heartbeat_at?->toISOString(),
             'last_heartbeat_at' => $check->last_heartbeat_at?->toISOString(),
             'stale_at' => $check->stale_at?->toISOString(),
+            'diagnostic_queued' => $check->hasQueuedDiagnostic(),
+            'diagnostic_queued_at' => $check->diagnostic_queued_at?->toISOString(),
+            'silenced_until' => $check->silenced_until?->toISOString(),
             'headers' => $this->redactHeaders($check->headers),
             'request_body_type' => $check->request_body_type,
             'has_request_body' => $check->hasRequestBody(),
             'assertions' => $this->assertionsPayload($check->assertions),
             'latest_result' => $latestResult instanceof MonitorApiResult ? $this->apiResultPayload($latestResult) : null,
+            'latest_diagnostic_result' => $latestDiagnosticResult instanceof MonitorApiResult ? $this->apiResultPayload($latestDiagnosticResult) : null,
             'raw' => [
                 'monitor_api_id' => $check->id,
                 'package_name' => $check->package_name,
@@ -532,7 +549,10 @@ class CheckybotImportService
             'is_on_demand' => (bool) $result->is_on_demand,
             'http_code' => $result->http_status_code,
             'response_time_ms' => $result->speed,
-            'ssl_expiry_date' => $result->ssl_expiry_date,
+            'ssl_expiry_date' => $result->ssl_expiry_date?->toISOString(),
+            'transport_error_type' => $result->transport_error_type,
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($result->transport_error_message),
+            'transport_error_code' => $result->transport_error_code,
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
