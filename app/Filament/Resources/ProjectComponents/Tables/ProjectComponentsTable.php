@@ -26,6 +26,10 @@ class ProjectComponentsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
+                'activeMonitorApis:id,project_component_id,current_status',
+                'activeWebsites:id,project_component_id,current_status,uptime_check,ssl_check',
+            ]))
             ->columns([
                 TextColumn::make('name')
                     ->searchable(),

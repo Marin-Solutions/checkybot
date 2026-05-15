@@ -25,6 +25,8 @@ class ProjectComponent extends Model
         'is_stale',
     ];
 
+    private ?string $cachedDerivedStatus = null;
+
     protected $fillable = [
         'project_id',
         'name',
@@ -67,6 +69,10 @@ class ProjectComponent extends Model
     {
         if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
             return $this;
+        }
+
+        if (in_array($key, ['current_status', 'is_archived', 'silenced_until'], true)) {
+            $this->cachedDerivedStatus = null;
         }
 
         return parent::setAttribute($key, $value);
@@ -128,17 +134,21 @@ class ProjectComponent extends Model
 
     public function derivedCurrentStatus(): string
     {
+        if ($this->cachedDerivedStatus !== null) {
+            return $this->cachedDerivedStatus;
+        }
+
         if ((bool) $this->is_archived) {
-            return 'unknown';
+            return $this->cachedDerivedStatus = 'unknown';
         }
 
         $statuses = $this->activeChildStatuses();
 
         if ($statuses === []) {
-            return 'pending';
+            return $this->cachedDerivedStatus = 'pending';
         }
 
-        return collect($statuses)
+        return $this->cachedDerivedStatus = collect($statuses)
             ->sortByDesc(fn (string $status): int => $this->statusPriority($status))
             ->first() ?? 'pending';
     }

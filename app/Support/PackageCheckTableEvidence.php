@@ -410,19 +410,50 @@ class PackageCheckTableEvidence
 
     private static function applyStaleFreshnessFilter(Builder $query): Builder
     {
-        return static::whereHasPackageInterval($query);
+        $latestRunAtSql = static::latestScheduledRunAtSql($query);
+
+        if ($latestRunAtSql === null) {
+            return static::whereHasPackageInterval($query);
+        }
+
+        [$dueSql, $bindings] = PackageIntervalDueExpression::build(
+            $query->getModel()->getConnection(),
+            anchorColumn: $latestRunAtSql,
+        );
+
+        return static::whereHasPackageInterval($query)
+            ->whereRaw("{$latestRunAtSql} is not null")
+            ->whereRaw($dueSql, $bindings);
     }
 
     private static function applyAwaitingHeartbeatFreshnessFilter(Builder $query): Builder
     {
+        $latestRunAtSql = static::latestScheduledRunAtSql($query);
+
+        if ($latestRunAtSql === null) {
+            return static::whereHasPackageInterval($query);
+        }
+
         return static::whereHasPackageInterval($query)
-            ->whereRaw('1 = 1');
+            ->whereRaw("{$latestRunAtSql} is null");
     }
 
     private static function applyFreshFreshnessFilter(Builder $query): Builder
     {
+        $latestRunAtSql = static::latestScheduledRunAtSql($query);
+
+        if ($latestRunAtSql === null) {
+            return static::whereHasPackageInterval($query);
+        }
+
+        [$dueSql, $bindings] = PackageIntervalDueExpression::build(
+            $query->getModel()->getConnection(),
+            anchorColumn: $latestRunAtSql,
+        );
+
         return static::whereHasPackageInterval($query)
-            ->whereRaw('1 = 1');
+            ->whereRaw("{$latestRunAtSql} is not null")
+            ->whereRaw("not ({$dueSql})", $bindings);
     }
 
     private static function whereHasPackageInterval(Builder $query): Builder
@@ -430,6 +461,15 @@ class PackageCheckTableEvidence
         return $query
             ->whereNotNull('package_interval')
             ->where('package_interval', '!=', '');
+    }
+
+    private static function latestScheduledRunAtSql(Builder $query): ?string
+    {
+        return match ($query->getModel()->getTable()) {
+            'monitor_apis' => '(select max(monitor_api_results.created_at) from monitor_api_results where monitor_api_results.monitor_api_id = monitor_apis.id and monitor_api_results.is_on_demand = 0)',
+            'websites' => '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and website_log_history.is_on_demand = 0)',
+            default => null,
+        };
     }
 
     private static function attributeValue(object $record, string $attribute, mixed $default = null): mixed

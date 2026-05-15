@@ -24,6 +24,10 @@ class ComponentsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
+                'activeMonitorApis:id,project_component_id,current_status',
+                'activeWebsites:id,project_component_id,current_status,uptime_check,ssl_check',
+            ]))
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),

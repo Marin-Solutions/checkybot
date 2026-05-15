@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\RunSource;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use Illuminate\Support\Facades\DB;
 
 class ApiMonitorExecutionService
 {
@@ -36,21 +37,33 @@ class ApiMonitorExecutionService
 
         $status = $this->statusService->apiStatusFromResult($rawResult, $monitor->expected_status);
         $summary = $this->statusService->summaryForApi($rawResult, $monitor->expected_status);
-        $previousStatus = $monitor->current_status;
+        [$result, $previousStatus] = DB::transaction(function () use ($monitor, $onDemand, $rawResult, $startTime, $status, $summary): array {
+            $lockedMonitor = MonitorApis::query()
+                ->whereKey($monitor->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $result = MonitorApiResult::recordResult(
-            $monitor,
-            $rawResult,
-            $startTime,
-            $status,
-            $summary,
-            $onDemand ? RunSource::OnDemand : RunSource::Scheduled,
-        );
+            $previousStatus = $lockedMonitor->current_status;
 
-        $monitor->forceFill([
-            'current_status' => $status,
-            'status_summary' => $summary,
-        ])->save();
+            $result = MonitorApiResult::recordResult(
+                $lockedMonitor,
+                $rawResult,
+                $startTime,
+                $status,
+                $summary,
+                $onDemand ? RunSource::OnDemand : RunSource::Scheduled,
+            );
+
+            $lockedMonitor->forceFill([
+                'current_status' => $status,
+                'status_summary' => $summary,
+            ])->save();
+
+            $monitor->setRawAttributes($lockedMonitor->getAttributes(), true);
+            $monitor->syncOriginal();
+
+            return [$result, $previousStatus];
+        });
 
         return [
             'result' => $result,

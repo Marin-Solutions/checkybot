@@ -55,6 +55,8 @@ class ProjectComponentDeliveryState
 
     public static function applyFilter(Builder $query, ?string $state): Builder
     {
+        $activeStatuses = ['healthy', 'warning', 'danger'];
+
         return match ($state) {
             self::ARCHIVED => $query->where('is_archived', true),
             self::SNOOZED => $query
@@ -67,18 +69,18 @@ class ProjectComponentDeliveryState
                     $query->whereNull('silenced_until')
                         ->orWhere('silenced_until', '<=', now());
                 })
-                ->whereDoesntHave('activeMonitorApis')
-                ->whereDoesntHave('activeWebsites'),
+                ->whereDoesntHave('activeMonitorApis', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses))
+                ->whereDoesntHave('activeWebsites', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses)),
             self::ACTIVE => $query
                 ->where('is_archived', false)
                 ->where(function (Builder $query): void {
                     $query->whereNull('silenced_until')
                         ->orWhere('silenced_until', '<=', now());
                 })
-                ->where(function (Builder $query): void {
+                ->where(function (Builder $query) use ($activeStatuses): void {
                     $query
-                        ->whereHas('activeMonitorApis')
-                        ->orWhereHas('activeWebsites');
+                        ->whereHas('activeMonitorApis', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses))
+                        ->orWhereHas('activeWebsites', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses));
                 }),
             default => $query,
         };
