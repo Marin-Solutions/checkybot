@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\DB;
 
 class ResponseTimeChart extends ChartWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
     protected ?string $heading = 'Response Times';
 
     protected ?string $maxHeight = '300px';
