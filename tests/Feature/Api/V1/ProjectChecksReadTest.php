@@ -427,6 +427,103 @@ test('single check and recent result endpoints return investigation context', fu
         ->assertJsonPath('data.0.summary', 'API returned HTTP 500.');
 });
 
+test('single check and recent result endpoints can disambiguate shared package keys by type', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'title' => 'API shared health',
+        'current_status' => 'danger',
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'shared-health',
+        'name' => 'Homepage shared health',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'current_status' => 'warning',
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'shared-health',
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'API shared health failed.',
+        'created_at' => now()->subMinutes(3),
+    ]);
+
+    $websiteResult = WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Website uptime is warning.',
+        'status' => 'warning',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $heartbeat = ProjectComponentHeartbeat::factory()->create([
+        'project_component_id' => $component->id,
+        'component_name' => 'shared-health',
+        'status' => 'healthy',
+        'summary' => 'Component shared health is healthy.',
+        'observed_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health")
+        ->assertNotFound();
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health?type=api")
+        ->assertOk()
+        ->assertJsonPath('data.id', "api:{$api->id}")
+        ->assertJsonPath('data.type', 'api')
+        ->assertJsonPath('data.latest_result.summary', 'API shared health failed.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health?type=uptime")
+        ->assertOk()
+        ->assertJsonPath('data.id', "uptime:{$website->id}")
+        ->assertJsonPath('data.type', 'uptime');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health?type=ssl")
+        ->assertOk()
+        ->assertJsonPath('data.id', "ssl:{$website->id}")
+        ->assertJsonPath('data.type', 'ssl');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health?type=component")
+        ->assertOk()
+        ->assertJsonPath('data.id', "component:{$component->id}")
+        ->assertJsonPath('data.type', 'component')
+        ->assertJsonPath('data.latest_result.summary', 'Component shared health is healthy.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health/results?type=uptime&limit=1")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $websiteResult->id)
+        ->assertJsonPath('data.0.check_id', "uptime:{$website->id}")
+        ->assertJsonPath('data.0.summary', 'Website uptime is warning.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health/results?type=component&limit=1")
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.id', $heartbeat->id)
+        ->assertJsonPath('data.0.check_id', "component:{$component->id}")
+        ->assertJsonPath('data.0.summary', 'Component shared health is healthy.');
+});
+
 test('recent api check results can be filtered by run source', function () {
     $api = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -543,6 +640,16 @@ test('recent check results default to all run sources and reject invalid filters
         ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?run_source=manual")
         ->assertUnprocessable()
         ->assertJsonValidationErrors('run_source');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health?type=website")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('type');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?type=website")
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('type');
 });
 
 test('project check read endpoints redact saved api response body evidence', function () {
