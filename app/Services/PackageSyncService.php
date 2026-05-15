@@ -399,10 +399,28 @@ class PackageSyncService
     private function normalizeRequestBodyForComparison(mixed $value): mixed
     {
         if (is_array($value)) {
-            return json_encode($value);
+            return json_encode($this->preserveEmptyJsonObjects($value));
         }
 
         return $value;
+    }
+
+    private function preserveEmptyJsonObjects(mixed $value, bool $isRoot = true, bool $parentIsList = false): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($value === []) {
+            return $isRoot || $parentIsList ? [] : new \stdClass;
+        }
+
+        $isList = array_is_list($value);
+
+        return array_map(
+            fn (mixed $item): mixed => $this->preserveEmptyJsonObjects($item, false, $isList),
+            $value,
+        );
     }
 
     /**
@@ -515,6 +533,10 @@ class PackageSyncService
         return $monitorApi->url !== $data['url']
             || $monitorApi->http_method !== $data['http_method']
             || (int) $monitorApi->expected_status !== (int) $data['expected_status']
+            || $monitorApi->headers != $data['headers']
+            || $monitorApi->request_body_type != $data['request_body_type']
+            || $this->normalizeRequestBodyForComparison($monitorApi->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
+            || $monitorApi->timeout_seconds != $data['timeout_seconds']
             || $assertionsChanged;
     }
 

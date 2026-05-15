@@ -104,6 +104,107 @@ class CheckybotControlService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     * @return array{created: bool, project: array<string, mixed>}
+     */
+    public function createProject(User $user, array $data): array
+    {
+        return DB::transaction(function () use ($user, $data): array {
+            $identityEndpoint = $data['identity_endpoint'] ?? $data['base_url'];
+            $project = $this->projectQuery($user)
+                ->where('environment', $data['environment'])
+                ->where('package_key', $data['key'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $project instanceof Project) {
+                $project = $this->projectQuery($user)
+                    ->where('environment', $data['environment'])
+                    ->where('identity_endpoint', $identityEndpoint)
+                    ->lockForUpdate()
+                    ->first();
+            }
+
+            $created = false;
+
+            if (! $project instanceof Project) {
+                $project = new Project([
+                    'created_by' => $user->id,
+                    'token' => hash('sha256', (string) Str::uuid()),
+                ]);
+                $created = true;
+            }
+
+            $this->validateProjectIdentityDoesNotConflict($user, $project, $data['environment'], $data['key'], $identityEndpoint);
+
+            $project->fill([
+                'package_key' => $data['key'],
+                'name' => $data['name'],
+                'environment' => $data['environment'],
+                'base_url' => $data['base_url'],
+                'identity_endpoint' => $identityEndpoint,
+                'repository' => $data['repository'] ?? $project->repository,
+                'group' => $data['group'] ?? $project->group,
+                'technology' => $data['technology'] ?? $project->technology,
+                'package_version' => $data['package_version'] ?? $project->package_version,
+            ]);
+
+            $project->save();
+
+            $project->loadCount([
+                'packageManagedApis as checks_count',
+                'packageManagedApis as enabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', true),
+                'packageManagedApis as disabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', false),
+                'packageManagedWebsites as website_checks_count',
+                'packageManagedWebsites as enabled_website_checks_count' => fn (Builder $query) => $this->activeWebsiteCheckConstraint($query),
+                'packageManagedWebsites as disabled_website_checks_count' => fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query),
+                'components as components_count',
+                'activeComponents as active_components_count',
+                'components as archived_components_count' => fn (Builder $query) => $query->where('is_archived', true),
+            ]);
+
+            return [
+                'created' => $created,
+                'project' => $this->projectSummary($project),
+            ];
+        });
+    }
+
+    private function validateProjectIdentityDoesNotConflict(
+        User $user,
+        Project $project,
+        string $environment,
+        string $packageKey,
+        string $identityEndpoint,
+    ): void {
+        $conflictingProject = $this->projectQuery($user)
+            ->where('environment', $environment)
+            ->whereKeyNot($project->getKey())
+            ->where(function (Builder $query) use ($packageKey, $identityEndpoint): void {
+                $query->where('package_key', $packageKey)
+                    ->orWhere('identity_endpoint', $identityEndpoint);
+            })
+            ->lockForUpdate()
+            ->first();
+
+        if (! $conflictingProject instanceof Project) {
+            return;
+        }
+
+        $errors = [];
+
+        if ($conflictingProject->package_key === $packageKey) {
+            $errors['key'] = ['A project with this key already exists for this environment.'];
+        }
+
+        if ($conflictingProject->identity_endpoint === $identityEndpoint) {
+            $errors['identity_endpoint'] = ['A project with this identity endpoint already exists for this environment.'];
+        }
+
+        throw ValidationException::withMessages($errors);
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function listChecks(User $user, string|int $projectKey): array
@@ -1461,7 +1562,38 @@ class CheckybotControlService
         return $check->url !== $data['url']
             || $check->http_method !== $data['http_method']
             || (int) $check->expected_status !== (int) $data['expected_status']
+            || $check->headers != $data['headers']
+            || $check->request_body_type != $data['request_body_type']
+            || $this->normalizeRequestBodyForComparison($check->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
+            || $check->timeout_seconds != $data['timeout_seconds']
             || $assertionsChanged;
+    }
+
+    private function normalizeRequestBodyForComparison(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return json_encode($this->preserveEmptyJsonObjects($value));
+        }
+
+        return $value;
+    }
+
+    private function preserveEmptyJsonObjects(mixed $value, bool $isRoot = true, bool $parentIsList = false): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($value === []) {
+            return $isRoot || $parentIsList ? [] : new \stdClass;
+        }
+
+        $isList = array_is_list($value);
+
+        return array_map(
+            fn (mixed $item): mixed => $this->preserveEmptyJsonObjects($item, false, $isList),
+            $value,
+        );
     }
 
     /**

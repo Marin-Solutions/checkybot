@@ -2,6 +2,7 @@
 
 use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
+use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
@@ -147,6 +148,91 @@ test('package sync creates a project and api check definitions', function () {
                 'disabled_missing' => 0,
             ],
         ]);
+});
+
+test('package read payloads include snooze queue state and latest diagnostic evidence for api and website checks', function () {
+    $this->travelTo(now()->setTime(14, 15, 0));
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'expected_status' => 200,
+                    'schedule' => 'every_5_minutes',
+                    'enabled' => true,
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage',
+                    'url' => '/',
+                    'schedule' => '5m',
+                    'enabled' => true,
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $projectId = $response->json('data.project.id');
+    $api = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    $api->update([
+        'diagnostic_queued_at' => now(),
+        'silenced_until' => now()->addHour(),
+    ]);
+    $website->update([
+        'diagnostic_queued_at' => now()->subMinutes(5),
+        'silenced_until' => now()->addHours(2),
+    ]);
+
+    MonitorApiResult::factory()->onDemand()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Diagnostic API run failed.',
+        'created_at' => now()->subMinute(),
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Scheduled API run is healthy.',
+        'created_at' => now(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Scheduled website run is healthy.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Diagnostic website run timed out.',
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$projectId}/checks/google-maps-search")
+        ->assertOk()
+        ->assertJsonPath('data.diagnostic_queued', true)
+        ->assertJsonPath('data.diagnostic_queued_at', now()->toISOString())
+        ->assertJsonPath('data.silenced_until', now()->addHour()->toISOString())
+        ->assertJsonPath('data.latest_result.summary', 'Scheduled API run is healthy.')
+        ->assertJsonPath('data.latest_diagnostic_result.summary', 'Diagnostic API run failed.')
+        ->assertJsonPath('data.latest_diagnostic_result.is_on_demand', true);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$projectId}/checks/homepage")
+        ->assertOk()
+        ->assertJsonPath('data.diagnostic_queued', false)
+        ->assertJsonPath('data.diagnostic_queued_at', now()->subMinutes(5)->toISOString())
+        ->assertJsonPath('data.silenced_until', now()->addHours(2)->toISOString())
+        ->assertJsonPath('data.latest_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.latest_diagnostic_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.latest_diagnostic_result.transport_error_type', 'timeout');
 });
 
 test('package sync rejects invalid regex assertion patterns', function () {
@@ -465,6 +551,100 @@ test('package sync resets api live health to pending when target-defining settin
     ]);
 
     expect($monitor->fresh()->awaiting_heartbeat_since)->toBeNull();
+});
+
+test('package sync resets api live health when request configuration changes', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous request configuration was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'headers' => [
+                        'X-Api-Key' => 'rotated-package-token',
+                    ],
+                    'request_body_type' => 'raw',
+                    'request_body' => 'probe=1',
+                    'timeout_seconds' => 30,
+                ],
+            ],
+        ]))
+        ->assertOk()
+        ->assertJsonPath('data.summary.updated', 1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $monitor->id,
+        'url' => 'https://api.scrappa.co/api/google-maps/search',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'request_body_type' => 'raw',
+        'timeout_seconds' => 30,
+        'current_status' => 'pending',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+
+    expect($monitor->fresh()->awaiting_heartbeat_since)->toBeNull();
+});
+
+test('package sync preserves api live health when nested empty object request body is unchanged', function () {
+    $payload = packageSyncPayload([
+        'checks' => [
+            [
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'filters' => [],
+                    'ids' => [1, 2],
+                ],
+            ],
+        ],
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Current request configuration is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'awaiting_heartbeat_since' => null,
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.summary.updated', 0);
+
+    $monitor->refresh();
+
+    expect($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret","filters":{},"ids":[1,2]}')
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->status_summary)->toBe('Current request configuration is healthy.')
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+        ->and($monitor->stale_at)->toBeNull()
+        ->and($monitor->diagnostic_queued_at)->not->toBeNull();
 });
 
 test('package sync persists api failed response body preference', function () {

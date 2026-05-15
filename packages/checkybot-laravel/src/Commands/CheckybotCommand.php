@@ -52,7 +52,13 @@ class CheckybotCommand extends Command
 
         $declaredComponents = $useRegistry ? $registry->getComponents() : [];
 
-        $this->comment("Found {$totalChecks} checks to sync and ".count($declaredComponents).' components to declare');
+        $this->comment(sprintf(
+            'Found %d %s to sync and %d %s to declare',
+            $totalChecks,
+            $totalChecks === 1 ? 'check' : 'checks',
+            count($declaredComponents),
+            count($declaredComponents) === 1 ? 'component' : 'components',
+        ));
 
         if ($this->option('dry-run')) {
             $this->displayDryRun($checkPayload, $declaredComponents);
@@ -108,13 +114,15 @@ class CheckybotCommand extends Command
             }
         }
 
-        if ($declaredComponents !== []) {
-            $this->info('Components:');
+        $this->info('Declared Components ('.count($declaredComponents).'):');
+        if ($declaredComponents === []) {
+            $this->line('  - none declared');
+        } else {
             foreach ($declaredComponents as $component) {
                 $this->line("  - {$component->getName()} every {$component->getInterval()}");
             }
-            $this->line('');
         }
+        $this->line('');
     }
 
     /**

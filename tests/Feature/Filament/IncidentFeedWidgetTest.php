@@ -90,6 +90,39 @@ describe('IncidentFeedWidget', function () {
             ->toContain('812ms');
     });
 
+    it('mounts the evidence modal action without unnamed Livewire actions', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Livewire modal homepage',
+        ]);
+
+        $log = WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Livewire modal homepage returned HTTP 503',
+            'http_status_code' => 503,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'website')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($log->id);
+
+        $component = Livewire::test(IncidentFeedWidget::class)
+            ->mountTableAction('viewEvidence', $incident->getKey())
+            ->assertSuccessful()
+            ->assertSet('mountedActions.0.name', 'viewEvidence');
+
+        expect($component->getMountedActionModalHtml())
+            ->toContain('Livewire modal homepage returned HTTP 503')
+            ->toContain('Source row #'.$log->id)
+            ->toContain('Close')
+            ->not->toContain('closeEvidenceModal');
+    });
+
     it('suppresses duplicate unhealthy rows until the severity changes', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,

@@ -55,6 +55,117 @@ test('control api requires a valid api key and exposes me details', function () 
         ->assertJsonStructure(['data' => ['server_time']]);
 });
 
+test('control api creates and updates projects by stable key', function () {
+    $created = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'convertr',
+            'name' => 'Convertr',
+            'environment' => 'production',
+            'base_url' => 'https://api.convertr.test',
+            'repository' => 'marin-solutions/convertr',
+            'technology' => 'Laravel',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('message', 'Project created.')
+        ->assertJsonPath('data.created', true)
+        ->assertJsonPath('data.project.key', 'convertr')
+        ->assertJsonPath('data.project.name', 'Convertr')
+        ->assertJsonPath('data.project.environment', 'production')
+        ->assertJsonPath('data.project.base_url', 'https://api.convertr.test')
+        ->assertJsonPath('data.project.repository', 'marin-solutions/convertr');
+
+    $projectId = $created->json('data.project.id');
+
+    $this->assertDatabaseHas('projects', [
+        'id' => $projectId,
+        'created_by' => $this->user->id,
+        'package_key' => 'convertr',
+        'identity_endpoint' => 'https://api.convertr.test',
+        'base_url' => 'https://api.convertr.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'convertr',
+            'name' => 'Convertr API',
+            'environment' => 'production',
+            'base_url' => 'https://api.convertr.test',
+        ])
+        ->assertOk()
+        ->assertJsonPath('message', 'Project updated.')
+        ->assertJsonPath('data.created', false)
+        ->assertJsonPath('data.project.id', $projectId)
+        ->assertJsonPath('data.project.name', 'Convertr API')
+        ->assertJsonPath('data.project.repository', 'marin-solutions/convertr');
+
+    expect(Project::query()->where('package_key', 'convertr')->count())->toBe(1);
+});
+
+test('control api rejects conflicting key and identity endpoint combinations', function () {
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'first-app',
+        'name' => 'First App',
+        'environment' => 'production',
+        'base_url' => 'https://first.test',
+        'identity_endpoint' => 'https://first.test',
+    ]);
+
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'second-app',
+        'name' => 'Second App',
+        'environment' => 'production',
+        'base_url' => 'https://second.test',
+        'identity_endpoint' => 'https://second.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'first-app',
+            'name' => 'Conflicting App',
+            'environment' => 'production',
+            'base_url' => 'https://second.test',
+            'identity_endpoint' => 'https://second.test',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('identity_endpoint');
+
+    $this->assertDatabaseHas('projects', [
+        'package_key' => 'first-app',
+        'identity_endpoint' => 'https://first.test',
+    ]);
+    $this->assertDatabaseHas('projects', [
+        'package_key' => 'second-app',
+        'identity_endpoint' => 'https://second.test',
+    ]);
+});
+
+test('control api keeps project creation scoped to api key owner', function () {
+    $otherUser = User::factory()->create();
+    Project::factory()->create([
+        'created_by' => $otherUser->id,
+        'package_key' => 'convertr',
+        'name' => 'Other Convertr',
+        'environment' => 'production',
+        'base_url' => 'https://other-convertr.test',
+        'identity_endpoint' => 'https://other-convertr.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'convertr',
+            'name' => 'Convertr',
+            'environment' => 'production',
+            'base_url' => 'https://api.convertr.test',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.project.key', 'convertr');
+
+    expect(Project::query()->where('package_key', 'convertr')->count())->toBe(2)
+        ->and(Project::query()->where('package_key', 'convertr')->where('created_by', $this->user->id)->count())->toBe(1);
+});
+
 test('control api lists projects and package managed checks with compact status', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -283,6 +394,124 @@ test('control api resets api live health when target-defining settings change', 
         'status_summary' => null,
         'diagnostic_queued_at' => null,
     ]);
+});
+
+test('control api resets api live health when request configuration changes', function () {
+    $payload = [
+        'name' => 'Search health',
+        'method' => 'POST',
+        'url' => '/api/search/health',
+        'expected_status' => 200,
+        'headers' => [
+            'Authorization' => 'Bearer old-token',
+        ],
+        'request_body_type' => 'json',
+        'request_body' => [
+            'probe' => 'old',
+        ],
+        'timeout_seconds' => 15,
+        'assertions' => [
+            ['type' => 'json_path_exists', 'path' => '$.data'],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', $payload)
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'search-health')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous request configuration was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', array_merge($payload, [
+            'headers' => [
+                'Authorization' => 'Bearer new-token',
+            ],
+            'request_body_type' => 'raw',
+            'request_body' => 'probe=new',
+            'timeout_seconds' => 30,
+        ]))
+        ->assertOk()
+        ->assertJsonPath('data.check.status', 'unknown')
+        ->assertJsonPath('data.check.status_summary', null)
+        ->assertJsonPath('data.check.diagnostic_queued', false);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $monitor->id,
+        'url' => 'https://api.scrappa.test/api/search/health',
+        'http_method' => 'POST',
+        'expected_status' => 200,
+        'request_body_type' => 'raw',
+        'timeout_seconds' => 30,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+
+    expect($monitor->fresh()->awaiting_heartbeat_since)->toBeNull();
+});
+
+test('control api preserves api live health when nested empty object request body is unchanged', function () {
+    $payload = [
+        'name' => 'Search health',
+        'method' => 'POST',
+        'url' => '/api/search/health',
+        'expected_status' => 200,
+        'headers' => [
+            'Authorization' => 'Bearer package-token',
+        ],
+        'request_body_type' => 'json',
+        'request_body' => [
+            'filters' => [],
+            'ids' => [1, 2],
+        ],
+        'timeout_seconds' => 15,
+        'assertions' => [
+            ['type' => 'json_path_exists', 'path' => '$.data'],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', $payload)
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'search-health')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Current request configuration is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'awaiting_heartbeat_since' => null,
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.check.status', 'healthy')
+        ->assertJsonPath('data.check.status_summary', 'Current request configuration is healthy.')
+        ->assertJsonPath('data.check.diagnostic_queued', true);
+
+    $monitor->refresh();
+
+    expect($monitor->request_body)->toBe('{"filters":{},"ids":[1,2]}')
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+        ->and($monitor->stale_at)->toBeNull()
+        ->and($monitor->diagnostic_queued_at)->not->toBeNull();
 });
 
 test('control api resets api live health when assertions change', function () {
@@ -2484,6 +2713,7 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         ])
         ->assertOk()
         ->assertJsonPath('result.tools.0.name', 'me')
+        ->assertJsonFragment(['name' => 'create_project'])
         ->assertJsonFragment(['description' => 'Optional check type. Required when multiple check surfaces share the same key.'])
         ->assertJsonFragment(['enum' => ['api', 'component', 'website']])
         ->assertJsonFragment(['name' => 'get_run_batch']);
@@ -2526,6 +2756,56 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         'url' => 'https://api.scrappa.test/health',
         'package_schedule' => '5m',
         'package_interval' => '5m',
+    ]);
+});
+
+test('mcp create project tool creates projects for later check management', function () {
+    $created = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 19,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'create_project',
+                'arguments' => [
+                    'key' => 'convertr',
+                    'name' => 'Convertr',
+                    'environment' => 'production',
+                    'base_url' => 'https://api.convertr.test',
+                    'repository' => 'marin-solutions/convertr',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.created', true)
+        ->assertJsonPath('result.structuredContent.project.key', 'convertr')
+        ->assertJsonPath('result.structuredContent.project.base_url', 'https://api.convertr.test');
+
+    $projectId = $created->json('result.structuredContent.project.id');
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 20,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'convertr',
+                    'key' => 'status',
+                    'name' => 'Status',
+                    'url' => '/status',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.check.key', 'status')
+        ->assertJsonPath('result.structuredContent.check.url', 'https://api.convertr.test/status');
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $projectId,
+        'package_name' => 'status',
+        'url' => 'https://api.convertr.test/status',
     ]);
 });
 

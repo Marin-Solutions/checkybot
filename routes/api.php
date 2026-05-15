@@ -33,6 +33,7 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
     Route::middleware('api.key')->prefix('control')->group(function () {
         Route::get('/me', [CheckybotControlController::class, 'me']);
         Route::get('/projects', [CheckybotControlController::class, 'projects']);
+        Route::post('/projects', [CheckybotControlController::class, 'createProject']);
         Route::get('/projects/{project}', [CheckybotControlController::class, 'project']);
         Route::get('/projects/{project}/checks', [CheckybotControlController::class, 'checks']);
         Route::put('/projects/{project}/checks/{check}', [CheckybotControlController::class, 'upsertCheck'])->where('check', '[A-Za-z0-9_-]+');
