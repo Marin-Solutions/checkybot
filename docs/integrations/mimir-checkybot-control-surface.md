@@ -119,7 +119,9 @@ Example project detail response:
 
 `GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project components in one list. Component rows use `"type": "component"` and include delivery state, declared heartbeat interval, stale threshold/timestamps, current metrics, and the latest heartbeat as `latest_result`. Check rows also include `supports_run`, `diagnostic_queued`, `diagnostic_queued_at`, and `latest_diagnostic_result`; API and website rows can be triggered through diagnostic run endpoints, while component rows report package-sent heartbeat evidence and are not directly runnable from the control API.
 
-Example upsert request:
+API checks are the default upsert type. Pass `"type": "website"` to create or update a package-managed website check. Website upserts accept `check_types` with `"uptime"`, `"ssl"`, or both; when omitted, Checkybot preserves the existing enabled website check types or defaults new website rows to uptime monitoring.
+
+Example API upsert request:
 
 ```json
 {
@@ -143,7 +145,20 @@ Example upsert request:
 }
 ```
 
-Example upsert response:
+Example website upsert request:
+
+```json
+{
+  "type": "website",
+  "check_types": ["uptime", "ssl"],
+  "name": "Marketing site",
+  "url": "/status",
+  "schedule": "10m",
+  "enabled": true
+}
+```
+
+Example API upsert response:
 
 ```json
 {
@@ -234,6 +249,7 @@ Arguments:
 - `get_project`: `{ "project": "scrappa" }`
 - `list_checks`: `{ "project": "scrappa" }`
 - `upsert_check`: `{ "project": "scrappa", "key": "maps-search", "name": "Maps search", "url": "/api/google-maps/search", ... }`
+- `upsert_check` website: `{ "project": "scrappa", "key": "marketing-site", "type": "website", "check_types": ["uptime", "ssl"], "name": "Marketing site", "url": "/status", "schedule": "10m" }`
 - `disable_check`: `{ "project": "scrappa", "check": "maps-search" }`
 - `trigger_run`: `{ "project": "scrappa" }` or `{ "project": "scrappa", "check": "maps-search", "type": "api" }`
 - `latest_failures`: `{ "project": "scrappa", "limit": 10 }`

@@ -147,6 +147,10 @@ class CheckybotControlService
     {
         $project = $this->findProject($user, $projectKey);
 
+        if (($data['type'] ?? 'api') === 'website') {
+            return $this->upsertWebsiteCheck($project, $data);
+        }
+
         return DB::transaction(function () use ($project, $data): array {
             $payload = $data;
             $checkKey = $payload['key'];
@@ -210,6 +214,75 @@ class CheckybotControlService
             return [
                 'created' => $created,
                 'check' => $this->checkPayload($check),
+            ];
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function upsertWebsiteCheck(Project $project, array $data): array
+    {
+        return DB::transaction(function () use ($project, $data): array {
+            $checkKey = $data['key'];
+            $website = Website::withTrashed()
+                ->where('project_id', $project->id)
+                ->where('source', 'package')
+                ->where('package_name', $checkKey)
+                ->lockForUpdate()
+                ->first();
+
+            $created = false;
+            $wasRestored = false;
+
+            if (! $website instanceof Website) {
+                $website = new Website;
+                $created = true;
+            } elseif ($website->trashed()) {
+                $website->restore();
+                $wasRestored = true;
+            }
+
+            $enabled = $data['enabled'] ?? true;
+            $checkTypes = $this->effectiveWebsiteCheckTypes($data['check_types'] ?? null, $website);
+            $schedule = $this->effectiveWebsiteSchedule($data['schedule'] ?? null, $website);
+            $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
+            $uptimeEnabled = $enabled && in_array('uptime', $checkTypes, true);
+            $sslEnabled = $enabled && in_array('ssl', $checkTypes, true);
+            $resolvedUrl = $this->resolveUrl($project->base_url, $data['url']);
+
+            $payload = [
+                'project_id' => $project->id,
+                'created_by' => $project->created_by,
+                'name' => $data['name'],
+                'url' => $resolvedUrl,
+                'description' => '',
+                'uptime_check' => $uptimeEnabled,
+                'uptime_interval' => $uptimeEnabled ? IntervalParser::toMinutes($normalizedSchedule) : null,
+                'ssl_check' => $sslEnabled,
+                'source' => 'package',
+                'package_name' => $checkKey,
+                'package_interval' => $enabled ? $normalizedSchedule : null,
+                'last_synced_at' => now(),
+            ];
+
+            if ($this->websiteTargetChangedForUpsert($website, $resolvedUrl)) {
+                $payload += $this->awaitingWebsiteLiveHealthAttributes();
+            } elseif (! $enabled) {
+                $payload += Website::disabledLiveHealthAttributes('Disabled by Checkybot control API.');
+                $payload['last_heartbeat_at'] = null;
+            } elseif ($created || $wasRestored || ! $this->websiteHasEnabledStatusCheck($website)) {
+                $payload += $this->awaitingWebsiteLiveHealthAttributes();
+            }
+
+            $website->fill($payload);
+            $website->save();
+            $website->load(['latestLogHistory', 'latestDiagnosticLogHistory']);
+
+            return [
+                'created' => $created,
+                'check' => $this->websiteCheckPayload($website),
             ];
         });
     }
@@ -1345,6 +1418,65 @@ class CheckybotControlService
         }
 
         return IntervalParser::DEFAULT_API_INTERVAL;
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function effectiveWebsiteCheckTypes(mixed $checkTypes, Website $website): array
+    {
+        if (is_array($checkTypes) && $checkTypes !== []) {
+            return collect($checkTypes)
+                ->filter(fn (mixed $type): bool => in_array($type, ['uptime', 'ssl'], true))
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        $existingTypes = $this->websiteCheckTypes($website);
+
+        return $existingTypes === [] ? ['uptime'] : $existingTypes;
+    }
+
+    private function effectiveWebsiteSchedule(mixed $schedule, Website $website): string
+    {
+        if (is_string($schedule) && filled($schedule)) {
+            return $schedule;
+        }
+
+        if ($schedule !== null && ! is_string($schedule)) {
+            throw ValidationException::withMessages([
+                'schedule' => ['The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.'],
+            ]);
+        }
+
+        if (is_string($website->package_interval) && filled($website->package_interval) && IntervalParser::isValid($website->package_interval)) {
+            return $website->package_interval;
+        }
+
+        return IntervalParser::DEFAULT_API_INTERVAL;
+    }
+
+    private function websiteTargetChangedForUpsert(Website $website, string $url): bool
+    {
+        return $website->exists
+            && ! $website->trashed()
+            && $website->url !== $url;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function awaitingWebsiteLiveHealthAttributes(): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'status_summary' => null,
+            'last_heartbeat_at' => null,
+            'awaiting_heartbeat_since' => now(),
+            'stale_at' => null,
+            'diagnostic_queued_at' => null,
+        ];
     }
 
     /**

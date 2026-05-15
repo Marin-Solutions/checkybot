@@ -228,7 +228,9 @@ class CheckybotMcpController extends Controller
 
         $validator = Validator::make($arguments, [
             'key' => ['required', 'string', 'alpha_dash', 'max:150'],
-            'type' => ['nullable', Rule::in(['api'])],
+            'type' => ['nullable', Rule::in(['api', 'website'])],
+            'check_types' => ['nullable', 'array', 'min:1', 'max:2'],
+            'check_types.*' => ['required', 'string', Rule::in(['uptime', 'ssl'])],
             'name' => ['required', 'string', 'max:255'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
             'url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
@@ -298,9 +300,11 @@ class CheckybotMcpController extends Controller
             $this->tool('list_checks', 'List package-managed API checks, website checks, and component heartbeat checks for a project. Component checks include delivery state, stale timing, latest heartbeat metrics, and supports_run=false.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('upsert_check', 'Create or update a package-managed API check by stable key.', [
+            $this->tool('upsert_check', 'Create or update a package-managed API or website check by stable key.', [
                 'project' => ['type' => 'string'],
                 'key' => ['type' => 'string'],
+                'type' => ['type' => 'string', 'enum' => ['api', 'website'], 'default' => 'api'],
+                'check_types' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['uptime', 'ssl']], 'description' => 'Website checks only. Defaults to the existing enabled website check types, or uptime for new website checks.'],
                 'name' => ['type' => 'string'],
                 'url' => ['type' => 'string'],
                 'method' => ['type' => 'string', 'default' => 'GET'],
