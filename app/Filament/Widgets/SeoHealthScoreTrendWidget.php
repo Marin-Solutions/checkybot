@@ -9,6 +9,11 @@ use Illuminate\Support\Facades\Auth;
 
 class SeoHealthScoreTrendWidget extends ChartWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
     protected ?string $heading = 'SEO Health Score Trend';
 
     protected static ?int $sort = 4;

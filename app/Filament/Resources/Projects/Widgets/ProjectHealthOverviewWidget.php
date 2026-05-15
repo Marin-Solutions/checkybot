@@ -29,6 +29,11 @@ use Illuminate\Support\Collection;
  */
 class ProjectHealthOverviewWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
     protected static ?int $sort = 1;
 
     protected ?string $pollingInterval = '30s';

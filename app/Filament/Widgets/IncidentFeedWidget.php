@@ -23,6 +23,11 @@ use Illuminate\Support\Facades\DB;
 
 class IncidentFeedWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
     protected static ?string $heading = 'Recent incidents';
 
     protected static ?string $description = 'Warning, danger and recovery transitions from websites, API monitors and components — in the order they happened.';
@@ -140,7 +145,9 @@ class IncidentFeedWidget extends BaseWidget
                     ->modalDescription(fn (Incident $record): string => "Exact supporting run for {$record->subject}.")
                     ->modalWidth('5xl')
                     ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close')
+                    ->modalCancelAction(fn (Action $action): Action => $action
+                        ->name('closeEvidenceModal')
+                        ->label('Close'))
                     ->schema([
                         SchemaView::make('filament.widgets.incident-feed-evidence-modal')
                             ->viewData(fn (Incident $record): array => [

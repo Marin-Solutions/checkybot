@@ -47,7 +47,9 @@ class FilamentNotificationsCollectionSynth extends WireableSynth
         }
 
         return app($class, ['items' => $this->normalizeNotifications($value)])
-            ->transform(fn (array $notification): Notification => Notification::fromArray($notification));
+            ->transform(fn (array|Notification $notification): Notification => $notification instanceof Notification
+                ? $notification
+                : Notification::fromArray($notification));
     }
 
     private function normalizeNotifications(array $value): array
@@ -61,6 +63,12 @@ class FilamentNotificationsCollectionSynth extends WireableSynth
         $notifications = [];
 
         foreach ($value as $key => $notification) {
+            if ($notification instanceof Notification) {
+                $notifications[$key] = $notification;
+
+                continue;
+            }
+
             if (! is_array($notification) || ! $this->looksLikeNotificationPayload($notification)) {
                 continue;
             }

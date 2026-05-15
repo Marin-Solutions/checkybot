@@ -17,6 +17,11 @@ use Livewire\Attributes\On;
 
 class SeoIssuesTableWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
     protected static ?string $heading = 'SEO Issues';
 
     protected int|string|array $columnSpan = 'full';
@@ -131,7 +136,9 @@ class SeoIssuesTableWidget extends BaseWidget
                     ->modalDescription('Evidence, affected URLs, stored data, and practical fix guidance for this SEO issue.')
                     ->modalWidth('5xl')
                     ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close')
+                    ->modalCancelAction(fn (Action $action): Action => $action
+                        ->name('closeIssueDetailsModal')
+                        ->label('Close'))
                     ->schema([
                         Section::make('Issue Overview')
                             ->schema([

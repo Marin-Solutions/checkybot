@@ -3,6 +3,8 @@
 use App\Filament\Widgets\IncidentFeedWidget;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Livewire\Attributes\Locked;
+use Livewire\Livewire;
 
 it('dashboard page renders the incident feed widget for a super admin', function () {
     $user = $this->actingAsSuperAdmin();
@@ -21,4 +23,16 @@ it('dashboard page renders the incident feed widget for a super admin', function
     $this->get('/admin')
         ->assertSuccessful()
         ->assertSeeLivewire(IncidentFeedWidget::class);
+});
+
+it('keeps incident feed schema discovery state updateable across livewire requests', function () {
+    $this->actingAsSuperAdmin();
+
+    $property = new ReflectionProperty(IncidentFeedWidget::class, 'discoveredSchemaNames');
+
+    expect($property->getAttributes(Locked::class))->toBeEmpty();
+
+    Livewire::test(IncidentFeedWidget::class)
+        ->set('discoveredSchemaNames', ['table'])
+        ->assertSet('discoveredSchemaNames', ['table']);
 });
