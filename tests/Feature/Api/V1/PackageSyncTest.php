@@ -2,6 +2,7 @@
 
 use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
+use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\User;
@@ -145,6 +146,91 @@ test('package sync creates a project and api check definitions', function () {
                 'disabled_missing' => 0,
             ],
         ]);
+});
+
+test('package read payloads include snooze queue state and latest diagnostic evidence for api and website checks', function () {
+    $this->travelTo(now()->setTime(14, 15, 0));
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'expected_status' => 200,
+                    'schedule' => 'every_5_minutes',
+                    'enabled' => true,
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage',
+                    'url' => '/',
+                    'schedule' => '5m',
+                    'enabled' => true,
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $projectId = $response->json('data.project.id');
+    $api = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    $api->update([
+        'diagnostic_queued_at' => now(),
+        'silenced_until' => now()->addHour(),
+    ]);
+    $website->update([
+        'diagnostic_queued_at' => now()->subMinutes(5),
+        'silenced_until' => now()->addHours(2),
+    ]);
+
+    MonitorApiResult::factory()->onDemand()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Diagnostic API run failed.',
+        'created_at' => now()->subMinute(),
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Scheduled API run is healthy.',
+        'created_at' => now(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Scheduled website run is healthy.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Diagnostic website run timed out.',
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$projectId}/checks/google-maps-search")
+        ->assertOk()
+        ->assertJsonPath('data.diagnostic_queued', true)
+        ->assertJsonPath('data.diagnostic_queued_at', now()->toISOString())
+        ->assertJsonPath('data.silenced_until', now()->addHour()->toISOString())
+        ->assertJsonPath('data.latest_result.summary', 'Scheduled API run is healthy.')
+        ->assertJsonPath('data.latest_diagnostic_result.summary', 'Diagnostic API run failed.')
+        ->assertJsonPath('data.latest_diagnostic_result.is_on_demand', true);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$projectId}/checks/homepage")
+        ->assertOk()
+        ->assertJsonPath('data.diagnostic_queued', false)
+        ->assertJsonPath('data.diagnostic_queued_at', now()->subMinutes(5)->toISOString())
+        ->assertJsonPath('data.silenced_until', now()->addHours(2)->toISOString())
+        ->assertJsonPath('data.latest_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.latest_diagnostic_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.latest_diagnostic_result.transport_error_type', 'timeout');
 });
 
 test('package sync rejects invalid regex assertion patterns', function () {
