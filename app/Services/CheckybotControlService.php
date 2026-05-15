@@ -148,7 +148,8 @@ class CheckybotControlService
         $project = $this->findProject($user, $projectKey);
 
         return DB::transaction(function () use ($project, $data): array {
-            $checkKey = $data['key'];
+            $payload = $data;
+            $checkKey = $payload['key'];
             $check = MonitorApis::withTrashed()
                 ->where('project_id', $project->id)
                 ->where('source', 'package')
@@ -165,33 +166,45 @@ class CheckybotControlService
                 $check->restore();
             }
 
-            $schedule = $this->effectiveSchedule($data['schedule'] ?? null, $check);
+            $schedule = $this->effectiveSchedule($payload['schedule'] ?? null, $check);
             $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
 
-            $check->fill([
+            $checkData = [
                 'project_id' => $project->id,
                 'created_by' => $project->created_by,
-                'title' => $data['name'],
-                'url' => $this->resolveUrl($project->base_url, $data['url']),
-                'http_method' => strtoupper($data['method'] ?? 'GET'),
-                'request_path' => $data['url'],
-                'data_path' => $this->primaryDataPath($data['assertions'] ?? []),
-                'headers' => $data['headers'] ?? [],
-                'request_body_type' => $data['request_body_type'] ?? null,
-                'request_body' => $data['request_body'] ?? null,
-                'expected_status' => $data['expected_status'] ?? 200,
-                'timeout_seconds' => $data['timeout_seconds'] ?? null,
+                'title' => $payload['name'],
+                'url' => $this->resolveUrl($project->base_url, $payload['url']),
+                'http_method' => strtoupper($payload['method'] ?? 'GET'),
+                'request_path' => $payload['url'],
+                'data_path' => $this->primaryDataPath($payload['assertions'] ?? []),
+                'headers' => $payload['headers'] ?? [],
+                'request_body_type' => $payload['request_body_type'] ?? null,
+                'request_body' => $payload['request_body'] ?? null,
+                'expected_status' => $payload['expected_status'] ?? 200,
+                'timeout_seconds' => $payload['timeout_seconds'] ?? null,
                 'package_schedule' => $schedule,
                 // Stale detection reads package_interval, so persist the compact normalized form there.
                 'package_interval' => $normalizedSchedule,
-                'is_enabled' => $data['enabled'] ?? true,
+                'is_enabled' => $payload['enabled'] ?? true,
                 'source' => 'package',
                 'package_name' => $checkKey,
                 'last_synced_at' => now(),
-            ]);
+            ];
+
+            $assertionsChanged = ! $created
+                && $this->apiAssertionsChanged($check, $payload['assertions'] ?? []);
+
+            if ($this->apiTargetChanged($check, $checkData, $assertionsChanged)) {
+                $checkData += $this->awaitingLiveHealthAttributes();
+            }
+
+            $check->fill($checkData);
             $check->save();
 
-            $this->syncAssertions($check, $data['assertions'] ?? []);
+            if ($created || $assertionsChanged) {
+                $this->syncAssertions($check, $payload['assertions'] ?? []);
+            }
+
             $check->load(['assertions', 'latestResult']);
 
             return [
@@ -1342,6 +1355,106 @@ class CheckybotControlService
         $path = Arr::first($assertions, fn (array $assertion): bool => isset($assertion['path']))['path'] ?? '';
 
         return $path === '' ? '' : $this->normalizeJsonPath($path);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $assertions
+     */
+    private function apiAssertionsChanged(MonitorApis $check, array $assertions): bool
+    {
+        return $this->storedAssertions($check) !== $this->incomingAssertions($assertions);
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function storedAssertions(MonitorApis $check): array
+    {
+        return $check->assertions()
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->get([
+                'data_path',
+                'assertion_type',
+                'expected_type',
+                'comparison_operator',
+                'expected_value',
+                'regex_pattern',
+                'sort_order',
+                'is_active',
+            ])
+            ->map(fn (MonitorApiAssertion $assertion): array => [
+                'data_path' => $assertion->data_path,
+                'assertion_type' => $assertion->assertion_type,
+                'expected_type' => $assertion->expected_type,
+                'comparison_operator' => $assertion->comparison_operator,
+                'expected_value' => $assertion->expected_value === null ? null : (string) $assertion->expected_value,
+                'regex_pattern' => $assertion->regex_pattern,
+                'sort_order' => (int) $assertion->sort_order,
+                'is_active' => (bool) $assertion->is_active,
+            ])
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $assertions
+     * @return array<int, array<string, mixed>>
+     */
+    private function incomingAssertions(array $assertions): array
+    {
+        return collect($assertions)
+            ->values()
+            ->map(fn (array $assertion, int $index): array => [
+                'data_path' => $this->normalizeJsonPath($assertion['path']),
+                'assertion_type' => $this->mapAssertionType($assertion['type']),
+                'expected_type' => $assertion['expected_type'] ?? null,
+                'comparison_operator' => $assertion['comparison_operator'] ?? (
+                    $assertion['type'] === 'json_path_equals' ? '=' : null
+                ),
+                'expected_value' => array_key_exists('expected_value', $assertion) && $assertion['expected_value'] !== null
+                    ? (string) $assertion['expected_value']
+                    : null,
+                'regex_pattern' => $assertion['regex_pattern'] ?? null,
+                'sort_order' => $assertion['sort_order'] ?? ($index + 1),
+                'is_active' => $assertion['active'] ?? true,
+            ])
+            ->sortBy([
+                ['sort_order', 'asc'],
+                ['data_path', 'asc'],
+                ['assertion_type', 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function apiTargetChanged(MonitorApis $check, array $data, bool $assertionsChanged): bool
+    {
+        if (! $check->exists || $check->trashed()) {
+            return false;
+        }
+
+        return $check->url !== $data['url']
+            || $check->http_method !== $data['http_method']
+            || (int) $check->expected_status !== (int) $data['expected_status']
+            || $assertionsChanged;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function awaitingLiveHealthAttributes(): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'status_summary' => null,
+            'last_heartbeat_at' => null,
+            'awaiting_heartbeat_since' => now(),
+            'stale_at' => null,
+            'diagnostic_queued_at' => null,
+        ];
     }
 
     /**
