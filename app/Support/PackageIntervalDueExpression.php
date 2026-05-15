@@ -13,9 +13,7 @@ class PackageIntervalDueExpression
     {
         $now = now()->toDateTimeString();
         $operator = in_array($operator, ['<', '<=', '>', '>='], true) ? $operator : '<=';
-        $anchorColumn = in_array($anchorColumn, ['created_at', 'website_log_history.created_at'], true)
-            ? $anchorColumn
-            : 'created_at';
+        $anchorColumn = trim($anchorColumn) !== '' ? $anchorColumn : 'created_at';
 
         // Mirrors IntervalParser formats so legacy package intervals continue to schedule.
         // Seconds are rounded up to full minutes to match IntervalParser::toMinutes().

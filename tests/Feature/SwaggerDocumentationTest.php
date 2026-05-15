@@ -65,15 +65,10 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions'])->not->toHaveKey('nullable')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['properties']['sort_order'])->not->toHaveKey('nullable')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['properties']['is_active'])->not->toHaveKey('nullable')
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['required'])->toBe(['components'])
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['required'])->toBe(['declared_components'])
         ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['full_manifest']['type'])->toBe('boolean')
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['required'])->toBe(['name', 'interval', 'status', 'observed_at'])
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['declared_components']['items']['required'])->toBe(['name', 'interval'])
         ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['declared_components']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['properties']['metrics']['oneOf'])->sequence(
-            fn ($schema) => $schema->type->toBe('object'),
-            fn ($schema) => $schema->type->toBe('array'),
-        )
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['required'])->toBe(['name', 'url'])
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['headers']['additionalProperties']['nullable'])->toBeTrue()
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['assertions']['items']['required'])->toBe(['type', 'path'])

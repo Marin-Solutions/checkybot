@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\RunSource;
 use App\Models\Concerns\HasSnooze;
 use App\Support\ApiMonitorEvidenceFormatter;
 use App\Support\UptimeTransportError;
@@ -38,8 +37,6 @@ class MonitorApis extends Model
         'awaiting_heartbeat_since',
         'stale_at',
     ];
-
-    private mixed $legacyLastHeartbeatAt = null;
 
     protected $fillable = [
         'title',
@@ -88,38 +85,11 @@ class MonitorApis extends Model
             }
         });
 
-        static::created(function (MonitorApis $api): void {
-            if ($api->legacyLastHeartbeatAt === null) {
-                return;
-            }
-
-            $status = in_array($api->current_status, ['healthy', 'warning', 'danger'], true)
-                ? $api->current_status
-                : 'healthy';
-
-            MonitorApiResult::query()->create([
-                'monitor_api_id' => $api->id,
-                'is_success' => $status === 'healthy',
-                'response_time_ms' => 0,
-                'http_code' => $status === 'healthy' ? 200 : 500,
-                'failed_assertions' => $status === 'healthy' ? null : [],
-                'status' => $status,
-                'summary' => $api->status_summary,
-                'run_source' => RunSource::Scheduled,
-                'is_on_demand' => false,
-                'created_at' => $api->legacyLastHeartbeatAt,
-                'updated_at' => $api->legacyLastHeartbeatAt,
-            ]);
-        });
     }
 
     public function setAttribute($key, $value): mixed
     {
         if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
-            if ($key === 'last_heartbeat_at' && $value !== null) {
-                $this->legacyLastHeartbeatAt = $value;
-            }
-
             return $this;
         }
 

@@ -146,24 +146,23 @@ class WriteJobCheckSsl extends Command
     private function wherePackageSslCheckIsDue(Builder $query): void
     {
         [$intervalDueSql, $bindings] = $this->packageIntervalDueExpression();
+        $latestScheduledAtSql = $this->latestScheduledLogAtSql();
 
-        $query->where(function (Builder $query) use ($intervalDueSql, $bindings): void {
+        $query->where(function (Builder $query) use ($intervalDueSql, $bindings, $latestScheduledAtSql): void {
             $query
-                ->whereDoesntHave('latestScheduledLogHistory')
-                ->orWhereHas('latestScheduledLogHistory', function (Builder $query) use ($intervalDueSql, $bindings): void {
-                    $query->whereRaw($intervalDueSql, $bindings);
-                });
+                ->whereRaw("{$latestScheduledAtSql} is null")
+                ->orWhereRaw($intervalDueSql, $bindings);
         });
     }
 
     private function whereManualSslCheckIsDue(Builder $query): void
     {
-        $query->where(function (Builder $query): void {
+        $latestScheduledAtSql = $this->latestScheduledLogAtSql();
+
+        $query->where(function (Builder $query) use ($latestScheduledAtSql): void {
             $query
-                ->whereDoesntHave('latestScheduledLogHistory')
-                ->orWhereHas('latestScheduledLogHistory', function (Builder $query): void {
-                    $query->whereRaw($this->manualIntervalDueExpression(), [now()->startOfMinute()->toDateTimeString()]);
-                });
+                ->whereRaw("{$latestScheduledAtSql} is null")
+                ->orWhereRaw($this->manualIntervalDueExpression($latestScheduledAtSql), [now()->startOfMinute()->toDateTimeString()]);
         });
     }
 
@@ -172,16 +171,21 @@ class WriteJobCheckSsl extends Command
      */
     private function packageIntervalDueExpression(): array
     {
-        return PackageIntervalDueExpression::build(Website::query()->getConnection(), anchorColumn: 'website_log_history.created_at');
+        return PackageIntervalDueExpression::build(Website::query()->getConnection(), anchorColumn: $this->latestScheduledLogAtSql());
     }
 
-    private function manualIntervalDueExpression(): string
+    private function manualIntervalDueExpression(string $anchorSql): string
     {
         return match (Website::query()->getConnection()->getDriverName()) {
-            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', website_log_history.created_at), '+' || websites.uptime_interval || ' minutes') <= ?",
-            'pgsql' => "date_trunc('minute', website_log_history.created_at) + (websites.uptime_interval * interval '1 minute') <= ?",
-            'sqlsrv' => 'DATEADD(minute, websites.uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, website_log_history.created_at), 0)) <= ?',
-            default => "DATE_ADD(DATE_FORMAT(website_log_history.created_at, '%Y-%m-%d %H:%i:00'), INTERVAL websites.uptime_interval MINUTE) <= ?",
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', {$anchorSql}), '+' || websites.uptime_interval || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', {$anchorSql}) + (websites.uptime_interval * interval '1 minute') <= ?",
+            'sqlsrv' => "DATEADD(minute, websites.uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, {$anchorSql}), 0)) <= ?",
+            default => "DATE_ADD(DATE_FORMAT({$anchorSql}, '%Y-%m-%d %H:%i:00'), INTERVAL websites.uptime_interval MINUTE) <= ?",
         };
+    }
+
+    private function latestScheduledLogAtSql(): string
+    {
+        return '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and website_log_history.is_on_demand = 0)';
     }
 }

@@ -13,15 +13,15 @@ class PackageCheckTableEvidence
 
     public const STATE_FRESH = 'Fresh';
 
-    public const STATE_AWAITING_HEARTBEAT = 'Awaiting heartbeat';
+    public const STATE_AWAITING_HEARTBEAT = 'Awaiting check';
 
     public const STATE_AWAITING_CHECK = 'Awaiting check';
 
-    public const STATE_HEARTBEAT_RECEIVED = 'Heartbeat received';
+    public const STATE_HEARTBEAT_RECEIVED = 'Check received';
 
     public const STATE_CHECK_RECEIVED = 'Check received';
 
-    public const STATE_STALE = 'Stale';
+    public const STATE_STALE = 'Due now';
 
     public const STATE_SCHEDULE_UNKNOWN = 'Schedule unknown';
 
@@ -199,20 +199,20 @@ class PackageCheckTableEvidence
         }
 
         if (static::isMonitoringDisabled($record)) {
-            return 'Monitor is disabled. Heartbeats are not expected.';
+            return 'Monitor is disabled. Scheduled checks are not expected.';
         }
 
         if (static::latestRunAt($record) === null) {
-            return 'No scheduled heartbeat has been recorded yet.';
+            return 'No scheduled check has been recorded yet.';
         }
 
-        return 'Last heartbeat '.static::latestRunAt($record)?->diffForHumans().'.';
+        return 'Last scheduled check '.static::latestRunAt($record)?->diffForHumans().'.';
     }
 
     public static function freshnessDescription(object $record): ?string
     {
         if (static::isMonitoringDisabled($record)) {
-            return 'Monitor is disabled. Heartbeats are not expected.';
+            return 'Monitor is disabled. Scheduled checks are not expected.';
         }
 
         if (blank($record->package_interval)) {
@@ -354,10 +354,12 @@ class PackageCheckTableEvidence
     {
         return match ($description) {
             'Monitor is disabled. Heartbeats are not expected.' => 'Monitor is disabled. Scheduled API checks are not expected.',
+            'Monitor is disabled. Scheduled checks are not expected.' => 'Monitor is disabled. Scheduled API checks are not expected.',
             'No scheduled heartbeat has been recorded yet.' => 'No scheduled API check has been recorded yet.',
+            'No scheduled check has been recorded yet.' => 'No scheduled API check has been recorded yet.',
             default => $description === null
                 ? null
-                : str_replace('Last heartbeat ', 'Last scheduled API check ', $description),
+                : str_replace('Last scheduled check ', 'Last scheduled API check ', str_replace('Last heartbeat ', 'Last scheduled API check ', $description)),
         };
     }
 

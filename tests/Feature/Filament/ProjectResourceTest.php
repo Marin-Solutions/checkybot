@@ -9,7 +9,6 @@ use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
 use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
-use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelationManager;
 use App\Filament\Resources\ProjectComponents\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
@@ -25,7 +24,6 @@ use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use Carbon\Carbon;
@@ -162,7 +160,7 @@ test('operator can update manual component status interval and archive state', f
         ->and($component->last_reported_status)->toBe('unknown')
         ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
         ->and($component->last_heartbeat_at)->toBeNull()
-        ->and($component->is_stale)->toBeFalse()
+        ->and($component->is_stale)->toBeNull()
         ->and($component->stale_detected_at)->toBeNull()
         ->and($component->is_archived)->toBeTrue()
         ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
@@ -359,14 +357,6 @@ test('project application list and component list show active and archived compo
         'created_by' => $user->id,
     ]);
 
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $archivedComponent->id,
-        'component_name' => 'legacy-proxy',
-        'status' => 'danger',
-        'event' => 'stale',
-        'summary' => 'Heartbeat expired',
-    ]);
-
     Livewire::test(ListProjects::class)
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$project]);
@@ -431,7 +421,7 @@ test('project component resource does not register the legacy heartbeat relation
     ]);
 
     expect(ProjectComponentResource::getRelations())
-        ->not->toContain(HeartbeatsRelationManager::class)
+        ->not->toContain('App\\Filament\\Resources\\ProjectComponents\\RelationManagers\\HeartbeatsRelationManager')
         ->toContain(NotificationSettingsRelationManager::class);
 });
 
@@ -2196,7 +2186,7 @@ test('super admin can bulk disable project components', function () {
             ->and($component->last_reported_status)->toBe('unknown')
             ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
             ->and($component->last_heartbeat_at)->toBeNull()
-            ->and($component->is_stale)->toBeFalse()
+            ->and($component->is_stale)->toBeNull()
             ->and($component->stale_detected_at)->toBeNull()
             ->and($component->archived_at)->not->toBeNull();
     }
@@ -2296,7 +2286,7 @@ test('super admin can bulk pause monitoring across selected applications', funct
         ->and($component->last_reported_status)->toBe('unknown')
         ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
         ->and($component->last_heartbeat_at)->toBeNull()
-        ->and($component->is_stale)->toBeFalse()
+        ->and($component->is_stale)->toBeNull()
         ->and($component->stale_detected_at)->toBeNull();
 });
 

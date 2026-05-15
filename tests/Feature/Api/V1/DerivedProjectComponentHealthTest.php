@@ -4,7 +4,6 @@ use App\Models\ApiKey;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 
@@ -29,11 +28,7 @@ test('component sync accepts declarations only and rejects heartbeat observation
         'name' => 'queue',
         'current_status' => 'unknown',
         'last_reported_status' => 'unknown',
-        'last_heartbeat_at' => null,
-        'is_stale' => false,
     ]);
-
-    expect(ProjectComponentHeartbeat::query()->count())->toBe(0);
 
     $this->withToken($apiKey->key)
         ->postJson("/api/v1/projects/{$project->id}/components/sync", [
@@ -58,8 +53,6 @@ test('component live status is derived from active child checks', function () {
     $component = ProjectComponent::factory()->create([
         'project_id' => $project->id,
         'current_status' => 'healthy',
-        'last_heartbeat_at' => now(),
-        'is_stale' => true,
     ]);
 
     expect($component->derivedCurrentStatus())->toBe('pending');

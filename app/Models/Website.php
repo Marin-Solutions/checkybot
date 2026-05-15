@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Enums\RunSource;
 use App\Models\Concerns\HasSnooze;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -30,8 +29,6 @@ class Website extends Model
         'awaiting_heartbeat_since',
         'stale_at',
     ];
-
-    private mixed $legacyLastHeartbeatAt = null;
 
     protected $fillable = [
         'ploi_website_id',
@@ -88,36 +85,11 @@ class Website extends Model
             }
         });
 
-        static::created(function (Website $website): void {
-            if ($website->legacyLastHeartbeatAt === null) {
-                return;
-            }
-
-            $status = in_array($website->current_status, ['healthy', 'warning', 'danger'], true)
-                ? $website->current_status
-                : 'healthy';
-
-            WebsiteLogHistory::query()->create([
-                'website_id' => $website->id,
-                'http_status_code' => $status === 'healthy' ? 200 : 500,
-                'speed' => 0,
-                'status' => $status,
-                'summary' => $website->status_summary,
-                'run_source' => RunSource::Scheduled,
-                'is_on_demand' => false,
-                'created_at' => $website->legacyLastHeartbeatAt,
-                'updated_at' => $website->legacyLastHeartbeatAt,
-            ]);
-        });
     }
 
     public function setAttribute($key, $value): mixed
     {
         if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
-            if ($key === 'last_heartbeat_at' && $value !== null) {
-                $this->legacyLastHeartbeatAt = $value;
-            }
-
             return $this;
         }
 

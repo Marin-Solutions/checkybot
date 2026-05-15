@@ -4,8 +4,6 @@ use App\Filament\Resources\Projects\Widgets\ProjectIncidentFeedWidget;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
-use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Livewire\Livewire;
@@ -213,40 +211,6 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertDontSee('Project diagnostic API')
             ->assertDontSee('Project Run Now API returned 500')
             ->assertSee('All clear');
-    });
-
-    it('includes project-scoped component heartbeat incidents and hides others', function () {
-        $myComponent = ProjectComponent::factory()->create([
-            'project_id' => $this->project->id,
-            'created_by' => $this->user->id,
-            'name' => 'queue-worker',
-        ]);
-        ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $myComponent->id,
-            'component_name' => 'queue-worker',
-            'status' => 'warning',
-            'summary' => 'Queue depth growing',
-            'observed_at' => now()->subMinutes(3),
-        ]);
-
-        $otherComponent = ProjectComponent::factory()->create([
-            'project_id' => $this->otherProject->id,
-            'created_by' => $this->user->id,
-            'name' => 'reporting-cron',
-        ]);
-        ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $otherComponent->id,
-            'component_name' => 'reporting-cron',
-            'status' => 'danger',
-            'summary' => 'Reporting cron unreachable',
-            'observed_at' => now()->subMinute(),
-        ]);
-
-        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
-            ->assertSee('queue-worker')
-            ->assertSee('Queue depth growing')
-            ->assertDontSee('reporting-cron')
-            ->assertDontSee('Reporting cron unreachable');
     });
 
     it('keeps the project scope after a Livewire refresh (sort/filter/poll)', function () {

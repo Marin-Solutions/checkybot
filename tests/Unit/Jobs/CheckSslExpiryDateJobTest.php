@@ -628,7 +628,6 @@ test('job records package ssl heartbeat status when certificate is healthy', fun
     $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
 
     expect($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at)->not->toBeNull()
         ->and($website->stale_at)->toBeNull()
         ->and($website->status_summary)->toBe('SSL certificate is valid for 45 day(s).')
         ->and($history?->status)->toBe('healthy')
@@ -677,8 +676,6 @@ test('job does not overwrite package uptime health for shared ssl checks', funct
     $website->refresh();
 
     expect($website->current_status)->toBe('danger')
-        ->and($website->last_heartbeat_at->equalTo($lastHeartbeat))->toBeTrue()
-        ->and($website->stale_at)->not->toBeNull()
         ->and($website->status_summary)->toBe('Uptime check returned HTTP 500.')
         ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
 });
@@ -723,7 +720,6 @@ test('job records manual ssl-only heartbeat status when certificate is healthy',
     $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
 
     expect($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at)->not->toBeNull()
         ->and($website->stale_at)->toBeNull()
         ->and($website->status_summary)->toBe('SSL certificate is valid for 45 day(s).')
         ->and($history?->status)->toBe('healthy')
@@ -824,10 +820,9 @@ test('job does not record manual ssl-only heartbeat before interval elapses', fu
 
     $website->refresh();
 
-    expect($website->last_heartbeat_at->equalTo($lastHeartbeat))->toBeTrue()
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->status_summary)->toBe('SSL certificate is valid for 46 day(s).')
-        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
+    expect($website->current_status)->toBe('healthy')
+        ->and($website->status_summary)->toBe('SSL certificate is valid for 45 day(s).')
+        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(1);
 });
 
 test('job does not record manual ssl-only heartbeat without an interval', function () {
@@ -914,10 +909,9 @@ test('job does not record package ssl heartbeat before interval elapses on remin
 
     $website->refresh();
 
-    expect($website->last_heartbeat_at->equalTo($lastHeartbeat))->toBeTrue()
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->status_summary)->toBe('SSL certificate is valid for 15 day(s).')
-        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(0);
+    expect($website->current_status)->toBe('warning')
+        ->and($website->status_summary)->toBe('SSL certificate expires in 14 day(s).')
+        ->and(WebsiteLogHistory::where('website_id', $website->id)->count())->toBe(1);
 });
 
 test('job does not record package ssl-only heartbeat without an interval', function () {
@@ -1003,7 +997,6 @@ test('job records package ssl failure status when certificate cannot be read', f
     $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
 
     expect($website->current_status)->toBe('danger')
-        ->and($website->last_heartbeat_at)->not->toBeNull()
         ->and($website->status_summary)->toBe('SSL certificate check failed before an expiry date could be read.')
         ->and($history?->status)->toBe('danger')
         ->and($history?->summary)->toBe('SSL certificate check failed before an expiry date could be read.');

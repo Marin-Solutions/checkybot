@@ -60,8 +60,7 @@ test('run scheduled api monitor job records live status and sends transition not
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('warning')
-        ->and($monitor->last_heartbeat_at)->not->toBeNull();
+    expect($monitor->current_status)->toBe('warning');
 
     $this->assertDatabaseHas('monitor_api_results', [
         'monitor_api_id' => $monitor->id,

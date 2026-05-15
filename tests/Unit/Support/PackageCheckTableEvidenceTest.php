@@ -59,7 +59,7 @@ test('freshness evidence marks blank intervals as schedule unknown', function ()
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('No package interval configured yet.');
 });
 
-test('freshness evidence uses created at while waiting for the first package heartbeat', function () {
+test('freshness evidence uses created at while waiting for the first scheduled check', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
     $record = (object) [
@@ -69,13 +69,13 @@ test('freshness evidence uses created at while waiting for the first package hea
         'stale_at' => null,
     ];
 
-    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Awaiting heartbeat')
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Awaiting check')
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Expected every 5m.')
         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Awaiting first run')
         ->and(PackageCheckTableEvidence::staleThresholdAt($record)?->toDateTimeString())->toBe('2026-04-24 12:03:00');
 });
 
-test('freshness evidence marks never-run package checks stale after their first missed interval', function () {
+test('freshness evidence marks never-run package checks due after their first missed interval', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
     $record = (object) [
@@ -85,7 +85,7 @@ test('freshness evidence marks never-run package checks stale after their first 
         'stale_at' => null,
     ];
 
-    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Due now')
         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Due 2 minutes ago.')
         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Due now')
         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Overdue 2 minutes ago');
@@ -102,7 +102,7 @@ test('freshness evidence ignores legacy awaiting heartbeat reset time', function
         'stale_at' => null,
     ];
 
-    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+    expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Due now')
         ->and(PackageCheckTableEvidence::staleThresholdAt($record)?->toDateTimeString())->toBe('2026-04-24 11:05:00')
         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Due now');
 });
@@ -118,7 +118,7 @@ test('freshness evidence treats disabled api monitors as disabled instead of sta
     ];
 
     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Disabled')
-        ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Heartbeats are not expected.');
+        ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Scheduled checks are not expected.');
 });
 
 test('freshness evidence treats package websites with no enabled checks as disabled', function () {
@@ -133,7 +133,7 @@ test('freshness evidence treats package websites with no enabled checks as disab
     ];
 
     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Disabled')
-        ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Heartbeats are not expected.')
+        ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Monitor is disabled. Scheduled checks are not expected.')
         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Paused')
         ->and(PackageCheckTableEvidence::dueDescription($record))->toBe('Scheduled checks are paused until this monitor is re-enabled.');
 });

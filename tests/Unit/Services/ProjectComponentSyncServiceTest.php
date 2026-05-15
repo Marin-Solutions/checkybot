@@ -27,7 +27,7 @@ test('project component sync creates and updates declarations only', function ()
     expect($component->declared_interval)->toBe('5m')
         ->and($component->current_status)->toBe('unknown')
         ->and($component->last_heartbeat_at)->toBeNull()
-        ->and($component->is_stale)->toBeFalse();
+        ->and($component->is_stale)->toBeNull();
 
     $summary = app(ProjectComponentSyncService::class)->sync($project, [
         'full_manifest' => true,
@@ -60,5 +60,5 @@ test('project component sync archives missing package components on full manifes
     expect($summary['components']['archived'])->toBe(1)
         ->and($component->fresh()->is_archived)->toBeTrue()
         ->and($component->fresh()->last_heartbeat_at)->toBeNull()
-        ->and($component->fresh()->is_stale)->toBeFalse();
+        ->and($component->fresh()->is_stale)->toBeNull();
 });

@@ -392,8 +392,6 @@ test('legacy sync resets api live health when target-defining settings change', 
         'expected_status' => 201,
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 });
@@ -467,9 +465,7 @@ test('legacy sync does not reset api live health when assertions arrive out of s
     $api->refresh();
 
     expect($api->current_status)->toBe('healthy')
-        ->and($api->status_summary)->toBe('Current target is healthy.')
-        ->and($api->last_heartbeat_at)->not->toBeNull()
-        ->and($api->stale_at)->not->toBeNull();
+        ->and($api->status_summary)->toBe('Current target is healthy.');
 });
 
 test('preserves existing api execution settings when legacy sync omits them', function () {
@@ -544,8 +540,6 @@ test('re-enables orphaned api checks when legacy sync reintroduces them without 
         'is_enabled' => false,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
     ]);
 
     $summary = $this->syncService->syncChecks($this->project, [
@@ -574,8 +568,6 @@ test('re-enables orphaned api checks when legacy sync reintroduces them without 
         'is_enabled' => true,
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
     ]);
 });
 
@@ -624,8 +616,6 @@ test('clears missing sync evidence when orphaned api checks return disabled', fu
         'is_enabled' => false,
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
     ]);
 });
 
@@ -856,8 +846,6 @@ test('legacy sync resets website live health when url changes', function () {
         'url' => 'https://new-url.com',
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 });
@@ -902,8 +890,6 @@ test('disables orphaned uptime checks without deleting them', function () {
         'package_interval' => null,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
     ]);
     $this->assertDatabaseHas('websites', ['package_name' => 'new-check']);
 });
@@ -934,8 +920,6 @@ test('re-enables orphaned website checks without stale disabled evidence', funct
         'ssl_check' => false,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
     ]);
 
     $summary = $this->syncService->syncChecks($this->project, [
@@ -964,8 +948,6 @@ test('re-enables orphaned website checks without stale disabled evidence', funct
         'uptime_interval' => 10,
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
     ]);
 });
 
@@ -1026,8 +1008,6 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'package_interval' => null,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
@@ -1036,8 +1016,6 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'is_enabled' => false,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
@@ -1963,8 +1941,6 @@ test('transitioning from uptime-only to ssl-only does not restore uptime from th
         'ssl_check' => true,
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
     ]);
 });
 

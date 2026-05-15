@@ -12,6 +12,17 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 
+function seedScheduledApiMonitorResult(MonitorApis $monitor, \Illuminate\Support\Carbon $createdAt): MonitorApiResult
+{
+    return MonitorApiResult::factory()
+        ->successful()
+        ->create([
+            'monitor_api_id' => $monitor->id,
+            'created_at' => $createdAt,
+            'updated_at' => $createdAt,
+        ]);
+}
+
 test('command checks all active api monitors', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
@@ -72,14 +83,14 @@ test('command queues due api monitor jobs without running http checks inline', f
     $dueMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/queued-health',
         'package_interval' => '15m',
-        'last_heartbeat_at' => now()->subMinutes(16),
     ]);
+    seedScheduledApiMonitorResult($dueMonitor, now()->subMinutes(16));
 
     $skippedMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/skipped-queued-health',
         'package_interval' => '15m',
-        'last_heartbeat_at' => now()->subMinutes(5),
     ]);
+    seedScheduledApiMonitorResult($skippedMonitor, now()->subMinutes(5));
 
     $this->artisan('monitor:check-apis')
         ->expectsOutput('Queued 1 API monitor jobs.')
@@ -106,14 +117,14 @@ test('command only checks api monitors when their polling interval is due', func
     $dueMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/due-health',
         'package_interval' => '15m',
-        'last_heartbeat_at' => now()->subMinutes(16),
     ]);
+    seedScheduledApiMonitorResult($dueMonitor, now()->subMinutes(16));
 
     $skippedMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/skipped-health',
         'package_interval' => '15m',
-        'last_heartbeat_at' => now()->subMinutes(5),
     ]);
+    seedScheduledApiMonitorResult($skippedMonitor, now()->subMinutes(5));
 
     $this->artisan('monitor:check-apis')
         ->expectsOutput('Queued 1 API monitor jobs.')
@@ -123,9 +134,7 @@ test('command only checks api monitors when their polling interval is due', func
         'monitor_api_id' => $dueMonitor->id,
     ]);
 
-    assertDatabaseMissing('monitor_api_results', [
-        'monitor_api_id' => $skippedMonitor->id,
-    ]);
+    expect(MonitorApiResult::where('monitor_api_id', $skippedMonitor->id)->count())->toBe(1);
 
     Http::assertSentCount(1);
 });
@@ -138,14 +147,14 @@ test('command does not hydrate enabled api monitors before their polling interva
     $dueMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/due-query-health',
         'package_interval' => '15m',
-        'last_heartbeat_at' => now()->subMinutes(16),
     ]);
+    seedScheduledApiMonitorResult($dueMonitor, now()->subMinutes(16));
 
     $skippedMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/skipped-query-health',
         'package_interval' => '15m',
-        'last_heartbeat_at' => now()->subMinutes(5),
     ]);
+    seedScheduledApiMonitorResult($skippedMonitor, now()->subMinutes(5));
 
     $retrievedMonitorIds = [];
     MonitorApis::retrieved(function (MonitorApis $monitor) use (&$retrievedMonitorIds): void {
@@ -190,16 +199,14 @@ test('command honors package-style api monitor intervals', function () {
     $monitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/package-style-health',
         'package_interval' => 'every_5_minutes',
-        'last_heartbeat_at' => now()->subMinutes(2),
     ]);
+    seedScheduledApiMonitorResult($monitor, now()->subMinutes(2));
 
     $this->artisan('monitor:check-apis')
         ->expectsOutput('Queued 0 API monitor jobs.')
         ->assertSuccessful();
 
-    assertDatabaseMissing('monitor_api_results', [
-        'monitor_api_id' => $monitor->id,
-    ]);
+    expect(MonitorApiResult::where('monitor_api_id', $monitor->id)->count())->toBe(1);
 
     Http::assertNothingSent();
 });
@@ -212,26 +219,21 @@ test('command honors zero padded api monitor intervals accepted by parser', func
     $compactMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/zero-padded-compact-health',
         'package_interval' => '05m',
-        'last_heartbeat_at' => now()->subMinutes(2),
     ]);
+    seedScheduledApiMonitorResult($compactMonitor, now()->subMinutes(2));
 
     $legacyMonitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/zero-padded-legacy-health',
         'package_interval' => 'every_05_minutes',
-        'last_heartbeat_at' => now()->subMinutes(2),
     ]);
+    seedScheduledApiMonitorResult($legacyMonitor, now()->subMinutes(2));
 
     $this->artisan('monitor:check-apis')
         ->expectsOutput('Queued 0 API monitor jobs.')
         ->assertSuccessful();
 
-    assertDatabaseMissing('monitor_api_results', [
-        'monitor_api_id' => $compactMonitor->id,
-    ]);
-
-    assertDatabaseMissing('monitor_api_results', [
-        'monitor_api_id' => $legacyMonitor->id,
-    ]);
+    expect(MonitorApiResult::where('monitor_api_id', $compactMonitor->id)->count())->toBe(1)
+        ->and(MonitorApiResult::where('monitor_api_id', $legacyMonitor->id)->count())->toBe(1);
 
     Http::assertNothingSent();
 });
@@ -275,8 +277,8 @@ test('command treats monitor intervals as minute-granular scheduler buckets', fu
     $monitor = MonitorApis::factory()->create([
         'url' => 'https://api.example.com/minute-boundary-health',
         'package_interval' => '1m',
-        'last_heartbeat_at' => \Illuminate\Support\Carbon::parse('2026-04-26 12:00:20'),
     ]);
+    seedScheduledApiMonitorResult($monitor, \Illuminate\Support\Carbon::parse('2026-04-26 12:00:20'));
 
     $this->artisan('monitor:check-apis')
         ->expectsOutput('Queued 1 API monitor jobs.')
@@ -492,7 +494,6 @@ test('command records warning status history and notifies for package-managed as
     $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
 
     expect($monitor->current_status)->toBe('warning');
-    expect($monitor->last_heartbeat_at)->not->toBeNull();
     expect($result?->status)->toBe('warning');
 
     Mail::assertSent(HealthStatusAlert::class);

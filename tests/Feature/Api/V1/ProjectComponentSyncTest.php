@@ -35,8 +35,6 @@ test('sync stores package component declarations without heartbeat history', fun
 
     expect($database->current_status)->toBe('unknown')
         ->and($database->last_reported_status)->toBe('unknown')
-        ->and($database->last_heartbeat_at)->toBeNull()
-        ->and($database->is_stale)->toBeFalse()
         ->and($database->derivedCurrentStatus())->toBe('pending');
 });
 
@@ -128,8 +126,6 @@ test('component status rolls up worst active child check and ignores disabled or
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'current_status' => 'healthy',
-        'last_heartbeat_at' => now(),
-        'is_stale' => true,
     ]);
 
     expect($component->derivedCurrentStatus())->toBe('pending');

@@ -237,7 +237,6 @@ test('job records danger status history and sends notifications for failed packa
     $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
 
     expect($website->current_status)->toBe('danger');
-    expect($website->last_heartbeat_at)->not->toBeNull();
     expect($history?->status)->toBe('danger');
 
     Mail::assertSent(\App\Mail\HealthStatusAlert::class);
@@ -352,7 +351,6 @@ test('on-demand runs update live status and notify on transitions', function () 
         ->and($log?->run_source)->toBe(RunSource::OnDemand)
         ->and($log?->is_on_demand)->toBeTrue()
         ->and($website->current_status)->toBe('danger')
-        ->and($website->last_heartbeat_at)->not->toBeNull()
         ->and($website->status_summary)->toBe('Website heartbeat failed with HTTP status 500.');
 
     Mail::assertSent(\App\Mail\HealthStatusAlert::class);
@@ -1068,7 +1066,6 @@ test('on-demand job records ssl-only evidence when uptime check is disabled', fu
         ->and($history?->run_source)->toBe(RunSource::OnDemand)
         ->and($history?->is_on_demand)->toBeTrue()
         ->and($website->current_status)->toBe('warning')
-        ->and($website->last_heartbeat_at)->not->toBeNull()
         ->and($website->status_summary)->toBe('SSL certificate expires in 14 day(s).');
 });
 

@@ -6,7 +6,7 @@ use App\Models\ProxyPoolIntegration;
 use App\Services\ProxyPoolDashboardService;
 use Illuminate\Support\Facades\Http;
 
-it('records proxy pool dashboard metrics as a project component heartbeat', function () {
+it('records proxy pool dashboard metrics on the project component', function () {
     $user = $this->actingAsSuperAdmin();
     $project = Project::factory()->create(['created_by' => $user->id]);
 
@@ -42,7 +42,6 @@ it('records proxy pool dashboard metrics as a project component heartbeat', func
         ->current_status->toBe('danger')
         ->summary->toBe('2 accounts expiring soon, 1 unhealthy proxies, 3 slow proxies, 12 healthy proxies.')
         ->and($component->metrics['attention_total'])->toBe(6)
-        ->and($component->heartbeats()->count())->toBe(1)
         ->and($integration->refresh()->last_sync_status)->toBe('danger')
         ->and($integration->last_sync_error)->toBeNull()
         ->and($integration->last_synced_at)->not->toBeNull();
@@ -112,5 +111,5 @@ it('updates the same proxy pool component on later syncs', function () {
     expect($second->id)->toBe($first->id)
         ->and(ProjectComponent::query()->where('source', ProxyPoolDashboardService::COMPONENT_SOURCE)->count())->toBe(1)
         ->and($second->refresh()->current_status)->toBe('warning')
-        ->and($second->heartbeats()->count())->toBe(2);
+        ->and($second->metrics['attention_total'])->toBe(3);
 });

@@ -29,7 +29,7 @@ test('migration cleans synthetic stale data recalculates health drops non server
     MonitorApiResult::factory()->create([
         'monitor_api_id' => $api->id,
         'status' => 'danger',
-        'summary' => 'Heartbeat expired',
+        'summary' => 'No scheduled API check completed within the expected 15m interval.',
         'created_at' => now()->subMinutes(20),
     ]);
     MonitorApiResult::factory()->create([
@@ -58,7 +58,7 @@ test('migration cleans synthetic stale data recalculates health drops non server
     WebsiteLogHistory::factory()->create([
         'website_id' => $website->id,
         'status' => 'danger',
-        'summary' => 'Heartbeat expired',
+        'summary' => 'No heartbeat received within the expected 15m interval.',
         'created_at' => now()->subMinutes(20),
     ]);
     WebsiteLogHistory::factory()->create([
@@ -96,8 +96,8 @@ test('migration cleans synthetic stale data recalculates health drops non server
 
     $migration->up();
 
-    expect(DB::table('monitor_api_results')->where('summary', 'Heartbeat expired')->exists())->toBeFalse()
-        ->and(DB::table('website_log_history')->where('summary', 'Heartbeat expired')->exists())->toBeFalse()
+    expect(DB::table('monitor_api_results')->where('summary', 'No scheduled API check completed within the expected 15m interval.')->exists())->toBeFalse()
+        ->and(DB::table('website_log_history')->where('summary', 'No heartbeat received within the expected 15m interval.')->exists())->toBeFalse()
         ->and(Schema::hasTable('project_component_heartbeats'))->toBeFalse()
         ->and(Schema::hasColumn('monitor_apis', 'last_heartbeat_at'))->toBeFalse()
         ->and(Schema::hasColumn('monitor_apis', 'awaiting_heartbeat_since'))->toBeFalse()

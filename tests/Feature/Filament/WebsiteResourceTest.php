@@ -1329,8 +1329,6 @@ test('website list run now action queues failure-prone websites without moving l
         'last_heartbeat_at' => now()->subMinutes(5),
     ]);
 
-    $heartbeatBefore = $website->last_heartbeat_at;
-
     Livewire::test(ListWebsites::class)
         ->callTableAction('run_now', $website)
         ->assertNotified('Diagnostic queued');
@@ -1341,7 +1339,7 @@ test('website list run now action queues failure-prone websites without moving l
 
     expect($website->logHistory()->count())->toBe(0)
         ->and($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->status_summary)->toBe('Heartbeat received successfully.');
 });
 
@@ -1696,8 +1694,6 @@ test('view page run now action does not fire user-facing health alerts and prese
         'last_heartbeat_at' => now()->subMinutes(5),
     ]);
 
-    $heartbeatBefore = $website->last_heartbeat_at;
-
     $notificationService = Mockery::mock(\App\Services\HealthEventNotificationService::class);
     $notificationService->shouldNotReceive('notifyWebsite');
     $this->app->instance(\App\Services\HealthEventNotificationService::class, $notificationService);
@@ -1709,7 +1705,7 @@ test('view page run now action does not fire user-facing health alerts and prese
     $website->refresh();
 
     expect($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->logHistory()->count())->toBe(0);
 });
 

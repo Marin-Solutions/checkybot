@@ -81,17 +81,17 @@ return new class extends Migration
     private function deleteSyntheticStaleResults(): void
     {
         DB::table('monitor_api_results')
-            ->whereIn('summary', $this->syntheticStaleSummaries())
+            ->where(fn ($query) => $this->whereSyntheticStaleSummary($query, 'summary'))
             ->delete();
 
         DB::table('website_log_history')
-            ->whereIn('summary', $this->syntheticStaleSummaries())
+            ->where(fn ($query) => $this->whereSyntheticStaleSummary($query, 'summary'))
             ->delete();
 
         if (Schema::hasTable('project_component_heartbeats')) {
             DB::table('project_component_heartbeats')
                 ->where('event', 'stale')
-                ->orWhereIn('summary', $this->syntheticStaleSummaries())
+                ->orWhere(fn ($query) => $this->whereSyntheticStaleSummary($query, 'summary'))
                 ->delete();
         }
 
@@ -101,7 +101,7 @@ return new class extends Migration
             }
 
             DB::table($table)
-                ->whereIn('last_delivery_summary', $this->syntheticStaleSummaries())
+                ->where(fn ($query) => $this->whereSyntheticStaleSummary($query, 'last_delivery_summary'))
                 ->update([
                     'last_delivery_kind' => null,
                     'last_delivery_succeeded' => null,
@@ -241,18 +241,18 @@ return new class extends Migration
         });
     }
 
-    /**
-     * @return array<int, string>
-     */
-    private function syntheticStaleSummaries(): array
+    private function whereSyntheticStaleSummary($query, string $column): void
     {
-        return [
-            'Heartbeat expired',
-            'Heartbeat expired.',
-            'Package check heartbeat expired.',
-            'Package heartbeat expired.',
-            'Scheduled heartbeat expired.',
-        ];
+        $query
+            ->whereIn($column, [
+                'Heartbeat expired',
+                'Heartbeat expired.',
+                'Package check heartbeat expired.',
+                'Package heartbeat expired.',
+                'Scheduled heartbeat expired.',
+            ])
+            ->orWhere($column, 'like', 'No scheduled API check completed within the expected % interval.')
+            ->orWhere($column, 'like', 'No heartbeat received within the expected % interval.');
     }
 
     private function statusFromApiResult(?object $result): string

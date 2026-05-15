@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 
 test('component stale command is a no-op because component health is derived', function () {
     $component = ProjectComponent::factory()->create([
@@ -18,7 +17,6 @@ test('component stale command is a no-op because component health is derived', f
     $component->refresh();
 
     expect($component->current_status)->toBe('healthy')
-        ->and($component->is_stale)->toBeFalse()
-        ->and($component->stale_detected_at)->toBeNull()
-        ->and(ProjectComponentHeartbeat::query()->count())->toBe(0);
+        ->and($component->is_stale)->toBeNull()
+        ->and($component->stale_detected_at)->toBeNull();
 });

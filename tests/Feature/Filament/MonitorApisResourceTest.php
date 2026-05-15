@@ -741,7 +741,11 @@ test('api monitor list shows effective polling interval', function () {
         'created_by' => $user->id,
         'title' => 'Cadenced API',
         'package_interval' => '15m',
-        'last_heartbeat_at' => now()->subMinutes(10),
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => now()->subMinutes(10),
+        'updated_at' => now()->subMinutes(10),
     ]);
 
     Livewire::test(ListMonitorApis::class)
@@ -761,7 +765,11 @@ test('api monitor list shows scheduler-rounded cadence for second-based interval
         'created_by' => $user->id,
         'title' => 'Second cadence API',
         'package_interval' => '90s',
-        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => now()->subMinute(),
+        'updated_at' => now()->subMinute(),
     ]);
 
     Livewire::test(ListMonitorApis::class)
@@ -780,7 +788,6 @@ test('api monitor list shows default cadence when polling interval is invalid', 
         'created_by' => $user->id,
         'title' => 'Invalid interval API',
         'package_interval' => 'bad_value',
-        'last_heartbeat_at' => now(),
     ]);
 
     Livewire::test(ListMonitorApis::class)
@@ -957,8 +964,6 @@ test('list run now action queues failure-prone endpoints without moving live sta
         'status_summary' => 'API responded as expected.',
     ]);
 
-    $heartbeatBefore = $monitor->last_heartbeat_at;
-
     Livewire::test(ListMonitorApis::class)
         ->callTableAction('run_now', $monitor)
         ->assertNotified('Diagnostic queued');
@@ -969,7 +974,7 @@ test('list run now action queues failure-prone endpoints without moving live sta
 
     expect($monitor->results()->count())->toBe(0)
         ->and($monitor->current_status)->toBe('healthy')
-        ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($monitor->last_heartbeat_at)->toBeNull()
         ->and($monitor->status_summary)->toBe('API responded as expected.');
 });
 
@@ -1203,8 +1208,6 @@ test('view page run now action queues diagnostics for failure cases without movi
         'status_summary' => 'API responded as expected.',
     ]);
 
-    $heartbeatBefore = $monitor->last_heartbeat_at;
-
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->callAction('run_now')
         ->assertNotified('Diagnostic queued');
@@ -1215,7 +1218,7 @@ test('view page run now action queues diagnostics for failure cases without movi
 
     expect($monitor->results()->count())->toBe(0)
         ->and($monitor->current_status)->toBe('healthy')
-        ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($monitor->last_heartbeat_at)->toBeNull()
         ->and($monitor->status_summary)->toBe('API responded as expected.');
 });
 
@@ -1327,7 +1330,11 @@ test('api monitor view shows polling interval and due-state messaging', function
     $monitor = MonitorApis::factory()->create([
         'created_by' => $user->id,
         'package_interval' => '15m',
-        'last_heartbeat_at' => $lastHeartbeatAt,
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => $lastHeartbeatAt,
+        'updated_at' => $lastHeartbeatAt,
     ]);
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
