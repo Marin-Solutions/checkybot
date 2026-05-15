@@ -1592,7 +1592,20 @@ class CheckybotControlService
         return $check->url !== $data['url']
             || $check->http_method !== $data['http_method']
             || (int) $check->expected_status !== (int) $data['expected_status']
+            || $check->headers != $data['headers']
+            || $check->request_body_type != $data['request_body_type']
+            || $this->normalizeRequestBodyForComparison($check->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
+            || $check->timeout_seconds != $data['timeout_seconds']
             || $assertionsChanged;
+    }
+
+    private function normalizeRequestBodyForComparison(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return json_encode($value);
+        }
+
+        return $value;
     }
 
     /**

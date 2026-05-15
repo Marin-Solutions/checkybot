@@ -434,6 +434,56 @@ test('package sync resets api live health when target-defining settings change',
     expect($monitor->fresh()->awaiting_heartbeat_since)->not->toBeNull();
 });
 
+test('package sync resets api live health when request configuration changes', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous request configuration was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'headers' => [
+                        'X-Api-Key' => 'rotated-package-token',
+                    ],
+                    'request_body_type' => 'raw',
+                    'request_body' => 'probe=1',
+                    'timeout_seconds' => 30,
+                ],
+            ],
+        ]))
+        ->assertOk()
+        ->assertJsonPath('data.summary.updated', 1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $monitor->id,
+        'url' => 'https://api.scrappa.co/api/google-maps/search',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'request_body_type' => 'raw',
+        'timeout_seconds' => 30,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+
+    expect($monitor->fresh()->awaiting_heartbeat_since)->not->toBeNull();
+});
+
 test('package sync persists api failed response body preference', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([

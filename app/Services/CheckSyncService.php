@@ -421,6 +421,10 @@ class CheckSyncService
         return $monitorApi->url !== $data['url']
             || $monitorApi->http_method !== $data['http_method']
             || (int) $monitorApi->expected_status !== (int) $data['expected_status']
+            || $monitorApi->headers != $data['headers']
+            || $monitorApi->request_body_type != $data['request_body_type']
+            || $this->normalizeRequestBodyForComparison($monitorApi->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
+            || $monitorApi->timeout_seconds != $data['timeout_seconds']
             || $assertionsChanged;
     }
 
