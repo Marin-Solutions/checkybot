@@ -77,6 +77,7 @@ class CheckybotCommand extends Command
             $this->displaySyncResults($response['summary'] ?? []);
 
             $componentPayload = [
+                'full_manifest' => true,
                 'declared_components' => array_map(
                     fn (HealthComponent $component): array => $component->toArray(),
                     $declaredComponents
