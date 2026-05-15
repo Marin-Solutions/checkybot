@@ -117,11 +117,13 @@ test('package sync creates a project and api check definitions', function () {
     $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
     $project = Project::query()->findOrFail($projectId);
 
-    expect($monitor->headers)->toBe([
-        'Accept' => 'application/json',
-        'Authorization' => 'Bearer default-secret',
-        'X-Api-Key' => 'secret-package-token',
-    ])->and($monitor->assertions)->toHaveCount(1)
+    expect($monitor->current_status)->toBe('pending')
+        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+        ->and($monitor->headers)->toBe([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer default-secret',
+            'X-Api-Key' => 'secret-package-token',
+        ])->and($monitor->assertions)->toHaveCount(1)
         ->and($monitor->request_body_type)->toBe('json')
         ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->assertions->first()->assertion_type)->toBe('exists')
@@ -259,6 +261,41 @@ test('package sync rejects invalid regex assertion patterns', function () {
 
     $this->assertDatabaseMissing('monitor_apis', [
         'package_name' => 'regex-health',
+    ]);
+});
+
+test('package sync rejects non server runtime health fields', function () {
+    $payload = packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'runtime-health',
+                'type' => 'api',
+                'name' => 'Runtime health',
+                'method' => 'GET',
+                'url' => '/health',
+                'schedule' => '5m',
+                'status' => 'danger',
+                'metrics' => ['latency_ms' => 123],
+                'observed_at' => now()->toISOString(),
+                'last_heartbeat_at' => now()->toISOString(),
+                'stale_at' => now()->addMinutes(5)->toISOString(),
+            ],
+        ],
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.status',
+            'checks.0.metrics',
+            'checks.0.observed_at',
+            'checks.0.last_heartbeat_at',
+            'checks.0.stale_at',
+        ]);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'runtime-health',
     ]);
 });
 
@@ -467,7 +504,7 @@ test('package sync counts changed assertions as an api update', function () {
         ->assertJsonPath('data.summary.api_checks.updated', 1);
 });
 
-test('package sync resets api live health when target-defining settings change', function () {
+test('package sync resets api live health to pending when target-defining settings change', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload())
         ->assertCreated();
@@ -479,8 +516,6 @@ test('package sync resets api live health when target-defining settings change',
     $monitor->forceFill([
         'current_status' => 'healthy',
         'status_summary' => 'Previous target was healthy.',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => now()->addMinutes(8),
         'diagnostic_queued_at' => now(),
     ])->save();
 
@@ -510,14 +545,12 @@ test('package sync resets api live health when target-defining settings change',
         'url' => 'https://api.scrappa.co/api/google-maps/v2/search',
         'http_method' => 'POST',
         'expected_status' => 201,
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
-    expect($monitor->fresh()->awaiting_heartbeat_since)->not->toBeNull();
+    expect($monitor->fresh()->awaiting_heartbeat_since)->toBeNull();
 });
 
 test('package sync resets api live health when request configuration changes', function () {
@@ -560,14 +593,12 @@ test('package sync resets api live health when request configuration changes', f
         'expected_status' => 200,
         'request_body_type' => 'raw',
         'timeout_seconds' => 30,
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
-    expect($monitor->fresh()->awaiting_heartbeat_since)->not->toBeNull();
+    expect($monitor->fresh()->awaiting_heartbeat_since)->toBeNull();
 });
 
 test('package sync preserves api live health when nested empty object request body is unchanged', function () {
@@ -610,9 +641,9 @@ test('package sync preserves api live health when nested empty object request bo
     expect($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret","filters":{},"ids":[1,2]}')
         ->and($monitor->current_status)->toBe('healthy')
         ->and($monitor->status_summary)->toBe('Current request configuration is healthy.')
-        ->and($monitor->last_heartbeat_at)->not->toBeNull()
+        ->and($monitor->last_heartbeat_at)->toBeNull()
         ->and($monitor->awaiting_heartbeat_since)->toBeNull()
-        ->and($monitor->stale_at)->not->toBeNull()
+        ->and($monitor->stale_at)->toBeNull()
         ->and($monitor->diagnostic_queued_at)->not->toBeNull();
 });
 
@@ -667,7 +698,7 @@ test('package sync encrypts header values and does not return them', function ()
         ->and($rawProjectDefaults)->not->toContain('default-secret');
 });
 
-test('package sync disables missing package api checks without deleting them', function () {
+test('package sync archives missing package api checks and preserves history', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload())
         ->assertCreated();
@@ -675,8 +706,6 @@ test('package sync disables missing package api checks without deleting them', f
     MonitorApis::query()
         ->where('package_name', 'google-maps-search')
         ->update([
-            'last_heartbeat_at' => now()->subHour(),
-            'stale_at' => now()->subMinutes(5),
             'diagnostic_queued_at' => now(),
         ]);
 
@@ -689,14 +718,11 @@ test('package sync disables missing package api checks without deleting them', f
     $response->assertOk()
         ->assertJsonPath('data.summary.disabled_missing', 1);
 
-    $this->assertDatabaseHas('monitor_apis', [
-        'package_name' => 'google-maps-search',
-        'is_enabled' => false,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
-        'diagnostic_queued_at' => null,
-        'deleted_at' => null,
-    ]);
+    $monitor = MonitorApis::withTrashed()->where('package_name', 'google-maps-search')->sole();
+
+    expect($monitor->trashed())->toBeTrue()
+        ->and($monitor->is_enabled)->toBeFalse()
+        ->and($monitor->diagnostic_queued_at)->toBeNull();
 });
 
 test('package sync returns validation errors for malformed payloads', function () {
@@ -1200,7 +1226,7 @@ test('package website key migration ignores soft deleted duplicates when merging
         ->and($keptWebsite->package_interval)->toBe('1d');
 });
 
-test('package sync updates and disables missing website checks by stable package keys', function () {
+test('package sync updates and archives missing website checks by stable package keys', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
@@ -1225,8 +1251,6 @@ test('package sync updates and disables missing website checks by stable package
     Website::query()
         ->where('package_name', 'certificate')
         ->update([
-            'last_heartbeat_at' => now()->subHour(),
-            'stale_at' => now()->subMinutes(5),
             'diagnostic_queued_at' => now(),
         ]);
 
@@ -1262,18 +1286,15 @@ test('package sync updates and disables missing website checks by stable package
         'package_interval' => '10m',
     ]);
 
-    $this->assertDatabaseHas('websites', [
-        'package_name' => 'certificate',
-        'ssl_check' => false,
-        'package_interval' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
-        'diagnostic_queued_at' => null,
-        'deleted_at' => null,
-    ]);
+    $certificate = Website::withTrashed()->where('package_name', 'certificate')->sole();
+
+    expect($certificate->trashed())->toBeTrue()
+        ->and($certificate->ssl_check)->toBeFalse()
+        ->and($certificate->package_interval)->toBeNull()
+        ->and($certificate->diagnostic_queued_at)->toBeNull();
 });
 
-test('package sync resets website live health when url changes', function () {
+test('package sync resets website live health to pending when url changes', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
@@ -1295,8 +1316,6 @@ test('package sync resets website live health when url changes', function () {
     $website->forceFill([
         'current_status' => 'healthy',
         'status_summary' => 'Previous URL was healthy.',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => now()->addMinutes(8),
         'diagnostic_queued_at' => now(),
     ])->save();
 
@@ -1319,14 +1338,12 @@ test('package sync resets website live health when url changes', function () {
     $this->assertDatabaseHas('websites', [
         'id' => $website->id,
         'url' => 'https://api.scrappa.co/status',
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
-    expect($website->fresh()->awaiting_heartbeat_since)->not->toBeNull();
+    expect($website->fresh()->awaiting_heartbeat_since)->toBeNull();
 });
 
 test('package sync restores soft deleted website checks when re-added', function () {
@@ -1804,8 +1821,8 @@ test('package sync keeps status while a shared-key website check remains active'
 
     expect($website->uptime_check)->toBeFalse()
         ->and($website->ssl_check)->toBeTrue()
-        ->and($website->current_status)->toBe('success')
-        ->and($website->status_summary)->toBe('Certificate healthy.');
+        ->and($website->current_status)->toBe('pending')
+        ->and($website->status_summary)->toBeNull();
 });
 
 test('package sync rejects check types that are not implemented by the package sync API', function () {

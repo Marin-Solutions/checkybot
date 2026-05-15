@@ -3,8 +3,6 @@
 use App\Filament\Widgets\IncidentFeedWidget;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
-use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -244,29 +242,6 @@ describe('IncidentFeedWidget', function () {
             ->and($incident->state)->toBe('resolved');
     });
 
-    it('resolves component incidents when the component is archived', function () {
-        $component = ProjectComponent::factory()->archived()->create([
-            'created_by' => $this->user->id,
-            'name' => 'archived-worker',
-        ]);
-
-        ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $component->id,
-            'component_name' => 'archived-worker',
-            'status' => 'danger',
-            'summary' => 'Last component failure before archive',
-            'observed_at' => now()->subMinutes(4),
-        ]);
-
-        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
-            ->where('source', 'component')
-            ->where('subject_id', $component->id)
-            ->first();
-
-        expect($incident)->not->toBeNull()
-            ->and($incident->state)->toBe('resolved');
-    });
-
     it('does not treat an already-open incident from before the feed window as a new incident', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
@@ -463,73 +438,6 @@ describe('IncidentFeedWidget', function () {
             ->assertSee('All clear');
     });
 
-    it('lists warning and danger component heartbeats', function () {
-        $component = ProjectComponent::factory()->create([
-            'created_by' => $this->user->id,
-            'name' => 'queue-worker',
-        ]);
-
-        ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $component->id,
-            'component_name' => 'queue-worker',
-            'status' => 'warning',
-            'summary' => 'Latency spiking above threshold',
-            'observed_at' => now()->subMinutes(10),
-        ]);
-
-        ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $component->id,
-            'component_name' => 'queue-worker',
-            'status' => 'healthy',
-            'summary' => 'Back to normal',
-            'observed_at' => now()->subMinute(),
-        ]);
-
-        Livewire::test(IncidentFeedWidget::class)
-            ->assertSee('queue-worker')
-            ->assertSee('Latency spiking above threshold')
-            ->assertSee('Back to normal')
-            ->assertSee('RECOVERED')
-            ->assertSee('Resolved');
-    });
-
-    it('opens the exact component heartbeat evidence row from an incident', function () {
-        $component = ProjectComponent::factory()->create([
-            'created_by' => $this->user->id,
-            'name' => 'evidence-worker',
-        ]);
-
-        $heartbeat = ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $component->id,
-            'component_name' => 'evidence-worker',
-            'status' => 'warning',
-            'summary' => 'Queue depth crossed warning threshold',
-            'metrics' => ['queue_depth' => 42],
-            'observed_at' => now()->subMinutes(3),
-        ]);
-
-        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
-            ->where('source', 'component')
-            ->first();
-
-        expect($incident)->not->toBeNull()
-            ->and($incident->source_row_id)->toBe($heartbeat->id);
-
-        Livewire::test(IncidentFeedWidget::class)
-            ->assertTableActionExists('viewEvidence', null, $incident->getKey());
-
-        $html = view('filament.widgets.incident-feed-evidence-modal', [
-            'incident' => $incident,
-            'evidence' => $heartbeat,
-            'targetUrl' => null,
-        ])->render();
-
-        expect($html)
-            ->toContain('Source row #'.$heartbeat->id)
-            ->toContain('Metrics Snapshot')
-            ->toContain('queue_depth');
-    });
-
     it('scopes incidents to the current user', function () {
         $otherUser = \App\Models\User::factory()->create();
 
@@ -633,21 +541,8 @@ describe('IncidentFeedWidget', function () {
             'created_at' => now()->subMinutes(10),
         ]);
 
-        $component = ProjectComponent::factory()->create([
-            'created_by' => $this->user->id,
-            'name' => 'redis-primary',
-        ]);
-        ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $component->id,
-            'component_name' => 'redis-primary',
-            'status' => 'danger',
-            'summary' => 'Redis primary down',
-            'observed_at' => now()->subMinutes(5),
-        ]);
-
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('Slow response')
-            ->assertSee('Checkout failing')
-            ->assertSee('Redis primary down');
+            ->assertSee('Checkout failing');
     });
 });

@@ -25,9 +25,7 @@ class MonitorApisFactory extends Factory
             'save_failed_response' => true,
             'created_by' => User::factory(),
             'current_status' => 'healthy',
-            'last_heartbeat_at' => now(),
-            'stale_at' => null,
-            'status_summary' => 'Heartbeat received successfully.',
+            'status_summary' => 'Check completed successfully.',
         ];
     }
 

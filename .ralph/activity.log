@@ -1,4 +1,8 @@
-{"iteration":1,"timestamp":"2026-03-21T20:00:51+00:00","story":"STORY-1","tokens_in":26564101,"tokens_out":46994,"duration_seconds":1173,"status":"failed"}
-{"iteration":2,"timestamp":"2026-03-21T20:17:23+00:00","story":"STORY-2","tokens_in":15233351,"tokens_out":44363,"duration_seconds":992,"status":"failed"}
-{"iteration":3,"timestamp":"2026-03-21T20:25:06+00:00","story":"STORY-3","tokens_in":7949164,"tokens_out":21924,"duration_seconds":462,"status":"failed"}
-{"iteration":4,"timestamp":"2026-03-21T20:38:09+00:00","story":"STORY-4","tokens_in":8498003,"tokens_out":37800,"duration_seconds":782,"status":"failed"}
+{"iteration":1,"timestamp":"2026-05-15T14:30:42+00:00","story":"SLICE-1","tokens_in":9028438,"tokens_out":18769,"duration_seconds":567,"status":"passed"}
+{"iteration":2,"timestamp":"2026-05-15T14:44:54+00:00","story":"SLICE-2","tokens_in":8933074,"tokens_out":21398,"duration_seconds":850,"status":"passed"}
+{"iteration":3,"timestamp":"2026-05-15T15:00:25+00:00","story":"SLICE-3","tokens_in":16342067,"tokens_out":31025,"duration_seconds":929,"status":"passed"}
+{"iteration":4,"timestamp":"2026-05-15T15:32:00+00:00","story":"SLICE-4","tokens_in":22208337,"tokens_out":53439,"duration_seconds":1887,"status":"passed"}
+{"iteration":5,"timestamp":"2026-05-15T15:44:32+00:00","story":"SLICE-5","tokens_in":11455222,"tokens_out":31688,"duration_seconds":750,"status":"passed"}
+{"iteration":6,"timestamp":"2026-05-15T15:56:16+00:00","story":"SLICE-6","tokens_in":11195646,"tokens_out":26352,"duration_seconds":673,"status":"failed"}
+{"iteration":7,"timestamp":"2026-05-15T16:02:45+00:00","story":"SLICE-6","tokens_in":2196133,"tokens_out":9685,"duration_seconds":310,"status":"failed"}
+{"iteration":7,"timestamp":"2026-05-15T16:11:33+00:00","story":"SLICE-6","tokens_in":2444325,"tokens_out":8182,"duration_seconds":450,"status":"passed"}

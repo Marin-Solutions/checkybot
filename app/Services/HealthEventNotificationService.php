@@ -370,8 +370,9 @@ class HealthEventNotificationService
     private function webhookMessage(string $name, string $event, string $status): string
     {
         $label = $this->eventLabel($event, $status);
+        $eventDescription = $event === 'heartbeat' ? 'check' : $event;
 
-        return "[{$label}] {$name} {$event}";
+        return "[{$label}] {$name} {$eventDescription}";
     }
 
     private function backupName(Backup $backup): string

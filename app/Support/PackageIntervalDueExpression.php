@@ -9,13 +9,11 @@ class PackageIntervalDueExpression
     /**
      * @return array{0: string, 1: array<int, string>}
      */
-    public static function build(ConnectionInterface $connection, string $operator = '<=', string $anchorColumn = 'last_heartbeat_at'): array
+    public static function build(ConnectionInterface $connection, string $operator = '<=', string $anchorColumn = 'created_at'): array
     {
         $now = now()->toDateTimeString();
         $operator = in_array($operator, ['<', '<=', '>', '>='], true) ? $operator : '<=';
-        $anchorColumn = in_array($anchorColumn, ['last_heartbeat_at', 'awaiting_heartbeat_since', 'created_at'], true)
-            ? $anchorColumn
-            : 'last_heartbeat_at';
+        $anchorColumn = trim($anchorColumn) !== '' ? $anchorColumn : 'created_at';
 
         // Mirrors IntervalParser formats so legacy package intervals continue to schedule.
         // Seconds are rounded up to full minutes to match IntervalParser::toMinutes().

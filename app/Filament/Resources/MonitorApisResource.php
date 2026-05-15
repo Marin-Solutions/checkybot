@@ -13,6 +13,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Services\IntervalParser;
+use App\Support\HealthStatusLabel;
 use App\Support\PackageCheckTableEvidence;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -356,20 +357,8 @@ class MonitorApisResource extends Resource
                 Tables\Columns\TextColumn::make('current_status')
                     ->label('Health')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
-                Tables\Columns\TextColumn::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::mainApiFreshnessState($record))
-                    ->badge()
-                    ->color(fn (string $state): string => PackageCheckTableEvidence::mainMonitorFreshnessColor($state))
-                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::mainApiFreshnessDescription($record))
-                    ->toggleable(),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')
                     ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')
@@ -499,7 +488,7 @@ class MonitorApisResource extends Resource
                     ->requiresConfirmation()
                     ->modalIcon('heroicon-o-bolt')
                     ->modalHeading('Run API monitor now')
-                    ->modalDescription('Checkybot will queue a real request against this endpoint and append the result to its diagnostic history when it completes. The monitor\'s live status is reserved for scheduled checks, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalDescription('Checkybot will queue a real request against this endpoint, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                     ->visible(fn (MonitorApis $record): bool => (bool) $record->is_enabled)

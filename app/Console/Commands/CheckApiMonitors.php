@@ -43,16 +43,17 @@ class CheckApiMonitors extends Command
         $now = now()->startOfMinute();
         $validIntervalSql = $this->validIntervalSql();
         $intervalMinutesSql = $this->intervalMinutesSql();
+        $latestScheduledAtSql = $this->latestScheduledResultAtSql();
 
         return $query
             ->whereNull('package_interval')
             ->orWhere('package_interval', '')
-            ->orWhereNull('last_heartbeat_at')
+            ->orWhereRaw("{$latestScheduledAtSql} is null")
             ->orWhereRaw("not ({$validIntervalSql})")
-            ->orWhere(function (Builder $query) use ($validIntervalSql, $intervalMinutesSql, $now): void {
+            ->orWhere(function (Builder $query) use ($validIntervalSql, $intervalMinutesSql, $latestScheduledAtSql, $now): void {
                 $query
                     ->whereRaw($validIntervalSql)
-                    ->whereRaw($this->dueAtSql($intervalMinutesSql), [$now]);
+                    ->whereRaw($this->dueAtSql($intervalMinutesSql, $latestScheduledAtSql), [$now]);
             });
     }
 
@@ -74,13 +75,26 @@ class CheckApiMonitors extends Command
         }
     }
 
-    private function dueAtSql(string $intervalMinutesSql): string
+    private function dueAtSql(string $intervalMinutesSql, string $anchorSql): string
     {
         return match (DB::connection()->getDriverName()) {
-            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || ({$intervalMinutesSql}) || ' minutes') <= ?",
-            'pgsql' => "date_trunc('minute', last_heartbeat_at) + make_interval(mins => least(({$intervalMinutesSql}), 2147483647)::int) <= ?",
-            'sqlsrv' => "DATEADD(minute, ({$intervalMinutesSql}), DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?",
-            default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL ({$intervalMinutesSql}) MINUTE) <= ?",
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', {$anchorSql}), '+' || ({$intervalMinutesSql}) || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', {$anchorSql}) + make_interval(mins => least(({$intervalMinutesSql}), 2147483647)::int) <= ?",
+            'sqlsrv' => "DATEADD(minute, ({$intervalMinutesSql}), DATEADD(minute, DATEDIFF(minute, 0, {$anchorSql}), 0)) <= ?",
+            default => "DATE_ADD(DATE_FORMAT({$anchorSql}, '%Y-%m-%d %H:%i:00'), INTERVAL ({$intervalMinutesSql}) MINUTE) <= ?",
+        };
+    }
+
+    private function latestScheduledResultAtSql(): string
+    {
+        return '(select max(monitor_api_results.created_at) from monitor_api_results where monitor_api_results.monitor_api_id = monitor_apis.id and '.$this->scheduledRunPredicate('monitor_api_results.is_on_demand').')';
+    }
+
+    private function scheduledRunPredicate(string $column): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'pgsql' => "({$column} is null or {$column} = false)",
+            default => "({$column} is null or {$column} = 0)",
         };
     }
 

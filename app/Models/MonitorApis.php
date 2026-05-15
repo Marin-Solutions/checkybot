@@ -32,6 +32,12 @@ class MonitorApis extends Model
 
     public const INTERACTIVE_RUN_KEY = 'interactive';
 
+    private const REMOVED_HEARTBEAT_ATTRIBUTES = [
+        'last_heartbeat_at',
+        'awaiting_heartbeat_since',
+        'stale_at',
+    ];
+
     protected $fillable = [
         'title',
         'url',
@@ -50,13 +56,11 @@ class MonitorApis extends Model
         'save_failed_response',
         'created_by',
         'project_id',
+        'project_component_id',
         'source',
         'package_name',
         'package_interval',
         'current_status',
-        'last_heartbeat_at',
-        'awaiting_heartbeat_since',
-        'stale_at',
         'status_summary',
         'diagnostic_queued_at',
         'silenced_until',
@@ -69,9 +73,6 @@ class MonitorApis extends Model
         'is_enabled' => 'boolean',
         'project_paused_monitoring' => 'boolean',
         'last_synced_at' => 'datetime',
-        'last_heartbeat_at' => 'datetime',
-        'awaiting_heartbeat_since' => 'datetime',
-        'stale_at' => 'datetime',
         'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
@@ -83,15 +84,22 @@ class MonitorApis extends Model
                 $api->project_paused_monitoring = false;
             }
         });
+
+    }
+
+    public function setAttribute($key, $value): mixed
+    {
+        if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
     }
 
     public static function disabledHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
     {
         return [
             'current_status' => 'unknown',
-            'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'status_summary' => $summary,
             'diagnostic_queued_at' => null,
         ];
@@ -126,6 +134,11 @@ class MonitorApis extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function component(): BelongsTo
+    {
+        return $this->belongsTo(ProjectComponent::class, 'project_component_id');
     }
 
     public function assertions(): HasMany

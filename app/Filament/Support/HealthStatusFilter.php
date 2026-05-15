@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Builder;
 /**
  * Shared factory for the "current status" health filters used on monitoring
  * list pages (Websites, API Monitors, Application Components). Centralising
- * the query logic keeps the Healthy/Warning/Danger/Unknown semantics in sync
- * across resources — including the dual representation of "unknown" as
+ * the query logic keeps the Healthy/Warning/Failing/Pending semantics in sync
+ * across resources — including the dual representation of "pending" as
  * either a NULL column or the literal string 'unknown' that services like
  * PackageSyncService and CheckybotControlService persist when disabling
  * checks.
@@ -21,7 +21,7 @@ class HealthStatusFilter
 {
     /**
      * Build a SelectFilter scoped to a nullable `current_status` column
-     * (websites, monitor_apis). "Unknown" matches both NULL and the literal
+     * (websites, monitor_apis). "Pending" matches NULL, 'unknown', and 'pending'
      * 'unknown' string written by package sync / control flows.
      */
     public static function make(string $column = 'current_status'): SelectFilter
@@ -31,8 +31,8 @@ class HealthStatusFilter
             ->options([
                 'healthy' => 'Healthy',
                 'warning' => 'Warning',
-                'danger' => 'Danger',
-                'unknown' => 'Unknown',
+                'danger' => 'Failing',
+                'unknown' => 'Pending',
             ])
             ->query(function (Builder $query, array $data) use ($column): Builder {
                 $value = $data['value'] ?? null;
@@ -44,7 +44,8 @@ class HealthStatusFilter
                 if ($value === 'unknown') {
                     return $query->where(fn (Builder $inner) => $inner
                         ->whereNull($column)
-                        ->orWhere($column, 'unknown'));
+                        ->orWhere($column, 'unknown')
+                        ->orWhere($column, 'pending'));
                 }
 
                 return $query->where($column, $value);
@@ -53,8 +54,8 @@ class HealthStatusFilter
 
     /**
      * Build a SelectFilter for a non-nullable `current_status` column
-     * (project_components). "Unknown" is used for components awaiting their
-     * first heartbeat.
+     * (project_components). "Pending" is used for components awaiting active
+     * child check results.
      */
     public static function makeForNonNullableColumn(string $column = 'current_status'): SelectFilter
     {
@@ -74,12 +75,12 @@ class HealthStatusFilter
 
     /**
      * Toggle that narrows the table to records currently in warning or
-     * danger — the "show me only what is broken right now" shortcut.
+     * failing — the "show me only what is broken right now" shortcut.
      *
      * Disable flows for websites, API monitors, and components toggle
      * `uptime_check` / `is_enabled` / `is_archived` without normalising
-     * `current_status`, so a stale failing status can linger on a paused
-     * row. Callers pass an `$activeScope` closure that constrains the
+     * `current_status`, so a failing status can linger on a paused row.
+     * Callers pass an `$activeScope` closure that constrains the
      * query to records that are currently being checked, ensuring the
      * "only failing" shortcut surfaces a real triage list rather than
      * frozen historical state.

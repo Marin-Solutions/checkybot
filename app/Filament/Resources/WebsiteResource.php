@@ -11,7 +11,7 @@ use App\Jobs\LogUptimeSslJob;
 use App\Models\Project;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
-use App\Support\PackageCheckTableEvidence;
+use App\Support\HealthStatusLabel;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -220,20 +220,8 @@ class WebsiteResource extends Resource
                 Tables\Columns\TextColumn::make('current_status')
                     ->label('Health')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
-                Tables\Columns\TextColumn::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->state(fn (Website $record): string => PackageCheckTableEvidence::mainMonitorFreshnessState($record))
-                    ->badge()
-                    ->color(fn (string $state): string => PackageCheckTableEvidence::mainMonitorFreshnessColor($state))
-                    ->description(fn (Website $record): ?string => PackageCheckTableEvidence::mainMonitorFreshnessDescription($record))
-                    ->toggleable(),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
@@ -525,7 +513,7 @@ class WebsiteResource extends Resource
                     ->requiresConfirmation()
                     ->modalIcon('heroicon-o-bolt')
                     ->modalHeading('Run website diagnostics now')
-                    ->modalDescription('Checkybot will queue the enabled diagnostics for this website and append the result to its diagnostic history when they complete. The website\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalDescription('Checkybot will queue the enabled checks for this website, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
                     ->visible(fn (Website $record): bool => (bool) $record->uptime_check || (bool) $record->ssl_check)

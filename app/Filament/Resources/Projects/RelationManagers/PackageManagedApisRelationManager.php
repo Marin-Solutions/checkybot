@@ -5,13 +5,12 @@ namespace App\Filament\Resources\Projects\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
-use App\Support\PackageCheckTableEvidence;
+use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -35,14 +34,9 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->searchable(),
                 TextColumn::make('current_status')
                     ->label('Health')
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->badge()
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 TextColumn::make('deleted_at')
                     ->label('State')
                     ->state(fn (MonitorApis $record): string => $this->monitoringState($record))
@@ -59,17 +53,11 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->wrap()
                     ->limit(90)
                     ->default('-'),
-                TextColumn::make('last_heartbeat_at')
+                TextColumn::make('latestResult.created_at')
                     ->label('Last Scheduled Check')
-                    ->state(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
-                    ->description(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->diffForHumans())
+                    ->state(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->toDayDateTimeString())
+                    ->description(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->diffForHumans())
                     ->default('-'),
-                TextColumn::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::apiFreshnessState($record))
-                    ->badge()
-                    ->color(fn (string $state): string => PackageCheckTableEvidence::freshnessColor($state))
-                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::apiFreshnessDescription($record)),
                 TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
@@ -83,15 +71,7 @@ class PackageManagedApisRelationManager extends RelationManager
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
-            ->filters([
-                SelectFilter::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->options(PackageCheckTableEvidence::apiFreshnessFilterOptions())
-                    ->query(fn (Builder $query, array $data): Builder => PackageCheckTableEvidence::applyApiFreshnessFilter(
-                        $query,
-                        $data['value'] ?? null,
-                    )),
-            ])
+            ->filters([])
             ->recordActions([
                 Action::make('snooze')
                     ->label(fn (MonitorApis $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')
@@ -153,7 +133,7 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->requiresConfirmation()
                     ->modalIcon('heroicon-o-bolt')
                     ->modalHeading('Run API monitor now')
-                    ->modalDescription('Checkybot will queue a real request against this endpoint and append the result to its diagnostic history when it completes. The monitor\'s live status is reserved for scheduled checks, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalDescription('Checkybot will queue a real request against this endpoint, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                     ->visible(fn (MonitorApis $record): bool => $record->deleted_at === null && (bool) $record->is_enabled)

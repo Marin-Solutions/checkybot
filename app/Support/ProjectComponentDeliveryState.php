@@ -11,11 +11,9 @@ class ProjectComponentDeliveryState
 
     public const SNOOZED = 'snoozed';
 
-    public const STALE = 'stale';
+    public const PENDING = 'pending';
 
-    public const AWAITING_FIRST_HEARTBEAT = 'awaiting_first_heartbeat';
-
-    public const RECEIVING_HEARTBEATS = 'receiving_heartbeats';
+    public const ACTIVE = 'active';
 
     /**
      * @return array<string, string>
@@ -24,9 +22,8 @@ class ProjectComponentDeliveryState
     {
         return [
             self::SNOOZED => 'Snoozed',
-            self::STALE => 'Stale',
-            self::AWAITING_FIRST_HEARTBEAT => 'Awaiting first heartbeat',
-            self::RECEIVING_HEARTBEATS => 'Receiving heartbeats',
+            self::PENDING => 'Pending',
+            self::ACTIVE => 'Active',
             self::ARCHIVED => 'Archived',
         ];
     }
@@ -36,9 +33,8 @@ class ProjectComponentDeliveryState
         return match (true) {
             $component->is_archived => self::ARCHIVED,
             $component->isSilenced() => self::SNOOZED,
-            $component->is_stale => self::STALE,
-            $component->last_heartbeat_at === null => self::AWAITING_FIRST_HEARTBEAT,
-            default => self::RECEIVING_HEARTBEATS,
+            $component->derivedCurrentStatus() === 'pending' => self::PENDING,
+            default => self::ACTIVE,
         };
     }
 
@@ -50,9 +46,8 @@ class ProjectComponentDeliveryState
     public static function color(string $state): string
     {
         return match ($state) {
-            'Receiving heartbeats', self::RECEIVING_HEARTBEATS => 'success',
-            'Awaiting first heartbeat', self::AWAITING_FIRST_HEARTBEAT => 'warning',
-            'Stale', self::STALE => 'danger',
+            'Active', self::ACTIVE => 'success',
+            'Pending', self::PENDING => 'warning',
             'Snoozed', self::SNOOZED => 'warning',
             default => 'gray',
         };
@@ -60,35 +55,33 @@ class ProjectComponentDeliveryState
 
     public static function applyFilter(Builder $query, ?string $state): Builder
     {
+        $activeStatuses = ['healthy', 'warning', 'danger'];
+
         return match ($state) {
             self::ARCHIVED => $query->where('is_archived', true),
             self::SNOOZED => $query
                 ->where('is_archived', false)
                 ->whereNotNull('silenced_until')
                 ->where('silenced_until', '>', now()),
-            self::STALE => $query
+            self::PENDING => $query
                 ->where('is_archived', false)
                 ->where(function (Builder $query): void {
                     $query->whereNull('silenced_until')
                         ->orWhere('silenced_until', '<=', now());
                 })
-                ->where('is_stale', true),
-            self::AWAITING_FIRST_HEARTBEAT => $query
+                ->whereDoesntHave('activeMonitorApis', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses))
+                ->whereDoesntHave('activeWebsites', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses)),
+            self::ACTIVE => $query
                 ->where('is_archived', false)
                 ->where(function (Builder $query): void {
                     $query->whereNull('silenced_until')
                         ->orWhere('silenced_until', '<=', now());
                 })
-                ->where('is_stale', false)
-                ->whereNull('last_heartbeat_at'),
-            self::RECEIVING_HEARTBEATS => $query
-                ->where('is_archived', false)
-                ->where(function (Builder $query): void {
-                    $query->whereNull('silenced_until')
-                        ->orWhere('silenced_until', '<=', now());
-                })
-                ->where('is_stale', false)
-                ->whereNotNull('last_heartbeat_at'),
+                ->where(function (Builder $query) use ($activeStatuses): void {
+                    $query
+                        ->whereHas('activeMonitorApis', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses))
+                        ->orWhereHas('activeWebsites', fn (Builder $query): Builder => $query->whereIn('current_status', $activeStatuses));
+                }),
             default => $query,
         };
     }

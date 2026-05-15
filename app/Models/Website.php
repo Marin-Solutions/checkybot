@@ -24,6 +24,12 @@ class Website extends Model
 
     public const ADMIN_DISABLED_STATUS_SUMMARY = 'Disabled in Checkybot admin.';
 
+    private const REMOVED_HEARTBEAT_ATTRIBUTES = [
+        'last_heartbeat_at',
+        'awaiting_heartbeat_since',
+        'stale_at',
+    ];
+
     protected $fillable = [
         'ploi_website_id',
         'name',
@@ -31,6 +37,7 @@ class Website extends Model
         'description',
         'created_by',
         'project_id',
+        'project_component_id',
         'uptime_check',
         'uptime_interval',
         'ssl_check',
@@ -43,9 +50,6 @@ class Website extends Model
         'package_interval',
         'last_synced_at',
         'current_status',
-        'last_heartbeat_at',
-        'awaiting_heartbeat_since',
-        'stale_at',
         'status_summary',
         'diagnostic_queued_at',
         'silenced_until',
@@ -63,9 +67,6 @@ class Website extends Model
         'outbound_scan_queued_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',
         'last_synced_at' => 'datetime',
-        'last_heartbeat_at' => 'datetime',
-        'awaiting_heartbeat_since' => 'datetime',
-        'stale_at' => 'datetime',
         'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
@@ -83,14 +84,22 @@ class Website extends Model
                 }
             }
         });
+
+    }
+
+    public function setAttribute($key, $value): mixed
+    {
+        if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
     }
 
     public static function disabledLiveHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
     {
         return [
             'current_status' => 'unknown',
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'status_summary' => $summary,
             'diagnostic_queued_at' => null,
         ];
@@ -289,6 +298,11 @@ class Website extends Model
     public function project(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function component(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ProjectComponent::class, 'project_component_id');
     }
 
     public function notificationChannels(): \Illuminate\Database\Eloquent\Relations\HasMany

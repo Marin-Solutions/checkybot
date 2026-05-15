@@ -11,7 +11,7 @@ enum RunSource: string
     {
         return match ($this) {
             self::Scheduled => 'Scheduled',
-            self::OnDemand => 'Diagnostic',
+            self::OnDemand => 'Manual',
         };
     }
 

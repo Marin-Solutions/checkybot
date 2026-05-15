@@ -120,7 +120,7 @@ test('project component notification service re-reads silenced_until before deli
     Mail::assertNothingSent();
 });
 
-test('project component sync keeps recording heartbeats while notifications are snoozed', function () {
+test('project component sync keeps declarations while notifications are snoozed', function () {
     Mail::fake();
 
     $project = Project::factory()->create();
@@ -131,8 +131,6 @@ test('project component sync keeps recording heartbeats while notifications are 
         'created_by' => $project->created_by,
         'current_status' => 'danger',
         'last_reported_status' => 'danger',
-        'is_stale' => true,
-        'stale_detected_at' => now()->subMinutes(5),
         'silenced_until' => now()->addHour(),
     ]);
 
@@ -148,24 +146,14 @@ test('project component sync keeps recording heartbeats while notifications are 
         'declared_components' => [
             ['name' => 'queue-worker', 'interval' => '5m'],
         ],
-        'components' => [
-            [
-                'name' => 'queue-worker',
-                'status' => 'healthy',
-                'summary' => 'Queue worker is processing normally again.',
-                'interval' => '5m',
-                'observed_at' => now()->toDateTimeString(),
-                'metrics' => ['latency' => 12],
-            ],
-        ],
     ]);
 
     $component->refresh();
 
-    expect($component->current_status)->toBe('healthy')
-        ->and($component->is_stale)->toBeFalse()
-        ->and($component->stale_detected_at)->toBeNull()
-        ->and($component->heartbeats()->where('event', 'heartbeat')->exists())->toBeTrue();
+    expect($component->current_status)->toBe('danger')
+        ->and($component->declared_interval)->toBe('5m')
+        ->and($component->is_stale)->toBeNull()
+        ->and($component->stale_detected_at)->toBeNull();
 
     Mail::assertNothingSent();
 });

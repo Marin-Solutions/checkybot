@@ -51,12 +51,12 @@ test('super admin can see websites in table', function () {
         ->assertCanSeeTableRecords($websites);
 });
 
-test('website list exposes freshness for package and manual monitors', function () {
+test('website list hides non-server freshness evidence', function () {
     Carbon::setTestNow(Carbon::parse('2026-05-09 12:00:00'));
 
     $user = $this->actingAsSuperAdmin();
 
-    $packageStale = Website::factory()->create([
+    $legacyStale = Website::factory()->create([
         'created_by' => $user->id,
         'name' => 'Package stale website',
         'source' => 'package',
@@ -65,9 +65,9 @@ test('website list exposes freshness for package and manual monitors', function 
         'stale_at' => now()->subMinutes(7),
     ]);
 
-    $manualHeartbeat = Website::factory()->create([
+    $manualCheck = Website::factory()->create([
         'created_by' => $user->id,
-        'name' => 'Manual heartbeat website',
+        'name' => 'Manual check website',
         'source' => 'manual',
         'last_heartbeat_at' => now()->subMinutes(3),
         'stale_at' => null,
@@ -100,17 +100,13 @@ test('website list exposes freshness for package and manual monitors', function 
     ]);
 
     Livewire::test(ListWebsites::class)
-        ->assertTableColumnExists('freshness_evidence', fn ($column): bool => $column->isToggleable())
-        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
-        ->assertTableColumnStateSet('freshness_evidence', 'Heartbeat received', $manualHeartbeat)
-        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $manualStale)
-        ->assertTableColumnStateSet('freshness_evidence', 'Awaiting heartbeat', $manualAwaiting)
-        ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $manualDisabled)
-        ->assertSee('Expired 7 minutes ago.')
-        ->assertSee('Last heartbeat 3 minutes ago.')
-        ->assertSee('Marked stale 2 minutes ago.')
-        ->assertSee('No scheduled heartbeat has been recorded yet.')
-        ->assertSee('Monitor is disabled. Heartbeats are not expected.');
+        ->assertCanSeeTableRecords([$legacyStale, $manualCheck, $manualStale, $manualAwaiting, $manualDisabled])
+        ->assertTableColumnDoesNotExist('freshness_evidence')
+        ->assertDontSee('Freshness')
+        ->assertDontSee('Heartbeat received')
+        ->assertDontSee('Awaiting heartbeat')
+        ->assertDontSee('Marked stale')
+        ->assertDontSee('Heartbeats are not expected');
 });
 
 test('super admin can search websites', function () {
@@ -1333,8 +1329,6 @@ test('website list run now action queues failure-prone websites without moving l
         'last_heartbeat_at' => now()->subMinutes(5),
     ]);
 
-    $heartbeatBefore = $website->last_heartbeat_at;
-
     Livewire::test(ListWebsites::class)
         ->callTableAction('run_now', $website)
         ->assertNotified('Diagnostic queued');
@@ -1345,7 +1339,7 @@ test('website list run now action queues failure-prone websites without moving l
 
     expect($website->logHistory()->count())->toBe(0)
         ->and($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->status_summary)->toBe('Heartbeat received successfully.');
 });
 
@@ -1490,18 +1484,18 @@ test('super admin can render view page with infolist sections', function () {
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Heartbeat & Freshness')
-        ->assertSee('Expected Stale Threshold')
-        ->assertSee($lastHeartbeatAt->copy()->addMinutes(5)->toDayDateTimeString())
-        ->assertSee('Detected Stale At')
-        ->assertSee($detectedStaleAt->toDayDateTimeString())
+        ->assertSee('Check History')
+        ->assertSee('Last Check')
+        ->assertDontSee('Heartbeat & Freshness')
+        ->assertDontSee('Expected Stale Threshold')
+        ->assertDontSee('Detected Stale At')
         ->assertSee('Uptime Monitoring')
         ->assertSee('SSL Certificate')
         ->assertSee('Website returned HTTP 500.')
-        ->assertSee('Danger');
+        ->assertSee('Failing');
 });
 
-test('view page does not blame package interval when expected stale threshold lacks heartbeat', function () {
+test('view page does not show legacy stale threshold details without a check result', function () {
     $user = $this->actingAsSuperAdmin();
 
     $website = Website::factory()->create([
@@ -1513,12 +1507,12 @@ test('view page does not blame package interval when expected stale threshold la
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Expected Stale Threshold')
+        ->assertDontSee('Expected Stale Threshold')
         ->assertSee('Never')
         ->assertDontSee('Cannot parse package interval 5m');
 });
 
-test('view page keeps expected stale threshold quiet when package interval is blank', function () {
+test('view page keeps legacy stale threshold details hidden when package interval is blank', function () {
     $user = $this->actingAsSuperAdmin();
 
     $website = Website::factory()->create([
@@ -1530,11 +1524,11 @@ test('view page keeps expected stale threshold quiet when package interval is bl
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Expected Stale Threshold')
+        ->assertDontSee('Expected Stale Threshold')
         ->assertDontSee('Cannot parse package interval');
 });
 
-test('view page explains invalid package interval for expected stale threshold', function () {
+test('view page keeps legacy stale threshold details hidden when package interval is invalid', function () {
     $user = $this->actingAsSuperAdmin();
 
     $website = Website::factory()->create([
@@ -1546,8 +1540,8 @@ test('view page explains invalid package interval for expected stale threshold',
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Expected Stale Threshold')
-        ->assertSee('Cannot parse package interval xyz');
+        ->assertDontSee('Expected Stale Threshold')
+        ->assertDontSee('Cannot parse package interval xyz');
 });
 
 test('view page run now action queues a website diagnostic without running heartbeat inline', function () {
@@ -1585,8 +1579,8 @@ test('view page run now action queues a website diagnostic without running heart
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic Status')
+        ->assertSee('Latest Manual Run')
+        ->assertSee('Manual Run Status')
         ->assertSee('Queued')
         ->assertSee('Queued At')
         ->assertSee('Apr 24, 2026');
@@ -1700,8 +1694,6 @@ test('view page run now action does not fire user-facing health alerts and prese
         'last_heartbeat_at' => now()->subMinutes(5),
     ]);
 
-    $heartbeatBefore = $website->last_heartbeat_at;
-
     $notificationService = Mockery::mock(\App\Services\HealthEventNotificationService::class);
     $notificationService->shouldNotReceive('notifyWebsite');
     $this->app->instance(\App\Services\HealthEventNotificationService::class, $notificationService);
@@ -1713,7 +1705,7 @@ test('view page run now action does not fire user-facing health alerts and prese
     $website->refresh();
 
     expect($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
+        ->and($website->last_heartbeat_at)->toBeNull()
         ->and($website->logHistory()->count())->toBe(0);
 });
 
@@ -1757,7 +1749,7 @@ test('view page excludes diagnostic rows from recent failures', function () {
         ->assertSee('Diagnostic-only failure.');
 });
 
-test('view page separates scheduled latest evidence from newer diagnostics', function () {
+test('view page uses latest real run evidence and still labels manual runs', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
         'created_by' => $user->id,
@@ -1785,10 +1777,10 @@ test('view page separates scheduled latest evidence from newer diagnostics', fun
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Latest Scheduled Result')
-        ->assertSee('Scheduled heartbeat succeeded.')
-        ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic heartbeat failed.');
+        ->assertSee('Latest Result')
+        ->assertSee('Diagnostic heartbeat failed.')
+        ->assertSee('Latest Manual Run')
+        ->assertDontSee('Scheduled heartbeat succeeded.');
 
     expect($website->refresh()->latestScheduledLogHistory->summary)->toBe('Scheduled heartbeat succeeded.')
         ->and($website->latestDiagnosticLogHistory->summary)->toBe('Diagnostic heartbeat failed.');
@@ -1808,7 +1800,7 @@ test('view page surfaces transport error evidence for failed uptime logs', funct
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Latest Scheduled Transport Error')
+        ->assertSee('Latest Transport Error')
         ->assertSee('DNS failure')
         ->assertSee('code 6')
         ->assertSee('Could not resolve host');

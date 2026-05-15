@@ -2,11 +2,24 @@
 
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
     $this->travelTo(now()->setDate(2026, 4, 27)->setTime(12, 0));
 });
+
+if (! function_exists('seedScheduledWebsiteLog')) {
+    function seedScheduledWebsiteLog(Website $website, \Illuminate\Support\Carbon $createdAt): WebsiteLogHistory
+    {
+        return WebsiteLogHistory::factory()
+            ->create([
+                'website_id' => $website->id,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+    }
+}
 
 test('command can be executed', function () {
     $this->artisan('website:log-uptime-ssl')
@@ -32,11 +45,11 @@ test('command dispatches websites with no heartbeat immediately', function () {
 test('command dispatches websites when last heartbeat plus interval is due', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => 60,
-        'last_heartbeat_at' => now()->subMinutes(60),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(60));
 
     $this->artisan('website:log-uptime-ssl')
         ->assertSuccessful();
@@ -47,11 +60,11 @@ test('command dispatches websites when last heartbeat plus interval is due', fun
 test('command floors heartbeat timestamps to the minute when checking due websites', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => 60,
-        'last_heartbeat_at' => now()->subMinutes(60)->addSeconds(30),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(60)->addSeconds(30));
 
     $this->artisan('website:log-uptime-ssl')
         ->assertSuccessful();
@@ -62,11 +75,11 @@ test('command floors heartbeat timestamps to the minute when checking due websit
 test('command does not dispatch websites before their interval has elapsed', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => 60,
-        'last_heartbeat_at' => now()->subMinutes(59),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(59));
 
     $this->artisan('website:log-uptime-ssl')
         ->assertSuccessful();
@@ -77,11 +90,11 @@ test('command does not dispatch websites before their interval has elapsed', fun
 test('command honors long website uptime intervals', function (int $interval) {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => $interval,
-        'last_heartbeat_at' => now()->subMinutes(60),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(60));
 
     $this->artisan('website:log-uptime-ssl')
         ->assertSuccessful();
@@ -92,11 +105,11 @@ test('command honors long website uptime intervals', function (int $interval) {
 test('command dispatches long website uptime intervals once elapsed', function (int $interval) {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => $interval,
-        'last_heartbeat_at' => now()->subMinutes($interval),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes($interval));
 
     $this->artisan('website:log-uptime-ssl')
         ->assertSuccessful();
@@ -107,11 +120,11 @@ test('command dispatches long website uptime intervals once elapsed', function (
 test('command dispatches jobs to correct queue', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => 1,
-        'last_heartbeat_at' => now()->subMinute(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinute());
 
     $this->artisan('website:log-uptime-ssl')
         ->assertSuccessful();
@@ -125,14 +138,14 @@ test('command only dispatches due websites', function () {
     $dueWebsite = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => 5,
-        'last_heartbeat_at' => now()->subMinutes(5),
     ]);
+    seedScheduledWebsiteLog($dueWebsite, now()->subMinutes(5));
 
-    Website::factory()->create([
+    $skippedWebsite = Website::factory()->create([
         'uptime_check' => true,
         'uptime_interval' => 5,
-        'last_heartbeat_at' => now()->subMinutes(4),
     ]);
+    seedScheduledWebsiteLog($skippedWebsite, now()->subMinutes(4));
 
     $this->artisan('website:log-uptime-ssl')
         ->assertSuccessful();

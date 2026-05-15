@@ -3,11 +3,9 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Resources\MonitorApisResource;
-use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\Incident;
 use App\Models\MonitorApiResult;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\WebsiteLogHistory;
 use Filament\Actions\Action;
 use Filament\Schemas\Components\View as SchemaView;
@@ -30,7 +28,7 @@ class IncidentFeedWidget extends BaseWidget
 
     protected static ?string $heading = 'Recent incidents';
 
-    protected static ?string $description = 'Warning, danger and recovery transitions from websites, API monitors and components — in the order they happened.';
+    protected static ?string $description = 'Warning, danger and recovery transitions from websites and API monitors — in the order they happened.';
 
     protected int|string|array $columnSpan = 'full';
 
@@ -79,13 +77,11 @@ class IncidentFeedWidget extends BaseWidget
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'website' => 'Website',
                         'api' => 'API monitor',
-                        'component' => 'Component',
                         default => ucfirst($state),
                     })
                     ->icon(fn (string $state): string => match ($state) {
                         'website' => 'heroicon-o-globe-alt',
                         'api' => 'heroicon-o-bolt',
-                        'component' => 'heroicon-o-cube',
                         default => 'heroicon-o-question-mark-circle',
                     }),
                 TextColumn::make('subject')
@@ -105,7 +101,7 @@ class IncidentFeedWidget extends BaseWidget
                 SelectFilter::make('status')
                     ->label('Transition')
                     ->options([
-                        'danger' => 'Danger',
+                        'danger' => 'Failing',
                         'warning' => 'Warning',
                         'recovered' => 'Recovered',
                     ])
@@ -126,7 +122,6 @@ class IncidentFeedWidget extends BaseWidget
                     ->options([
                         'website' => 'Websites',
                         'api' => 'API monitors',
-                        'component' => 'Components',
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         if (blank($data['value'] ?? null)) {
@@ -177,7 +172,7 @@ class IncidentFeedWidget extends BaseWidget
 
     protected function getEmptyStateDescriptionText(): string
     {
-        return 'No warning, danger or recovery transitions from your websites, API monitors or components in the selected window.';
+        return 'No warning, danger or recovery transitions from your websites or API monitors in the selected window.';
     }
 
     protected function buildIncidentsQuery(): Builder
@@ -193,7 +188,7 @@ class IncidentFeedWidget extends BaseWidget
      * Build the union query that powers every incident feed in the app.
      *
      * Pass a $projectId to restrict the feed to a single application's
-     * websites, monitor APIs and components.
+     * websites and monitor APIs.
      */
     public static function buildIncidentsQueryFor(int $userId, \Carbon\CarbonInterface $since, ?int $projectId = null): Builder
     {
@@ -219,7 +214,7 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("COALESCE(NULLIF(website_log_history.summary, ''), CONCAT('HTTP ', COALESCE(website_log_history.http_status_code, 0))) as summary")
             ->selectRaw('website_log_history.created_at as occurred_at');
 
-        // API results use a stricter severity definition than websites or components:
+        // API results use a stricter severity definition than websites:
         // older rows written before the `status` column existed still need to surface
         // as incidents, so we also pick up any failed result (`is_success = false`)
         // even when `status` is null/empty. The normalized status expression below
@@ -253,29 +248,8 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("COALESCE(NULLIF(monitor_api_results.summary, ''), CONCAT('HTTP ', COALESCE(monitor_api_results.http_code, 0))) as summary")
             ->selectRaw('monitor_api_results.created_at as occurred_at');
 
-        $componentRuns = ProjectComponentHeartbeat::query()
-            ->join('project_components', 'project_components.id', '=', 'project_component_heartbeats.project_component_id')
-            ->where('project_components.created_by', $userId)
-            ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_components.project_id', $projectId))
-            ->selectRaw("CONCAT('component_heartbeat-', project_component_heartbeats.id) as id")
-            ->selectRaw('project_component_heartbeats.id as source_row_id')
-            ->selectRaw("'component' as source")
-            ->selectRaw('project_component_heartbeats.project_component_id as source_subject_id')
-            ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.status, ''), 'unknown') as normalized_status")
-            ->selectRaw('
-                CASE
-                    WHEN NOT project_components.is_archived THEN 1
-                    ELSE 0
-                END as current_monitoring_enabled
-            ')
-            ->selectRaw('project_component_heartbeats.component_name as subject')
-            ->selectRaw('project_component_heartbeats.project_component_id as subject_id')
-            ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.summary, ''), project_component_heartbeats.event) as summary")
-            ->selectRaw('project_component_heartbeats.observed_at as occurred_at');
-
         $runs = self::limitRunsToFeedWindow($websiteRuns->toBase(), $since)
-            ->unionAll(self::limitRunsToFeedWindow($apiRuns->toBase(), $since))
-            ->unionAll(self::limitRunsToFeedWindow($componentRuns->toBase(), $since));
+            ->unionAll(self::limitRunsToFeedWindow($apiRuns->toBase(), $since));
 
         $rankedRuns = DB::query()
             ->fromSub($runs, 'runs')
@@ -369,7 +343,6 @@ class IncidentFeedWidget extends BaseWidget
         return match ($record->source) {
             'website' => WebsiteResource::getUrl('view', ['record' => $record->subject_id]),
             'api' => MonitorApisResource::getUrl('view', ['record' => $record->subject_id]),
-            'component' => ProjectComponentResource::getUrl('view', ['record' => $record->subject_id]),
             default => null,
         };
     }
@@ -399,15 +372,6 @@ class IncidentFeedWidget extends BaseWidget
                         ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId));
                 })
                 ->first(),
-            'component' => ProjectComponentHeartbeat::query()
-                ->with('component')
-                ->whereKey($sourceRowId)
-                ->whereHas('component', function (Builder $query) use ($projectId, $userId): void {
-                    $query
-                        ->where('created_by', $userId)
-                        ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId));
-                })
-                ->first(),
             default => null,
         };
     }
@@ -417,7 +381,6 @@ class IncidentFeedWidget extends BaseWidget
         return match ($source) {
             'website' => 'Website run',
             'api' => 'API result',
-            'component' => 'Component heartbeat',
             default => 'Incident',
         };
     }

@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Projects\Schemas;
 use App\Filament\Resources\ApiKeyResource;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Models\Project;
+use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
@@ -25,12 +26,8 @@ class ProjectInfolist
                         TextEntry::make('application_status')
                             ->label('Current Status')
                             ->badge()
-                            ->color(fn (?string $state): string => match ($state) {
-                                'healthy' => 'success',
-                                'warning' => 'warning',
-                                'danger' => 'danger',
-                                default => 'gray',
-                            }),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('environment')
                             ->default('Unknown'),
                         TextEntry::make('technology')
@@ -236,13 +233,10 @@ class ProjectInfolist
             return 'No summary recorded yet';
         }
 
-        $recordedHeartbeats = static::summaryNestedCount($summary, 'heartbeats', 'recorded');
-
         return collect([
             static::summaryPart('created', static::summaryNestedCount($summary, 'components', 'created')),
             static::summaryPart('updated', static::summaryNestedCount($summary, 'components', 'updated')),
             static::summaryPart('archived', static::summaryNestedCount($summary, 'components', 'archived')),
-            static::summaryPart($recordedHeartbeats === 1 ? 'heartbeat recorded' : 'heartbeats recorded', $recordedHeartbeats),
         ])
             ->filter()
             ->implode(', ') ?: 'No component changes';
@@ -264,15 +258,8 @@ class ProjectInfolist
             ->filter()
             ->implode(', ');
 
-        $heartbeatParts = collect([
-            static::summaryPart('recorded', static::summaryNestedCount($summary, 'heartbeats', 'recorded')),
-        ])
-            ->filter()
-            ->implode(', ');
-
         return collect([
             'Components: '.($componentParts === '' ? 'no changes' : $componentParts),
-            'Heartbeats: '.($heartbeatParts === '' ? 'none recorded' : $heartbeatParts),
         ])->implode(PHP_EOL);
     }
 

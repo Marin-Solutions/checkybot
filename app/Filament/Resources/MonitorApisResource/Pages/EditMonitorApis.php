@@ -50,8 +50,6 @@ class EditMonitorApis extends EditRecord
         if ($this->record->is_enabled && ($data['is_enabled'] ?? true) === false) {
             $data['current_status'] = 'unknown';
             $data['status_summary'] = 'Disabled in Checkybot admin.';
-            $data['last_heartbeat_at'] = null;
-            $data['stale_at'] = null;
         }
 
         return $data;

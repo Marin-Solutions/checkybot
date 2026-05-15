@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\RunSource;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use Illuminate\Support\Facades\DB;
 
 class ApiMonitorExecutionService
 {
@@ -15,11 +16,7 @@ class ApiMonitorExecutionService
     /**
      * Run a real API check and persist the result row.
      *
-     * @param  bool  $onDemand  When true, the run is treated as an operator-triggered diagnostic:
-     *                          the result is recorded but the monitor's live status fields
-     *                          (`current_status`, `last_heartbeat_at`, `stale_at`, `status_summary`)
-     *                          are left untouched so the scheduler's transition-based alerting baseline
-     *                          stays accurate.
+     * @param  bool  $onDemand  When true, the run is labeled as a manual run in history.
      * @return array{result: MonitorApiResult, status: string, summary: string, previous_status: string|null}
      */
     public function execute(MonitorApis $monitor, bool $onDemand = false): array
@@ -40,26 +37,33 @@ class ApiMonitorExecutionService
 
         $status = $this->statusService->apiStatusFromResult($rawResult, $monitor->expected_status);
         $summary = $this->statusService->summaryForApi($rawResult, $monitor->expected_status);
-        $previousStatus = $monitor->current_status;
+        [$result, $previousStatus] = DB::transaction(function () use ($monitor, $onDemand, $rawResult, $startTime, $status, $summary): array {
+            $lockedMonitor = MonitorApis::query()
+                ->whereKey($monitor->getKey())
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        $result = MonitorApiResult::recordResult(
-            $monitor,
-            $rawResult,
-            $startTime,
-            $status,
-            $summary,
-            $onDemand ? RunSource::OnDemand : RunSource::Scheduled,
-        );
+            $previousStatus = $lockedMonitor->current_status;
 
-        if (! $onDemand) {
-            $monitor->forceFill([
+            $result = MonitorApiResult::recordResult(
+                $lockedMonitor,
+                $rawResult,
+                $startTime,
+                $status,
+                $summary,
+                $onDemand ? RunSource::OnDemand : RunSource::Scheduled,
+            );
+
+            $lockedMonitor->forceFill([
                 'current_status' => $status,
-                'last_heartbeat_at' => now(),
-                'awaiting_heartbeat_since' => null,
-                'stale_at' => null,
                 'status_summary' => $summary,
             ])->save();
-        }
+
+            $monitor->setRawAttributes($lockedMonitor->getAttributes(), true);
+            $monitor->syncOriginal();
+
+            return [$result, $previousStatus];
+        });
 
         return [
             'result' => $result,

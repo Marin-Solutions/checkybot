@@ -201,7 +201,7 @@ class ProjectComponentNotificationService
      */
     private function buildPayload(ProjectComponent $component, string $event, string $status): array
     {
-        $component->loadMissing(['project', 'latestHeartbeat']);
+        $component->loadMissing('project');
 
         $eventLabel = match ($event) {
             'stale' => 'stale',
@@ -209,12 +209,11 @@ class ProjectComponentNotificationService
             default => $status,
         };
 
-        $latestHeartbeat = $component->latestHeartbeat;
-        $observedAt = $latestHeartbeat?->observed_at ?? $component->last_heartbeat_at;
+        $observedAt = $component->updated_at;
         $staleThresholdAt = $this->staleThresholdAt($component);
         $deliveryState = ProjectComponentDeliveryState::value($component);
         $deliveryStateLabel = ProjectComponentDeliveryState::label($component);
-        $metrics = $latestHeartbeat?->metrics ?? $component->metrics ?? [];
+        $metrics = $component->metrics ?? [];
         $formattedMetrics = MetricsPayloadFormatter::format($metrics);
         $summary = $component->summary ?? 'No additional summary was provided.';
         $evidence = [
@@ -257,7 +256,7 @@ class ProjectComponentNotificationService
             return null;
         }
 
-        $anchorAt = $component->last_heartbeat_at ?? $component->created_at;
+        $anchorAt = $component->created_at;
 
         if ($anchorAt === null) {
             return null;

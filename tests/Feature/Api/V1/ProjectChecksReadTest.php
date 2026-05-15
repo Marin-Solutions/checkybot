@@ -7,7 +7,6 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -305,36 +304,24 @@ test('checks read endpoint returns uptime ssl and api checks with current result
         ->and(json_encode($response->json()))->not->toContain('auth-header-secret');
 });
 
-test('project check read endpoints include component checks and heartbeat history', function () {
+test('project check read endpoints include component declarations without heartbeat history', function () {
     $component = ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'name' => 'queue',
         'declared_interval' => '5m',
         'interval_minutes' => 5,
+        'summary' => 'Queue depth is elevated.',
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'project_component_id' => $component->id,
+        'source' => 'package',
+        'package_name' => 'queue-api',
+        'is_enabled' => true,
         'current_status' => 'warning',
-        'last_reported_status' => 'warning',
-        'summary' => 'Queue depth is elevated.',
-        'metrics' => ['depth' => 42],
-        'last_heartbeat_at' => now()->subMinute(),
-    ]);
-
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'queue',
-        'status' => 'healthy',
-        'summary' => 'Queue depth recovered.',
-        'metrics' => ['depth' => 2],
-        'observed_at' => now()->subMinutes(5),
-    ]);
-
-    $latestHeartbeat = ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'queue',
-        'status' => 'warning',
-        'summary' => 'Queue depth is elevated.',
-        'metrics' => ['depth' => 42],
-        'observed_at' => now()->subMinute(),
     ]);
 
     ProjectComponent::factory()->create([
@@ -347,38 +334,31 @@ test('project check read endpoints include component checks and heartbeat histor
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->package_key}/checks")
         ->assertOk()
-        ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.id', "component:{$component->id}")
-        ->assertJsonPath('data.0.database_id', $component->id)
-        ->assertJsonPath('data.0.key', 'queue')
-        ->assertJsonPath('data.0.type', 'component')
-        ->assertJsonPath('data.0.storage', 'project_component')
-        ->assertJsonPath('data.0.interval', '5m')
-        ->assertJsonPath('data.0.interval_minutes', 5)
-        ->assertJsonPath('data.0.enabled', true)
-        ->assertJsonPath('data.0.status', 'warning')
-        ->assertJsonPath('data.0.reported_status', 'warning')
-        ->assertJsonPath('data.0.status_summary', 'Queue depth is elevated.')
-        ->assertJsonPath('data.0.metrics.depth', 42)
-        ->assertJsonPath('data.0.latest_result.id', $latestHeartbeat->id)
-        ->assertJsonPath('data.0.latest_result.check_id', "component:{$component->id}")
-        ->assertJsonPath('data.0.latest_result.run_source', 'heartbeat')
-        ->assertJsonPath('data.0.latest_result.metrics.depth', 42);
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.1.id', "component:{$component->id}")
+        ->assertJsonPath('data.1.database_id', $component->id)
+        ->assertJsonPath('data.1.key', 'queue')
+        ->assertJsonPath('data.1.type', 'component')
+        ->assertJsonPath('data.1.storage', 'project_component')
+        ->assertJsonPath('data.1.interval', '5m')
+        ->assertJsonPath('data.1.interval_minutes', 5)
+        ->assertJsonPath('data.1.enabled', true)
+        ->assertJsonPath('data.1.status', 'warning')
+        ->assertJsonPath('data.1.status_summary', 'Queue depth is elevated.')
+        ->assertJsonPath('data.1.latest_result', null)
+        ->assertJsonMissingPath('data.1.reported_status')
+        ->assertJsonMissingPath('data.1.metrics');
 
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/component:{$component->id}")
         ->assertOk()
         ->assertJsonPath('data.key', 'queue')
-        ->assertJsonPath('data.latest_result.status', 'warning');
+        ->assertJsonPath('data.latest_result', null);
 
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/queue/results?limit=1")
         ->assertOk()
-        ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.id', $latestHeartbeat->id)
-        ->assertJsonPath('data.0.check_id', "component:{$component->id}")
-        ->assertJsonPath('data.0.status', 'warning')
-        ->assertJsonPath('data.0.summary', 'Queue depth is elevated.');
+        ->assertJsonCount(0, 'data');
 
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/queue/results?run_source=scheduled")
@@ -469,14 +449,6 @@ test('single check and recent result endpoints can disambiguate shared package k
         'created_at' => now()->subMinutes(2),
     ]);
 
-    $heartbeat = ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'shared-health',
-        'status' => 'healthy',
-        'summary' => 'Component shared health is healthy.',
-        'observed_at' => now()->subMinute(),
-    ]);
-
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health")
         ->assertNotFound();
@@ -505,7 +477,7 @@ test('single check and recent result endpoints can disambiguate shared package k
         ->assertOk()
         ->assertJsonPath('data.id', "component:{$component->id}")
         ->assertJsonPath('data.type', 'component')
-        ->assertJsonPath('data.latest_result.summary', 'Component shared health is healthy.');
+        ->assertJsonPath('data.latest_result', null);
 
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health/results?type=uptime&limit=1")
@@ -518,10 +490,7 @@ test('single check and recent result endpoints can disambiguate shared package k
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/shared-health/results?type=component&limit=1")
         ->assertOk()
-        ->assertJsonCount(1, 'data')
-        ->assertJsonPath('data.0.id', $heartbeat->id)
-        ->assertJsonPath('data.0.check_id', "component:{$component->id}")
-        ->assertJsonPath('data.0.summary', 'Component shared health is healthy.');
+        ->assertJsonCount(0, 'data');
 });
 
 test('recent api check results can be filtered by run source', function () {
@@ -569,8 +538,8 @@ test('recent api check results can be filtered by run source', function () {
 
     $this->withToken($this->apiKey->key)
         ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results?run_source=heartbeat")
-        ->assertOk()
-        ->assertJsonCount(0, 'data');
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('run_source');
 });
 
 test('recent website check results can be filtered by run source', function () {

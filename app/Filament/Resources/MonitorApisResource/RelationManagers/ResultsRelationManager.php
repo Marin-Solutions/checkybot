@@ -6,6 +6,7 @@ use App\Enums\RunSource;
 use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
 use App\Models\MonitorApiResult;
 use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
 use Filament\Actions\ViewAction;
 use Filament\Infolists\Components\KeyValueEntry;
@@ -48,8 +49,8 @@ class ResultsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
 
                 Tables\Columns\TextColumn::make('run_source')
                     ->label('Run')
@@ -124,8 +125,8 @@ class ResultsRelationManager extends RelationManager
                     ->schema([
                         TextEntry::make('status')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('run_source')
                             ->label('Run')
                             ->badge()

@@ -26,6 +26,10 @@ class ProjectComponentsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
+                'activeMonitorApis:id,project_component_id,current_status',
+                'activeWebsites:id,project_component_id,current_status,uptime_check,ssl_check',
+            ]))
             ->columns([
                 TextColumn::make('name')
                     ->searchable(),
@@ -33,6 +37,7 @@ class ProjectComponentsTable
                     ->label('Application')
                     ->searchable(),
                 TextColumn::make('current_status')
+                    ->state(fn (ProjectComponent $record): string => $record->derivedCurrentStatus())
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => match ($state) {
@@ -58,8 +63,6 @@ class ProjectComponentsTable
                     ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('declared_interval')
                     ->label('Interval'),
-                TextColumn::make('last_heartbeat_at')
-                    ->sinceInUserZone(),
             ])
             ->filters([
                 HealthStatusFilter::makeForNonNullableColumn(),
@@ -79,7 +82,7 @@ class ProjectComponentsTable
                 BulkActionGroup::make(static::bulkActions()),
             ])
             ->emptyStateHeading('No application components yet')
-            ->emptyStateDescription('Add a component (cron job, queue worker, or background process) and point its heartbeat at Checkybot to detect stalls and missed runs.')
+            ->emptyStateDescription('Add a component and link active package checks to derive its health.')
             ->emptyStateIcon('heroicon-o-rectangle-stack')
             ->emptyStateActions([
                 CreateAction::make()
@@ -99,7 +102,7 @@ class ProjectComponentsTable
                 ->color(fn (ProjectComponent $record): string => $record->isSilenced() ? 'warning' : 'gray')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:ProjectComponent') ?? false)
                 ->modalHeading('Snooze notifications for this component')
-                ->modalDescription('Suppress alert delivery during a maintenance window. Heartbeats keep updating the component, but no emails or webhooks fire while snoozed.')
+                ->modalDescription('Suppress alert delivery during a maintenance window. Derived health keeps updating, but no emails or webhooks fire while snoozed.')
                 ->modalSubmitActionLabel('Snooze')
                 ->fillForm(fn (ProjectComponent $record): array => [
                     'duration' => $record->isSilenced() ? 'custom' : '1h',
@@ -135,7 +138,7 @@ class ProjectComponentsTable
                 ->visible(fn (ProjectComponent $record): bool => $record->isSilenced())
                 ->requiresConfirmation()
                 ->modalHeading('Resume notifications')
-                ->modalDescription('Notifications for this component will fire again on the next status change or stale heartbeat.')
+                ->modalDescription('Notifications for this component will fire again on the next status change.')
                 ->modalSubmitActionLabel('Unsnooze')
                 ->action(function (ProjectComponent $record): void {
                     $record->update(['silenced_until' => null]);
@@ -158,7 +161,7 @@ class ProjectComponentsTable
                 ->color('warning')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:ProjectComponent') ?? false)
                 ->modalHeading('Snooze notifications for selected components')
-                ->modalDescription('Suppress alert delivery during a maintenance window. Heartbeats keep updating these components, but no emails or webhooks fire while snoozed.')
+                ->modalDescription('Suppress alert delivery during a maintenance window. Derived health keeps updating, but no emails or webhooks fire while snoozed.')
                 ->modalSubmitActionLabel('Snooze')
                 ->schema(MonitorSnoozeAction::formSchema())
                 ->action(function (Collection $records, array $data): void {
@@ -192,7 +195,7 @@ class ProjectComponentsTable
                 ->authorize(fn (): bool => auth()->user()?->can('Update:ProjectComponent') ?? false)
                 ->requiresConfirmation()
                 ->modalHeading('Unsnooze selected components')
-                ->modalDescription('Notifications will resume immediately on the next status change or stale heartbeat for these components.')
+                ->modalDescription('Notifications will resume immediately on the next status change for these components.')
                 ->modalSubmitActionLabel('Unsnooze')
                 ->action(function (Collection $records): void {
                     $ids = $records->whereNotNull('silenced_until')->pluck('id');
@@ -218,7 +221,7 @@ class ProjectComponentsTable
                 ->authorize(fn (): bool => auth()->user()?->can('Update:ProjectComponent') ?? false)
                 ->requiresConfirmation()
                 ->modalHeading('Enable selected components')
-                ->modalDescription('Selected components will be un-archived and will resume tracking incoming heartbeats.')
+                ->modalDescription('Selected components will be un-archived and resume derived health tracking.')
                 ->modalSubmitActionLabel('Enable')
                 ->action(function (Collection $records): void {
                     $ids = $records->where('is_archived', true)->pluck('id');
@@ -237,7 +240,7 @@ class ProjectComponentsTable
                             : ($count === 1 ? '1 component enabled' : "{$count} components enabled"))
                         ->body($count === 0
                             ? 'Every selected component was already active.'
-                            : 'Heartbeat tracking has resumed for these components.')
+                            : 'Derived health tracking has resumed for these components.')
                         ->success()
                         ->send();
                 })
@@ -249,7 +252,7 @@ class ProjectComponentsTable
                 ->authorize(fn (): bool => auth()->user()?->can('Update:ProjectComponent') ?? false)
                 ->requiresConfirmation()
                 ->modalHeading('Disable selected components')
-                ->modalDescription('Selected components will be archived. Incoming heartbeats are ignored and stale alerts will stop firing, but history is preserved.')
+                ->modalDescription('Selected components will be archived. Active child checks remain visible as metadata but no longer affect component health.')
                 ->modalSubmitActionLabel('Disable')
                 ->action(function (Collection $records): void {
                     $ids = $records->where('is_archived', false)->pluck('id');
@@ -268,7 +271,7 @@ class ProjectComponentsTable
                             : ($count === 1 ? '1 component disabled' : "{$count} components disabled"))
                         ->body($count === 0
                             ? 'Every selected component was already archived.'
-                            : 'These components are now archived and will no longer fire stale alerts.')
+                            : 'These components are now archived and excluded from component health.')
                         ->warning()
                         ->send();
                 })

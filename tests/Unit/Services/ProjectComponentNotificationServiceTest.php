@@ -8,7 +8,6 @@ use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Services\ProjectComponentNotificationService;
 use Illuminate\Support\Facades\Http;
@@ -123,16 +122,9 @@ test('project component notification service includes observed evidence in webho
         'declared_interval' => '5m',
         'interval_minutes' => 5,
         'current_status' => 'danger',
-        'last_heartbeat_at' => $observedAt,
-        'metrics' => ['queue_depth' => 21],
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'queue',
-        'status' => 'danger',
-        'summary' => 'Queue depth is above threshold.',
         'metrics' => ['queue_depth' => 42, 'oldest_job_seconds' => 91],
-        'observed_at' => $observedAt,
+        'created_at' => $observedAt,
+        'updated_at' => $observedAt,
     ]);
 
     $channel = NotificationChannels::factory()->create([
@@ -170,7 +162,7 @@ test('project component notification service includes observed evidence in webho
             && str_contains($description, 'Observed at: '.$observedAt->toIso8601String())
             && str_contains($description, 'Interval: 5m (5 min)')
             && str_contains($description, 'Stale threshold: '.$observedAt->copy()->addMinutes(7)->toIso8601String())
-            && str_contains($description, 'Delivery state: Receiving heartbeats')
+            && str_contains($description, 'Delivery state: Pending')
             && str_contains($description, '"queue_depth": 42')
             && str_contains($description, '"oldest_job_seconds": 91');
     });
@@ -195,15 +187,9 @@ test('project component notification service includes observed evidence in mail 
         'declared_interval' => '10m',
         'interval_minutes' => 10,
         'current_status' => 'warning',
-        'last_heartbeat_at' => $observedAt,
-        'metrics' => ['latency_ms' => 1250],
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'payments',
-        'status' => 'warning',
         'metrics' => ['latency_ms' => 1250, 'error_rate' => 0.04],
-        'observed_at' => $observedAt,
+        'created_at' => $observedAt,
+        'updated_at' => $observedAt,
     ]);
 
     NotificationSetting::factory()
@@ -227,7 +213,7 @@ test('project component notification service includes observed evidence in mail 
             && $mail->payload['observed_at'] === $observedAt->toIso8601String()
             && $mail->payload['interval_formatted'] === '10m (10 min)'
             && $mail->payload['stale_threshold_at'] === $observedAt->copy()->addMinutes(13)->toIso8601String()
-            && $mail->payload['delivery_state_label'] === 'Receiving heartbeats'
+            && $mail->payload['delivery_state_label'] === 'Pending'
             && $mail->payload['metrics'] === ['latency_ms' => 1250, 'error_rate' => 0.04]
             && str_contains($mail->payload['formatted_metrics'], '"latency_ms": 1250')
             && $mail->payload['evidence'][4] === [

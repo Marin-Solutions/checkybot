@@ -24,10 +24,15 @@ class ComponentsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
+                'activeMonitorApis:id,project_component_id,current_status',
+                'activeWebsites:id,project_component_id,current_status,uptime_check,ssl_check',
+            ]))
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('current_status')
+                    ->state(fn (ProjectComponent $record): string => $record->derivedCurrentStatus())
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => match ($state) {
@@ -44,10 +49,9 @@ class ComponentsRelationManager extends RelationManager
                     ->badge()
                     ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                 Tables\Columns\TextColumn::make('summary')
+                    ->state(fn (ProjectComponent $record): string => $record->derivedStatusSummary())
                     ->wrap()
                     ->limit(80),
-                Tables\Columns\TextColumn::make('last_heartbeat_at')
-                    ->sinceInUserZone(),
             ])
             ->filters([
                 HealthStatusFilter::makeForNonNullableColumn(),

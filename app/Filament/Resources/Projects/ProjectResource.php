@@ -36,9 +36,11 @@ class ProjectResource extends Resource
             ->where('created_by', auth()->id())
             ->withCount('components')
             ->with([
-                'activeComponents:id,project_id,current_status,is_stale,last_heartbeat_at',
-                'monitoredWebsites:id,project_id,current_status,last_heartbeat_at,stale_at',
-                'enabledMonitorApis:id,project_id,current_status,last_heartbeat_at,stale_at',
+                'activeComponents:id,project_id,current_status,is_archived,source',
+                'activeComponents.activeMonitorApis',
+                'activeComponents.activeWebsites',
+                'monitoredWebsites:id,project_id,current_status',
+                'enabledMonitorApis:id,project_id,current_status',
             ]);
     }
 

@@ -24,7 +24,7 @@ class ProxyPoolStatsWidget extends BaseWidget
             ->where('created_by', auth()->id())
             ->where('source', ProxyPoolDashboardService::COMPONENT_SOURCE)
             ->where('is_archived', false)
-            ->get(['current_status', 'metrics', 'last_heartbeat_at']);
+            ->get(['current_status', 'metrics']);
 
         if ($components->isEmpty()) {
             return [

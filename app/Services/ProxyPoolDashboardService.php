@@ -171,7 +171,7 @@ class ProxyPoolDashboardService
         array $metrics,
         Carbon $observedAt,
     ): ProjectComponent {
-        return DB::transaction(function () use ($integration, $project, $name, $interval, $status, $summary, $metrics, $observedAt): ProjectComponent {
+        return DB::transaction(function () use ($integration, $project, $name, $interval, $status, $summary, $metrics): ProjectComponent {
             $componentName = $this->componentName($name);
 
             $component = $integration->project_component_id !== null
@@ -187,7 +187,6 @@ class ProxyPoolDashboardService
             ]);
 
             $previousStatus = $component->exists ? $component->current_status : 'unknown';
-            $wasStale = (bool) $component->is_stale;
 
             $component->fill([
                 'project_id' => $project->getKey(),
@@ -199,9 +198,6 @@ class ProxyPoolDashboardService
                 'last_reported_status' => $status,
                 'summary' => $summary,
                 'metrics' => $metrics,
-                'last_heartbeat_at' => $observedAt,
-                'stale_detected_at' => null,
-                'is_stale' => false,
                 'is_archived' => false,
                 'archived_at' => null,
                 'archive_reason' => null,
@@ -213,18 +209,9 @@ class ProxyPoolDashboardService
                 $integration->forceFill(['project_component_id' => $component->getKey()])->save();
             }
 
-            $component->heartbeats()->create([
-                'component_name' => $componentName,
-                'status' => $status,
-                'event' => 'heartbeat',
-                'summary' => $summary,
-                'metrics' => $metrics,
-                'observed_at' => $observedAt,
-            ]);
-
             if (in_array($status, ['warning', 'danger'], true) && $previousStatus !== $status) {
                 $this->projectComponentNotificationService->notify($component->loadMissing('project'), 'heartbeat', $status);
-            } elseif ($status === 'healthy' && (in_array($previousStatus, ['warning', 'danger'], true) || $wasStale)) {
+            } elseif ($status === 'healthy' && in_array($previousStatus, ['warning', 'danger'], true)) {
                 $this->projectComponentNotificationService->notify($component->loadMissing('project'), 'recovered', $status);
             }
 

@@ -9,7 +9,6 @@ use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
 use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
-use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelationManager;
 use App\Filament\Resources\ProjectComponents\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
@@ -25,10 +24,8 @@ use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
-use App\Support\PackageCheckTableEvidence;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Queue;
@@ -37,6 +34,27 @@ use Livewire\Livewire;
 afterEach(function () {
     Carbon::setTestNow();
 });
+
+function componentWithActiveApi(Project $project, User $user, string $status = 'healthy', array $attributes = []): ProjectComponent
+{
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => $status,
+        'last_reported_status' => $status,
+        ...$attributes,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'is_enabled' => true,
+        'current_status' => $status,
+        'created_by' => $user->id,
+    ]);
+
+    return $component;
+}
 
 test('operator can create a manual application component', function () {
     $this->createResourcePermissions('ProjectComponent');
@@ -68,7 +86,7 @@ test('operator can create a manual application component', function () {
         ->and($component->interval_minutes)->toBe(5)
         ->and($component->current_status)->toBe('unknown')
         ->and($component->last_reported_status)->toBe('unknown')
-        ->and($component->summary)->toBe('Awaiting first heartbeat')
+        ->and($component->summary)->toBe('Awaiting active child check results')
         ->and($component->last_heartbeat_at)->toBeNull()
         ->and($component->metrics)->toBe([])
         ->and($component->is_archived)->toBeFalse()
@@ -142,7 +160,7 @@ test('operator can update manual component status interval and archive state', f
         ->and($component->last_reported_status)->toBe('unknown')
         ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
         ->and($component->last_heartbeat_at)->toBeNull()
-        ->and($component->is_stale)->toBeFalse()
+        ->and($component->is_stale)->toBeNull()
         ->and($component->stale_detected_at)->toBeNull()
         ->and($component->is_archived)->toBeTrue()
         ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
@@ -185,7 +203,7 @@ test('editing a package archived component classifies the archive as user manage
         ->and($component->interval_minutes)->toBe(10);
 });
 
-test('operator cannot reset a reporting component to awaiting data', function () {
+test('operator can reset stored component status to pending', function () {
     $this->createResourcePermissions('ProjectComponent');
 
     $user = $this->actingAsSuperAdmin();
@@ -207,12 +225,12 @@ test('operator cannot reset a reporting component to awaiting data', function ()
             'current_status' => 'unknown',
         ])
         ->call('save')
-        ->assertHasFormErrors(['current_status']);
+        ->assertHasNoFormErrors()
+        ->assertNotified();
 
     $component->refresh();
 
-    expect($component->current_status)->toBe('healthy')
-        ->and($component->last_reported_status)->toBe('healthy');
+    expect($component->current_status)->toBe('unknown');
 });
 
 test('operator cannot save a manual component with an invalid interval', function () {
@@ -339,14 +357,6 @@ test('project application list and component list show active and archived compo
         'created_by' => $user->id,
     ]);
 
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $archivedComponent->id,
-        'component_name' => 'legacy-proxy',
-        'status' => 'danger',
-        'event' => 'stale',
-        'summary' => 'Heartbeat expired',
-    ]);
-
     Livewire::test(ListProjects::class)
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$project]);
@@ -357,7 +367,7 @@ test('project application list and component list show active and archived compo
         ->assertSee($archivedComponent->name);
 });
 
-test('project component detail shows heartbeat history', function () {
+test('project component detail hides legacy heartbeat history', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
 
@@ -383,47 +393,18 @@ test('project component detail shows heartbeat history', function () {
         'stale_detected_at' => now()->subMinutes(4),
     ]);
 
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $archivedComponent->id,
-        'component_name' => 'legacy-proxy',
-        'status' => 'danger',
-        'event' => 'stale',
-        'summary' => 'Heartbeat expired',
-        'metrics' => [
-            'queue_depth' => 17,
-            'healthy' => false,
-        ],
-        'observed_at' => now()->subMinutes(4),
-    ]);
-
     Livewire::test(ViewProjectComponent::class, ['record' => $archivedComponent->getRouteKey()])
         ->assertSuccessful()
-        ->assertSee('Timing Evidence')
-        ->assertSee('Heartbeat Setup')
-        ->assertSee('Package Definition')
-        ->assertSee('Direct API Heartbeat')
+        ->assertSee('Derived Health')
+        ->assertSee('Package Setup')
         ->assertSee("Checkybot::component('legacy-proxy')")
-        ->assertSee("/api/v1/projects/{$project->id}/components/sync")
-        ->assertSee('declared_components')
-        ->assertSee('components')
-        ->assertSee('Current Metrics')
-        ->assertSee('Stale Threshold')
-        ->assertSee('Heartbeat expired')
-        ->assertSee('queue_depth')
-        ->assertSee('17')
-        ->assertSee('stale');
-
-    Livewire::test(HeartbeatsRelationManager::class, [
-        'ownerRecord' => $archivedComponent,
-        'pageClass' => ViewProjectComponent::class,
-    ])
-        ->assertSuccessful()
-        ->assertSee('Metrics')
-        ->assertSee('queue_depth')
-        ->assertSee('17');
+        ->assertDontSee('Heartbeat History')
+        ->assertDontSee('Direct API Heartbeat')
+        ->assertDontSee('Stale Threshold')
+        ->assertDontSee('Heartbeat expired');
 });
 
-test('project component detail shows newest heartbeat evidence first', function () {
+test('project component resource does not register the legacy heartbeat relation manager', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');
 
@@ -433,155 +414,18 @@ test('project component detail shows newest heartbeat evidence first', function 
         'created_by' => $user->id,
     ]);
 
-    $component = ProjectComponent::factory()->create([
+    ProjectComponent::factory()->create([
         'project_id' => $project->id,
         'name' => 'queue-worker',
         'created_by' => $user->id,
     ]);
 
-    collect(range(1, 6))->each(function (int $minute) use ($component): void {
-        ProjectComponentHeartbeat::factory()->create([
-            'project_component_id' => $component->id,
-            'component_name' => $component->name,
-            'status' => 'healthy',
-            'event' => 'heartbeat',
-            'summary' => "Heartbeat {$minute}",
-            'observed_at' => now()->subMinutes(7 - $minute),
-        ]);
-    });
-
-    $componentPage = Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
-        ->assertSuccessful()
-        ->assertSee('Recent Event Evidence')
-        ->assertSee('Heartbeat 6')
-        ->assertSee('Heartbeat 5')
-        ->assertSee('Heartbeat 4')
-        ->assertSee('Heartbeat 3')
-        ->assertSee('Heartbeat 2')
-        ->assertDontSee('Heartbeat 1');
-
-    $html = $componentPage->html();
-
-    $visibleSummaries = ['Heartbeat 6', 'Heartbeat 5', 'Heartbeat 4', 'Heartbeat 3', 'Heartbeat 2'];
-    $positions = array_map(
-        static fn (string $summary): int|false => strpos($html, $summary),
-        $visibleSummaries,
-    );
-    $sortedPositions = $positions;
-    sort($sortedPositions);
-
-    expect($html)->not->toContain('Heartbeat 1');
-    expect($positions)->each->not->toBeFalse();
-    expect($positions)->toBe($sortedPositions);
+    expect(ProjectComponentResource::getRelations())
+        ->not->toContain('App\\Filament\\Resources\\ProjectComponents\\RelationManagers\\HeartbeatsRelationManager')
+        ->toContain(NotificationSettingsRelationManager::class);
 });
 
-test('project component heartbeat history supports triage filters and evidence modal', function () {
-    $this->createResourcePermissions('ProjectComponent');
-
-    $user = $this->actingAsSuperAdmin();
-    $component = ProjectComponent::factory()->create([
-        'name' => 'payments-worker',
-        'created_by' => $user->id,
-    ]);
-
-    $healthyWithMetrics = ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'payments-worker',
-        'status' => 'healthy',
-        'event' => 'heartbeat',
-        'summary' => 'Worker processed queue normally.',
-        'metrics' => ['latency_ms' => 120],
-        'observed_at' => now()->subMinutes(4),
-    ]);
-
-    $warningWithoutMetrics = ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'payments-worker',
-        'status' => 'warning',
-        'event' => 'heartbeat',
-        'summary' => 'Worker queue lag is elevated.',
-        'metrics' => [],
-        'observed_at' => now()->subMinutes(3),
-    ]);
-
-    $staleWithMetrics = ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'payments-worker',
-        'status' => 'danger',
-        'event' => 'stale',
-        'summary' => 'Heartbeat expired.',
-        'metrics' => ['queue_depth' => 42],
-        'observed_at' => now()->subMinutes(2),
-    ]);
-
-    $dangerWithoutMetrics = ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'payments-worker',
-        'status' => 'danger',
-        'event' => 'heartbeat',
-        'summary' => 'Worker heartbeat failed without metrics.',
-        'metrics' => null,
-        'observed_at' => now()->subMinute(),
-    ]);
-
-    Livewire::test(HeartbeatsRelationManager::class, [
-        'ownerRecord' => $component,
-        'pageClass' => ViewProjectComponent::class,
-    ])
-        ->filterTable('status', 'warning')
-        ->assertCanSeeTableRecords([$warningWithoutMetrics])
-        ->assertCanNotSeeTableRecords([$healthyWithMetrics, $staleWithMetrics, $dangerWithoutMetrics]);
-
-    Livewire::test(HeartbeatsRelationManager::class, [
-        'ownerRecord' => $component,
-        'pageClass' => ViewProjectComponent::class,
-    ])
-        ->filterTable('event', 'stale')
-        ->assertCanSeeTableRecords([$staleWithMetrics])
-        ->assertCanNotSeeTableRecords([$healthyWithMetrics, $warningWithoutMetrics, $dangerWithoutMetrics]);
-
-    Livewire::test(HeartbeatsRelationManager::class, [
-        'ownerRecord' => $component,
-        'pageClass' => ViewProjectComponent::class,
-    ])
-        ->filterTable('event', 'heartbeat')
-        ->assertCanSeeTableRecords([$healthyWithMetrics, $warningWithoutMetrics, $dangerWithoutMetrics])
-        ->assertCanNotSeeTableRecords([$staleWithMetrics]);
-
-    Livewire::test(HeartbeatsRelationManager::class, [
-        'ownerRecord' => $component,
-        'pageClass' => ViewProjectComponent::class,
-    ])
-        ->filterTable('stale_only', true)
-        ->assertCanSeeTableRecords([$staleWithMetrics])
-        ->assertCanNotSeeTableRecords([$healthyWithMetrics, $warningWithoutMetrics, $dangerWithoutMetrics]);
-
-    Livewire::test(HeartbeatsRelationManager::class, [
-        'ownerRecord' => $component,
-        'pageClass' => ViewProjectComponent::class,
-    ])
-        ->filterTable('metrics_present', true)
-        ->assertCanSeeTableRecords([$healthyWithMetrics, $staleWithMetrics])
-        ->assertCanNotSeeTableRecords([$warningWithoutMetrics, $dangerWithoutMetrics]);
-
-    Livewire::test(HeartbeatsRelationManager::class, [
-        'ownerRecord' => $component,
-        'pageClass' => ViewProjectComponent::class,
-    ])
-        ->assertTableActionExists('view', null, $staleWithMetrics)
-        ->assertSee('View Evidence')
-        ->mountTableAction('view', $staleWithMetrics)
-        ->assertHasNoTableActionErrors()
-        ->assertSchemaStateSet([
-            'status' => 'danger',
-            'event' => 'stale',
-            'component_name' => 'payments-worker',
-            'summary' => 'Heartbeat expired.',
-            'metrics' => "{\n    \"queue_depth\": 42\n}",
-        ]);
-});
-
-test('project component detail shows stale threshold with configured grace window', function () {
+test('project component detail hides stale threshold timing', function () {
     config(['monitor.project_component_stale_grace_minutes' => 2]);
     $this->travelTo('2026-04-27 12:00:00');
 
@@ -605,10 +449,10 @@ test('project component detail shows stale threshold with configured grace windo
 
     Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
         ->assertSuccessful()
-        ->assertSee('Stale Threshold')
-        ->assertSee('Mon, Apr 27, 2026 12:01 PM')
-        ->assertSee('Includes 2-minute grace')
-        ->assertSee('Expires');
+        ->assertSee('Derived Health')
+        ->assertDontSee('Stale Threshold')
+        ->assertDontSee('Includes 2-minute grace')
+        ->assertDontSee('Expires');
 
     $this->travelBack();
 });
@@ -620,8 +464,7 @@ test('project component edit page exposes component notification management', fu
     $component = ProjectComponent::factory()->create(['created_by' => $user->id]);
 
     Livewire::test(EditProjectComponent::class, ['record' => $component->getRouteKey()])
-        ->assertSuccessful()
-        ->assertSee('Component Notifications');
+        ->assertSuccessful();
 
     expect(ProjectComponentResource::getRelations())
         ->toContain(NotificationSettingsRelationManager::class);
@@ -761,7 +604,7 @@ test('component-scoped webhook notification cannot reuse another users channel',
     ]);
 });
 
-test('project component detail omits grace hint when stale grace is disabled', function () {
+test('project component detail hides stale timing when grace is disabled', function () {
     config(['monitor.project_component_stale_grace_minutes' => 0]);
     $this->travelTo('2026-04-27 12:00:00');
 
@@ -785,9 +628,10 @@ test('project component detail omits grace hint when stale grace is disabled', f
 
     Livewire::test(ViewProjectComponent::class, ['record' => $component->getRouteKey()])
         ->assertSuccessful()
-        ->assertSee('Stale Threshold')
-        ->assertSee('Mon, Apr 27, 2026 11:59 AM')
-        ->assertSee('Expired')
+        ->assertSee('Derived Health')
+        ->assertDontSee('Stale Threshold')
+        ->assertDontSee('Mon, Apr 27, 2026 11:59 AM')
+        ->assertDontSee('Expired')
         ->assertDontSee('Includes');
 
     $this->travelBack();
@@ -804,11 +648,8 @@ test('application list and detail show the worst active component status', funct
         'created_by' => $user->id,
     ]);
 
-    ProjectComponent::factory()->create([
-        'project_id' => $healthyProject->id,
+    componentWithActiveApi($healthyProject, $user, 'healthy', [
         'name' => 'database',
-        'current_status' => 'healthy',
-        'created_by' => $user->id,
     ]);
 
     ProjectComponent::factory()->archived()->create([
@@ -823,33 +664,27 @@ test('application list and detail show the worst active component status', funct
         'created_by' => $user->id,
     ]);
 
-    ProjectComponent::factory()->create([
-        'project_id' => $dangerProject->id,
+    componentWithActiveApi($dangerProject, $user, 'warning', [
         'name' => 'queue',
-        'current_status' => 'warning',
-        'created_by' => $user->id,
     ]);
 
-    ProjectComponent::factory()->create([
-        'project_id' => $dangerProject->id,
+    componentWithActiveApi($dangerProject, $user, 'danger', [
         'name' => 'database',
-        'current_status' => 'danger',
-        'created_by' => $user->id,
     ]);
 
     Livewire::test(ListProjects::class)
         ->assertSuccessful()
         ->assertCanSeeTableRecords([$healthyProject, $dangerProject])
-        ->assertSee('healthy')
-        ->assertSee('danger');
+        ->assertSee('Healthy')
+        ->assertSee('Failing');
 
     Livewire::test(ViewProject::class, ['record' => $healthyProject->getRouteKey()])
         ->assertSuccessful()
-        ->assertSee('healthy');
+        ->assertSee('Healthy');
 
     Livewire::test(ViewProject::class, ['record' => $dangerProject->getRouteKey()])
         ->assertSuccessful()
-        ->assertSee('danger');
+        ->assertSee('Failing');
 });
 
 test('application detail shows package sync status metadata', function () {
@@ -892,9 +727,6 @@ test('application detail shows package sync status metadata', function () {
                 'created' => 2,
                 'updated' => 1,
                 'archived' => 1,
-            ],
-            'heartbeats' => [
-                'recorded' => 3,
             ],
         ],
     ]);
@@ -961,9 +793,9 @@ test('application detail shows package sync status metadata', function () {
         ->assertSee('API checks: 1 created, 1 disabled')
         ->assertSee('Uptime checks: 1 created, 1 updated')
         ->assertSee('SSL checks: no changes')
-        ->assertSeeInOrder(['Last Component Sync Changes', '2 created, 1 updated, 1 archived, 3 heartbeats recorded'])
+        ->assertSeeInOrder(['Last Component Sync Changes', '2 created, 1 updated, 1 archived'])
         ->assertSee('Components: 2 created, 1 updated, 1 archived')
-        ->assertSee('Heartbeats: 3 recorded');
+        ->assertDontSee('Heartbeats:');
 });
 
 test('application detail action queues enabled package managed diagnostics', function () {
@@ -1296,14 +1128,12 @@ test('application record shows package-managed external checks including archive
         ->assertCanSeeTableRecords([$uptimeWebsite, $archivedSslWebsite, $disabledWebsite])
         ->assertTableColumnStateSet('deleted_at', 'Disabled', $disabledWebsite)
         ->assertSee('Summary')
-        ->assertSee('Last Heartbeat')
-        ->assertSee('Freshness')
+        ->assertSee('Last Check')
+        ->assertDontSee('Freshness')
         ->assertSee('Homepage heartbeat succeeded with HTTP status 200.')
         ->assertSee('No heartbeat received within the expected 5m interval.')
         ->assertSee('Disabled because it was missing from the latest package sync.')
-        ->assertSee('Both uptime and SSL checks are disabled. Scheduled runs are paused.')
-        ->assertSee('Fresh')
-        ->assertSee('Stale');
+        ->assertSee('Both uptime and SSL checks are disabled. Scheduled runs are paused.');
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
@@ -1314,22 +1144,20 @@ test('application record shows package-managed external checks including archive
         ->assertTableColumnStateSet('deleted_at', 'Active', $apiMonitor)
         ->assertTableColumnStateSet('deleted_at', 'Archived', $archivedApiMonitor)
         ->assertTableColumnStateSet('deleted_at', 'Disabled', $disabledApiMonitor)
-        ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $disabledApiMonitor)
         ->assertSee('Summary')
         ->assertSee('Last Scheduled Check')
-        ->assertSee('Freshness')
+        ->assertDontSee('Freshness')
         ->assertSee('API check succeeded with HTTP status 200.')
         ->assertSee('Awaiting first package heartbeat.')
-        ->assertSee('Fresh')
         ->assertSee('This check is disabled. Scheduled runs are paused.')
-        ->assertSee('Monitor is disabled. Scheduled API checks are not expected.');
+        ->assertDontSee('Monitor is disabled. Scheduled API checks are not expected.');
 
     expect(ProjectResource::getRelations())
         ->toContain(PackageManagedWebsitesRelationManager::class)
         ->toContain(PackageManagedApisRelationManager::class);
 });
 
-test('package-managed relation managers filter checks by freshness evidence', function () {
+test('package-managed relation managers do not expose non-server freshness filters', function () {
     Carbon::setTestNow('2026-05-12 12:00:00');
 
     $this->createResourcePermissions('Project');
@@ -1341,185 +1169,46 @@ test('package-managed relation managers filter checks by freshness evidence', fu
         'package_key' => 'triage-app',
     ]);
 
-    $freshWebsite = Website::factory()->create([
+    $website = Website::factory()->create([
         'project_id' => $project->id,
-        'name' => 'fresh-site',
+        'name' => 'legacy-stale-site',
         'source' => 'package',
-        'package_name' => 'fresh-site',
+        'package_name' => 'legacy-stale-site',
         'package_interval' => '5m',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => null,
-        'uptime_check' => true,
-        'ssl_check' => false,
-        'created_by' => $user->id,
-    ]);
-    $staleWebsite = Website::factory()->create([
-        'project_id' => $project->id,
-        'name' => 'stale-site',
-        'source' => 'package',
-        'package_name' => 'stale-site',
-        'package_interval' => '5m',
-        'last_heartbeat_at' => now()->subMinutes(7),
-        'stale_at' => null,
-        'uptime_check' => true,
-        'ssl_check' => false,
-        'created_by' => $user->id,
-    ]);
-    $flaggedStaleLegacyWebsite = Website::factory()->create([
-        'project_id' => $project->id,
-        'name' => 'flagged-stale-legacy-site',
-        'source' => 'package',
-        'package_name' => 'flagged-stale-legacy-site',
-        'package_interval' => 'every_5_minutes',
         'last_heartbeat_at' => now()->subMinutes(2),
         'stale_at' => now()->subMinute(),
         'uptime_check' => true,
         'ssl_check' => false,
         'created_by' => $user->id,
     ]);
-    $awaitingWebsite = Website::factory()->create([
-        'project_id' => $project->id,
-        'name' => 'awaiting-site',
-        'source' => 'package',
-        'package_name' => 'awaiting-site',
-        'package_interval' => '5m',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
-        'uptime_check' => true,
-        'ssl_check' => false,
-        'created_by' => $user->id,
-    ]);
-    $disabledWebsite = Website::factory()->create([
-        'project_id' => $project->id,
-        'name' => 'disabled-site',
-        'source' => 'package',
-        'package_name' => 'disabled-site',
-        'package_interval' => '5m',
-        'last_heartbeat_at' => now()->subHour(),
-        'stale_at' => now()->subMinutes(30),
-        'uptime_check' => false,
-        'ssl_check' => false,
-        'created_by' => $user->id,
-    ]);
 
-    $freshApi = MonitorApis::factory()->create([
+    $api = MonitorApis::factory()->create([
         'project_id' => $project->id,
-        'title' => 'fresh-api',
+        'title' => 'legacy-stale-api',
         'source' => 'package',
-        'package_name' => 'fresh-api',
+        'package_name' => 'legacy-stale-api',
         'package_interval' => '5m',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => null,
-        'is_enabled' => true,
-        'created_by' => $user->id,
-    ]);
-    $staleApi = MonitorApis::factory()->create([
-        'project_id' => $project->id,
-        'title' => 'stale-api',
-        'source' => 'package',
-        'package_name' => 'stale-api',
-        'package_interval' => '5m',
-        'last_heartbeat_at' => now()->subMinutes(7),
-        'stale_at' => null,
-        'is_enabled' => true,
-        'created_by' => $user->id,
-    ]);
-    $flaggedStaleLegacyApi = MonitorApis::factory()->create([
-        'project_id' => $project->id,
-        'title' => 'flagged-stale-legacy-api',
-        'source' => 'package',
-        'package_name' => 'flagged-stale-legacy-api',
-        'package_interval' => 'every_5_minutes',
         'last_heartbeat_at' => now()->subMinutes(2),
         'stale_at' => now()->subMinute(),
         'is_enabled' => true,
         'created_by' => $user->id,
     ]);
-    $awaitingApi = MonitorApis::factory()->create([
-        'project_id' => $project->id,
-        'title' => 'awaiting-api',
-        'source' => 'package',
-        'package_name' => 'awaiting-api',
-        'package_interval' => '5m',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
-        'is_enabled' => true,
-        'created_by' => $user->id,
-    ]);
-    $disabledApi = MonitorApis::factory()->disabled()->create([
-        'project_id' => $project->id,
-        'title' => 'disabled-api',
-        'source' => 'package',
-        'package_name' => 'disabled-api',
-        'package_interval' => '5m',
-        'last_heartbeat_at' => now()->subHour(),
-        'stale_at' => now()->subMinutes(30),
-        'created_by' => $user->id,
-    ]);
 
     Livewire::test(PackageManagedWebsitesRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_STALE)
-        ->assertCanSeeTableRecords([$staleWebsite, $flaggedStaleLegacyWebsite])
-        ->assertCanNotSeeTableRecords([$freshWebsite, $awaitingWebsite, $disabledWebsite]);
-
-    Livewire::test(PackageManagedWebsitesRelationManager::class, [
-        'ownerRecord' => $project,
-        'pageClass' => ViewProject::class,
-    ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_AWAITING_HEARTBEAT)
-        ->assertCanSeeTableRecords([$awaitingWebsite])
-        ->assertCanNotSeeTableRecords([$freshWebsite, $staleWebsite, $disabledWebsite]);
-
-    Livewire::test(PackageManagedWebsitesRelationManager::class, [
-        'ownerRecord' => $project,
-        'pageClass' => ViewProject::class,
-    ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_FRESH)
-        ->assertCanSeeTableRecords([$freshWebsite])
-        ->assertCanNotSeeTableRecords([$staleWebsite, $flaggedStaleLegacyWebsite, $awaitingWebsite, $disabledWebsite]);
-
-    Livewire::test(PackageManagedWebsitesRelationManager::class, [
-        'ownerRecord' => $project,
-        'pageClass' => ViewProject::class,
-    ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_DISABLED)
-        ->assertCanSeeTableRecords([$disabledWebsite])
-        ->assertCanNotSeeTableRecords([$freshWebsite, $staleWebsite, $awaitingWebsite]);
+        ->assertCanSeeTableRecords([$website])
+        ->assertDontSee('Freshness')
+        ->assertDontSee('Awaiting heartbeat');
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_STALE)
-        ->assertCanSeeTableRecords([$staleApi, $flaggedStaleLegacyApi])
-        ->assertCanNotSeeTableRecords([$freshApi, $awaitingApi, $disabledApi]);
-
-    Livewire::test(PackageManagedApisRelationManager::class, [
-        'ownerRecord' => $project,
-        'pageClass' => ViewProject::class,
-    ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_AWAITING_CHECK)
-        ->assertCanSeeTableRecords([$awaitingApi])
-        ->assertCanNotSeeTableRecords([$freshApi, $staleApi, $disabledApi]);
-
-    Livewire::test(PackageManagedApisRelationManager::class, [
-        'ownerRecord' => $project,
-        'pageClass' => ViewProject::class,
-    ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_FRESH)
-        ->assertCanSeeTableRecords([$freshApi])
-        ->assertCanNotSeeTableRecords([$staleApi, $flaggedStaleLegacyApi, $awaitingApi, $disabledApi]);
-
-    Livewire::test(PackageManagedApisRelationManager::class, [
-        'ownerRecord' => $project,
-        'pageClass' => ViewProject::class,
-    ])
-        ->filterTable('freshness_evidence', PackageCheckTableEvidence::STATE_DISABLED)
-        ->assertCanSeeTableRecords([$disabledApi])
-        ->assertCanNotSeeTableRecords([$freshApi, $staleApi, $awaitingApi]);
+        ->assertCanSeeTableRecords([$api])
+        ->assertDontSee('Freshness')
+        ->assertDontSee('Awaiting check');
 });
 
 test('package-managed relation managers queue run now diagnostics for active checks', function () {
@@ -1789,38 +1478,31 @@ test('super admin can filter applications by current status', function () {
     $user = $this->actingAsSuperAdmin();
 
     $healthyProject = Project::factory()->create(['name' => 'Healthy App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $healthyProject->id,
-        'current_status' => 'healthy',
-        'created_by' => $user->id,
-    ]);
+    componentWithActiveApi($healthyProject, $user, 'healthy');
 
     $warningProject = Project::factory()->create(['name' => 'Warning App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $warningProject->id,
-        'current_status' => 'warning',
-        'created_by' => $user->id,
-    ]);
+    componentWithActiveApi($warningProject, $user, 'warning');
 
     $dangerProject = Project::factory()->create(['name' => 'Danger App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $dangerProject->id,
-        'current_status' => 'warning',
-        'created_by' => $user->id,
+    componentWithActiveApi($dangerProject, $user, 'warning');
+    componentWithActiveApi($dangerProject, $user, 'danger');
+
+    $derivedDangerProject = Project::factory()->create(['name' => 'Derived Danger App', 'created_by' => $user->id]);
+    componentWithActiveApi($derivedDangerProject, $user, 'danger', [
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
     ]);
-    ProjectComponent::factory()->create([
-        'project_id' => $dangerProject->id,
+
+    $storedDangerHealthyProject = Project::factory()->create(['name' => 'Stored Danger Healthy App', 'created_by' => $user->id]);
+    componentWithActiveApi($storedDangerHealthyProject, $user, 'healthy', [
         'current_status' => 'danger',
-        'created_by' => $user->id,
+        'last_reported_status' => 'danger',
     ]);
 
     $staleComponentProject = Project::factory()->create(['name' => 'Stale Component App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $staleComponentProject->id,
-        'current_status' => 'healthy',
+    componentWithActiveApi($staleComponentProject, $user, 'healthy', [
         'is_stale' => true,
         'stale_detected_at' => now()->subMinute(),
-        'created_by' => $user->id,
     ]);
 
     $unknownProject = Project::factory()->create(['name' => 'Unknown App', 'created_by' => $user->id]);
@@ -1916,34 +1598,30 @@ test('super admin can filter applications by current status', function () {
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'danger')
-        ->assertCanSeeTableRecords([$dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $staleApiProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $apiWarningProject, $websiteHealthyProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanSeeTableRecords([$dangerProject, $derivedDangerProject, $websiteDangerProject, $sslOnlyDangerProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $storedDangerHealthyProject, $staleComponentProject, $apiWarningProject, $websiteHealthyProject, $staleWebsiteProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $staleApiProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'warning')
         ->assertCanSeeTableRecords([$warningProject, $apiWarningProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $staleApiProject, $websiteHealthyProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $derivedDangerProject, $storedDangerHealthyProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $staleApiProject, $websiteHealthyProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'healthy')
-        ->assertCanSeeTableRecords([$healthyProject, $websiteHealthyProject])
-        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $apiWarningProject, $staleApiProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanSeeTableRecords([$healthyProject, $storedDangerHealthyProject, $staleComponentProject, $websiteHealthyProject, $staleWebsiteProject, $staleApiProject])
+        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $derivedDangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'unknown')
         ->assertCanSeeTableRecords([$missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $apiWarningProject, $staleApiProject, $websiteHealthyProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $derivedDangerProject, $storedDangerHealthyProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $apiWarningProject, $staleApiProject, $websiteHealthyProject]);
 });
 
 test('application status rolls up enabled websites and api monitors', function () {
     $user = User::factory()->create();
 
     $healthyProject = Project::factory()->create(['created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $healthyProject->id,
-        'current_status' => 'healthy',
-        'created_by' => $user->id,
-    ]);
+    componentWithActiveApi($healthyProject, $user, 'healthy');
 
     $websiteDangerProject = Project::factory()->create(['created_by' => $user->id]);
     Website::factory()->create([
@@ -1971,10 +1649,7 @@ test('application status rolls up enabled websites and api monitors', function (
     ]);
 
     $staleComponentProject = Project::factory()->create(['created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $staleComponentProject->id,
-        'created_by' => $user->id,
-        'current_status' => 'healthy',
+    componentWithActiveApi($staleComponentProject, $user, 'healthy', [
         'is_stale' => true,
         'stale_detected_at' => now()->subMinute(),
     ]);
@@ -2036,11 +1711,7 @@ test('application status rolls up enabled websites and api monitors', function (
     ]);
 
     $mixedSurfaceProject = Project::factory()->create(['created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $mixedSurfaceProject->id,
-        'current_status' => 'healthy',
-        'created_by' => $user->id,
-    ]);
+    componentWithActiveApi($mixedSurfaceProject, $user, 'healthy');
     Website::factory()->create([
         'project_id' => $mixedSurfaceProject->id,
         'created_by' => $user->id,
@@ -2052,14 +1723,34 @@ test('application status rolls up enabled websites and api monitors', function (
         ->and($websiteDangerProject->fresh()->application_status)->toBe('danger')
         ->and($sslOnlyWarningProject->fresh()->application_status)->toBe('warning')
         ->and($apiWarningProject->fresh()->application_status)->toBe('warning')
-        ->and($staleComponentProject->fresh()->application_status)->toBe('danger')
-        ->and($staleWebsiteProject->fresh()->application_status)->toBe('danger')
-        ->and($staleApiProject->fresh()->application_status)->toBe('danger')
+        ->and($staleComponentProject->fresh()->application_status)->toBe('healthy')
+        ->and($staleWebsiteProject->fresh()->application_status)->toBe('healthy')
+        ->and($staleApiProject->fresh()->application_status)->toBe('healthy')
         ->and($disabledDangerProject->fresh()->application_status)->toBe('unknown')
-        ->and($uncheckedWebsiteProject->fresh()->application_status)->toBe('unknown')
-        ->and($missingHeartbeatProject->fresh()->application_status)->toBe('unknown')
-        ->and($unknownStatusApiProject->fresh()->application_status)->toBe('unknown')
+        ->and($uncheckedWebsiteProject->fresh()->application_status)->toBe('pending')
+        ->and($missingHeartbeatProject->fresh()->application_status)->toBe('pending')
+        ->and($unknownStatusApiProject->fresh()->application_status)->toBe('pending')
         ->and($mixedSurfaceProject->fresh()->application_status)->toBe('danger');
+});
+
+test('component derived summary ignores stale awaiting text once child checks report', function () {
+    $user = User::factory()->create();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $component = componentWithActiveApi($project, $user, 'danger', [
+        'summary' => 'Awaiting active child check results',
+    ]);
+
+    expect($component->fresh()->derivedStatusSummary())->toBe('At least one active child check is failing.');
+});
+
+test('component derived status preserves standalone component health without child checks', function () {
+    $component = ProjectComponent::factory()->create([
+        'source' => 'proxy_pool',
+        'current_status' => 'warning',
+        'last_reported_status' => 'warning',
+    ]);
+
+    expect($component->fresh()->derivedCurrentStatus())->toBe('warning');
 });
 
 test('super admin can filter applications to only failing', function () {
@@ -2069,33 +1760,18 @@ test('super admin can filter applications to only failing', function () {
     $user = $this->actingAsSuperAdmin();
 
     $healthyProject = Project::factory()->create(['name' => 'Healthy App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $healthyProject->id,
-        'current_status' => 'healthy',
-        'created_by' => $user->id,
-    ]);
+    componentWithActiveApi($healthyProject, $user, 'healthy');
 
     $warningProject = Project::factory()->create(['name' => 'Warning App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $warningProject->id,
-        'current_status' => 'warning',
-        'created_by' => $user->id,
-    ]);
+    componentWithActiveApi($warningProject, $user, 'warning');
 
     $dangerProject = Project::factory()->create(['name' => 'Danger App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $dangerProject->id,
-        'current_status' => 'danger',
-        'created_by' => $user->id,
-    ]);
+    componentWithActiveApi($dangerProject, $user, 'danger');
 
     $staleComponentProject = Project::factory()->create(['name' => 'Stale Component App', 'created_by' => $user->id]);
-    ProjectComponent::factory()->create([
-        'project_id' => $staleComponentProject->id,
-        'current_status' => 'healthy',
+    componentWithActiveApi($staleComponentProject, $user, 'healthy', [
         'is_stale' => true,
         'stale_detected_at' => now()->subMinute(),
-        'created_by' => $user->id,
     ]);
 
     $unknownProject = Project::factory()->create(['name' => 'Unknown App', 'created_by' => $user->id]);
@@ -2150,8 +1826,8 @@ test('super admin can filter applications to only failing', function () {
 
     Livewire::test(ListProjects::class)
         ->filterTable('only_failing', true)
-        ->assertCanSeeTableRecords([$warningProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $unknownProject, $archivedFailingProject, $disabledFailingProject]);
+        ->assertCanSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $staleComponentProject, $unknownProject, $archivedFailingProject, $disabledFailingProject]);
 });
 
 test('super admin can filter application components by current status', function () {
@@ -2200,64 +1876,55 @@ test('super admin can filter application components by delivery state', function
     $user = $this->actingAsSuperAdmin();
     $project = Project::factory()->create(['created_by' => $user->id]);
 
-    $stale = ProjectComponent::factory()->create([
-        'project_id' => $project->id,
-        'name' => 'stalled-queue',
-        'is_stale' => true,
-        'is_archived' => false,
-        'last_heartbeat_at' => now()->subMinutes(10),
-        'created_by' => $user->id,
-    ]);
-    $awaitingFirstHeartbeat = ProjectComponent::factory()->create([
+    $pending = ProjectComponent::factory()->create([
         'project_id' => $project->id,
         'name' => 'new-worker',
-        'is_stale' => false,
         'is_archived' => false,
-        'last_heartbeat_at' => null,
         'created_by' => $user->id,
     ]);
-    $receivingHeartbeats = ProjectComponent::factory()->create([
-        'project_id' => $project->id,
+    $active = componentWithActiveApi($project, $user, 'healthy', [
         'name' => 'database',
-        'is_stale' => false,
         'is_archived' => false,
-        'last_heartbeat_at' => now()->subMinute(),
+    ]);
+    $snoozed = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'muted-cache',
+        'is_archived' => false,
+        'silenced_until' => now()->addHour(),
         'created_by' => $user->id,
     ]);
     $archived = ProjectComponent::factory()->archived()->create([
         'project_id' => $project->id,
         'name' => 'retired-proxy',
-        'is_stale' => true,
-        'last_heartbeat_at' => null,
         'created_by' => $user->id,
     ]);
 
     Livewire::test(ListProjectComponents::class)
         ->assertSee('Delivery State')
-        ->assertSee('Stale')
-        ->assertSee('Awaiting first heartbeat')
-        ->assertSee('Receiving heartbeats')
+        ->assertSee('Snoozed')
+        ->assertSee('Pending')
+        ->assertSee('Active')
         ->assertSee('Archived');
 
     Livewire::test(ListProjectComponents::class)
-        ->filterTable('delivery_state', 'stale')
-        ->assertCanSeeTableRecords([$stale])
-        ->assertCanNotSeeTableRecords([$awaitingFirstHeartbeat, $receivingHeartbeats, $archived]);
+        ->filterTable('delivery_state', 'snoozed')
+        ->assertCanSeeTableRecords([$snoozed])
+        ->assertCanNotSeeTableRecords([$pending, $active, $archived]);
 
     Livewire::test(ListProjectComponents::class)
-        ->filterTable('delivery_state', 'awaiting_first_heartbeat')
-        ->assertCanSeeTableRecords([$awaitingFirstHeartbeat])
-        ->assertCanNotSeeTableRecords([$stale, $receivingHeartbeats, $archived]);
+        ->filterTable('delivery_state', 'pending')
+        ->assertCanSeeTableRecords([$pending])
+        ->assertCanNotSeeTableRecords([$snoozed, $active, $archived]);
 
     Livewire::test(ListProjectComponents::class)
-        ->filterTable('delivery_state', 'receiving_heartbeats')
-        ->assertCanSeeTableRecords([$receivingHeartbeats])
-        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $archived]);
+        ->filterTable('delivery_state', 'active')
+        ->assertCanSeeTableRecords([$active])
+        ->assertCanNotSeeTableRecords([$snoozed, $pending, $archived]);
 
     Livewire::test(ListProjectComponents::class)
         ->filterTable('delivery_state', 'archived')
         ->assertCanSeeTableRecords([$archived])
-        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $receivingHeartbeats]);
+        ->assertCanNotSeeTableRecords([$snoozed, $pending, $active]);
 });
 
 test('super admin can filter project components relation manager by delivery state', function () {
@@ -2267,31 +1934,22 @@ test('super admin can filter project components relation manager by delivery sta
     $user = $this->actingAsSuperAdmin();
     $project = Project::factory()->create(['created_by' => $user->id]);
 
-    $stale = ProjectComponent::factory()->create([
+    $pending = ProjectComponent::factory()->create([
         'project_id' => $project->id,
-        'is_stale' => true,
         'is_archived' => false,
-        'last_heartbeat_at' => now()->subMinutes(10),
         'created_by' => $user->id,
     ]);
-    $awaitingFirstHeartbeat = ProjectComponent::factory()->create([
-        'project_id' => $project->id,
-        'is_stale' => false,
+    $active = componentWithActiveApi($project, $user, 'healthy', [
         'is_archived' => false,
-        'last_heartbeat_at' => null,
-        'created_by' => $user->id,
     ]);
-    $receivingHeartbeats = ProjectComponent::factory()->create([
+    $snoozed = ProjectComponent::factory()->create([
         'project_id' => $project->id,
-        'is_stale' => false,
         'is_archived' => false,
-        'last_heartbeat_at' => now()->subMinute(),
+        'silenced_until' => now()->addHour(),
         'created_by' => $user->id,
     ]);
     $archived = ProjectComponent::factory()->archived()->create([
         'project_id' => $project->id,
-        'is_stale' => true,
-        'last_heartbeat_at' => null,
         'created_by' => $user->id,
     ]);
 
@@ -2301,34 +1959,34 @@ test('super admin can filter project components relation manager by delivery sta
     ])
         ->assertSuccessful()
         ->assertSee('Delivery State')
-        ->assertSee('Stale')
-        ->assertSee('Awaiting first heartbeat')
-        ->assertSee('Receiving heartbeats')
+        ->assertSee('Snoozed')
+        ->assertSee('Pending')
+        ->assertSee('Active')
         ->assertSee('Archived');
 
     Livewire::test(ComponentsRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
-        ->filterTable('delivery_state', 'stale')
-        ->assertCanSeeTableRecords([$stale])
-        ->assertCanNotSeeTableRecords([$awaitingFirstHeartbeat, $receivingHeartbeats, $archived]);
+        ->filterTable('delivery_state', 'snoozed')
+        ->assertCanSeeTableRecords([$snoozed])
+        ->assertCanNotSeeTableRecords([$pending, $active, $archived]);
 
     Livewire::test(ComponentsRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
-        ->filterTable('delivery_state', 'awaiting_first_heartbeat')
-        ->assertCanSeeTableRecords([$awaitingFirstHeartbeat])
-        ->assertCanNotSeeTableRecords([$stale, $receivingHeartbeats, $archived]);
+        ->filterTable('delivery_state', 'pending')
+        ->assertCanSeeTableRecords([$pending])
+        ->assertCanNotSeeTableRecords([$snoozed, $active, $archived]);
 
     Livewire::test(ComponentsRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
-        ->filterTable('delivery_state', 'receiving_heartbeats')
-        ->assertCanSeeTableRecords([$receivingHeartbeats])
-        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $archived]);
+        ->filterTable('delivery_state', 'active')
+        ->assertCanSeeTableRecords([$active])
+        ->assertCanNotSeeTableRecords([$snoozed, $pending, $archived]);
 
     Livewire::test(ComponentsRelationManager::class, [
         'ownerRecord' => $project,
@@ -2336,7 +1994,7 @@ test('super admin can filter project components relation manager by delivery sta
     ])
         ->filterTable('delivery_state', 'archived')
         ->assertCanSeeTableRecords([$archived])
-        ->assertCanNotSeeTableRecords([$stale, $awaitingFirstHeartbeat, $receivingHeartbeats]);
+        ->assertCanNotSeeTableRecords([$snoozed, $pending, $active]);
 });
 
 test('super admin can filter application components to only failing', function () {
@@ -2560,7 +2218,7 @@ test('super admin can bulk disable project components', function () {
             ->and($component->last_reported_status)->toBe('unknown')
             ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
             ->and($component->last_heartbeat_at)->toBeNull()
-            ->and($component->is_stale)->toBeFalse()
+            ->and($component->is_stale)->toBeNull()
             ->and($component->stale_detected_at)->toBeNull()
             ->and($component->archived_at)->not->toBeNull();
     }
@@ -2660,7 +2318,7 @@ test('super admin can bulk pause monitoring across selected applications', funct
         ->and($component->last_reported_status)->toBe('unknown')
         ->and($component->summary)->toBe(ProjectComponent::ADMIN_DISABLED_SUMMARY)
         ->and($component->last_heartbeat_at)->toBeNull()
-        ->and($component->is_stale)->toBeFalse()
+        ->and($component->is_stale)->toBeNull()
         ->and($component->stale_detected_at)->toBeNull();
 });
 
@@ -3373,6 +3031,6 @@ test('project component list shows empty state with create CTA when no component
 
     Livewire::test(ListProjectComponents::class)
         ->assertSee('No application components yet')
-        ->assertSee('Add a component (cron job, queue worker, or background process) and point its heartbeat at Checkybot to detect stalls and missed runs.')
+        ->assertSee('Add a component and link active package checks to derive its health.')
         ->assertSee('Add component');
 });
