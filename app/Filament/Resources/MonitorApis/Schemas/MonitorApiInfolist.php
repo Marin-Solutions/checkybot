@@ -5,6 +5,7 @@ namespace App\Filament\Resources\MonitorApis\Schemas;
 use App\Enums\RunSource;
 use App\Models\MonitorApis;
 use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\HealthStatusLabel;
 use App\Support\PackageCheckTableEvidence;
 use App\Support\UptimeTransportError;
 use Filament\Infolists\Components\KeyValueEntry;
@@ -24,8 +25,8 @@ class MonitorApiInfolist
                         TextEntry::make('current_status')
                             ->label('Live Status')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('status_summary')
                             ->label('Live Summary')
                             ->default('No runs recorded yet.')
@@ -123,8 +124,8 @@ class MonitorApiInfolist
                             ->label('Run Status')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->status)
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('latest_scheduled_run_source')
                             ->label('Evidence Source')
                             ->state(fn (MonitorApis $record): mixed => $record->latestResult?->run_source)
@@ -225,8 +226,8 @@ class MonitorApiInfolist
                             ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->status)
                             ->default('Unknown')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('latest_diagnostic_live_status_note')
                             ->label('Live Status Impact')
                             ->state(fn (MonitorApis $record): string => self::diagnosticLiveStatusNote($record))

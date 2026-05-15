@@ -4,6 +4,7 @@ namespace App\Filament\Resources\WebsiteResource\RelationManagers;
 
 use App\Enums\RunSource;
 use App\Models\WebsiteLogHistory;
+use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
 use Carbon\Carbon;
 use Filament\Actions\ViewAction;
@@ -28,13 +29,8 @@ class LogHistoryRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 TextColumn::make('run_source')
                     ->label('Run')
                     ->badge()
@@ -69,7 +65,7 @@ class LogHistoryRelationManager extends RelationManager
                     ->options([
                         'healthy' => 'Healthy',
                         'warning' => 'Warning',
-                        'danger' => 'Danger',
+                        'danger' => 'Failing',
                     ]),
                 Tables\Filters\SelectFilter::make('run_source')
                     ->label('Run')
@@ -93,8 +89,8 @@ class LogHistoryRelationManager extends RelationManager
                     ->schema([
                         TextEntry::make('status')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => static::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('run_source')
                             ->label('Run')
                             ->badge()

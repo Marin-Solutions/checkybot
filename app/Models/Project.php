@@ -87,10 +87,9 @@ class Project extends Model
     }
 
     /**
-     * Application status uses website current_status, which is maintained by
-     * uptime checks and package-managed SSL checks. SSL-only rows without a
-     * current_status are ignored by the status rollup; outbound-only scans are
-     * excluded because they do not maintain website current_status.
+     * Application status uses live current_status from active components,
+     * website checks, and API checks. Outbound-only scans are excluded because
+     * they do not maintain website current_status.
      */
     public function monitoredWebsites(): HasMany
     {
@@ -163,8 +162,8 @@ class Project extends Model
     protected function statusRollupColumns(string $relation): array
     {
         return match ($relation) {
-            'activeComponents' => ['id', 'current_status', 'is_stale', 'last_heartbeat_at', 'is_archived'],
-            default => ['current_status', 'last_heartbeat_at', 'stale_at'],
+            'activeComponents' => ['id', 'current_status', 'is_archived'],
+            default => ['current_status'],
         };
     }
 
@@ -174,17 +173,13 @@ class Project extends Model
             return $record->derivedCurrentStatus();
         }
 
-        if ($record->stale_at !== null) {
-            return 'danger';
-        }
-
         if (in_array($record->current_status, ['warning', 'danger'], true)) {
             return $record->current_status;
         }
 
-        return $record->current_status === 'healthy' && $record->last_heartbeat_at !== null
+        return $record->current_status === 'healthy'
             ? 'healthy'
-            : 'unknown';
+            : 'pending';
     }
 
     protected function statusPriority(?string $status): int

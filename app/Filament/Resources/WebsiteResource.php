@@ -11,7 +11,7 @@ use App\Jobs\LogUptimeSslJob;
 use App\Models\Project;
 use App\Models\Website;
 use App\Services\SeoHealthCheckService;
-use App\Support\PackageCheckTableEvidence;
+use App\Support\HealthStatusLabel;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -220,20 +220,8 @@ class WebsiteResource extends Resource
                 Tables\Columns\TextColumn::make('current_status')
                     ->label('Health')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
-                Tables\Columns\TextColumn::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->state(fn (Website $record): string => PackageCheckTableEvidence::mainMonitorFreshnessState($record))
-                    ->badge()
-                    ->color(fn (string $state): string => PackageCheckTableEvidence::mainMonitorFreshnessColor($state))
-                    ->description(fn (Website $record): ?string => PackageCheckTableEvidence::mainMonitorFreshnessDescription($record))
-                    ->toggleable(),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()

@@ -5,13 +5,12 @@ namespace App\Filament\Resources\Projects\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
-use App\Support\PackageCheckTableEvidence;
+use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -35,14 +34,9 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->searchable(),
                 TextColumn::make('current_status')
                     ->label('Health')
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->badge()
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 TextColumn::make('deleted_at')
                     ->label('State')
                     ->state(fn (MonitorApis $record): string => $this->monitoringState($record))
@@ -64,12 +58,6 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->state(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
                     ->description(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->diffForHumans())
                     ->default('-'),
-                TextColumn::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::apiFreshnessState($record))
-                    ->badge()
-                    ->color(fn (string $state): string => PackageCheckTableEvidence::freshnessColor($state))
-                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::apiFreshnessDescription($record)),
                 TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
@@ -83,15 +71,7 @@ class PackageManagedApisRelationManager extends RelationManager
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
-            ->filters([
-                SelectFilter::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->options(PackageCheckTableEvidence::apiFreshnessFilterOptions())
-                    ->query(fn (Builder $query, array $data): Builder => PackageCheckTableEvidence::applyApiFreshnessFilter(
-                        $query,
-                        $data['value'] ?? null,
-                    )),
-            ])
+            ->filters([])
             ->recordActions([
                 Action::make('snooze')
                     ->label(fn (MonitorApis $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')

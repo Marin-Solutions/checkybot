@@ -436,14 +436,14 @@ test('api monitor list shows enabled state', function () {
         ->assertTableColumnExists('is_enabled');
 });
 
-test('api monitor list exposes freshness for package and manual monitors', function () {
+test('api monitor list hides non-server freshness evidence', function () {
     Carbon::setTestNow(Carbon::parse('2026-05-09 12:00:00'));
 
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
 
-    $packageStale = MonitorApis::factory()->create([
+    $legacyStale = MonitorApis::factory()->create([
         'created_by' => $user->id,
         'title' => 'Package stale API',
         'source' => 'package',
@@ -452,9 +452,9 @@ test('api monitor list exposes freshness for package and manual monitors', funct
         'stale_at' => now()->subMinutes(7),
     ]);
 
-    $manualHeartbeat = MonitorApis::factory()->create([
+    $manualCheck = MonitorApis::factory()->create([
         'created_by' => $user->id,
-        'title' => 'Manual heartbeat API',
+        'title' => 'Manual check API',
         'source' => 'manual',
         'last_heartbeat_at' => now()->subMinutes(3),
         'stale_at' => null,
@@ -486,17 +486,13 @@ test('api monitor list exposes freshness for package and manual monitors', funct
     ]);
 
     Livewire::test(ListMonitorApis::class)
-        ->assertTableColumnExists('freshness_evidence', fn ($column): bool => $column->isToggleable())
-        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $packageStale)
-        ->assertTableColumnStateSet('freshness_evidence', 'Check received', $manualHeartbeat)
-        ->assertTableColumnStateSet('freshness_evidence', 'Stale', $manualStale)
-        ->assertTableColumnStateSet('freshness_evidence', 'Awaiting check', $manualAwaiting)
-        ->assertTableColumnStateSet('freshness_evidence', 'Disabled', $manualDisabled)
-        ->assertSee('Expired 7 minutes ago.')
-        ->assertSee('Last scheduled API check 3 minutes ago.')
-        ->assertSee('Marked stale 2 minutes ago.')
-        ->assertSee('No scheduled API check has been recorded yet.')
-        ->assertSee('Monitor is disabled. Scheduled API checks are not expected.');
+        ->assertCanSeeTableRecords([$legacyStale, $manualCheck, $manualStale, $manualAwaiting, $manualDisabled])
+        ->assertTableColumnDoesNotExist('freshness_evidence')
+        ->assertDontSee('Freshness')
+        ->assertDontSee('Check received')
+        ->assertDontSee('Awaiting check')
+        ->assertDontSee('Marked stale')
+        ->assertDontSee('Scheduled API checks are not expected');
 });
 
 test('api monitor edit page exposes api notification management', function () {

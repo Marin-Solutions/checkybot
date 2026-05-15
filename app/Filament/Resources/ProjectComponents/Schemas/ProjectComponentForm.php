@@ -52,7 +52,7 @@ class ProjectComponentForm
                             ->label('Status')
                             ->options(fn (?ProjectComponent $record): array => $record === null
                                 ? ['unknown' => HealthStatusLabel::format('unknown')]
-                                : HealthStatusLabel::options(includeUnknown: $record->last_heartbeat_at === null))
+                                : HealthStatusLabel::options())
                             ->default('unknown')
                             ->required(),
                         Toggle::make('is_archived')

@@ -5,13 +5,12 @@ namespace App\Filament\Resources\Projects\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
-use App\Support\PackageCheckTableEvidence;
+use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -44,14 +43,9 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->badge(),
                 TextColumn::make('current_status')
                     ->label('Health')
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->badge()
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 TextColumn::make('deleted_at')
                     ->label('State')
                     ->state(fn (Website $record): string => $this->monitoringState($record))
@@ -69,16 +63,10 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->limit(90)
                     ->default('-'),
                 TextColumn::make('last_heartbeat_at')
-                    ->label('Last Heartbeat')
+                    ->label('Last Check')
                     ->state(fn (Website $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
                     ->description(fn (Website $record): ?string => $record->last_heartbeat_at?->diffForHumans())
                     ->default('-'),
-                TextColumn::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->state(fn (Website $record): string => PackageCheckTableEvidence::freshnessState($record))
-                    ->badge()
-                    ->color(fn (string $state): string => PackageCheckTableEvidence::freshnessColor($state))
-                    ->description(fn (Website $record): ?string => PackageCheckTableEvidence::freshnessDescription($record)),
                 TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
@@ -92,15 +80,7 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
-            ->filters([
-                SelectFilter::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->options(PackageCheckTableEvidence::freshnessFilterOptions())
-                    ->query(fn (Builder $query, array $data): Builder => PackageCheckTableEvidence::applyWebsiteFreshnessFilter(
-                        $query,
-                        $data['value'] ?? null,
-                    )),
-            ])
+            ->filters([])
             ->recordActions([
                 Action::make('snooze')
                     ->label(fn (Website $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')

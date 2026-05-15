@@ -101,7 +101,7 @@ class IncidentFeedWidget extends BaseWidget
                 SelectFilter::make('status')
                     ->label('Transition')
                     ->options([
-                        'danger' => 'Danger',
+                        'danger' => 'Failing',
                         'warning' => 'Warning',
                         'recovered' => 'Recovered',
                     ])

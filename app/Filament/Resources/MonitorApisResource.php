@@ -13,6 +13,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Services\IntervalParser;
+use App\Support\HealthStatusLabel;
 use App\Support\PackageCheckTableEvidence;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -356,20 +357,8 @@ class MonitorApisResource extends Resource
                 Tables\Columns\TextColumn::make('current_status')
                     ->label('Health')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
-                Tables\Columns\TextColumn::make('freshness_evidence')
-                    ->label('Freshness')
-                    ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::mainApiFreshnessState($record))
-                    ->badge()
-                    ->color(fn (string $state): string => PackageCheckTableEvidence::mainMonitorFreshnessColor($state))
-                    ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::mainApiFreshnessDescription($record))
-                    ->toggleable(),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')
                     ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')

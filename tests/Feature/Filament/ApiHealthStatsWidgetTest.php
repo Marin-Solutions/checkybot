@@ -18,7 +18,7 @@ describe('ApiHealthStatsWidget', function () {
             ->assertSee('No APIs configured');
     });
 
-    it('separates enabled disabled stale no-data healthy and failing monitors', function () {
+    it('separates enabled disabled pending healthy and failing monitors', function () {
         $healthy = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
             'is_enabled' => true,
@@ -57,14 +57,14 @@ describe('ApiHealthStatsWidget', function () {
             'stale_at' => null,
         ]);
 
-        $stale = MonitorApis::factory()->create([
+        $legacyStale = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
             'is_enabled' => true,
             'current_status' => 'danger',
             'stale_at' => now()->subMinutes(10),
         ]);
         MonitorApiResult::factory()->failed()->create([
-            'monitor_api_id' => $stale->id,
+            'monitor_api_id' => $legacyStale->id,
         ]);
 
         $disabled = MonitorApis::factory()->disabled()->create([
@@ -85,10 +85,9 @@ describe('ApiHealthStatsWidget', function () {
             'total' => 6,
             'enabled' => 5,
             'disabled' => 1,
-            'stale' => 1,
-            'no_data' => 1,
+            'pending' => 1,
             'healthy' => 1,
-            'failing' => 2,
+            'failing' => 3,
         ]);
     });
 
@@ -105,7 +104,7 @@ describe('ApiHealthStatsWidget', function () {
             ->collectCounts();
 
         expect($counts['healthy'])->toBe(0)
-            ->and($counts['no_data'])->toBe(1)
+            ->and($counts['pending'])->toBe(1)
             ->and($counts['failing'])->toBe(0);
     });
 
@@ -126,7 +125,7 @@ describe('ApiHealthStatsWidget', function () {
             ->collectCounts();
 
         expect($counts['healthy'])->toBe(0)
-            ->and($counts['no_data'])->toBe(1);
+            ->and($counts['pending'])->toBe(1);
     });
 
     it('scopes counts to the authenticated user', function () {
@@ -210,7 +209,7 @@ describe('ApiHealthStatsWidget', function () {
             'total' => 1,
             'healthy' => 0,
             'failing' => 0,
-            'no_data' => 1,
+            'pending' => 1,
         ]);
     });
 
@@ -231,8 +230,8 @@ describe('ApiHealthStatsWidget', function () {
         Livewire::test(ApiHealthStatsWidget::class)
             ->assertSuccessful()
             ->assertSee('1 enabled, 1 disabled')
-            ->assertSee('0 warning/danger, 0 no data')
-            ->assertSee('0 stale, 0 awaiting scheduled data');
+            ->assertSee('0 warning/failing, 0 pending')
+            ->assertSee('Pending');
     });
 
     it('renders on the dashboard page for a super admin', function () {

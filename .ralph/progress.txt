@@ -4,6 +4,7 @@ Started: 2026-05-15 14:21:14
 ## Codebase Patterns
 <!-- Patterns accumulate here -->
 - Package sync behavior is covered primarily by Pest feature tests under `tests/Feature/Api/V1/PackageSyncTest.php` and legacy sync coverage in `ProjectChecksSyncTest.php`.
+- Non-server health labels should flow through `App\Support\HealthStatusLabel`; `unknown` and `pending` both render as Pending, while `danger` renders as Failing.
 
 ## Iteration History
 <!-- Learnings append here -->
@@ -37,4 +38,45 @@ Started: 2026-05-15 14:21:14
   - Component rows still retain legacy heartbeat columns for now, but live component health should be read via `ProjectComponent::derivedCurrentStatus()`.
   - Package checks may point to `project_component_id`; active API checks use `is_enabled`, and active website checks use `uptime_check` or `ssl_check`.
   - Component sync summaries now contain only `components` counts; heartbeat counts are obsolete.
+---
+
+
+I’ll inspect the Ralph files, repo instructions, and stack shape first, then implement only `SLICE-3` and run the project’s expected checks before committing.
+The repo is on `master` and already has unrelated Ralph runtime modifications. I’ll leave those alone, read the local project guidance next, then trace how application/component health is currently calculated.
+The local guidance is Laravel/Filament-oriented, and the app is newer than the bundled note suggests (`laravel/framework` 12, Filament 4 in `composer.json`). I’m focusing on `Project`, `ProjectComponent`, component sync, and the Filament application tables because that’s where derived component health appears to live.
+The GitHub issue fills in the missing criteria: component sync must stop accepting runtime heartbeats, component status should roll up from active child API/website checks, and stale/component heartbeat feeds should leave user-facing behavior. I don’t see an existing child-check foreign key yet, so I’m checking the package sync request contract before adding the smallest relationship needed.
+The existing package has components as standalone heartbeat reporters and checks have no component association. I’m going to add a nullable component link on package-created API/website checks, derive component status from linked active checks, and change component sync to declaration-only so old heartbeat metrics stop driving live health.
+I’m making the data model change now: package checks can optionally point at a component, while components themselves stop ingesting heartbeat rows. The derived status will be calculated from linked active checks instead of written by component heartbeats or stale detection.
+The core implementation is in place. I’m running the focused new coverage and related component-sync checks now to catch syntax and contract issues before broad formatting.
+The old component sync feature file is still asserting heartbeat ingestion. I’m replacing that obsolete coverage with declaration-only and derived-health tests so the test suite matches the new product contract instead of the removed heartbeat behavior.
+The focused component tests now pass. I’m running a couple of adjacent checks for package sync and incident feed syntax because this story touched both component declarations and default run/incident feeds.
+The focused story checks pass. I’m running the required formatter command now; if this Pint version still rejects `--format agent`, I’ll run the repo-supported dirty formatter immediately after and record that.
+As in the prior slice, this Pint install does not support the `agent` reporter. I’m running `vendor/bin/pint --dirty` so the same dirty-file formatting still happens.
+Pint completed with the repo-supported invocation. I’m rerunning the focused tests after formatting, then I’ll update the Ralph progress log and commit the scoped changes.
+The diff is clean for whitespace. I’m staging only the implementation, tests, migration, package command, routes, and `.ralph/progress.txt`; the Ralph runtime files (`activity.log`, `prd.json`, `prompt.md`) remain unstaged.
+Implemented and committed SLICE-3.
+
+Commit: `d5cdfde feat: SLICE-3 - AFK: Convert application components to derived check health`
+
+Checks run:
+- `vendor/bin/pint --dirty --format agent` failed because this Pint version does not support `agent`
+- `vendor/bin/pint --dirty` passed
+- Focused component sync/stale tests passed
+- Package sync smoke test passed
+- Scheduled command overlap test passed
+
+I did not run the full `php artisan test` suite this turn. Remaining unstaged Ralph runtime files were left untouched:
+- `.ralph/activity.log`
+- `.ralph/prd.json`
+- `.ralph/prompt.md`
+
+## 2026-05-15 - SLICE-4
+- Removed non-server stale and heartbeat evidence from API monitor, website, application component, and application health UI surfaces.
+- Updated non-server status labeling so `unknown`/`pending` display as Pending and `danger` displays as Failing, while server stale UI remains covered by existing server tests.
+- Updated application health rollups, widgets, badges, and filters so stale timestamps do not create non-server failing states and pending/unknown checks are grouped as Pending.
+- Files changed: Filament API/website/project/component resources, project health widgets, project/component status models, health label/filter support, and focused Filament tests.
+- **Learnings for future iterations:**
+  - Project application filters must mirror derived component health by requiring active child API/website checks before treating a component as healthy, warning, or failing.
+  - Legacy `unknown` values need to be included in Pending predicates as well as label formatting.
+  - This Pint version does not support `--format agent`; use `vendor/bin/pint --dirty` after the required command fails.
 ---

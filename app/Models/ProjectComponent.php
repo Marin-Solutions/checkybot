@@ -173,11 +173,11 @@ class ProjectComponent extends Model
     {
         $apis = $this->relationLoaded('activeMonitorApis')
             ? $this->activeMonitorApis
-            : $this->activeMonitorApis()->get(['current_status', 'last_heartbeat_at', 'stale_at']);
+            : $this->activeMonitorApis()->get(['current_status']);
 
         $websites = $this->relationLoaded('activeWebsites')
             ? $this->activeWebsites
-            : $this->activeWebsites()->get(['current_status', 'last_heartbeat_at', 'stale_at']);
+            : $this->activeWebsites()->get(['current_status']);
 
         return $apis
             ->map(fn (MonitorApis $api): string => $this->checkStatus($api))
@@ -187,10 +187,6 @@ class ProjectComponent extends Model
 
     private function checkStatus(MonitorApis|Website $check): string
     {
-        if ($check->stale_at !== null) {
-            return 'danger';
-        }
-
         if (in_array($check->current_status, ['healthy', 'warning', 'danger'], true)) {
             return $check->current_status;
         }

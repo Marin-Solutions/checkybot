@@ -6,6 +6,7 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\Website;
+use App\Support\HealthStatusLabel;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -31,13 +32,8 @@ class ProjectsTable
                 TextColumn::make('application_status')
                     ->label('Current Status')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 TextColumn::make('environment')
                     ->badge()
                     ->default('Unknown'),
@@ -57,8 +53,8 @@ class ProjectsTable
                     ->options([
                         'healthy' => 'Healthy',
                         'warning' => 'Warning',
-                        'danger' => 'Danger',
-                        'unknown' => 'Unknown',
+                        'danger' => 'Failing',
+                        'unknown' => 'Pending',
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         $value = $data['value'] ?? null;
@@ -67,9 +63,6 @@ class ProjectsTable
                             return $query;
                         }
 
-                        // Mirror Project::application_status(): stale tracked surfaces
-                        // count as danger, and tracked surfaces without usable data
-                        // count as unknown instead of being hidden behind healthy rows.
                         return match ($value) {
                             'danger' => static::whereHasDangerSurface($query),
                             'warning' => static::whereDoesntHaveMonitoredStatus(
@@ -104,7 +97,7 @@ class ProjectsTable
                         ->authorize(fn (): bool => static::userCanCascadeMonitoring())
                         ->requiresConfirmation()
                         ->modalHeading('Enable monitoring for selected applications')
-                        ->modalDescription('All website checks and API monitors tied to these applications will resume scheduled checks. Archived components will be un-archived and start accepting heartbeats again.')
+                        ->modalDescription('All website checks and API monitors tied to these applications will resume scheduled checks. Archived components will be un-archived and resume derived health tracking.')
                         ->modalSubmitActionLabel('Enable')
                         ->action(function (Collection $records): void {
                             $summary = static::cascadeProjectState($records, true);
@@ -124,7 +117,7 @@ class ProjectsTable
                         ->authorize(fn (): bool => static::userCanCascadeMonitoring())
                         ->requiresConfirmation()
                         ->modalHeading('Disable monitoring for selected applications')
-                        ->modalDescription('Scheduled website checks, API checks, and heartbeat tracking will pause for every website, API monitor, and component in the selected applications. Use this during maintenance windows. History and configuration are preserved.')
+                        ->modalDescription('Scheduled website checks and API checks will pause for every website, API monitor, and component in the selected applications. Use this during maintenance windows. History and configuration are preserved.')
                         ->modalSubmitActionLabel('Disable')
                         ->action(function (Collection $records): void {
                             $summary = static::cascadeProjectState($records, false);
@@ -197,37 +190,28 @@ class ProjectsTable
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => $components
-                    ->where('is_stale', true)
-                    ->orWhere('current_status', 'danger'))
-                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
-                    ->whereNotNull('stale_at')
-                    ->orWhere('current_status', 'danger'))
-                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis
-                    ->whereNotNull('stale_at')
-                    ->orWhere('current_status', 'danger'));
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
+                    ->where('current_status', 'danger'))
+                ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'danger'))
+                ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'danger'));
         });
     }
 
     protected static function whereDoesntHaveDangerSurface(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components
-                ->where('is_stale', true)
-                ->orWhere('current_status', 'danger'))
-            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites
-                ->whereNotNull('stale_at')
-                ->orWhere('current_status', 'danger'))
-            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis
-                ->whereNotNull('stale_at')
-                ->orWhere('current_status', 'danger'));
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
+                ->where('current_status', 'danger'))
+            ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'danger'))
+            ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'danger'));
     }
 
     protected static function whereHasWarningSurface(Builder $query): Builder
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => $components->where('current_status', 'warning'))
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
+                    ->where('current_status', 'warning'))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'warning'))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'warning'));
         });
@@ -236,7 +220,8 @@ class ProjectsTable
     protected static function whereDoesntHaveWarningSurface(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components->where('current_status', 'warning'))
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
+                ->where('current_status', 'warning'))
             ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'warning'))
             ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'warning'));
     }
@@ -245,18 +230,12 @@ class ProjectsTable
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => $components
-                    ->where('current_status', 'healthy')
-                    ->where('is_stale', false)
-                    ->whereNotNull('last_heartbeat_at'))
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
+                    ->where('current_status', 'healthy'))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
-                    ->where('current_status', 'healthy')
-                    ->whereNull('stale_at')
-                    ->whereNotNull('last_heartbeat_at'))
+                    ->where('current_status', 'healthy'))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis
-                    ->where('current_status', 'healthy')
-                    ->whereNull('stale_at')
-                    ->whereNotNull('last_heartbeat_at'));
+                    ->where('current_status', 'healthy'));
         });
     }
 
@@ -276,40 +255,33 @@ class ProjectsTable
         return $query->where(function (Builder $query): void {
             $query
                 ->whereHas('activeComponents', fn (Builder $components) => $components
-                    ->where('is_stale', false)
                     ->where(function (Builder $components): void {
                         $components
                             ->whereNull('current_status')
                             ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                            ->orWhere('current_status', 'unknown')
+                            ->orWhere('current_status', 'pending')
                             ->orWhere(function (Builder $components): void {
                                 $components
-                                    ->where('current_status', 'healthy')
-                                    ->whereNull('last_heartbeat_at');
+                                    ->whereDoesntHave('activeMonitorApis')
+                                    ->whereDoesntHave('activeWebsites');
                             });
                     }))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
-                    ->whereNull('stale_at')
                     ->where(function (Builder $websites): void {
                         $websites
                             ->whereNull('current_status')
                             ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
-                            ->orWhere(function (Builder $websites): void {
-                                $websites
-                                    ->where('current_status', 'healthy')
-                                    ->whereNull('last_heartbeat_at');
-                            });
+                            ->orWhere('current_status', 'unknown')
+                            ->orWhere('current_status', 'pending');
                     }))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis
-                    ->whereNull('stale_at')
                     ->where(function (Builder $apis): void {
                         $apis
                             ->whereNull('current_status')
                             ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
-                            ->orWhere(function (Builder $apis): void {
-                                $apis
-                                    ->where('current_status', 'healthy')
-                                    ->whereNull('last_heartbeat_at');
-                            });
+                            ->orWhere('current_status', 'unknown')
+                            ->orWhere('current_status', 'pending');
                     }));
         });
     }
@@ -318,40 +290,33 @@ class ProjectsTable
     {
         return $query
             ->whereDoesntHave('activeComponents', fn (Builder $components) => $components
-                ->where('is_stale', false)
                 ->where(function (Builder $components): void {
                     $components
                         ->whereNull('current_status')
                         ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
+                        ->orWhere('current_status', 'unknown')
+                        ->orWhere('current_status', 'pending')
                         ->orWhere(function (Builder $components): void {
                             $components
-                                ->where('current_status', 'healthy')
-                                ->whereNull('last_heartbeat_at');
+                                ->whereDoesntHave('activeMonitorApis')
+                                ->whereDoesntHave('activeWebsites');
                         });
                 }))
             ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites
-                ->whereNull('stale_at')
                 ->where(function (Builder $websites): void {
                     $websites
                         ->whereNull('current_status')
                         ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
-                        ->orWhere(function (Builder $websites): void {
-                            $websites
-                                ->where('current_status', 'healthy')
-                                ->whereNull('last_heartbeat_at');
-                        });
+                        ->orWhere('current_status', 'unknown')
+                        ->orWhere('current_status', 'pending');
                 }))
             ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis
-                ->whereNull('stale_at')
                 ->where(function (Builder $apis): void {
                     $apis
                         ->whereNull('current_status')
                         ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
-                        ->orWhere(function (Builder $apis): void {
-                            $apis
-                                ->where('current_status', 'healthy')
-                                ->whereNull('last_heartbeat_at');
-                        });
+                        ->orWhere('current_status', 'unknown')
+                        ->orWhere('current_status', 'pending');
                 }));
     }
 
@@ -361,6 +326,15 @@ class ProjectsTable
             ->whereDoesntHave('activeComponents')
             ->whereDoesntHave('monitoredWebsites')
             ->whereDoesntHave('enabledMonitorApis');
+    }
+
+    protected static function whereComponentHasActiveChildren(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereHas('activeMonitorApis')
+                ->orWhereHas('activeWebsites');
+        });
     }
 
     /**

@@ -7,13 +7,22 @@ class HealthStatusLabel
     public static function format(?string $status): string
     {
         return match ($status) {
-            null => 'Unknown',
-            'unknown' => 'Awaiting data',
+            null, 'unknown' => 'Pending',
             'pending' => 'Pending',
             'healthy' => 'Healthy',
             'warning' => 'Warning',
-            'danger' => 'Danger',
+            'danger' => 'Failing',
             default => ucfirst((string) $status),
+        };
+    }
+
+    public static function color(?string $status): string
+    {
+        return match ($status) {
+            'healthy' => 'success',
+            'warning' => 'warning',
+            'danger' => 'danger',
+            default => 'gray',
         };
     }
 
@@ -34,7 +43,6 @@ class HealthStatusLabel
 
         return [
             'unknown' => self::format('unknown'),
-            'pending' => self::format('pending'),
         ] + $options;
     }
 }
