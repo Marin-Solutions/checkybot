@@ -394,6 +394,156 @@ test('control api preserves api live health when null expected value assertions 
         ->and($monitor->assertions()->sole()->expected_value)->toBeNull();
 });
 
+test('control api upserts package managed website uptime and ssl checks', function () {
+    $created = $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/marketing-site', [
+            'type' => 'website',
+            'check_types' => ['uptime', 'ssl'],
+            'name' => 'Marketing site',
+            'url' => '/status',
+            'schedule' => 'every_5_minutes',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.created', true)
+        ->assertJsonPath('data.check.key', 'marketing-site')
+        ->assertJsonPath('data.check.type', 'website')
+        ->assertJsonPath('data.check.check_types', ['uptime', 'ssl'])
+        ->assertJsonPath('data.check.url', 'https://api.scrappa.test/status')
+        ->assertJsonPath('data.check.schedule', '5m')
+        ->assertJsonPath('data.check.enabled', true)
+        ->assertJsonPath('data.check.status', 'unknown');
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'marketing-site',
+        'name' => 'Marketing site',
+        'url' => 'https://api.scrappa.test/status',
+        'uptime_check' => true,
+        'uptime_interval' => 5,
+        'ssl_check' => true,
+        'package_interval' => '5m',
+    ]);
+
+    $updated = $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/marketing-site', [
+            'type' => 'website',
+            'check_types' => ['ssl'],
+            'name' => 'Marketing SSL',
+            'url' => 'https://scrappa.test',
+            'schedule' => '1d',
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.created', false)
+        ->assertJsonPath('data.check.name', 'Marketing SSL')
+        ->assertJsonPath('data.check.check_types', ['ssl'])
+        ->assertJsonPath('data.check.schedule', '1d');
+
+    expect(DB::table('websites')->where('package_name', 'marketing-site')->count())->toBe(1)
+        ->and($updated->json('data.check.url'))->toBe('https://scrappa.test');
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'marketing-site',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => false,
+        'uptime_interval' => null,
+        'ssl_check' => true,
+        'package_interval' => '1d',
+    ]);
+});
+
+test('control api website upserts default to uptime and can disable the website check', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/homepage', [
+            'type' => 'website',
+            'name' => 'Homepage',
+            'url' => 'https://scrappa.test',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.check.check_types', ['uptime'])
+        ->assertJsonPath('data.check.schedule', '5m');
+
+    Website::query()
+        ->where('package_name', 'homepage')
+        ->sole()
+        ->forceFill([
+            'current_status' => 'healthy',
+            'status_summary' => 'Homepage is healthy.',
+            'last_heartbeat_at' => now()->subMinutes(2),
+            'awaiting_heartbeat_since' => null,
+            'stale_at' => now()->addMinutes(8),
+            'diagnostic_queued_at' => now(),
+        ])
+        ->save();
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/homepage', [
+            'type' => 'website',
+            'name' => 'Homepage',
+            'url' => 'https://disabled.scrappa.test',
+            'enabled' => false,
+        ])
+        ->assertOk()
+        ->assertJsonPath('data.check.enabled', false)
+        ->assertJsonPath('data.check.check_types', [])
+        ->assertJsonPath('data.check.status_summary', 'Disabled by Checkybot control API.');
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'url' => 'https://disabled.scrappa.test',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'package_interval' => null,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled by Checkybot control API.',
+        'last_heartbeat_at' => null,
+        'awaiting_heartbeat_since' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+});
+
+test('control api rejects website uptime schedules unsupported by the uptime scheduler', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/homepage', [
+            'type' => 'website',
+            'check_types' => ['uptime'],
+            'name' => 'Homepage',
+            'url' => 'https://scrappa.test',
+            'schedule' => '2m',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('schedule')
+        ->assertJsonPath('errors.schedule.0', 'Unsupported uptime interval. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.');
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+    ]);
+});
+
+test('control api rejects website schedules specified in seconds', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/certificate', [
+            'type' => 'website',
+            'check_types' => ['ssl'],
+            'name' => 'Certificate',
+            'url' => 'https://scrappa.test',
+            'schedule' => '30s',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('schedule')
+        ->assertJsonPath('errors.schedule.0', 'Uptime and SSL schedules cannot be specified in seconds. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.');
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'certificate',
+    ]);
+});
+
 test('control api accepts http urls and package relative paths for check urls', function () {
     $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/absolute-health', [
@@ -2488,6 +2638,44 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
     ]);
 });
 
+test('mcp upsert check creates package managed website checks', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 20,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'marketing-site',
+                    'type' => 'website',
+                    'check_types' => ['uptime', 'ssl'],
+                    'name' => 'Marketing site',
+                    'url' => '/status',
+                    'schedule' => '10m',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.created', true)
+        ->assertJsonPath('result.structuredContent.check.key', 'marketing-site')
+        ->assertJsonPath('result.structuredContent.check.type', 'website')
+        ->assertJsonPath('result.structuredContent.check.check_types', ['uptime', 'ssl'])
+        ->assertJsonPath('result.structuredContent.check.url', 'https://api.scrappa.test/status')
+        ->assertJsonPath('result.structuredContent.check.schedule', '10m');
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'marketing-site',
+        'source' => 'package',
+        'uptime_check' => true,
+        'uptime_interval' => 10,
+        'ssl_check' => true,
+        'package_interval' => '10m',
+    ]);
+});
+
 test('mcp disable check accepts type to resolve ambiguous check keys', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -2667,6 +2855,30 @@ test('mcp endpoint rejects invalid schedules with a field validation error', fun
         ->assertOk()
         ->assertJsonPath('error.code', -32602)
         ->assertJsonPath('error.data.errors.schedule.0', 'The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
+});
+
+test('mcp endpoint rejects website uptime schedules unsupported by the uptime scheduler', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 31,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'homepage',
+                    'type' => 'website',
+                    'check_types' => ['uptime'],
+                    'name' => 'Homepage',
+                    'url' => 'https://scrappa.test',
+                    'schedule' => '2m',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.schedule.0', 'Unsupported uptime interval. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.');
 });
 
 test('mcp endpoint rejects malformed and unsupported check urls before upserting definitions', function (string $url) {

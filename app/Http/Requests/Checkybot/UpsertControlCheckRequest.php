@@ -38,7 +38,9 @@ class UpsertControlCheckRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'type' => ['nullable', Rule::in(['api'])],
+            'type' => ['nullable', Rule::in(['api', 'website'])],
+            'check_types' => ['nullable', 'array', 'min:1', 'max:2'],
+            'check_types.*' => ['required', 'string', Rule::in(['uptime', 'ssl'])],
             'name' => ['required', 'string', 'max:255'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
             'url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
