@@ -355,12 +355,93 @@ test('legacy sync resets api live health when target-defining settings change', 
     ]);
 });
 
+test('legacy sync resets api live health when request configuration changes', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'POST',
+        'headers' => [
+            'Authorization' => 'Bearer old-token',
+        ],
+        'request_body_type' => 'json',
+        'request_body' => [
+            'probe' => 'old',
+        ],
+        'expected_status' => 200,
+        'timeout_seconds' => 15,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous request configuration was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(7),
+        'diagnostic_queued_at' => now(),
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'status',
+        'assertion_type' => 'exists',
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+                'method' => 'POST',
+                'expected_status' => 200,
+                'headers' => [
+                    'Authorization' => 'Bearer new-token',
+                ],
+                'request_body_type' => 'raw',
+                'request_body' => 'probe=new',
+                'timeout_seconds' => 30,
+                'assertions' => [
+                    [
+                        'data_path' => 'status',
+                        'assertion_type' => 'exists',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $api->id,
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'POST',
+        'expected_status' => 200,
+        'request_body_type' => 'raw',
+        'timeout_seconds' => 30,
+        'current_status' => 'unknown',
+        'status_summary' => null,
+        'last_heartbeat_at' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+
+    expect($api->fresh()->awaiting_heartbeat_since)->not->toBeNull();
+});
+
 test('legacy sync does not reset api live health when assertions arrive out of sort order', function () {
     $api = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
         'title' => 'health-check',
         'url' => 'https://api.example.com/health',
         'http_method' => 'GET',
+        'headers' => [],
         'expected_status' => 200,
         'is_enabled' => true,
         'source' => 'package',

@@ -1592,7 +1592,38 @@ class CheckybotControlService
         return $check->url !== $data['url']
             || $check->http_method !== $data['http_method']
             || (int) $check->expected_status !== (int) $data['expected_status']
+            || $check->headers != $data['headers']
+            || $check->request_body_type != $data['request_body_type']
+            || $this->normalizeRequestBodyForComparison($check->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
+            || $check->timeout_seconds != $data['timeout_seconds']
             || $assertionsChanged;
+    }
+
+    private function normalizeRequestBodyForComparison(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return json_encode($this->preserveEmptyJsonObjects($value));
+        }
+
+        return $value;
+    }
+
+    private function preserveEmptyJsonObjects(mixed $value, bool $isRoot = true, bool $parentIsList = false): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($value === []) {
+            return $isRoot || $parentIsList ? [] : new \stdClass;
+        }
+
+        $isList = array_is_list($value);
+
+        return array_map(
+            fn (mixed $item): mixed => $this->preserveEmptyJsonObjects($item, false, $isList),
+            $value,
+        );
     }
 
     /**
