@@ -506,6 +506,44 @@ test('control api website upserts default to uptime and can disable the website 
     ]);
 });
 
+test('control api rejects website uptime schedules unsupported by the uptime scheduler', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/homepage', [
+            'type' => 'website',
+            'check_types' => ['uptime'],
+            'name' => 'Homepage',
+            'url' => 'https://scrappa.test',
+            'schedule' => '2m',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('schedule')
+        ->assertJsonPath('errors.schedule.0', 'Unsupported uptime interval. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.');
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+    ]);
+});
+
+test('control api rejects website schedules specified in seconds', function () {
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/certificate', [
+            'type' => 'website',
+            'check_types' => ['ssl'],
+            'name' => 'Certificate',
+            'url' => 'https://scrappa.test',
+            'schedule' => '30s',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('schedule')
+        ->assertJsonPath('errors.schedule.0', 'Uptime and SSL schedules cannot be specified in seconds. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.');
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'certificate',
+    ]);
+});
+
 test('control api accepts http urls and package relative paths for check urls', function () {
     $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/absolute-health', [
@@ -2817,6 +2855,30 @@ test('mcp endpoint rejects invalid schedules with a field validation error', fun
         ->assertOk()
         ->assertJsonPath('error.code', -32602)
         ->assertJsonPath('error.data.errors.schedule.0', 'The schedule format is invalid. Use format: {number}{s|m|h|d} or every_{number}_{seconds|minutes|hours|days}.');
+});
+
+test('mcp endpoint rejects website uptime schedules unsupported by the uptime scheduler', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 31,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'key' => 'homepage',
+                    'type' => 'website',
+                    'check_types' => ['uptime'],
+                    'name' => 'Homepage',
+                    'url' => 'https://scrappa.test',
+                    'schedule' => '2m',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.schedule.0', 'Unsupported uptime interval. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.');
 });
 
 test('mcp endpoint rejects malformed and unsupported check urls before upserting definitions', function (string $url) {

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Console\Commands\LogJobCheckUptimeSsl;
 use App\Enums\RunSource;
 use App\Jobs\LogUptimeSslJob;
 use App\Jobs\RunApiMonitorDiagnosticJob;
@@ -250,6 +251,7 @@ class CheckybotControlService
             $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
             $uptimeEnabled = $enabled && in_array('uptime', $checkTypes, true);
             $sslEnabled = $enabled && in_array('ssl', $checkTypes, true);
+            $this->validateWebsiteSchedule($normalizedSchedule, $uptimeEnabled, $sslEnabled);
             $resolvedUrl = $this->resolveUrl($project->base_url, $data['url']);
 
             $payload = [
@@ -1455,6 +1457,25 @@ class CheckybotControlService
         }
 
         return IntervalParser::DEFAULT_API_INTERVAL;
+    }
+
+    private function validateWebsiteSchedule(string $normalizedSchedule, bool $uptimeEnabled, bool $sslEnabled): void
+    {
+        if (! $uptimeEnabled && ! $sslEnabled) {
+            return;
+        }
+
+        if (Str::endsWith($normalizedSchedule, 's')) {
+            throw ValidationException::withMessages([
+                'schedule' => ['Uptime and SSL schedules cannot be specified in seconds. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.'],
+            ]);
+        }
+
+        if ($uptimeEnabled && ! in_array(IntervalParser::toMinutes($normalizedSchedule), LogJobCheckUptimeSsl::SUPPORTED_INTERVALS, true)) {
+            throw ValidationException::withMessages([
+                'schedule' => ['Unsupported uptime interval. Supported values: 1m, 5m, 10m, 15m, 30m, 1h, 6h, 12h, 1d.'],
+            ]);
+        }
     }
 
     private function websiteTargetChangedForUpsert(Website $website, string $url): bool
