@@ -256,8 +256,6 @@ test('control api resets api live health when target-defining settings change', 
     $monitor->forceFill([
         'current_status' => 'healthy',
         'status_summary' => 'Previous target was healthy.',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => now()->addMinutes(8),
         'diagnostic_queued_at' => now(),
     ])->save();
 
@@ -283,12 +281,8 @@ test('control api resets api live health when target-defining settings change', 
         'expected_status' => 201,
         'current_status' => 'unknown',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
-
-    expect($monitor->fresh()->awaiting_heartbeat_since)->not->toBeNull();
 });
 
 test('control api resets api live health when assertions change', function () {
@@ -305,8 +299,6 @@ test('control api resets api live health when assertions change', function () {
         'is_enabled' => true,
         'current_status' => 'healthy',
         'status_summary' => 'Current assertions were healthy.',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => now()->addMinutes(8),
         'diagnostic_queued_at' => now(),
     ]);
 
@@ -337,10 +329,7 @@ test('control api resets api live health when assertions change', function () {
 
     expect($monitor->current_status)->toBe('unknown')
         ->and($monitor->status_summary)->toBeNull()
-        ->and($monitor->last_heartbeat_at)->toBeNull()
-        ->and($monitor->stale_at)->toBeNull()
-        ->and($monitor->diagnostic_queued_at)->toBeNull()
-        ->and($monitor->awaiting_heartbeat_since)->not->toBeNull();
+        ->and($monitor->diagnostic_queued_at)->toBeNull();
 });
 
 test('control api preserves api live health when null expected value assertions are unchanged', function () {
@@ -369,9 +358,6 @@ test('control api preserves api live health when null expected value assertions 
     $monitor->forceFill([
         'current_status' => 'healthy',
         'status_summary' => 'Null assertion target is healthy.',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'awaiting_heartbeat_since' => null,
-        'stale_at' => now()->addMinutes(8),
         'diagnostic_queued_at' => now(),
     ])->save();
 
@@ -386,9 +372,6 @@ test('control api preserves api live health when null expected value assertions 
 
     expect($monitor->current_status)->toBe('healthy')
         ->and($monitor->status_summary)->toBe('Null assertion target is healthy.')
-        ->and($monitor->last_heartbeat_at)->not->toBeNull()
-        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
-        ->and($monitor->stale_at)->not->toBeNull()
         ->and($monitor->diagnostic_queued_at)->not->toBeNull()
         ->and($monitor->assertions()->sole()->expected_value)->toBeNull();
 });
@@ -470,9 +453,6 @@ test('control api website upserts default to uptime and can disable the website 
         ->forceFill([
             'current_status' => 'healthy',
             'status_summary' => 'Homepage is healthy.',
-            'last_heartbeat_at' => now()->subMinutes(2),
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => now()->addMinutes(8),
             'diagnostic_queued_at' => now(),
         ])
         ->save();
@@ -498,9 +478,6 @@ test('control api website upserts default to uptime and can disable the website 
         'package_interval' => null,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled by Checkybot control API.',
-        'last_heartbeat_at' => null,
-        'awaiting_heartbeat_since' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 });
@@ -720,8 +697,6 @@ test('control api disables checks without deleting data', function () {
         'source' => 'package',
         'package_name' => 'search-health',
         'is_enabled' => true,
-        'last_heartbeat_at' => now()->subMinutes(10),
-        'stale_at' => now()->subMinute(),
         'diagnostic_queued_at' => now(),
     ]);
 
@@ -738,8 +713,6 @@ test('control api disables checks without deleting data', function () {
     $this->assertDatabaseHas('monitor_apis', [
         'id' => $monitor->id,
         'is_enabled' => false,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
         'deleted_at' => null,
     ]);
@@ -762,8 +735,6 @@ test('control api disables listed website checks by package key', function () {
         'package_interval' => '5m',
         'current_status' => 'danger',
         'status_summary' => 'Website DNS lookup failed.',
-        'last_heartbeat_at' => now()->subMinutes(10),
-        'stale_at' => now()->subMinute(),
         'diagnostic_queued_at' => now(),
     ]);
 
@@ -794,8 +765,6 @@ test('control api disables listed website checks by package key', function () {
         'uptime_check' => false,
         'ssl_check' => false,
         'current_status' => 'unknown',
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
@@ -812,9 +781,6 @@ test('control api disables listed component checks by name', function () {
         'summary' => 'Queue backlog is high.',
         'current_status' => 'danger',
         'last_reported_status' => 'danger',
-        'last_heartbeat_at' => now()->subMinutes(10),
-        'stale_detected_at' => now()->subMinute(),
-        'is_stale' => true,
     ]);
 
     $this->withToken($this->apiKey->key)
@@ -843,14 +809,6 @@ test('control api disables listed component checks by name', function () {
         'current_status' => 'unknown',
         'last_reported_status' => 'unknown',
         'summary' => 'Disabled by Checkybot control API.',
-        'last_heartbeat_at' => null,
-        'stale_detected_at' => null,
-        'is_stale' => false,
-    ]);
-
-    $this->assertDatabaseHas('project_component_heartbeats', [
-        'project_component_id' => $component->id,
-        'component_name' => 'queue-worker',
     ]);
 });
 
@@ -987,7 +945,6 @@ test('control api queues listed website checks by package key', function () {
         'ssl_check' => true,
         'package_interval' => '5m',
         'current_status' => 'healthy',
-        'last_heartbeat_at' => now()->subMinutes(5),
     ]);
 
     $this->withToken($this->apiKey->key)
@@ -1079,7 +1036,6 @@ test('control api triggers a manual check run that updates live status without s
         'url' => 'https://api.scrappa.test/health',
         'data_path' => 'data.status',
         'current_status' => 'healthy',
-        'last_heartbeat_at' => now()->subMinutes(10),
         'is_enabled' => true,
     ]);
 
@@ -1095,7 +1051,8 @@ test('control api triggers a manual check run that updates live status without s
     $monitor->refresh();
 
     expect($monitor->current_status)->toBe('danger')
-        ->and($monitor->last_heartbeat_at)->not->toBeNull();
+        ->and($monitor->latestResult)->not->toBeNull()
+        ->and($monitor->latestResult->run_source)->toBe(RunSource::OnDemand);
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/failures?project=scrappa')
@@ -1596,7 +1553,7 @@ test('control api project status counts exclude disabled checks and report them 
     expect($response->json('data.status_counts'))->not->toHaveKey('danger');
 });
 
-test('control api project status counts treat stale package api and website checks as danger', function () {
+test('control api project status counts use current live check health', function () {
     $this->travelTo('2026-05-14 12:00:00');
 
     MonitorApis::factory()->create([
@@ -1606,34 +1563,28 @@ test('control api project status counts treat stale package api and website chec
         'package_name' => 'fresh-api',
         'current_status' => 'healthy',
         'is_enabled' => true,
-        'last_heartbeat_at' => now()->subMinute(),
         'package_interval' => '5m',
-        'stale_at' => null,
     ]);
 
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'source' => 'package',
-        'package_name' => 'stale-api',
-        'current_status' => 'healthy',
+        'package_name' => 'failing-api',
+        'current_status' => 'danger',
         'is_enabled' => true,
-        'last_heartbeat_at' => now()->subMinute(),
         'package_interval' => '5m',
-        'stale_at' => now()->subMinute(),
     ]);
 
     Website::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'source' => 'package',
-        'package_name' => 'stale-homepage',
-        'current_status' => 'healthy',
+        'package_name' => 'failing-homepage',
+        'current_status' => 'danger',
         'uptime_check' => true,
         'ssl_check' => false,
-        'last_heartbeat_at' => now()->subMinutes(10),
         'package_interval' => '5m',
-        'stale_at' => null,
     ]);
 
     Website::factory()->create([
@@ -1644,7 +1595,6 @@ test('control api project status counts treat stale package api and website chec
         'current_status' => 'healthy',
         'uptime_check' => false,
         'ssl_check' => false,
-        'last_heartbeat_at' => now()->subMinutes(10),
         'package_interval' => '5m',
     ]);
 
@@ -1993,7 +1943,7 @@ test('control api project summaries include active component counts and status b
         ->assertJsonPath('data.status_counts.healthy', 1)
         ->assertJsonPath('data.status_counts.warning', 1)
         ->assertJsonPath('data.status_counts.danger', 1)
-        ->assertJsonPath('data.status_counts.unknown', 1)
+        ->assertJsonPath('data.status_counts.pending', 1)
         ->assertJsonPath('data.status_counts.disabled', 1);
 });
 
