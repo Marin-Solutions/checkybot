@@ -91,16 +91,55 @@ test('control api creates and updates projects by stable key', function () {
             'name' => 'Convertr API',
             'environment' => 'production',
             'base_url' => 'https://api.convertr.test',
-            'repository' => 'marin-solutions/convertr-api',
         ])
         ->assertOk()
         ->assertJsonPath('message', 'Project updated.')
         ->assertJsonPath('data.created', false)
         ->assertJsonPath('data.project.id', $projectId)
         ->assertJsonPath('data.project.name', 'Convertr API')
-        ->assertJsonPath('data.project.repository', 'marin-solutions/convertr-api');
+        ->assertJsonPath('data.project.repository', 'marin-solutions/convertr');
 
     expect(Project::query()->where('package_key', 'convertr')->count())->toBe(1);
+});
+
+test('control api rejects conflicting key and identity endpoint combinations', function () {
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'first-app',
+        'name' => 'First App',
+        'environment' => 'production',
+        'base_url' => 'https://first.test',
+        'identity_endpoint' => 'https://first.test',
+    ]);
+
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'second-app',
+        'name' => 'Second App',
+        'environment' => 'production',
+        'base_url' => 'https://second.test',
+        'identity_endpoint' => 'https://second.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'first-app',
+            'name' => 'Conflicting App',
+            'environment' => 'production',
+            'base_url' => 'https://second.test',
+            'identity_endpoint' => 'https://second.test',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('identity_endpoint');
+
+    $this->assertDatabaseHas('projects', [
+        'package_key' => 'first-app',
+        'identity_endpoint' => 'https://first.test',
+    ]);
+    $this->assertDatabaseHas('projects', [
+        'package_key' => 'second-app',
+        'identity_endpoint' => 'https://second.test',
+    ]);
 });
 
 test('control api keeps project creation scoped to api key owner', function () {
