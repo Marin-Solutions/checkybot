@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
+use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
 use App\Support\PackageCheckTableEvidence;
@@ -69,6 +70,16 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->badge()
                     ->color(fn (string $state): string => PackageCheckTableEvidence::freshnessColor($state))
                     ->description(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::apiFreshnessDescription($record)),
+                TextColumn::make('silenced_until')
+                    ->label('Snoozed')
+                    ->badge()
+                    ->color('warning')
+                    ->icon('heroicon-o-bell-slash')
+                    ->state(fn (MonitorApis $record): ?string => $record->isSilenced()
+                        ? 'Until '.$record->silenced_until->format('M j, H:i')
+                        : null)
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
@@ -82,6 +93,59 @@ class PackageManagedApisRelationManager extends RelationManager
                     )),
             ])
             ->recordActions([
+                Action::make('snooze')
+                    ->label(fn (MonitorApis $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')
+                    ->icon('heroicon-o-bell-slash')
+                    ->color(fn (MonitorApis $record): string => $record->isSilenced() ? 'warning' : 'gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                    ->modalHeading('Snooze notifications for this API monitor')
+                    ->modalDescription('Suppress alert delivery during a maintenance window. Checks keep running, the application status keeps updating, but no emails or webhooks fire while snoozed.')
+                    ->modalSubmitActionLabel('Snooze')
+                    ->fillForm(fn (MonitorApis $record): array => [
+                        'duration' => $record->isSilenced() ? 'custom' : '1h',
+                        'until' => $record->silenced_until,
+                    ])
+                    ->schema(MonitorSnoozeAction::formSchema())
+                    ->action(function (MonitorApis $record, array $data): void {
+                        $until = MonitorSnoozeAction::resolveUntil($data);
+
+                        if ($until === null) {
+                            Notification::make()
+                                ->title('Snooze time must be in the future')
+                                ->body('Pick a future moment, or use Unsnooze to clear the silence.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $record->update(['silenced_until' => $until]);
+
+                        Notification::make()
+                            ->title('Notifications snoozed')
+                            ->body("Alerts paused for {$record->title} until {$until->format('M j, Y H:i')}.")
+                            ->success()
+                            ->send();
+                    }),
+                Action::make('unsnooze')
+                    ->label('Unsnooze')
+                    ->icon('heroicon-o-bell')
+                    ->color('gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
+                    ->visible(fn (MonitorApis $record): bool => $record->isSilenced())
+                    ->requiresConfirmation()
+                    ->modalHeading('Resume notifications')
+                    ->modalDescription('Notifications for this API monitor will fire again on the next status change.')
+                    ->modalSubmitActionLabel('Unsnooze')
+                    ->action(function (MonitorApis $record): void {
+                        $record->update(['silenced_until' => null]);
+
+                        Notification::make()
+                            ->title('Notifications resumed')
+                            ->body("{$record->title} will alert again on the next status change.")
+                            ->success()
+                            ->send();
+                    }),
                 Action::make('run_now')
                     ->label('Run check now')
                     ->color('primary')

@@ -1578,6 +1578,139 @@ test('package-managed relation managers queue run now diagnostics for active che
         ->and($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00');
 });
 
+test('package-managed website checks can be snoozed and unsnoozed from application detail', function () {
+    Carbon::setTestNow('2026-05-10 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'created_by' => $user->id,
+        'silenced_until' => null,
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableColumnExists('silenced_until')
+        ->assertTableActionExists('snooze', null, $website)
+        ->assertTableActionHasIcon('snooze', 'heroicon-o-bell-slash', $website)
+        ->callTableAction('snooze', $website, data: [
+            'duration' => '1h',
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified('Notifications snoozed');
+
+    expect($website->refresh()->silenced_until?->toDateTimeString())->toBe('2026-05-10 13:00:00');
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionVisible('unsnooze', $website)
+        ->callTableAction('unsnooze', $website)
+        ->assertHasNoTableActionErrors()
+        ->assertNotified('Notifications resumed');
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+});
+
+test('package-managed api checks can be snoozed and unsnoozed from application detail', function () {
+    Carbon::setTestNow('2026-05-10 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+    $apiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'is_enabled' => true,
+        'created_by' => $user->id,
+        'silenced_until' => null,
+    ]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableColumnExists('silenced_until')
+        ->assertTableActionExists('snooze', null, $apiMonitor)
+        ->assertTableActionHasIcon('snooze', 'heroicon-o-bell-slash', $apiMonitor)
+        ->callTableAction('snooze', $apiMonitor, data: [
+            'duration' => '1h',
+        ])
+        ->assertHasNoTableActionErrors()
+        ->assertNotified('Notifications snoozed');
+
+    expect($apiMonitor->refresh()->silenced_until?->toDateTimeString())->toBe('2026-05-10 13:00:00');
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionVisible('unsnooze', $apiMonitor)
+        ->callTableAction('unsnooze', $apiMonitor)
+        ->assertHasNoTableActionErrors()
+        ->assertNotified('Notifications resumed');
+
+    expect($apiMonitor->refresh()->silenced_until)->toBeNull();
+});
+
+test('admin without monitor update permissions cannot snooze package-managed checks from application detail', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = User::factory()->create();
+    $user->assignRole('Admin');
+    $user->givePermissionTo([
+        'ViewAny:Project',
+        'View:Project',
+        'ViewAny:Website',
+        'View:Website',
+        'ViewAny:MonitorApis',
+        'View:MonitorApis',
+    ]);
+    $this->actingAs($user);
+
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
+    ]);
+    $apiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'created_by' => $user->id,
+        'silenced_until' => now()->addHour(),
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionHidden('snooze')
+        ->assertTableActionHidden('unsnooze', $website);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableActionHidden('snooze')
+        ->assertTableActionHidden('unsnooze', $apiMonitor);
+});
+
 test('package-managed relation managers guard run now diagnostics for inactive checks', function () {
     $user = $this->actingAsSuperAdmin();
     $project = Project::factory()->create([
