@@ -165,3 +165,1233 @@ There is still one remaining `passes: false` story: SLICE-6.
   - `run_source=heartbeat` is obsolete for non-server result feeds; valid import filters are scheduled, on_demand, and all.
   - Some broad legacy tests still assert removed heartbeat schema from prior slices; use focused SLICE-6 contract tests until those stale expectations are retired.
 ---
+
+
+## Verification Failed
+
+```
+[39;41;1m FAIL [39;49;22m[39m Tests\Feature\Api\V1\CheckybotControlApiTest[39m
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires a valid api key and exposes me details[39m[90m         [39m [90m0.45s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api lists projects and package managed checks with compact[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api exposes setup verification states on project payloads[39m[90m   [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api upserts checks by stable key and redacts encrypted head[39m[90m…[39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api resets api live health when target-defining settings ch[39m[90m…[39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api resets api live health when assertions change[39m[90m           [39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api preserves api live health when null expected value asse[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api upserts package managed website uptime and ssl checks[39m[90m   [39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api website upserts default to uptime and can disable the w[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects website uptime schedules unsupported by the upt[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects website schedules specified in seconds[39m[90m          [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api accepts http urls and package relative paths for check[39m[90m… [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api normalizes surrounding whitespace before storing check[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects invalid regex assertion patterns[39m[90m                [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects array expected values for comparison assertions[39m[90m [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api defaults missing api schedules to the safe polling inte[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api defaults blank api schedules to the safe polling interv[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api preserves existing schedules when update payload omits[39m[90m… [39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api disables checks without deleting data[39m[90m                   [39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api disables listed website checks by package key[39m[90m           [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api disables listed component checks by name[39m[90m                [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires type when disabling an ambiguous check key[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires type when triggering an ambiguous runnable che[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api accepts type to trigger the intended check surface for[39m[90m… [39m [90m0.07s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api queues listed website checks by package key[39m[90m             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api reports already queued website diagnostic runs without[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects disabled website diagnostic runs[39m[90m                [39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api triggers a manual check run that updates live status wi[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api excludes diagnostic API rows from latest failures[39m[90m       [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api latest failures only returns currently failing latest s[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api latest failures includes api and website failures only[39m[90m  [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api latest failures excludes recovered website rows[39m[90m         [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api manual check run sends failure notifications[39m[90m            [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api manual check run sends recovery notifications[39m[90m           [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api returns project detail and recent runs[39m[90m                  [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api result payloads include safe api failure evidence[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api redacts top-level raw response body strings[39m[90m             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api result evidence preserves null bodies and truncates lon[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project status counts exclude disabled checks and repor[39m[90m…[39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api project status counts treat stale package api and websi[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project summaries include package managed website check[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api returns latest result for each listed check[39m[90m             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api lists queued diagnostic state and latest diagnostic evi[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api lists component checks without heartbeat evidence[39m[90m       [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api list checks omits removed non-server heartbeat fields f[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mcontrol api project summaries include active component counts and s[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api scopes projects to the api key owner[39m[90m                    [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api queues all enabled project checks as a diagnostic batch[39m[90m [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api skips already queued project diagnostics when creating[39m[90m… [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api reports already queued when every project diagnostic is[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api returns queued project diagnostic batch status[39m[90m          [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api batch status lookup is scoped by stable metadata instea[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api scopes diagnostic batch status to the project owner and[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project run reports when there are no enabled checks to[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mqueued project manual jobs send notifications for check status tran[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api trigger runs respect stored method and expected status[39m[90m  [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects disabled check runs and relative urls without a[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects invalid schedules[39m[90m                               [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires body type when request body is provided[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api limits request body size[39m[90m                                [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects unstructured json and form request bodies[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects non string raw request bodies[39m[90m                   [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint lists tools and calls the shared control surface[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp upsert check creates package managed website checks[39m[90m             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp disable check accepts type to resolve ambiguous check keys[39m[90m      [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp latest failures tool includes website failures and omits compon[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp recent runs tool includes api and website diagnostics only[39m[90m      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects invalid schedules with a field validation erro[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects website uptime schedules unsupported by the up[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects malformed and unsupported check urls before up[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects malformed and unsupported check urls before up[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects malformed and unsupported check urls before up[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects invalid regex assertion patterns[39m[90m               [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint requires body type when request body is provided[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects unstructured json request body[39m[90m                 [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects non string raw request body[39m[90m                    [39m [90m0.05s[39m  
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Api\V1\PackageSyncTest[39m
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires a valid api key[39m[90m                               [39m [90m0.08s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync creates a project and api check definitions[39m[90m            [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects invalid regex assertion patterns[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects non server runtime health fields[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects array expected values for comparison assertion[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync defaults missing api schedules to the safe polling int[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync defaults blank api schedules to the safe polling inter[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync is idempotent and updates by stable keys[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync does not count unchanged existing checks as updated[39m[90m    [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync counts changed assertions as an api update[39m[90m             [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync resets api live health to pending when target-defining[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync persists api failed response body preference[39m[90m           [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync encrypts header values and does not return them[39m[90m        [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync archives missing package api checks and preserves hist[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync returns validation errors for malformed payloads[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects invalid schedules[39m[90m                              [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects invalid failed response body preference[39m[90m        [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires body type when a request body is provided[39m[90m     [39m [90m0.07s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync limits request body size[39m[90m                               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects unstructured json and form request bodies[39m[90m      [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync accepts raw string request bodies[39m[90m                      [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects non string raw request bodies[39m[90m                  [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync allows request bodies at the configured size limit[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects non string schedules without throwing[39m[90m          [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync creates website backed uptime and ssl check definition[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync treats absolute website urls case insensitively[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key index does not constrain manual websites[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key index rejects duplicate package rows[39m[90m            [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration keeps active duplicates and reassigns[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration keeps a project foreign key index bef[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration merges split duplicate check flags[39m[90m    [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration ignores soft deleted duplicates when[39m[90m… [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync updates and archives missing website checks by stable[39m[90m… [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync resets website live health to pending when url changes[39m[90m [39m [90m0.07s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync restores soft deleted website checks when re-added[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync does not inherit uptime flag when restoring a deleted[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync allows uptime and ssl checks to share a key through th[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage shared uptime and ssl key can be read as the primary uptime[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync accepts equivalent normalized urls for shared uptime a[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects shared uptime and ssl keys with different urls[39m[90m [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects shared uptime and ssl keys with different name[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects duplicate keys within the same check type[39m[90m      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects shared keys outside the uptime ssl pair[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync service preserves website flags when uptime and ssl sh[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync keeps package interval while a shared-key website chec[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync recalculates package interval when ssl is removed from[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync uses uptime interval for shared-key package stale dete[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync keeps status while a shared-key website check remains[39m[90m… [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects check types that are not implemented by the pa[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires valid schedules for uptime and ssl checks[39m[90m     [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires schedule keys for uptime and ssl checks[39m[90m       [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects website schedules that cannot be executed as c[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync can claim an existing project by identity endpoint fal[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync restores soft deleted api checks when re-added[39m[90m         [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync replaces assertions when a check changes[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync lets checks suppress default headers with null values[39m[90m  [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync lets checks override default headers case insensitivel[39m[90m…[39m [90m0.05s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Commands\MarkStalePackageChecksTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdeprecated package stale command does not mutate package managed ch[39m[90m…[39m [90m0.07s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Services\PackageHealthStatusServiceTest[39m
+  [32;1m✓[39;22m[90m [39m[90mapi status treats matching expected 404 as healthy[39m[90m                  [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mapi status treats matching expected status with failed assertions a[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mapi status treats non-matching expected 201 as warning[39m[90m              [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstale detection waits until after the exact interval boundary[39m[90m       [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mssl status treats certificates expired earlier today as danger[39m[90m      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcombined website status uses the worst http or ssl state[39m[90m            [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mworst status logs unknown status values[39m[90m                             [39m [90m0.05s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Services\PackageManagedScheduleValidationTest[39m
+  [32;1m✓[39;22m[90m [39m[90mcontrol service converts invalid schedules into validation errors[39m[90m   [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync service converts invalid schedules into validation err[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol service defaults missing schedules to safe api interval[39m[90m     [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync service defaults missing api schedules to safe interva[39m[90m…[39m [90m0.05s[39m  
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Unit\Support\PackageCheckTableEvidenceTest[39m
+  [31;1m⨯[39;22m[90m [39m[90mfreshness description uses stale_at when stale is flagged before th[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence stays stale when interval cannot be parsed but s[39m[90m…[39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence marks unparsable intervals without stale_at as s[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdisplay interval uses scheduler rounded minutes for second based in[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence marks blank intervals as schedule unknown[39m[90m        [39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence uses created at while waiting for the first pack[39m[90m…[39m [90m0.04s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence marks never-run package checks stale after their[39m[90m…[39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence uses awaiting heartbeat reset time before create[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence treats disabled api monitors as disabled instead[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence treats package websites with no enabled checks a[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence does not disable package websites while one chec[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence does not disable package websites while one chec[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence stays fresh at the exact stale boundary until ba[39m[90m…[39m [90m0.04s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdue description flags missing schedules as risky legacy behavior[39m[90m    [39m [90m0.04s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mdue description marks overdue monitors as due now[39m[90m                   [39m [90m0.04s[39m  
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api resets…   
+[39;1m  Failed asserting that a row in the table [monitor_apis] matches the attributes {
+    "id": 1,
+    "url": "https:\/\/api.scrappa.test\/api\/search\/v2\/health",
+    "http_method": "POST",
+    "expected_status": 201,
+    "current_status": "unknown",
+    "status_summary": null,
+    "last_heartbeat_at": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "url": "https:\/\/api.scrappa.test\/api\/search\/v2\/health",
+        "http_method": "POST",
+        "expected_status": 201,
+        "current_status": "unknown",
+        "status_summary": null,
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m279[39m
+    275▕         ->assertJsonPath('data.check.status', 'unknown')
+    276▕         ->assertJsonPath('data.check.status_summary', null)
+    277▕         ->assertJsonPath('data.check.diagnostic_queued', false);
+    278▕ 
+  ➜ 279▕     $this->assertDatabaseHas('monitor_apis', [
+    280▕         'id' => $monitor->id,
+    281▕         'url' => 'https://api.scrappa.test/api/search/v2/health',
+    282▕         'http_method' => 'POST',
+    283▕         'expected_status' => 201,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api resets…   
+[39;1m  Expecting null not to be null .[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m343[39m
+    339▕         ->and($monitor->status_summary)->toBeNull()
+    340▕         ->and($monitor->last_heartbeat_at)->toBeNull()
+    341▕         ->and($monitor->stale_at)->toBeNull()
+    342▕         ->and($monitor->diagnostic_queued_at)->toBeNull()
+  ➜ 343▕         ->and($monitor->awaiting_heartbeat_since)->not->toBeNull();
+    344▕ });
+    345▕ 
+    346▕ test('control api preserves api live health when null expected value assertions are unchanged', function () {
+    347▕     $payload = [
+
+  [33m1   [39m[39;1mtests/Feature/Api/V1/CheckybotControlApiTest.php[39;22m:[39;1m343[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api preser…   
+[39;1m  Expecting null not to be null .[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m389[39m
+    385▕     $monitor->refresh();
+    386▕ 
+    387▕     expect($monitor->current_status)->toBe('healthy')
+    388▕         ->and($monitor->status_summary)->toBe('Null assertion target is healthy.')
+  ➜ 389▕         ->and($monitor->last_heartbeat_at)->not->toBeNull()
+    390▕         ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+    391▕         ->and($monitor->stale_at)->not->toBeNull()
+    392▕         ->and($monitor->diagnostic_queued_at)->not->toBeNull()
+    393▕         ->and($monitor->assertions()->sole()->expected_value)->toBeNull();
+
+  [33m1   [39m[39;1mtests/Feature/Api/V1/CheckybotControlApiTest.php[39;22m:[39;1m389[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api websit…   
+[39;1m  Failed asserting that a row in the table [websites] matches the attributes {
+    "project_id": 1,
+    "package_name": "homepage",
+    "url": "https:\/\/disabled.scrappa.test",
+    "uptime_check": false,
+    "ssl_check": false,
+    "package_interval": null,
+    "current_status": "unknown",
+    "status_summary": "Disabled by Checkybot control API.",
+    "last_heartbeat_at": null,
+    "awaiting_heartbeat_since": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null
+}.
+
+Found similar results: [
+    {
+        "project_id": 1,
+        "package_name": "homepage",
+        "url": "https:\/\/disabled.scrappa.test",
+        "uptime_check": 0,
+        "ssl_check": 0,
+        "package_interval": null,
+        "current_status": "unknown",
+        "status_summary": "Disabled by Checkybot control API.",
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"awaiting_heartbeat_since\"": "awaiting_heartbeat_since",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m492[39m
+    488▕         ->assertJsonPath('data.check.enabled', false)
+    489▕         ->assertJsonPath('data.check.check_types', [])
+    490▕         ->assertJsonPath('data.check.status_summary', 'Disabled by Checkybot control API.');
+    491▕ 
+  ➜ 492▕     $this->assertDatabaseHas('websites', [
+    493▕         'project_id' => $this->project->id,
+    494▕         'package_name' => 'homepage',
+    495▕         'url' => 'https://disabled.scrappa.test',
+    496▕         'uptime_check' => false,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api disabl…   
+[39;1m  Failed asserting that a row in the table [monitor_apis] matches the attributes {
+    "id": 1,
+    "is_enabled": false,
+    "last_heartbeat_at": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null,
+    "deleted_at": null
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "is_enabled": 0,
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null,
+        "deleted_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m738[39m
+    734▕         ->assertOk()
+    735▕         ->assertJsonPath('data.enabled', false)
+    736▕         ->assertJsonPath('data.status', 'unknown');
+    737▕ 
+  ➜ 738▕     $this->assertDatabaseHas('monitor_apis', [
+    739▕         'id' => $monitor->id,
+    740▕         'is_enabled' => false,
+    741▕         'last_heartbeat_at' => null,
+    742▕         'stale_at' => null,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api disabl…   
+[39;1m  Failed asserting that a row in the table [websites] matches the attributes {
+    "id": 1,
+    "uptime_check": false,
+    "ssl_check": false,
+    "current_status": "unknown",
+    "last_heartbeat_at": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "uptime_check": 0,
+        "ssl_check": 0,
+        "current_status": "unknown",
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m792[39m
+    788▕         ->assertJsonPath('data.check_types', [])
+    789▕         ->assertJsonPath('data.status', 'unknown')
+    790▕         ->assertJsonPath('data.status_summary', 'Disabled by Checkybot control API.');
+    791▕ 
+  ➜ 792▕     $this->assertDatabaseHas('websites', [
+    793▕         'id' => $website->id,
+    794▕         'uptime_check' => false,
+    795▕         'ssl_check' => false,
+    796▕         'current_status' => 'unknown',
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api disabl…   
+[39;1m  Failed asserting that a row in the table [project_components] matches the attributes {
+    "id": 1,
+    "is_archived": true,
+    "project_paused_monitoring": false,
+    "archive_reason": "user",
+    "current_status": "unknown",
+    "last_reported_status": "unknown",
+    "summary": "Disabled by Checkybot control API.",
+    "last_heartbeat_at": null,
+    "stale_detected_at": null,
+    "is_stale": false
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "is_archived": 1,
+        "project_paused_monitoring": 0,
+        "archive_reason": "user",
+        "current_status": "unknown",
+        "last_reported_status": "unknown",
+        "summary": "Disabled by Checkybot control API.",
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_detected_at\"": "stale_detected_at",
+        "\"is_stale\"": "is_stale"
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m838[39m
+    834▕         ->assertJsonPath('data.status_summary', 'Disabled by Checkybot control API.')
+    835▕         ->assertJsonPath('data.delivery_state', 'archived')
+    836▕         ->assertJsonPath('data.is_archived', true);
+    837▕ 
+  ➜ 838▕     $this->assertDatabaseHas('project_components', [
+    839▕         'id' => $component->id,
+    840▕         'is_archived' => true,
+    841▕         'project_paused_monitoring' => false,
+    842▕         'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api queues…   
+[39;1m  Failed asserting that a row in the table [website_log_history] does not match the attributes {
+    "website_id": 1
+}.
+
+Found similar results: [
+    {
+        "website_id": 1
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m1015[39m
+    1011▕             && $job->onDemand === true
+    1012▕             && $job->diagnosticRunId !== '';
+    1013▕     });
+    1014▕ 
+  ➜ 1015▕     $this->assertDatabaseMissing('website_log_history', [
+    1016▕         'website_id' => $website->id,
+    1017▕     ]);
+    1018▕ });
+    1019▕
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api trigge…   
+[39;1m  Expecting null not to be null .[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m1098[39m
+    1094▕ 
+    1095▕     $monitor->refresh();
+    1096▕ 
+    1097▕     expect($monitor->current_status)->toBe('danger')
+  ➜ 1098▕         ->and($monitor->last_heartbeat_at)->not->toBeNull();
+    1099▕ 
+    1100▕     $this->withToken($this->apiKey->key)
+    1101▕         ->getJson('/api/v1/control/failures?project=scrappa')
+    1102▕         ->assertOk()
+
+  [33m1   [39m[39;1mtests/Feature/Api/V1/CheckybotControlApiTest.php[39;22m:[39;1m1098[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api projec…   
+[39;1m  Failed asserting that 3 is identical to 1.[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m1654[39m
+    1650▕ 
+    1651▕     $this->withToken($this->apiKey->key)
+    1652▕         ->getJson('/api/v1/control/projects/scrappa')
+    1653▕         ->assertOk()
+  ➜ 1654▕         ->assertJsonPath('data.status_counts.healthy', 1)
+    1655▕         ->assertJsonPath('data.status_counts.danger', 2)
+    1656▕         ->assertJsonPath('data.status_counts.disabled', 1);
+    1657▕ });
+    1658▕
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\CheckybotControlApiTest[22m [90m>[39m control api projec…   
+[39;1m  Failed asserting that null is identical to 1.[39;22m
+
+  at [32mtests/Feature/Api/V1/CheckybotControlApiTest.php[39m:[32m1996[39m
+    1992▕         ->assertJsonPath('data.archived_components_count', 1)
+    1993▕         ->assertJsonPath('data.status_counts.healthy', 1)
+    1994▕         ->assertJsonPath('data.status_counts.warning', 1)
+    1995▕         ->assertJsonPath('data.status_counts.danger', 1)
+  ➜ 1996▕         ->assertJsonPath('data.status_counts.unknown', 1)
+    1997▕         ->assertJsonPath('data.status_counts.disabled', 1);
+    1998▕ });
+    1999▕ 
+    2000▕ test('control api scopes projects to the api key owner', function () {
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sync resets api li…   
+[39;1m  Failed asserting that a row in the table [monitor_apis] matches the attributes {
+    "id": 1,
+    "url": "https:\/\/api.scrappa.co\/api\/google-maps\/v2\/search",
+    "http_method": "POST",
+    "expected_status": 201,
+    "current_status": "pending",
+    "status_summary": null,
+    "last_heartbeat_at": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "url": "https:\/\/api.scrappa.co\/api\/google-maps\/v2\/search",
+        "http_method": "POST",
+        "expected_status": 201,
+        "current_status": "pending",
+        "status_summary": null,
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/PackageSyncTest.php[39m:[32m461[39m
+    457▕ 
+    458▕     $response->assertOk()
+    459▕         ->assertJsonPath('data.summary.updated', 1);
+    460▕ 
+  ➜ 461▕     $this->assertDatabaseHas('monitor_apis', [
+    462▕         'id' => $monitor->id,
+    463▕         'url' => 'https://api.scrappa.co/api/google-maps/v2/search',
+    464▕         'http_method' => 'POST',
+    465▕         'expected_status' => 201,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sy… [41;1m QueryException [49;22m  
+[39;1m  SQLSTATE[HY000]: General error: 1 no such column: last_heartbeat_at (Connection: sqlite, SQL: update "monitor_apis" set "last_heartbeat_at" = 2026-05-15 14:55:52, "stale_at" = 2026-05-15 15:50:52, "diagnostic_queued_at" = 2026-05-15 15:55:52, "updated_at" = 2026-05-15 15:55:52 where "package_name" = google-maps-search and "monitor_apis"."deleted_at" is null)[39;22m
+
+  at [32mvendor/laravel/framework/src/Illuminate/Database/Connection.php[39m:[32m591[39m
+    587▕ 
+    588▕             // For update or delete statements, we want to get the number of rows affected
+    589▕             // by the statement and return that back to the developer. We'll first need
+    590▕             // to execute the statement and then we'll use PDO to fetch the affected.
+  ➜ 591▕             $statement = $this->getPdo()->prepare($query);
+    592▕ 
+    593▕             $this->bindValues($statement, $this->prepareBindings($bindings));
+    594▕ 
+    595▕             $statement->execute();
+
+      [2m+7 vendor frames [22m
+  [33m8   [39m[39;1mtests/Feature/Api/V1/PackageSyncTest.php[39;22m:[39;1m534[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sy… [41;1m QueryException [49;22m  
+[39;1m  SQLSTATE[HY000]: General error: 1 no such column: last_heartbeat_at (Connection: sqlite, SQL: update "websites" set "last_heartbeat_at" = 2026-05-15 14:55:53, "stale_at" = 2026-05-15 15:50:53, "diagnostic_queued_at" = 2026-05-15 15:55:53, "updated_at" = 2026-05-15 15:55:53 where "package_name" = certificate and "websites"."deleted_at" is null)[39;22m
+
+  at [32mvendor/laravel/framework/src/Illuminate/Database/Connection.php[39m:[32m591[39m
+    587▕ 
+    588▕             // For update or delete statements, we want to get the number of rows affected
+    589▕             // by the statement and return that back to the developer. We'll first need
+    590▕             // to execute the statement and then we'll use PDO to fetch the affected.
+  ➜ 591▕             $statement = $this->getPdo()->prepare($query);
+    592▕ 
+    593▕             $this->bindValues($statement, $this->prepareBindings($bindings));
+    594▕ 
+    595▕             $statement->execute();
+
+      [2m+7 vendor frames [22m
+  [33m8   [39m[39;1mtests/Feature/Api/V1/PackageSyncTest.php[39;22m:[39;1m1083[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sync resets websit…   
+[39;1m  Failed asserting that a row in the table [websites] matches the attributes {
+    "id": 1,
+    "url": "https:\/\/api.scrappa.co\/status",
+    "current_status": "pending",
+    "status_summary": null,
+    "last_heartbeat_at": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "url": "https:\/\/api.scrappa.co\/status",
+        "current_status": "pending",
+        "status_summary": null,
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/PackageSyncTest.php[39m:[32m1174[39m
+    1170▕ 
+    1171▕     $response->assertOk()
+    1172▕         ->assertJsonPath('data.summary.uptime_checks.updated', 1);
+    1173▕ 
+  ➜ 1174▕     $this->assertDatabaseHas('websites', [
+    1175▕         'id' => $website->id,
+    1176▕         'url' => 'https://api.scrappa.co/status',
+    1177▕         'current_status' => 'pending',
+    1178▕         'status_summary' => null,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness desc…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Stale'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m15[39m
+     11▕         'last_heartbeat_at' => now()->subMinutes(2),
+     12▕         'stale_at' => now()->subMinute(),
+     13▕     ];
+     14▕ 
+  ➜  15▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+     16▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Expired 1 minute ago.');
+     17▕ });
+     18▕ 
+     19▕ test('freshness evidence stays stale when interval cannot be parsed but stale_at exists', function () {
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m15[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Stale'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m28[39m
+     24▕         'last_heartbeat_at' => now()->subMinutes(30),
+     25▕         'stale_at' => now()->subMinutes(4),
+     26▕     ];
+     27▕ 
+  ➜  28▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+     29▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Expired 4 minutes ago.');
+     30▕ });
+     31▕ 
+     32▕ test('freshness evidence marks unparsable intervals without stale_at as schedule unknown', function () {
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m28[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Expired 2 minutes ago.'[39m[39;1m
+  [39;22m[32m+'Due 2 minutes ago.'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m89[39m
+     85▕         'stale_at' => null,
+     86▕     ];
+     87▕ 
+     88▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+  ➜  89▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Expired 2 minutes ago.')
+     90▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Due now')
+     91▕         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Overdue 2 minutes ago');
+     92▕ });
+     93▕
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m89[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Awaiting heartbeat'[39m[39;1m
+  [39;22m[32m+'Stale'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m105[39m
+    101▕         'created_at' => now()->subHour(),
+    102▕         'stale_at' => null,
+    103▕     ];
+    104▕ 
+  ➜ 105▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Awaiting heartbeat')
+    106▕         ->and(PackageCheckTableEvidence::staleThresholdAt($record)?->toDateTimeString())->toBe('2026-04-24 12:03:00')
+    107▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Awaiting first run');
+    108▕ });
+    109▕
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m105[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Fresh'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m152[39m
+    148▕         'last_heartbeat_at' => now()->subMinute(),
+    149▕         'stale_at' => null,
+    150▕     ];
+    151▕ 
+  ➜ 152▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+    153▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Scheduled');
+    154▕ })->with([
+    155▕     'uptime only' => [true, false],
+    156▕     'ssl only' => [false, true],
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m152[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Fresh'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m152[39m
+    148▕         'last_heartbeat_at' => now()->subMinute(),
+    149▕         'stale_at' => null,
+    150▕     ];
+    151▕ 
+  ➜ 152▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+    153▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Scheduled');
+    154▕ })->with([
+    155▕     'uptime only' => [true, false],
+    156▕     'ssl only' => [false, true],
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m152[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Fresh'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m168[39m
+    164▕         'last_heartbeat_at' => now()->subMinutes(5),
+    165▕         'stale_at' => null,
+    166▕     ];
+    167▕ 
+  ➜ 168▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+    169▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toContain('Expires');
+    170▕ });
+    171▕ 
+    172▕ test('due description flags missing schedules as risky legacy behavior', function () {
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m168[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m due descriptio…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Due now'[39m[39;1m
+  [39;22m[32m+'Schedule invalid'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m192[39m
+    188▕         'last_heartbeat_at' => now()->subMinutes(7),
+    189▕         'stale_at' => null,
+    190▕     ];
+    191▕ 
+  ➜ 192▕     expect(PackageCheckTableEvidence::dueState($record))->toBe('Due now')
+    193▕         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Overdue')
+    194▕         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Expected every 5m');
+    195▕ });
+    196▕
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m192[39;22m
+
+
+  [90mTests:[39m    [31;1m23 failed[39;22m[90m,[39m[39m [39m[32;1m150 passed[39;22m[90m (978 assertions)[39m
+  [90mDuration:[39m [39m9.76s[39m
+```
+
+## Verification Failed
+
+```
+[30;42;1m PASS [39;49;22m[39m Tests\Feature\Api\V1\CheckybotControlApiTest[39m
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires a valid api key and exposes me details[39m[90m         [39m [90m0.45s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api lists projects and package managed checks with compact[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api exposes setup verification states on project payloads[39m[90m   [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api upserts checks by stable key and redacts encrypted head[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api resets api live health when target-defining settings ch[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api resets api live health when assertions change[39m[90m           [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api preserves api live health when null expected value asse[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api upserts package managed website uptime and ssl checks[39m[90m   [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api website upserts default to uptime and can disable the w[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects website uptime schedules unsupported by the upt[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects website schedules specified in seconds[39m[90m          [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api accepts http urls and package relative paths for check[39m[90m… [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects malformed and unsupported check urls with datas[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api normalizes surrounding whitespace before storing check[39m[90m… [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects invalid regex assertion patterns[39m[90m                [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects array expected values for comparison assertions[39m[90m [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api defaults missing api schedules to the safe polling inte[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api defaults blank api schedules to the safe polling interv[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api preserves existing schedules when update payload omits[39m[90m… [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api disables checks without deleting data[39m[90m                   [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api disables listed website checks by package key[39m[90m           [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api disables listed component checks by name[39m[90m                [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires type when disabling an ambiguous check key[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires type when triggering an ambiguous runnable che[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api accepts type to trigger the intended check surface for[39m[90m… [39m [90m0.07s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api queues listed website checks by package key[39m[90m             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api reports already queued website diagnostic runs without[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects disabled website diagnostic runs[39m[90m                [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api triggers a manual check run that updates live status wi[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api excludes diagnostic API rows from latest failures[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api latest failures only returns currently failing latest s[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api latest failures includes api and website failures only[39m[90m  [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api latest failures excludes recovered website rows[39m[90m         [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api manual check run sends failure notifications[39m[90m            [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api manual check run sends recovery notifications[39m[90m           [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api returns project detail and recent runs[39m[90m                  [39m [90m0.07s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api result payloads include safe api failure evidence[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api redacts top-level raw response body strings[39m[90m             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api result evidence preserves null bodies and truncates lon[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project status counts exclude disabled checks and repor[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project status counts use current live check health[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project summaries include package managed website check[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api returns latest result for each listed check[39m[90m             [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api lists queued diagnostic state and latest diagnostic evi[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api lists component checks without heartbeat evidence[39m[90m       [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api list checks omits removed non-server heartbeat fields f[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project summaries include active component counts and s[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api scopes projects to the api key owner[39m[90m                    [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api queues all enabled project checks as a diagnostic batch[39m[90m [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api skips already queued project diagnostics when creating[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api reports already queued when every project diagnostic is[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api returns queued project diagnostic batch status[39m[90m          [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api batch status lookup is scoped by stable metadata instea[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api scopes diagnostic batch status to the project owner and[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api project run reports when there are no enabled checks to[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mqueued project manual jobs send notifications for check status tran[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api trigger runs respect stored method and expected status[39m[90m  [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects disabled check runs and relative urls without a[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects invalid schedules[39m[90m                               [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api requires body type when request body is provided[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api limits request body size[39m[90m                                [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects unstructured json and form request bodies[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol api rejects non string raw request bodies[39m[90m                   [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint lists tools and calls the shared control surface[39m[90m       [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp upsert check creates package managed website checks[39m[90m             [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp disable check accepts type to resolve ambiguous check keys[39m[90m      [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp latest failures tool includes website failures and omits compon[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp recent runs tool includes api and website diagnostics only[39m[90m      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects invalid schedules with a field validation erro[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects website uptime schedules unsupported by the up[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects malformed and unsupported check urls before up[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects malformed and unsupported check urls before up[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects malformed and unsupported check urls before up[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects invalid regex assertion patterns[39m[90m               [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint requires body type when request body is provided[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects unstructured json request body[39m[90m                 [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mmcp endpoint rejects non string raw request body[39m[90m                    [39m [90m0.06s[39m  
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Feature\Api\V1\PackageSyncTest[39m
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires a valid api key[39m[90m                               [39m [90m0.08s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync creates a project and api check definitions[39m[90m            [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects invalid regex assertion patterns[39m[90m               [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects non server runtime health fields[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects array expected values for comparison assertion[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync defaults missing api schedules to the safe polling int[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync defaults blank api schedules to the safe polling inter[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync is idempotent and updates by stable keys[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync does not count unchanged existing checks as updated[39m[90m    [39m [90m0.07s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync counts changed assertions as an api update[39m[90m             [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync resets api live health to pending when target-defining[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync persists api failed response body preference[39m[90m           [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync encrypts header values and does not return them[39m[90m        [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync archives missing package api checks and preserves hist[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync returns validation errors for malformed payloads[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects malformed and unsupported check urls before st[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects invalid schedules[39m[90m                              [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects invalid failed response body preference[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires body type when a request body is provided[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync limits request body size[39m[90m                               [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects unstructured json and form request bodies[39m[90m      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync accepts raw string request bodies[39m[90m                      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects non string raw request bodies[39m[90m                  [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync allows request bodies at the configured size limit[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects non string schedules without throwing[39m[90m          [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync creates website backed uptime and ssl check definition[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync treats absolute website urls case insensitively[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key index does not constrain manual websites[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key index rejects duplicate package rows[39m[90m            [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration keeps active duplicates and reassigns[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration keeps a project foreign key index bef[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration merges split duplicate check flags[39m[90m    [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage website key migration ignores soft deleted duplicates when[39m[90m… [39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync updates and archives missing website checks by stable[39m[90m… [39m [90m0.06s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mpackage sync resets website live health to pending when url changes[39m[90m [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync restores soft deleted website checks when re-added[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync does not inherit uptime flag when restoring a deleted[39m[90m… [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync allows uptime and ssl checks to share a key through th[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage shared uptime and ssl key can be read as the primary uptime[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync accepts equivalent normalized urls for shared uptime a[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects shared uptime and ssl keys with different urls[39m[90m [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects shared uptime and ssl keys with different name[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects duplicate keys within the same check type[39m[90m      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects shared keys outside the uptime ssl pair[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync service preserves website flags when uptime and ssl sh[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync keeps package interval while a shared-key website chec[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync recalculates package interval when ssl is removed from[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync uses uptime interval for shared-key package stale dete[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync keeps status while a shared-key website check remains[39m[90m… [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects check types that are not implemented by the pa[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires valid schedules for uptime and ssl checks[39m[90m     [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync requires schedule keys for uptime and ssl checks[39m[90m       [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync rejects website schedules that cannot be executed as c[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync can claim an existing project by identity endpoint fal[39m[90m…[39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync restores soft deleted api checks when re-added[39m[90m         [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync replaces assertions when a check changes[39m[90m               [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync lets checks suppress default headers with null values[39m[90m  [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync lets checks override default headers case insensitivel[39m[90m…[39m [90m0.05s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Commands\MarkStalePackageChecksTest[39m
+  [32;1m✓[39;22m[90m [39m[90mdeprecated package stale command does not mutate package managed ch[39m[90m…[39m [90m0.07s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Services\PackageHealthStatusServiceTest[39m
+  [32;1m✓[39;22m[90m [39m[90mapi status treats matching expected 404 as healthy[39m[90m                  [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mapi status treats matching expected status with failed assertions a[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mapi status treats non-matching expected 201 as warning[39m[90m              [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mstale detection waits until after the exact interval boundary[39m[90m       [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mssl status treats certificates expired earlier today as danger[39m[90m      [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcombined website status uses the worst http or ssl state[39m[90m            [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mworst status logs unknown status values[39m[90m                             [39m [90m0.05s[39m  
+
+  [30;42;1m PASS [39;49;22m[39m Tests\Unit\Services\PackageManagedScheduleValidationTest[39m
+  [32;1m✓[39;22m[90m [39m[90mcontrol service converts invalid schedules into validation errors[39m[90m   [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync service converts invalid schedules into validation err[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mcontrol service defaults missing schedules to safe api interval[39m[90m     [39m [90m0.06s[39m  
+  [32;1m✓[39;22m[90m [39m[90mpackage sync service defaults missing api schedules to safe interva[39m[90m…[39m [90m0.05s[39m  
+
+  [39;41;1m FAIL [39;49;22m[39m Tests\Unit\Support\PackageCheckTableEvidenceTest[39m
+  [31;1m⨯[39;22m[90m [39m[90mfreshness description uses stale_at when stale is flagged before th[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence stays stale when interval cannot be parsed but s[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence marks unparsable intervals without stale_at as s[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdisplay interval uses scheduler rounded minutes for second based in[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence marks blank intervals as schedule unknown[39m[90m        [39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence uses created at while waiting for the first pack[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence marks never-run package checks stale after their[39m[90m…[39m [90m0.07s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence uses awaiting heartbeat reset time before create[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence treats disabled api monitors as disabled instead[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mfreshness evidence treats package websites with no enabled checks a[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence does not disable package websites while one chec[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence does not disable package websites while one chec[39m[90m…[39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mfreshness evidence stays fresh at the exact stale boundary until ba[39m[90m…[39m [90m0.05s[39m  
+  [32;1m✓[39;22m[90m [39m[90mdue description flags missing schedules as risky legacy behavior[39m[90m    [39m [90m0.05s[39m  
+  [31;1m⨯[39;22m[90m [39m[90mdue description marks overdue monitors as due now[39m[90m                   [39m [90m0.05s[39m  
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sync resets api li…   
+[39;1m  Failed asserting that a row in the table [monitor_apis] matches the attributes {
+    "id": 1,
+    "url": "https:\/\/api.scrappa.co\/api\/google-maps\/v2\/search",
+    "http_method": "POST",
+    "expected_status": 201,
+    "current_status": "pending",
+    "status_summary": null,
+    "last_heartbeat_at": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "url": "https:\/\/api.scrappa.co\/api\/google-maps\/v2\/search",
+        "http_method": "POST",
+        "expected_status": 201,
+        "current_status": "pending",
+        "status_summary": null,
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/PackageSyncTest.php[39m:[32m461[39m
+    457▕ 
+    458▕     $response->assertOk()
+    459▕         ->assertJsonPath('data.summary.updated', 1);
+    460▕ 
+  ➜ 461▕     $this->assertDatabaseHas('monitor_apis', [
+    462▕         'id' => $monitor->id,
+    463▕         'url' => 'https://api.scrappa.co/api/google-maps/v2/search',
+    464▕         'http_method' => 'POST',
+    465▕         'expected_status' => 201,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sy… [41;1m QueryException [49;22m  
+[39;1m  SQLSTATE[HY000]: General error: 1 no such column: last_heartbeat_at (Connection: sqlite, SQL: update "monitor_apis" set "last_heartbeat_at" = 2026-05-15 15:02:20, "stale_at" = 2026-05-15 15:57:20, "diagnostic_queued_at" = 2026-05-15 16:02:20, "updated_at" = 2026-05-15 16:02:20 where "package_name" = google-maps-search and "monitor_apis"."deleted_at" is null)[39;22m
+
+  at [32mvendor/laravel/framework/src/Illuminate/Database/Connection.php[39m:[32m591[39m
+    587▕ 
+    588▕             // For update or delete statements, we want to get the number of rows affected
+    589▕             // by the statement and return that back to the developer. We'll first need
+    590▕             // to execute the statement and then we'll use PDO to fetch the affected.
+  ➜ 591▕             $statement = $this->getPdo()->prepare($query);
+    592▕ 
+    593▕             $this->bindValues($statement, $this->prepareBindings($bindings));
+    594▕ 
+    595▕             $statement->execute();
+
+      [2m+7 vendor frames [22m
+  [33m8   [39m[39;1mtests/Feature/Api/V1/PackageSyncTest.php[39;22m:[39;1m534[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sy… [41;1m QueryException [49;22m  
+[39;1m  SQLSTATE[HY000]: General error: 1 no such column: last_heartbeat_at (Connection: sqlite, SQL: update "websites" set "last_heartbeat_at" = 2026-05-15 15:02:21, "stale_at" = 2026-05-15 15:57:21, "diagnostic_queued_at" = 2026-05-15 16:02:21, "updated_at" = 2026-05-15 16:02:21 where "package_name" = certificate and "websites"."deleted_at" is null)[39;22m
+
+  at [32mvendor/laravel/framework/src/Illuminate/Database/Connection.php[39m:[32m591[39m
+    587▕ 
+    588▕             // For update or delete statements, we want to get the number of rows affected
+    589▕             // by the statement and return that back to the developer. We'll first need
+    590▕             // to execute the statement and then we'll use PDO to fetch the affected.
+  ➜ 591▕             $statement = $this->getPdo()->prepare($query);
+    592▕ 
+    593▕             $this->bindValues($statement, $this->prepareBindings($bindings));
+    594▕ 
+    595▕             $statement->execute();
+
+      [2m+7 vendor frames [22m
+  [33m8   [39m[39;1mtests/Feature/Api/V1/PackageSyncTest.php[39;22m:[39;1m1083[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Feature\Api\V1\PackageSyncTest[22m [90m>[39m package sync resets websit…   
+[39;1m  Failed asserting that a row in the table [websites] matches the attributes {
+    "id": 1,
+    "url": "https:\/\/api.scrappa.co\/status",
+    "current_status": "pending",
+    "status_summary": null,
+    "last_heartbeat_at": null,
+    "stale_at": null,
+    "diagnostic_queued_at": null
+}.
+
+Found similar results: [
+    {
+        "id": 1,
+        "url": "https:\/\/api.scrappa.co\/status",
+        "current_status": "pending",
+        "status_summary": null,
+        "\"last_heartbeat_at\"": "last_heartbeat_at",
+        "\"stale_at\"": "stale_at",
+        "diagnostic_queued_at": null
+    }
+].[39;22m
+
+  at [32mtests/Feature/Api/V1/PackageSyncTest.php[39m:[32m1174[39m
+    1170▕ 
+    1171▕     $response->assertOk()
+    1172▕         ->assertJsonPath('data.summary.uptime_checks.updated', 1);
+    1173▕ 
+  ➜ 1174▕     $this->assertDatabaseHas('websites', [
+    1175▕         'id' => $website->id,
+    1176▕         'url' => 'https://api.scrappa.co/status',
+    1177▕         'current_status' => 'pending',
+    1178▕         'status_summary' => null,
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness desc…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Stale'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m15[39m
+     11▕         'last_heartbeat_at' => now()->subMinutes(2),
+     12▕         'stale_at' => now()->subMinute(),
+     13▕     ];
+     14▕ 
+  ➜  15▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+     16▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Expired 1 minute ago.');
+     17▕ });
+     18▕ 
+     19▕ test('freshness evidence stays stale when interval cannot be parsed but stale_at exists', function () {
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m15[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Stale'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m28[39m
+     24▕         'last_heartbeat_at' => now()->subMinutes(30),
+     25▕         'stale_at' => now()->subMinutes(4),
+     26▕     ];
+     27▕ 
+  ➜  28▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+     29▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Expired 4 minutes ago.');
+     30▕ });
+     31▕ 
+     32▕ test('freshness evidence marks unparsable intervals without stale_at as schedule unknown', function () {
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m28[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Expired 2 minutes ago.'[39m[39;1m
+  [39;22m[32m+'Due 2 minutes ago.'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m89[39m
+     85▕         'stale_at' => null,
+     86▕     ];
+     87▕ 
+     88▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Stale')
+  ➜  89▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toBe('Expired 2 minutes ago.')
+     90▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Due now')
+     91▕         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Overdue 2 minutes ago');
+     92▕ });
+     93▕
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m89[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Awaiting heartbeat'[39m[39;1m
+  [39;22m[32m+'Stale'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m105[39m
+    101▕         'created_at' => now()->subHour(),
+    102▕         'stale_at' => null,
+    103▕     ];
+    104▕ 
+  ➜ 105▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Awaiting heartbeat')
+    106▕         ->and(PackageCheckTableEvidence::staleThresholdAt($record)?->toDateTimeString())->toBe('2026-04-24 12:03:00')
+    107▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Awaiting first run');
+    108▕ });
+    109▕
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m105[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Fresh'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m152[39m
+    148▕         'last_heartbeat_at' => now()->subMinute(),
+    149▕         'stale_at' => null,
+    150▕     ];
+    151▕ 
+  ➜ 152▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+    153▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Scheduled');
+    154▕ })->with([
+    155▕     'uptime only' => [true, false],
+    156▕     'ssl only' => [false, true],
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m152[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Fresh'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m152[39m
+    148▕         'last_heartbeat_at' => now()->subMinute(),
+    149▕         'stale_at' => null,
+    150▕     ];
+    151▕ 
+  ➜ 152▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+    153▕         ->and(PackageCheckTableEvidence::dueState($record))->toBe('Scheduled');
+    154▕ })->with([
+    155▕     'uptime only' => [true, false],
+    156▕     'ssl only' => [false, true],
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m152[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m freshness evid…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Fresh'[39m[39;1m
+  [39;22m[32m+'Schedule unknown'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m168[39m
+    164▕         'last_heartbeat_at' => now()->subMinutes(5),
+    165▕         'stale_at' => null,
+    166▕     ];
+    167▕ 
+  ➜ 168▕     expect(PackageCheckTableEvidence::freshnessState($record))->toBe('Fresh')
+    169▕         ->and(PackageCheckTableEvidence::freshnessDescription($record))->toContain('Expires');
+    170▕ });
+    171▕ 
+    172▕ test('due description flags missing schedules as risky legacy behavior', function () {
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m168[39;22m
+
+  [31m────────────────────────────────────────────────────────────────────────────[39m  
+  [41;1m FAILED [49;22m [1mTests\Unit\Support\PackageCheckTableEvidenceTest[22m [90m>[39m due descriptio…   
+[39;1m  Failed asserting that two strings are identical.
+  [39;22m[31m-'Due now'[39m[39;1m
+  [39;22m[32m+'Schedule invalid'[39m[39;1m
+  [39;22m
+
+  at [32mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39m:[32m192[39m
+    188▕         'last_heartbeat_at' => now()->subMinutes(7),
+    189▕         'stale_at' => null,
+    190▕     ];
+    191▕ 
+  ➜ 192▕     expect(PackageCheckTableEvidence::dueState($record))->toBe('Due now')
+    193▕         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Overdue')
+    194▕         ->and(PackageCheckTableEvidence::dueDescription($record))->toContain('Expected every 5m');
+    195▕ });
+    196▕
+
+  [33m1   [39m[39;1mtests/Unit/Support/PackageCheckTableEvidenceTest.php[39;22m:[39;1m192[39;22m
+
+
+  [90mTests:[39m    [31;1m12 failed[39;22m[90m,[39m[39m [39m[32;1m161 passed[39;22m[90m (984 assertions)[39m
+  [90mDuration:[39m [39m10.01s[39m
+```
+## 2026-05-15 - SLICE-6
+- Repaired stale unit and package sync test expectations after non-server heartbeat/stale columns were removed.
+- Confirmed the previously reported `CheckybotControlApiTest` failures no longer reproduce on the current checkout.
+- Files changed: `tests/Unit/Support/PackageCheckTableEvidenceTest.php`, `tests/Feature/Api/V1/PackageSyncTest.php`, and `.ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Package table due/freshness evidence now reads latest real scheduled result/log relations; legacy `last_heartbeat_at`, `stale_at`, and `awaiting_heartbeat_since` test fixtures should not be used for non-server checks.
+  - Assertions against removed columns in migrated tables can show up as quoted pseudo-columns in SQLite failure output; remove those expectations instead of preserving compatibility fields.
+---

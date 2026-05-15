@@ -117,9 +117,7 @@ test('package sync creates a project and api check definitions', function () {
     $project = Project::query()->findOrFail($projectId);
 
     expect($monitor->current_status)->toBe('pending')
-        ->and($monitor->last_heartbeat_at)->toBeNull()
         ->and($monitor->awaiting_heartbeat_since)->toBeNull()
-        ->and($monitor->stale_at)->toBeNull()
         ->and($monitor->headers)->toBe([
             'Accept' => 'application/json',
             'Authorization' => 'Bearer default-secret',
@@ -432,8 +430,6 @@ test('package sync resets api live health to pending when target-defining settin
     $monitor->forceFill([
         'current_status' => 'healthy',
         'status_summary' => 'Previous target was healthy.',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => now()->addMinutes(8),
         'diagnostic_queued_at' => now(),
     ])->save();
 
@@ -465,8 +461,6 @@ test('package sync resets api live health to pending when target-defining settin
         'expected_status' => 201,
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
@@ -532,8 +526,6 @@ test('package sync archives missing package api checks and preserves history', f
     MonitorApis::query()
         ->where('package_name', 'google-maps-search')
         ->update([
-            'last_heartbeat_at' => now()->subHour(),
-            'stale_at' => now()->subMinutes(5),
             'diagnostic_queued_at' => now(),
         ]);
 
@@ -550,8 +542,6 @@ test('package sync archives missing package api checks and preserves history', f
 
     expect($monitor->trashed())->toBeTrue()
         ->and($monitor->is_enabled)->toBeFalse()
-        ->and($monitor->last_heartbeat_at)->toBeNull()
-        ->and($monitor->stale_at)->toBeNull()
         ->and($monitor->diagnostic_queued_at)->toBeNull();
 });
 
@@ -1081,8 +1071,6 @@ test('package sync updates and archives missing website checks by stable package
     Website::query()
         ->where('package_name', 'certificate')
         ->update([
-            'last_heartbeat_at' => now()->subHour(),
-            'stale_at' => now()->subMinutes(5),
             'diagnostic_queued_at' => now(),
         ]);
 
@@ -1123,8 +1111,6 @@ test('package sync updates and archives missing website checks by stable package
     expect($certificate->trashed())->toBeTrue()
         ->and($certificate->ssl_check)->toBeFalse()
         ->and($certificate->package_interval)->toBeNull()
-        ->and($certificate->last_heartbeat_at)->toBeNull()
-        ->and($certificate->stale_at)->toBeNull()
         ->and($certificate->diagnostic_queued_at)->toBeNull();
 });
 
@@ -1150,8 +1136,6 @@ test('package sync resets website live health to pending when url changes', func
     $website->forceFill([
         'current_status' => 'healthy',
         'status_summary' => 'Previous URL was healthy.',
-        'last_heartbeat_at' => now()->subMinutes(2),
-        'stale_at' => now()->addMinutes(8),
         'diagnostic_queued_at' => now(),
     ])->save();
 
@@ -1176,8 +1160,6 @@ test('package sync resets website live health to pending when url changes', func
         'url' => 'https://api.scrappa.co/status',
         'current_status' => 'pending',
         'status_summary' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
         'diagnostic_queued_at' => null,
     ]);
 
