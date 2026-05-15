@@ -170,11 +170,18 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                 $sslStatus,
                 $sslExpiryDate,
             );
-            $previousStatus = DB::transaction(function () use ($http_status_code, $queuedSslExpiryDate, $speed, $ssl_expiry_date, $sslExpiryDate, $status, $summary, $transportError): ?string {
+            $liveUpdate = DB::transaction(function () use ($http_status_code, $queuedSslExpiryDate, $speed, $ssl_expiry_date, $sslExpiryDate, $status, $summary, $transportError): array {
                 $lockedWebsite = Website::query()
                     ->whereKey($this->website->getKey())
                     ->lockForUpdate()
-                    ->firstOrFail();
+                    ->first();
+
+                if (! $lockedWebsite instanceof Website) {
+                    return [
+                        'updated' => false,
+                        'previous_status' => null,
+                    ];
+                }
 
                 $this->website = $lockedWebsite;
                 $previousStatus = $lockedWebsite->current_status;
@@ -203,8 +210,21 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                     'status_summary' => $summary,
                 ])->save();
 
-                return $previousStatus;
+                return [
+                    'updated' => true,
+                    'previous_status' => $previousStatus,
+                ];
             });
+
+            if (! $liveUpdate['updated']) {
+                Log::info('Skipped uptime/SSL live update because website no longer exists.', [
+                    'website_id' => $this->website->getKey(),
+                ]);
+
+                return;
+            }
+
+            $previousStatus = $liveUpdate['previous_status'];
 
             if (
                 in_array($status, ['warning', 'danger'], true)

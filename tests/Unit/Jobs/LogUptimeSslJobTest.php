@@ -104,6 +104,25 @@ test('on-demand job skips websites disabled after dispatch and clears queued sta
         ->and($website->logHistory()->count())->toBe(0);
 });
 
+test('job skips live update when website is deleted after the outbound request', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+    ]);
+
+    Http::fake(function () use ($website) {
+        $website->delete();
+
+        return Http::response('', 200);
+    });
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    expect(Website::query()->find($website->id))->toBeNull()
+        ->and(WebsiteLogHistory::query()->where('website_id', $website->id)->count())->toBe(0);
+});
+
 test('job creates log history for successful check', function () {
     Http::fake([
         '*' => Http::response('', 200),

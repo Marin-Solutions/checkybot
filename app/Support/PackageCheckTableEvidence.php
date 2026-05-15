@@ -466,9 +466,17 @@ class PackageCheckTableEvidence
     private static function latestScheduledRunAtSql(Builder $query): ?string
     {
         return match ($query->getModel()->getTable()) {
-            'monitor_apis' => '(select max(monitor_api_results.created_at) from monitor_api_results where monitor_api_results.monitor_api_id = monitor_apis.id and monitor_api_results.is_on_demand = 0)',
-            'websites' => '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and website_log_history.is_on_demand = 0)',
+            'monitor_apis' => '(select max(monitor_api_results.created_at) from monitor_api_results where monitor_api_results.monitor_api_id = monitor_apis.id and '.static::scheduledRunPredicate($query, 'monitor_api_results.is_on_demand').')',
+            'websites' => '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and '.static::scheduledRunPredicate($query, 'website_log_history.is_on_demand').')',
             default => null,
+        };
+    }
+
+    private static function scheduledRunPredicate(Builder $query, string $column): string
+    {
+        return match ($query->getModel()->getConnection()->getDriverName()) {
+            'pgsql' => "({$column} is null or {$column} = false)",
+            default => "({$column} is null or {$column} = 0)",
         };
     }
 
