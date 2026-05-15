@@ -50,6 +50,7 @@ class CheckSyncService
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
             $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
+            $wasRestored = false;
             $isEnabled = $check['enabled'] ?? true;
 
             $data = [
@@ -76,10 +77,16 @@ class CheckSyncService
             if ($website) {
                 if ($website->trashed()) {
                     $website->restore();
+                    $wasRestored = true;
                 }
 
+                $configurationChanged = $wasRestored || $this->websiteConfigurationChanged($website, $data);
+
                 $website->update($data);
-                $updated++;
+
+                if ($configurationChanged) {
+                    $updated++;
+                }
             } else {
                 Website::create($data);
                 $created++;
@@ -106,6 +113,7 @@ class CheckSyncService
         foreach ($checks as $check) {
             $website = $existingWebsites->get($check['name']);
             $wasDisabledByMissingPackageSync = $this->wasWebsiteDisabledByMissingPackageSync($website);
+            $wasRestored = false;
             $isEnabled = $check['enabled'] ?? true;
 
             $data = [
@@ -134,10 +142,16 @@ class CheckSyncService
             if ($website) {
                 if ($website->trashed()) {
                     $website->restore();
+                    $wasRestored = true;
                 }
 
+                $configurationChanged = $wasRestored || $this->websiteConfigurationChanged($website, $data);
+
                 $website->update($data);
-                $updated++;
+
+                if ($configurationChanged) {
+                    $updated++;
+                }
             } else {
                 Website::create($data);
                 $created++;
@@ -164,6 +178,7 @@ class CheckSyncService
         foreach ($checks as $check) {
             $monitorApi = $existingApis->get($check['name']);
             $wasDisabledByMissingPackageSync = $this->wasApiDisabledByMissingPackageSync($monitorApi);
+            $wasRestored = false;
             $isEnabled = array_key_exists('enabled', $check)
                 ? ($check['enabled'] ?? true)
                 : ($wasDisabledByMissingPackageSync ? true : ($monitorApi?->is_enabled ?? true));
@@ -207,17 +222,27 @@ class CheckSyncService
             if ($monitorApi) {
                 if ($monitorApi->trashed()) {
                     $monitorApi->restore();
+                    $wasRestored = true;
                 }
 
+                $configurationChanged = $wasRestored || $this->apiConfigurationChanged($monitorApi, $data);
+                $assertionsChanged = $this->apiAssertionsChanged($monitorApi, $check['assertions'] ?? []);
+
                 $monitorApi->update($data);
-                $updated++;
+
+                if ($assertionsChanged) {
+                    $this->syncAssertions($monitorApi, $check['assertions'] ?? []);
+                }
+
+                if ($configurationChanged || $assertionsChanged) {
+                    $updated++;
+                }
             } else {
                 $monitorApi = MonitorApis::create($data);
                 $created++;
                 $existingApis->put($check['name'], $monitorApi);
+                $this->syncAssertions($monitorApi, $check['assertions'] ?? []);
             }
-
-            $this->syncAssertions($monitorApi, $check['assertions'] ?? []);
         }
 
         $deleted = $this->pruneOrphanedApis($project, $checkNames, $syncedAt);
@@ -363,6 +388,24 @@ class CheckSyncService
 
     /**
      * @param  array<string, mixed>  $data
+     */
+    protected function websiteConfigurationChanged(Website $website, array $data): bool
+    {
+        foreach ($data as $field => $value) {
+            if ($field === 'last_synced_at') {
+                continue;
+            }
+
+            if ($website->{$field} != $value) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
      * @param  array<int, array<string, mixed>>  $assertions
      */
     protected function apiTargetChanged(?MonitorApis $monitorApi, array $data, array $assertions): bool
@@ -375,6 +418,51 @@ class CheckSyncService
             || $monitorApi->http_method !== $data['http_method']
             || (int) $monitorApi->expected_status !== (int) $data['expected_status']
             || $this->canonicalExistingAssertions($monitorApi) !== $this->canonicalIncomingLegacyAssertions($assertions);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    protected function apiConfigurationChanged(MonitorApis $monitorApi, array $data): bool
+    {
+        foreach ($data as $field => $value) {
+            if ($field === 'last_synced_at') {
+                continue;
+            }
+
+            $current = match ($field) {
+                'headers' => $monitorApi->headers,
+                'request_body' => $this->normalizeRequestBodyForComparison($monitorApi->request_body),
+                default => $monitorApi->{$field},
+            };
+
+            $incoming = $field === 'request_body'
+                ? $this->normalizeRequestBodyForComparison($value)
+                : $value;
+
+            if ($current != $incoming) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $assertions
+     */
+    protected function apiAssertionsChanged(MonitorApis $monitorApi, array $assertions): bool
+    {
+        return $this->canonicalExistingAssertions($monitorApi) !== $this->canonicalIncomingLegacyAssertions($assertions);
+    }
+
+    protected function normalizeRequestBodyForComparison(mixed $value): mixed
+    {
+        if (is_array($value)) {
+            return json_encode($value);
+        }
+
+        return $value;
     }
 
     /**
