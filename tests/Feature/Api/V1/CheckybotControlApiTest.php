@@ -56,6 +56,117 @@ test('control api requires a valid api key and exposes me details', function () 
         ->assertJsonStructure(['data' => ['server_time']]);
 });
 
+test('control api creates and updates projects by stable key', function () {
+    $created = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'convertr',
+            'name' => 'Convertr',
+            'environment' => 'production',
+            'base_url' => 'https://api.convertr.test',
+            'repository' => 'marin-solutions/convertr',
+            'technology' => 'Laravel',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('message', 'Project created.')
+        ->assertJsonPath('data.created', true)
+        ->assertJsonPath('data.project.key', 'convertr')
+        ->assertJsonPath('data.project.name', 'Convertr')
+        ->assertJsonPath('data.project.environment', 'production')
+        ->assertJsonPath('data.project.base_url', 'https://api.convertr.test')
+        ->assertJsonPath('data.project.repository', 'marin-solutions/convertr');
+
+    $projectId = $created->json('data.project.id');
+
+    $this->assertDatabaseHas('projects', [
+        'id' => $projectId,
+        'created_by' => $this->user->id,
+        'package_key' => 'convertr',
+        'identity_endpoint' => 'https://api.convertr.test',
+        'base_url' => 'https://api.convertr.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'convertr',
+            'name' => 'Convertr API',
+            'environment' => 'production',
+            'base_url' => 'https://api.convertr.test',
+        ])
+        ->assertOk()
+        ->assertJsonPath('message', 'Project updated.')
+        ->assertJsonPath('data.created', false)
+        ->assertJsonPath('data.project.id', $projectId)
+        ->assertJsonPath('data.project.name', 'Convertr API')
+        ->assertJsonPath('data.project.repository', 'marin-solutions/convertr');
+
+    expect(Project::query()->where('package_key', 'convertr')->count())->toBe(1);
+});
+
+test('control api rejects conflicting key and identity endpoint combinations', function () {
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'first-app',
+        'name' => 'First App',
+        'environment' => 'production',
+        'base_url' => 'https://first.test',
+        'identity_endpoint' => 'https://first.test',
+    ]);
+
+    Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'second-app',
+        'name' => 'Second App',
+        'environment' => 'production',
+        'base_url' => 'https://second.test',
+        'identity_endpoint' => 'https://second.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'first-app',
+            'name' => 'Conflicting App',
+            'environment' => 'production',
+            'base_url' => 'https://second.test',
+            'identity_endpoint' => 'https://second.test',
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors('identity_endpoint');
+
+    $this->assertDatabaseHas('projects', [
+        'package_key' => 'first-app',
+        'identity_endpoint' => 'https://first.test',
+    ]);
+    $this->assertDatabaseHas('projects', [
+        'package_key' => 'second-app',
+        'identity_endpoint' => 'https://second.test',
+    ]);
+});
+
+test('control api keeps project creation scoped to api key owner', function () {
+    $otherUser = User::factory()->create();
+    Project::factory()->create([
+        'created_by' => $otherUser->id,
+        'package_key' => 'convertr',
+        'name' => 'Other Convertr',
+        'environment' => 'production',
+        'base_url' => 'https://other-convertr.test',
+        'identity_endpoint' => 'https://other-convertr.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/control/projects', [
+            'key' => 'convertr',
+            'name' => 'Convertr',
+            'environment' => 'production',
+            'base_url' => 'https://api.convertr.test',
+        ])
+        ->assertCreated()
+        ->assertJsonPath('data.project.key', 'convertr');
+
+    expect(Project::query()->where('package_key', 'convertr')->count())->toBe(2)
+        ->and(Project::query()->where('package_key', 'convertr')->where('created_by', $this->user->id)->count())->toBe(1);
+});
+
 test('control api lists projects and package managed checks with compact status', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -2713,6 +2824,7 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         ])
         ->assertOk()
         ->assertJsonPath('result.tools.0.name', 'me')
+        ->assertJsonFragment(['name' => 'create_project'])
         ->assertJsonFragment(['description' => 'Optional check type. Required when multiple check surfaces share the same key.'])
         ->assertJsonFragment(['enum' => ['api', 'component', 'website']])
         ->assertJsonFragment(['name' => 'get_run_batch']);
@@ -2755,6 +2867,56 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
         'url' => 'https://api.scrappa.test/health',
         'package_schedule' => '5m',
         'package_interval' => '5m',
+    ]);
+});
+
+test('mcp create project tool creates projects for later check management', function () {
+    $created = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 19,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'create_project',
+                'arguments' => [
+                    'key' => 'convertr',
+                    'name' => 'Convertr',
+                    'environment' => 'production',
+                    'base_url' => 'https://api.convertr.test',
+                    'repository' => 'marin-solutions/convertr',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.created', true)
+        ->assertJsonPath('result.structuredContent.project.key', 'convertr')
+        ->assertJsonPath('result.structuredContent.project.base_url', 'https://api.convertr.test');
+
+    $projectId = $created->json('result.structuredContent.project.id');
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 20,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_check',
+                'arguments' => [
+                    'project' => 'convertr',
+                    'key' => 'status',
+                    'name' => 'Status',
+                    'url' => '/status',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.check.key', 'status')
+        ->assertJsonPath('result.structuredContent.check.url', 'https://api.convertr.test/status');
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $projectId,
+        'package_name' => 'status',
+        'url' => 'https://api.convertr.test/status',
     ]);
 });
 

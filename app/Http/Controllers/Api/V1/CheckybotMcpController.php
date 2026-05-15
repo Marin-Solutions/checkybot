@@ -110,6 +110,8 @@ class CheckybotMcpController extends Controller
             'checkybot_me' => $this->control->me($user, $apiKey?->name),
             'list_projects',
             'checkybot_list_projects' => $this->control->listProjects($user),
+            'create_project',
+            'checkybot_create_project' => $this->control->createProject($user, $this->validateProjectArguments($arguments)),
             'get_project',
             'checkybot_get_project' => $this->control->getProject($user, $this->requiredString($arguments, 'project')),
             'list_checks',
@@ -287,6 +289,25 @@ class CheckybotMcpController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<string, mixed>
+     */
+    private function validateProjectArguments(array $arguments): array
+    {
+        return Validator::make($arguments, [
+            'key' => ['required', 'string', 'alpha_dash', 'max:100'],
+            'name' => ['required', 'string', 'max:255'],
+            'environment' => ['required', 'string', 'max:255'],
+            'base_url' => ['required', 'url', 'max:1000'],
+            'repository' => ['nullable', 'string', 'max:255'],
+            'group' => ['nullable', 'string', 'max:255'],
+            'technology' => ['nullable', 'string', 'max:255'],
+            'identity_endpoint' => ['nullable', 'url', 'max:1000'],
+            'package_version' => ['nullable', 'string', 'max:50'],
+        ])->validate();
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     private function tools(): array
@@ -294,6 +315,17 @@ class CheckybotMcpController extends Controller
         return [
             $this->tool('me', 'Verify Checkybot API authentication and app version.', []),
             $this->tool('list_projects', 'List Checkybot projects visible to the API key.', []),
+            $this->tool('create_project', 'Create or update a Checkybot project so checks can be synced or managed by project key.', [
+                'key' => ['type' => 'string', 'description' => 'Stable package key used as the project identifier.'],
+                'name' => ['type' => 'string'],
+                'environment' => ['type' => 'string'],
+                'base_url' => ['type' => 'string', 'format' => 'uri'],
+                'repository' => ['type' => 'string'],
+                'group' => ['type' => 'string'],
+                'technology' => ['type' => 'string'],
+                'identity_endpoint' => ['type' => 'string', 'format' => 'uri', 'description' => 'Defaults to base_url when omitted.'],
+                'package_version' => ['type' => 'string'],
+            ], ['key', 'name', 'environment', 'base_url']),
             $this->tool('get_project', 'Get project detail, API/website/component check counts, health counts, and latest failure.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
