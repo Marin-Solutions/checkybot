@@ -203,9 +203,6 @@ class CheckSslExpiryDateJob implements ShouldQueue
 
         $this->website->forceFill([
             'current_status' => $status,
-            'last_heartbeat_at' => now(),
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'status_summary' => $summary,
         ])->save();
 
@@ -232,12 +229,14 @@ class CheckSslExpiryDateJob implements ShouldQueue
             return false;
         }
 
-        if ($this->website->last_heartbeat_at === null) {
+        $latestRunAt = $this->website->latestScheduledLogHistory()->first()?->created_at;
+
+        if ($latestRunAt === null) {
             return true;
         }
 
         try {
-            return $this->website->last_heartbeat_at->lte(
+            return $latestRunAt->lte(
                 now()->subMinutes($this->intervalToMinutes($interval))
             );
         } catch (\InvalidArgumentException) {

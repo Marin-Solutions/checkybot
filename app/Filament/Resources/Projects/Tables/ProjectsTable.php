@@ -512,7 +512,6 @@ class ProjectsTable
                     ->orWhere('project_paused_outbound_check', true);
             })
             ->update(Website::disabledLiveHealthAttributes() + [
-                'last_heartbeat_at' => null,
                 'diagnostic_queued_at' => null,
             ]);
 

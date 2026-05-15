@@ -49,9 +49,6 @@ class ApiMonitorExecutionService
 
         $monitor->forceFill([
             'current_status' => $status,
-            'last_heartbeat_at' => now(),
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'status_summary' => $summary,
         ])->save();
 

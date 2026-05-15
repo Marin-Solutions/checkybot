@@ -361,7 +361,6 @@ class CheckSyncService
                     'uptime_check' => false,
                     'ssl_check' => false,
                     'package_interval' => null,
-                    'last_heartbeat_at' => null,
                     'last_synced_at' => $syncedAt,
                 ])->save();
 
@@ -491,9 +490,6 @@ class CheckSyncService
         return [
             'current_status' => 'pending',
             'status_summary' => null,
-            'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'diagnostic_queued_at' => null,
         ];
     }

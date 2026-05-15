@@ -53,10 +53,10 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->wrap()
                     ->limit(90)
                     ->default('-'),
-                TextColumn::make('last_heartbeat_at')
+                TextColumn::make('latestResult.created_at')
                     ->label('Last Scheduled Check')
-                    ->state(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
-                    ->description(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->diffForHumans())
+                    ->state(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->toDayDateTimeString())
+                    ->description(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->diffForHumans())
                     ->default('-'),
                 TextColumn::make('silenced_until')
                     ->label('Snoozed')

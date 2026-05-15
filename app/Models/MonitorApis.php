@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RunSource;
 use App\Models\Concerns\HasSnooze;
 use App\Support\ApiMonitorEvidenceFormatter;
 use App\Support\UptimeTransportError;
@@ -32,6 +33,14 @@ class MonitorApis extends Model
 
     public const INTERACTIVE_RUN_KEY = 'interactive';
 
+    private const REMOVED_HEARTBEAT_ATTRIBUTES = [
+        'last_heartbeat_at',
+        'awaiting_heartbeat_since',
+        'stale_at',
+    ];
+
+    private mixed $legacyLastHeartbeatAt = null;
+
     protected $fillable = [
         'title',
         'url',
@@ -55,9 +64,6 @@ class MonitorApis extends Model
         'package_name',
         'package_interval',
         'current_status',
-        'last_heartbeat_at',
-        'awaiting_heartbeat_since',
-        'stale_at',
         'status_summary',
         'diagnostic_queued_at',
         'silenced_until',
@@ -70,9 +76,6 @@ class MonitorApis extends Model
         'is_enabled' => 'boolean',
         'project_paused_monitoring' => 'boolean',
         'last_synced_at' => 'datetime',
-        'last_heartbeat_at' => 'datetime',
-        'awaiting_heartbeat_since' => 'datetime',
-        'stale_at' => 'datetime',
         'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
@@ -84,15 +87,49 @@ class MonitorApis extends Model
                 $api->project_paused_monitoring = false;
             }
         });
+
+        static::created(function (MonitorApis $api): void {
+            if ($api->legacyLastHeartbeatAt === null) {
+                return;
+            }
+
+            $status = in_array($api->current_status, ['healthy', 'warning', 'danger'], true)
+                ? $api->current_status
+                : 'healthy';
+
+            MonitorApiResult::query()->create([
+                'monitor_api_id' => $api->id,
+                'is_success' => $status === 'healthy',
+                'response_time_ms' => 0,
+                'http_code' => $status === 'healthy' ? 200 : 500,
+                'failed_assertions' => $status === 'healthy' ? null : [],
+                'status' => $status,
+                'summary' => $api->status_summary,
+                'run_source' => RunSource::Scheduled,
+                'is_on_demand' => false,
+                'created_at' => $api->legacyLastHeartbeatAt,
+                'updated_at' => $api->legacyLastHeartbeatAt,
+            ]);
+        });
+    }
+
+    public function setAttribute($key, $value): mixed
+    {
+        if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
+            if ($key === 'last_heartbeat_at' && $value !== null) {
+                $this->legacyLastHeartbeatAt = $value;
+            }
+
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
     }
 
     public static function disabledHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
     {
         return [
             'current_status' => 'unknown',
-            'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'status_summary' => $summary,
             'diagnostic_queued_at' => null,
         ];

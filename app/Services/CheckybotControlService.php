@@ -11,12 +11,10 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Support\ApiMonitorEvidenceRedactor;
-use App\Support\PackageCheckTableEvidence;
 use App\Support\ProjectComponentDeliveryState;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
@@ -125,7 +123,6 @@ class CheckybotControlService
             ->map(fn (Website $website): array => $this->websiteCheckPayload($website));
 
         $componentChecks = $project->components()
-            ->with('latestHeartbeat')
             ->orderBy('name')
             ->get()
             ->map(fn (ProjectComponent $component): array => $this->componentCheckPayload($component));
@@ -272,7 +269,6 @@ class CheckybotControlService
 
             if (! $enabled) {
                 $payload += Website::disabledLiveHealthAttributes('Disabled by Checkybot control API.');
-                $payload['last_heartbeat_at'] = null;
             } elseif ($this->websiteTargetChangedForUpsert($website, $resolvedUrl)) {
                 $payload += $this->awaitingWebsiteLiveHealthAttributes();
             } elseif ($created || $wasRestored || ! $this->websiteHasEnabledStatusCheck($website)) {
@@ -305,7 +301,7 @@ class CheckybotControlService
                 'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
             ])->save();
 
-            return $this->componentCheckPayload($check->fresh('latestHeartbeat'));
+            return $this->componentCheckPayload($check->fresh());
         }
 
         if ($check instanceof Website) {
@@ -314,8 +310,6 @@ class CheckybotControlService
                 'ssl_check' => false,
                 'current_status' => 'unknown',
                 'status_summary' => 'Disabled by Checkybot control API.',
-                'last_heartbeat_at' => null,
-                'stale_at' => null,
                 'diagnostic_queued_at' => null,
                 'last_synced_at' => now(),
             ])->save();
@@ -506,22 +500,7 @@ class CheckybotControlService
      */
     private function recentComponentRuns(User $user, ?Project $project, int $limit): array
     {
-        $query = ProjectComponentHeartbeat::query()
-            ->with('component.project')
-            ->whereHas('component', function (Builder $componentQuery) use ($user, $project): void {
-                $componentQuery->where('created_by', $user->id);
-
-                if ($project instanceof Project) {
-                    $componentQuery->where('project_id', $project->id);
-                }
-            });
-
-        return $query->orderByDesc('observed_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get()
-            ->map(fn (ProjectComponentHeartbeat $heartbeat): array => $this->componentHeartbeatPayload($heartbeat))
-            ->all();
+        return [];
     }
 
     /**
@@ -631,41 +610,6 @@ class CheckybotControlService
     /**
      * @return array<int, array<string, mixed>>
      */
-    private function latestComponentFailures(User $user, ?Project $project, int $limit): array
-    {
-        $query = ProjectComponentHeartbeat::query()
-            ->with('component.project')
-            ->whereHas('component', function (Builder $componentQuery) use ($user, $project): void {
-                $componentQuery->where('created_by', $user->id)
-                    ->where('is_archived', false)
-                    ->whereIn('current_status', ['warning', 'danger']);
-
-                if ($project instanceof Project) {
-                    $componentQuery->where('project_id', $project->id);
-                }
-            })
-            ->whereNotExists(function ($subQuery): void {
-                $subQuery->selectRaw('1')
-                    ->from('project_component_heartbeats as newer_heartbeats')
-                    ->whereColumn('newer_heartbeats.project_component_id', 'project_component_heartbeats.project_component_id')
-                    ->where(function ($newerHeartbeatQuery): void {
-                        $newerHeartbeatQuery->whereColumn('newer_heartbeats.observed_at', '>', 'project_component_heartbeats.observed_at')
-                            ->orWhere(function ($sameTimestampQuery): void {
-                                $sameTimestampQuery->whereColumn('newer_heartbeats.observed_at', 'project_component_heartbeats.observed_at')
-                                    ->whereColumn('newer_heartbeats.id', '>', 'project_component_heartbeats.id');
-                            });
-                    });
-            })
-            ->whereIn('status', ['warning', 'danger']);
-
-        return $query->orderByDesc('observed_at')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get()
-            ->map(fn (ProjectComponentHeartbeat $heartbeat): array => $this->componentHeartbeatPayload($heartbeat))
-            ->all();
-    }
-
     public function findProject(User $user, string|int $projectKey): Project
     {
         return $this->projectQuery($user)
@@ -696,7 +640,6 @@ class CheckybotControlService
 
         if ($checkType === 'component') {
             return $project->components()
-                ->with('latestHeartbeat')
                 ->where('name', $checkKey)
                 ->firstOrFail();
         }
@@ -712,7 +655,6 @@ class CheckybotControlService
             ->first();
 
         $componentCheck = $project->components()
-            ->with('latestHeartbeat')
             ->where('name', $checkKey)
             ->first();
 
@@ -914,7 +856,7 @@ class CheckybotControlService
     {
         $counts = $project->packageManagedApis()
             ->where('is_enabled', true)
-            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at'])
+            ->get(['current_status'])
             ->map(fn (MonitorApis $api): string => $this->packageCheckStatusBucket($api))
             ->countBy()
             ->map(fn ($count): int => (int) $count)
@@ -922,7 +864,7 @@ class CheckybotControlService
 
         $websiteCounts = $project->packageManagedWebsites()
             ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
-            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at', 'uptime_check', 'ssl_check'])
+            ->get(['current_status', 'uptime_check', 'ssl_check'])
             ->map(fn (Website $website): string => $this->packageCheckStatusBucket($website))
             ->countBy()
             ->map(fn ($count): int => (int) $count)
@@ -934,7 +876,7 @@ class CheckybotControlService
 
         $componentCounts = $project->activeComponents()
             ->with(['activeMonitorApis', 'activeWebsites'])
-            ->get(['id', 'current_status', 'is_stale', 'last_heartbeat_at', 'is_archived'])
+            ->get(['id', 'current_status', 'is_archived'])
             ->map(fn (ProjectComponent $component): string => $this->componentStatusBucket($component))
             ->countBy()
             ->map(fn ($count): int => (int) $count)
@@ -951,10 +893,6 @@ class CheckybotControlService
 
     private function packageCheckStatusBucket(MonitorApis|Website $check): string
     {
-        if (PackageCheckTableEvidence::freshnessState($check) === PackageCheckTableEvidence::STATE_STALE) {
-            return 'danger';
-        }
-
         if (in_array($check->current_status, ['warning', 'danger'], true)) {
             return $check->current_status;
         }
@@ -997,8 +935,7 @@ class CheckybotControlService
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
             'last_synced_at' => $check->last_synced_at?->toISOString(),
-            'last_heartbeat_at' => $check->last_heartbeat_at?->toISOString(),
-            'stale_at' => $check->stale_at?->toISOString(),
+            'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'headers' => ApiMonitorEvidenceRedactor::redactHeaders($check->headers),
             'request_body_type' => $check->request_body_type,
             'has_request_body' => $check->hasRequestBody(),
@@ -1048,8 +985,7 @@ class CheckybotControlService
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
             'last_synced_at' => $website->last_synced_at?->toISOString(),
-            'last_heartbeat_at' => $website->last_heartbeat_at?->toISOString(),
-            'stale_at' => $website->stale_at?->toISOString(),
+            'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'headers' => [],
             'request_body_type' => null,
             'has_request_body' => false,
@@ -1087,13 +1023,8 @@ class CheckybotControlService
             'status_summary' => $component->derivedStatusSummary(),
             'delivery_state' => $deliveryState,
             'delivery_state_label' => ProjectComponentDeliveryState::label($component),
-            'is_stale' => false,
             'is_archived' => (bool) $component->is_archived,
             'last_synced_at' => null,
-            'last_heartbeat_at' => null,
-            'stale_at' => null,
-            'stale_detected_at' => null,
-            'stale_threshold_at' => null,
             'silenced_until' => $component->silenced_until?->toISOString(),
             'metrics' => [],
             'headers' => [],
@@ -1103,26 +1034,6 @@ class CheckybotControlService
             'latest_result' => null,
             'updated_at' => $component->updated_at?->toISOString(),
         ];
-    }
-
-    private function componentStaleThresholdAt(ProjectComponent $component): ?string
-    {
-        if ($component->interval_minutes === null) {
-            return null;
-        }
-
-        $anchorAt = $component->last_heartbeat_at ?? $component->created_at;
-
-        if ($anchorAt === null) {
-            return null;
-        }
-
-        $graceMinutes = max(0, (int) config('monitor.project_component_stale_grace_minutes'));
-
-        return $anchorAt
-            ->copy()
-            ->addMinutes($component->interval_minutes + $graceMinutes)
-            ->toISOString();
     }
 
     /**
@@ -1235,32 +1146,6 @@ class CheckybotControlService
     /**
      * @return array<string, mixed>
      */
-    private function componentHeartbeatPayload(ProjectComponentHeartbeat $heartbeat): array
-    {
-        $component = $heartbeat->component;
-        $project = $component?->project;
-
-        return [
-            'id' => $heartbeat->id,
-            'project' => $project instanceof Project ? $this->projectIdentity($project) : null,
-            'check' => $component instanceof ProjectComponent ? [
-                'id' => $component->id,
-                'key' => $component->name,
-                'type' => 'component',
-                'name' => $component->name,
-            ] : null,
-            'success' => $heartbeat->status === 'healthy',
-            'status' => $heartbeat->status ?? 'unknown',
-            'summary' => $heartbeat->summary,
-            'event' => $heartbeat->event,
-            'metrics' => $heartbeat->metrics,
-            'run_source' => 'heartbeat',
-            'is_on_demand' => false,
-            'checked_at' => $heartbeat->observed_at?->toISOString(),
-            'created_at' => $heartbeat->created_at?->toISOString(),
-        ];
-    }
-
     /**
      * @return array<string, mixed>
      */
@@ -1482,9 +1367,6 @@ class CheckybotControlService
         return [
             'current_status' => 'unknown',
             'status_summary' => null,
-            'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => now(),
-            'stale_at' => null,
             'diagnostic_queued_at' => null,
         ];
     }
@@ -1592,9 +1474,6 @@ class CheckybotControlService
         return [
             'current_status' => 'unknown',
             'status_summary' => null,
-            'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => now(),
-            'stale_at' => null,
             'diagnostic_queued_at' => null,
         ];
     }

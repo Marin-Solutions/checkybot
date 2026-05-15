@@ -26,9 +26,7 @@ class WebsiteFactory extends Factory
             'uptime_interval' => 1,
             'ssl_check' => 1,
             'current_status' => 'healthy',
-            'last_heartbeat_at' => now(),
-            'stale_at' => null,
-            'status_summary' => 'Heartbeat received successfully.',
+            'status_summary' => 'Check completed successfully.',
         ];
     }
 }

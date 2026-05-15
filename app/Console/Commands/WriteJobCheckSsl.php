@@ -149,8 +149,10 @@ class WriteJobCheckSsl extends Command
 
         $query->where(function (Builder $query) use ($intervalDueSql, $bindings): void {
             $query
-                ->whereNull('last_heartbeat_at')
-                ->orWhereRaw($intervalDueSql, $bindings);
+                ->whereDoesntHave('latestScheduledLogHistory')
+                ->orWhereHas('latestScheduledLogHistory', function (Builder $query) use ($intervalDueSql, $bindings): void {
+                    $query->whereRaw($intervalDueSql, $bindings);
+                });
         });
     }
 
@@ -158,8 +160,10 @@ class WriteJobCheckSsl extends Command
     {
         $query->where(function (Builder $query): void {
             $query
-                ->whereNull('last_heartbeat_at')
-                ->orWhereRaw($this->manualIntervalDueExpression(), [now()->startOfMinute()->toDateTimeString()]);
+                ->whereDoesntHave('latestScheduledLogHistory')
+                ->orWhereHas('latestScheduledLogHistory', function (Builder $query): void {
+                    $query->whereRaw($this->manualIntervalDueExpression(), [now()->startOfMinute()->toDateTimeString()]);
+                });
         });
     }
 
@@ -168,16 +172,16 @@ class WriteJobCheckSsl extends Command
      */
     private function packageIntervalDueExpression(): array
     {
-        return PackageIntervalDueExpression::build(Website::query()->getConnection());
+        return PackageIntervalDueExpression::build(Website::query()->getConnection(), anchorColumn: 'website_log_history.created_at');
     }
 
     private function manualIntervalDueExpression(): string
     {
         return match (Website::query()->getConnection()->getDriverName()) {
-            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || uptime_interval || ' minutes') <= ?",
-            'pgsql' => "date_trunc('minute', last_heartbeat_at) + (uptime_interval * interval '1 minute') <= ?",
-            'sqlsrv' => 'DATEADD(minute, uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?',
-            default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL uptime_interval MINUTE) <= ?",
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', website_log_history.created_at), '+' || websites.uptime_interval || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', website_log_history.created_at) + (websites.uptime_interval * interval '1 minute') <= ?",
+            'sqlsrv' => 'DATEADD(minute, websites.uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, website_log_history.created_at), 0)) <= ?',
+            default => "DATE_ADD(DATE_FORMAT(website_log_history.created_at, '%Y-%m-%d %H:%i:00'), INTERVAL websites.uptime_interval MINUTE) <= ?",
         };
     }
 }

@@ -80,3 +80,47 @@ I did not run the full `php artisan test` suite this turn. Remaining unstaged Ra
   - Legacy `unknown` values need to be included in Pending predicates as well as label formatting.
   - This Pint version does not support `--format agent`; use `vendor/bin/pint --dirty` after the required command fails.
 ---
+
+
+I’ll inspect the Ralph files and repo conventions first, then identify the highest-priority failing story and keep the change scoped to that story.
+`SLICE-4` is the active failing story. The PRD has no inline criteria, so I’m going to inspect the referenced GitHub issue plus the current stale/status UI code before making changes.
+The local search shows stale UI still appears in project overview and application table logic. I’m fetching issue `373` now to confirm exactly which user-facing surfaces are in scope.
+Issue `373` confirms this is purely user-facing: remove stale/heartbeat wording and stale buckets for non-server checks/components, while preserving server stale UI. I’m narrowing edits to Filament labels, filters, counts, and their tests.
+I found the main stale UI is concentrated in shared health labels/filters, project health counts, website/API tables and relation managers, plus website detail stale evidence. I’m going to remove those non-server freshness surfaces and make the remaining health labels read `Healthy`, `Warning`, `Failing`, `Pending`, `Disabled`, and `Archived`.
+The implementation pass is done. I’m shifting to tests now: existing Filament tests still assert the removed freshness columns and stale buckets, so I’ll update those to assert pending/failing labels and that server stale UI is unchanged.
+The tests now assert the new UI contract instead of the old freshness columns. I’m running the focused Filament/widget tests next; failures here should identify any missed label/filter surfaces.
+The first focused batch passes. I’m running the relation manager and API monitor resource tests now, because those were the other places that exposed the removed freshness filters.
+The relation-manager and server regression checks pass now. I’m running the full set of touched Filament test files to catch any broader assertions that still expect stale/freshness UI.
+I’ll pick up from the current workspace state, rerun the focused failures, and patch only the remaining SLICE-4 expectations or UI leaks. After that I’ll run the required formatter/tests and commit the story changes.
+The progress file has prior runtime transcript appended after SLICE-3, so I’ll append the required SLICE-4 block later rather than rewriting it. The remaining work is concentrated in `ProjectResourceTest` expectations around old delivery labels and stale rollups.
+I found two app-side leftovers and several tests still modeling components as heartbeat reporters. I’m removing the obsolete “cannot reset to pending after heartbeat” validation and updating the remaining tests to create active child checks when they expect a component to be active.
+One remaining filter bug is real: the “Healthy” query still treated `unknown` as a known non-pending status, so an unknown API could appear under Healthy. I’m updating the project table filter predicates to classify `unknown` with Pending everywhere.
+`ProjectResourceTest` is now green. I’m running the focused Filament files touched by this slice together, then I’ll format and run the final targeted verification.
+The focused Filament suite passed. I’m running the required Pint command now; if this repo’s Pint still rejects the `agent` formatter, I’ll run the supported dirty formatter immediately after.
+Pint’s `agent` formatter is unsupported here, and `vendor/bin/pint --dirty` completed cleanly. I’m rerunning the focused verification after formatting, then I’ll append the Ralph progress entry and commit.
+Verification is green and the progress entry is appended. I’m doing a quick diff sanity check, then I’ll stage the story files plus `.ralph/progress.txt` while leaving the Ralph runtime files unstaged.
+Implemented and committed SLICE-4.
+
+Commit: `d072c75 feat: SLICE-4 - AFK: Remove non-server stale UI, labels, filters, and badges`
+
+Verification run:
+- `vendor/bin/pint --dirty --format agent` failed because this Pint version does not support `agent`
+- `vendor/bin/pint --dirty` passed
+- Focused Filament suite passed: 291 tests, 2046 assertions
+
+Unstaged Ralph runtime files left untouched:
+- `.ralph/activity.log`
+- `.ralph/prd.json`
+- `.ralph/prompt.md`
+
+There are still remaining `passes: false` stories: SLICE-5 and SLICE-6.
+## 2026-05-15 - SLICE-5
+- Added a cleanup migration that deletes synthetic stale non-server result rows, clears fake stale delivery evidence, recalculates API/website/component health from real results and active child checks, drops non-server heartbeat/stale columns, and drops component heartbeat storage while preserving server reporter schema.
+- Removed runtime dependencies on non-server heartbeat/stale columns by using latest real result timestamps for scheduling, payloads, and UI timing, and by removing component heartbeat feeds/storage surfaces.
+- Added focused migration coverage for cleanup, health recalculation, schema removal, and server reporter preservation.
+- Files changed: non-server scheduling/jobs/services/models/support classes, Filament non-server run timing surfaces, factories, cleanup migration, and migration tests.
+- **Learnings for future iterations:**
+  - Non-server due scheduling now anchors on latest scheduled result/log rows, not live heartbeat columns.
+  - Component heartbeat storage is obsolete; component health should continue to derive from active child API/website checks.
+  - Legacy callers may still pass removed heartbeat attributes into models, so the models ignore those writes and translate legacy creation timestamps into real result/log rows where possible.
+---

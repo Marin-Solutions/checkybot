@@ -7,7 +7,6 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -229,7 +228,6 @@ class CheckybotImportService
 
         $componentChecks = $project->components()
             ->where('source', 'package')
-            ->with('latestHeartbeat')
             ->orderBy('name')
             ->get()
             ->map(fn (ProjectComponent $component): array => $this->componentCheckPayload($component));
@@ -297,9 +295,7 @@ class CheckybotImportService
             'enabled' => $type === 'uptime' ? $website->uptime_check : $website->ssl_check,
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
-            'last_checked_at' => $website->last_heartbeat_at?->toISOString(),
-            'last_heartbeat_at' => $website->last_heartbeat_at?->toISOString(),
-            'stale_at' => $website->stale_at?->toISOString(),
+            'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'latest_result' => $latestResult instanceof WebsiteLogHistory
                 ? $this->websiteResultPayload($latestResult, [
                     'id' => "{$type}:{$website->id}",
@@ -350,9 +346,7 @@ class CheckybotImportService
             'enabled' => $check->is_enabled,
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
-            'last_checked_at' => $check->last_heartbeat_at?->toISOString(),
-            'last_heartbeat_at' => $check->last_heartbeat_at?->toISOString(),
-            'stale_at' => $check->stale_at?->toISOString(),
+            'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'headers' => $this->redactHeaders($check->headers),
             'request_body_type' => $check->request_body_type,
             'has_request_body' => $check->hasRequestBody(),
@@ -396,13 +390,8 @@ class CheckybotImportService
             'status_summary' => $component->derivedStatusSummary(),
             'delivery_state' => $deliveryState,
             'delivery_state_label' => ProjectComponentDeliveryState::label($component),
-            'is_stale' => false,
             'is_archived' => (bool) $component->is_archived,
             'last_checked_at' => null,
-            'last_heartbeat_at' => null,
-            'stale_at' => null,
-            'stale_detected_at' => null,
-            'stale_threshold_at' => null,
             'silenced_until' => $component->silenced_until?->toISOString(),
             'metrics' => [],
             'latest_result' => null,
@@ -415,26 +404,6 @@ class CheckybotImportService
             'created_at' => $component->created_at?->toISOString(),
             'updated_at' => $component->updated_at?->toISOString(),
         ];
-    }
-
-    private function componentStaleThresholdAt(ProjectComponent $component): ?string
-    {
-        if ($component->interval_minutes === null) {
-            return null;
-        }
-
-        $anchorAt = $component->last_heartbeat_at ?? $component->created_at;
-
-        if ($anchorAt === null) {
-            return null;
-        }
-
-        $graceMinutes = max(0, (int) config('monitor.project_component_stale_grace_minutes'));
-
-        return $anchorAt
-            ->copy()
-            ->addMinutes($component->interval_minutes + $graceMinutes)
-            ->toISOString();
     }
 
     /**
@@ -511,24 +480,6 @@ class CheckybotImportService
     /**
      * @return array<string, mixed>
      */
-    private function componentHeartbeatPayload(ProjectComponentHeartbeat $heartbeat): array
-    {
-        return [
-            'id' => $heartbeat->id,
-            'check_id' => "component:{$heartbeat->project_component_id}",
-            'success' => $heartbeat->status === 'healthy',
-            'status' => $heartbeat->status ?? 'unknown',
-            'summary' => $heartbeat->summary,
-            'event' => $heartbeat->event,
-            'metrics' => $heartbeat->metrics,
-            'run_source' => 'heartbeat',
-            'is_on_demand' => false,
-            'checked_at' => $heartbeat->observed_at?->toISOString(),
-            'observed_at' => $heartbeat->observed_at?->toISOString(),
-            'created_at' => $heartbeat->created_at?->toISOString(),
-        ];
-    }
-
     /**
      * @param  array<string, mixed>  $headers
      * @return array<string, mixed>

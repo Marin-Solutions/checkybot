@@ -54,11 +54,6 @@ class MonitorApiInfolist
                             ->label('Latest Response Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->response_time_ms !== null ? "{$record->latestResult->response_time_ms}ms" : null)
                             ->default('-'),
-                        TextEntry::make('last_heartbeat_at')
-                            ->label('Last Check')
-                            ->state(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
-                            ->default('-')
-                            ->hint(fn (MonitorApis $record): ?string => $record->last_heartbeat_at?->diffForHumans()),
                         TextEntry::make('package_interval')
                             ->label('Polling Interval')
                             ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')
@@ -72,7 +67,7 @@ class MonitorApiInfolist
                             ->color(fn (string $state): string => PackageCheckTableEvidence::dueStateColor($state)),
                         TextEntry::make('next_scheduled_run')
                             ->label('Next Scheduled Run')
-                            ->state(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::staleThresholdAt($record)?->toDayDateTimeString())
+                            ->state(fn (MonitorApis $record): ?string => PackageCheckTableEvidence::nextDueAt($record)?->toDayDateTimeString())
                             ->default('Next scheduler pass')
                             ->hint(fn (MonitorApis $record): string => PackageCheckTableEvidence::dueDescription($record)),
                     ])

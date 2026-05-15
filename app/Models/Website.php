@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\RunSource;
 use App\Models\Concerns\HasSnooze;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,6 +25,14 @@ class Website extends Model
 
     public const ADMIN_DISABLED_STATUS_SUMMARY = 'Disabled in Checkybot admin.';
 
+    private const REMOVED_HEARTBEAT_ATTRIBUTES = [
+        'last_heartbeat_at',
+        'awaiting_heartbeat_since',
+        'stale_at',
+    ];
+
+    private mixed $legacyLastHeartbeatAt = null;
+
     protected $fillable = [
         'ploi_website_id',
         'name',
@@ -44,9 +53,6 @@ class Website extends Model
         'package_interval',
         'last_synced_at',
         'current_status',
-        'last_heartbeat_at',
-        'awaiting_heartbeat_since',
-        'stale_at',
         'status_summary',
         'diagnostic_queued_at',
         'silenced_until',
@@ -64,9 +70,6 @@ class Website extends Model
         'outbound_scan_queued_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',
         'last_synced_at' => 'datetime',
-        'last_heartbeat_at' => 'datetime',
-        'awaiting_heartbeat_since' => 'datetime',
-        'stale_at' => 'datetime',
         'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
@@ -84,14 +87,47 @@ class Website extends Model
                 }
             }
         });
+
+        static::created(function (Website $website): void {
+            if ($website->legacyLastHeartbeatAt === null) {
+                return;
+            }
+
+            $status = in_array($website->current_status, ['healthy', 'warning', 'danger'], true)
+                ? $website->current_status
+                : 'healthy';
+
+            WebsiteLogHistory::query()->create([
+                'website_id' => $website->id,
+                'http_status_code' => $status === 'healthy' ? 200 : 500,
+                'speed' => 0,
+                'status' => $status,
+                'summary' => $website->status_summary,
+                'run_source' => RunSource::Scheduled,
+                'is_on_demand' => false,
+                'created_at' => $website->legacyLastHeartbeatAt,
+                'updated_at' => $website->legacyLastHeartbeatAt,
+            ]);
+        });
+    }
+
+    public function setAttribute($key, $value): mixed
+    {
+        if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
+            if ($key === 'last_heartbeat_at' && $value !== null) {
+                $this->legacyLastHeartbeatAt = $value;
+            }
+
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
     }
 
     public static function disabledLiveHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
     {
         return [
             'current_status' => 'unknown',
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'status_summary' => $summary,
             'diagnostic_queued_at' => null,
         ];

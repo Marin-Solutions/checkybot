@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ProjectComponent extends Model
 {
@@ -20,6 +19,12 @@ class ProjectComponent extends Model
 
     public const ARCHIVE_REASON_USER = 'user';
 
+    private const REMOVED_HEARTBEAT_ATTRIBUTES = [
+        'last_heartbeat_at',
+        'stale_detected_at',
+        'is_stale',
+    ];
+
     protected $fillable = [
         'project_id',
         'name',
@@ -30,9 +35,6 @@ class ProjectComponent extends Model
         'current_status',
         'last_reported_status',
         'metrics',
-        'last_heartbeat_at',
-        'stale_detected_at',
-        'is_stale',
         'is_archived',
         'project_paused_monitoring',
         'archived_at',
@@ -45,9 +47,6 @@ class ProjectComponent extends Model
     {
         return [
             'metrics' => 'array',
-            'last_heartbeat_at' => 'datetime',
-            'stale_detected_at' => 'datetime',
-            'is_stale' => 'boolean',
             'is_archived' => 'boolean',
             'project_paused_monitoring' => 'boolean',
             'archived_at' => 'datetime',
@@ -64,26 +63,27 @@ class ProjectComponent extends Model
         });
     }
 
+    public function setAttribute($key, $value): mixed
+    {
+        if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
+    }
+
     public static function disabledHealthAttributes(?string $summary = self::ADMIN_DISABLED_SUMMARY): array
     {
         return [
             'current_status' => 'unknown',
             'last_reported_status' => 'unknown',
             'summary' => $summary,
-            'last_heartbeat_at' => null,
-            'stale_detected_at' => null,
-            'is_stale' => false,
         ];
     }
 
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
-    }
-
-    public function heartbeats(): HasMany
-    {
-        return $this->hasMany(ProjectComponentHeartbeat::class)->latest('observed_at');
     }
 
     public function monitorApis(): HasMany
@@ -109,13 +109,6 @@ class ProjectComponent extends Model
                     ->where('uptime_check', true)
                     ->orWhere('ssl_check', true);
             });
-    }
-
-    public function latestHeartbeat(): HasOne
-    {
-        return $this->hasOne(ProjectComponentHeartbeat::class)->ofMany(
-            ['observed_at' => 'max', 'id' => 'max'],
-        );
     }
 
     public function notificationSettings(): HasMany

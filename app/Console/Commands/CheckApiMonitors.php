@@ -47,12 +47,14 @@ class CheckApiMonitors extends Command
         return $query
             ->whereNull('package_interval')
             ->orWhere('package_interval', '')
-            ->orWhereNull('last_heartbeat_at')
+            ->orWhereDoesntHave('latestScheduledResult')
             ->orWhereRaw("not ({$validIntervalSql})")
             ->orWhere(function (Builder $query) use ($validIntervalSql, $intervalMinutesSql, $now): void {
                 $query
                     ->whereRaw($validIntervalSql)
-                    ->whereRaw($this->dueAtSql($intervalMinutesSql), [$now]);
+                    ->whereHas('latestScheduledResult', function (Builder $query) use ($intervalMinutesSql, $now): void {
+                        $query->whereRaw($this->dueAtSql($intervalMinutesSql), [$now]);
+                    });
             });
     }
 
@@ -77,10 +79,10 @@ class CheckApiMonitors extends Command
     private function dueAtSql(string $intervalMinutesSql): string
     {
         return match (DB::connection()->getDriverName()) {
-            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || ({$intervalMinutesSql}) || ' minutes') <= ?",
-            'pgsql' => "date_trunc('minute', last_heartbeat_at) + make_interval(mins => least(({$intervalMinutesSql}), 2147483647)::int) <= ?",
-            'sqlsrv' => "DATEADD(minute, ({$intervalMinutesSql}), DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?",
-            default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL ({$intervalMinutesSql}) MINUTE) <= ?",
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', monitor_api_results.created_at), '+' || ({$intervalMinutesSql}) || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', monitor_api_results.created_at) + make_interval(mins => least(({$intervalMinutesSql}), 2147483647)::int) <= ?",
+            'sqlsrv' => "DATEADD(minute, ({$intervalMinutesSql}), DATEADD(minute, DATEDIFF(minute, 0, monitor_api_results.created_at), 0)) <= ?",
+            default => "DATE_ADD(DATE_FORMAT(monitor_api_results.created_at, '%Y-%m-%d %H:%i:00'), INTERVAL ({$intervalMinutesSql}) MINUTE) <= ?",
         };
     }
 

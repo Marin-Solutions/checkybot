@@ -98,7 +98,6 @@ class EditWebsite extends EditRecord
             ! (bool) $record->uptime_check
             && ! (bool) $record->ssl_check
             && $record->current_status === 'unknown'
-            && $record->stale_at === null
         ) {
             return Website::disabledLiveHealthAttributes($record->status_summary);
         }

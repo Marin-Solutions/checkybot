@@ -473,7 +473,6 @@ class PackageSyncService
                 if (! $website->uptime_check && ! $website->ssl_check) {
                     $website->forceFill(Website::disabledLiveHealthAttributes('Archived because it was missing from the latest package sync.') + [
                         'package_interval' => null,
-                        'last_heartbeat_at' => null,
                     ])->save();
 
                     $website->delete();
@@ -491,7 +490,6 @@ class PackageSyncService
             ->where('ssl_check', false)
             ->update(Website::disabledLiveHealthAttributes('Disabled because it was missing from the latest package sync.') + [
                 'package_interval' => null,
-                'last_heartbeat_at' => null,
             ]);
     }
 
@@ -528,9 +526,6 @@ class PackageSyncService
         return [
             'current_status' => 'pending',
             'status_summary' => null,
-            'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => null,
-            'stale_at' => null,
             'diagnostic_queued_at' => null,
         ];
     }

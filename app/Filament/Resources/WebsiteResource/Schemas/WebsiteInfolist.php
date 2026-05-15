@@ -62,11 +62,11 @@ class WebsiteInfolist
                 Section::make('Check History')
                     ->description('Recent check timing and response information for this website.')
                     ->schema([
-                        TextEntry::make('last_heartbeat_at')
+                        TextEntry::make('latest_log_checked_at')
                             ->label('Last Check')
-                            ->state(fn (Website $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
+                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->toDayDateTimeString())
                             ->default('Never')
-                            ->hint(fn (Website $record): ?string => $record->last_heartbeat_at?->diffForHumans()),
+                            ->hint(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->diffForHumans()),
                         TextEntry::make('latest_log_response_time')
                             ->label('Latest Response Time')
                             ->state(fn (Website $record): ?string => $record->latestLogHistory?->speed !== null

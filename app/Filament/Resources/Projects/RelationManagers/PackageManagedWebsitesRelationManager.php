@@ -62,10 +62,10 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->wrap()
                     ->limit(90)
                     ->default('-'),
-                TextColumn::make('last_heartbeat_at')
+                TextColumn::make('latestLogHistory.created_at')
                     ->label('Last Check')
-                    ->state(fn (Website $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
-                    ->description(fn (Website $record): ?string => $record->last_heartbeat_at?->diffForHumans())
+                    ->state(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->toDayDateTimeString())
+                    ->description(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->diffForHumans())
                     ->default('-'),
                 TextColumn::make('silenced_until')
                     ->label('Snoozed')

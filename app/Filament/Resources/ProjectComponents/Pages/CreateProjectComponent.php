@@ -31,8 +31,6 @@ class CreateProjectComponent extends CreateRecord
         $data['last_reported_status'] = 'unknown';
         $data['summary'] = 'Awaiting active child check results';
         $data['metrics'] = [];
-        $data['is_stale'] = false;
-        $data['stale_detected_at'] = null;
         $data['archived_at'] = $data['is_archived'] ? now() : null;
         $data['archive_reason'] = $data['is_archived'] ? ProjectComponent::ARCHIVE_REASON_USER : null;
 
