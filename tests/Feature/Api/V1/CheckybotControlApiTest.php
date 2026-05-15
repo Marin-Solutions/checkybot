@@ -344,6 +344,56 @@ test('control api resets api live health when assertions change', function () {
         ->and($monitor->awaiting_heartbeat_since)->not->toBeNull();
 });
 
+test('control api preserves api live health when null expected value assertions are unchanged', function () {
+    $payload = [
+        'name' => 'Search health',
+        'method' => 'GET',
+        'url' => '/api/search/health',
+        'expected_status' => 200,
+        'assertions' => [
+            [
+                'type' => 'json_path_equals',
+                'path' => '$.data.deleted_at',
+                'expected_value' => null,
+            ],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', $payload)
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'search-health')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Null assertion target is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'awaiting_heartbeat_since' => null,
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.check.status', 'healthy')
+        ->assertJsonPath('data.check.status_summary', 'Null assertion target is healthy.')
+        ->assertJsonPath('data.check.diagnostic_queued', true);
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('healthy')
+        ->and($monitor->status_summary)->toBe('Null assertion target is healthy.')
+        ->and($monitor->last_heartbeat_at)->not->toBeNull()
+        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+        ->and($monitor->stale_at)->not->toBeNull()
+        ->and($monitor->diagnostic_queued_at)->not->toBeNull()
+        ->and($monitor->assertions()->sole()->expected_value)->toBeNull();
+});
+
 test('control api accepts http urls and package relative paths for check urls', function () {
     $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/absolute-health', [

@@ -1483,7 +1483,7 @@ class CheckybotControlService
                     'comparison_operator' => $assertion['comparison_operator'] ?? (
                         $assertion['type'] === 'json_path_equals' ? '=' : null
                     ),
-                    'expected_value' => array_key_exists('expected_value', $assertion)
+                    'expected_value' => array_key_exists('expected_value', $assertion) && $assertion['expected_value'] !== null
                         ? (string) $assertion['expected_value']
                         : null,
                     'regex_pattern' => $assertion['regex_pattern'] ?? null,
