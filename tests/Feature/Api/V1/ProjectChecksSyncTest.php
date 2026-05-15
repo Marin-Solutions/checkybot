@@ -647,6 +647,7 @@ test('legacy sync does not count unchanged existing checks as updated', function
                 'request_body_type' => 'json',
                 'request_body' => [
                     'probe' => true,
+                    'filters' => [],
                 ],
                 'assertions' => [
                     [
