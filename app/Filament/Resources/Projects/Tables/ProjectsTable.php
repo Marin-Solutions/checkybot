@@ -150,7 +150,7 @@ class ProjectsTable
 
         return $query->where(function (Builder $query) use ($statuses): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => $components->whereIn('current_status', $statuses))
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentChildInStatus($components, $statuses))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses));
         });
@@ -190,8 +190,7 @@ class ProjectsTable
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
-                    ->where('current_status', 'danger'))
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentChildInStatus($components, ['danger']))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'danger'))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'danger'));
         });
@@ -200,8 +199,7 @@ class ProjectsTable
     protected static function whereDoesntHaveDangerSurface(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
-                ->where('current_status', 'danger'))
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => static::whereComponentChildInStatus($components, ['danger']))
             ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'danger'))
             ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'danger'));
     }
@@ -210,8 +208,7 @@ class ProjectsTable
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
-                    ->where('current_status', 'warning'))
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentChildInStatus($components, ['warning']))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'warning'))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'warning'));
         });
@@ -220,8 +217,7 @@ class ProjectsTable
     protected static function whereDoesntHaveWarningSurface(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
-                ->where('current_status', 'warning'))
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => static::whereComponentChildInStatus($components, ['warning']))
             ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites->where('current_status', 'warning'))
             ->whereDoesntHave('enabledMonitorApis', fn (Builder $apis) => $apis->where('current_status', 'warning'));
     }
@@ -230,8 +226,7 @@ class ProjectsTable
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasActiveChildren($components)
-                    ->where('current_status', 'healthy'))
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasOnlyHealthyChildren($components))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
                     ->where('current_status', 'healthy'))
                 ->orWhereHas('enabledMonitorApis', fn (Builder $apis) => $apis
@@ -254,19 +249,7 @@ class ProjectsTable
     {
         return $query->where(function (Builder $query): void {
             $query
-                ->whereHas('activeComponents', fn (Builder $components) => $components
-                    ->where(function (Builder $components): void {
-                        $components
-                            ->whereNull('current_status')
-                            ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
-                            ->orWhere('current_status', 'unknown')
-                            ->orWhere('current_status', 'pending')
-                            ->orWhere(function (Builder $components): void {
-                                $components
-                                    ->whereDoesntHave('activeMonitorApis')
-                                    ->whereDoesntHave('activeWebsites');
-                            });
-                    }))
+                ->whereHas('activeComponents', fn (Builder $components) => static::whereComponentHasPendingSurface($components))
                 ->orWhereHas('monitoredWebsites', fn (Builder $websites) => $websites
                     ->where(function (Builder $websites): void {
                         $websites
@@ -289,19 +272,7 @@ class ProjectsTable
     protected static function whereDoesntHaveUnknownSurface(Builder $query): Builder
     {
         return $query
-            ->whereDoesntHave('activeComponents', fn (Builder $components) => $components
-                ->where(function (Builder $components): void {
-                    $components
-                        ->whereNull('current_status')
-                        ->orWhereNotIn('current_status', Project::KNOWN_APPLICATION_STATUSES)
-                        ->orWhere('current_status', 'unknown')
-                        ->orWhere('current_status', 'pending')
-                        ->orWhere(function (Builder $components): void {
-                            $components
-                                ->whereDoesntHave('activeMonitorApis')
-                                ->whereDoesntHave('activeWebsites');
-                        });
-                }))
+            ->whereDoesntHave('activeComponents', fn (Builder $components) => static::whereComponentHasPendingSurface($components))
             ->whereDoesntHave('monitoredWebsites', fn (Builder $websites) => $websites
                 ->where(function (Builder $websites): void {
                     $websites
@@ -326,6 +297,57 @@ class ProjectsTable
             ->whereDoesntHave('activeComponents')
             ->whereDoesntHave('monitoredWebsites')
             ->whereDoesntHave('enabledMonitorApis');
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     */
+    protected static function whereComponentChildInStatus(Builder $query, array $statuses): Builder
+    {
+        return $query->where(function (Builder $query) use ($statuses): void {
+            $query
+                ->whereHas('activeMonitorApis', fn (Builder $apis) => $apis->whereIn('current_status', $statuses))
+                ->orWhereHas('activeWebsites', fn (Builder $websites) => $websites->whereIn('current_status', $statuses));
+        });
+    }
+
+    protected static function whereComponentHasOnlyHealthyChildren(Builder $query): Builder
+    {
+        return static::whereComponentHasActiveChildren($query)
+            ->whereDoesntHave('activeMonitorApis', fn (Builder $apis) => static::wherePendingOrUnhealthyChild($apis))
+            ->whereDoesntHave('activeWebsites', fn (Builder $websites) => static::wherePendingOrUnhealthyChild($websites));
+    }
+
+    protected static function whereComponentHasPendingSurface(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->where(function (Builder $components): void {
+                    $components
+                        ->whereDoesntHave('activeMonitorApis')
+                        ->whereDoesntHave('activeWebsites');
+                })
+                ->orWhereHas('activeMonitorApis', fn (Builder $apis) => static::wherePendingChildStatus($apis))
+                ->orWhereHas('activeWebsites', fn (Builder $websites) => static::wherePendingChildStatus($websites));
+        });
+    }
+
+    protected static function wherePendingOrUnhealthyChild(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereNull('current_status')
+                ->orWhere('current_status', '!=', 'healthy');
+        });
+    }
+
+    protected static function wherePendingChildStatus(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereNull('current_status')
+                ->orWhereNotIn('current_status', ['healthy', 'warning', 'danger']);
+        });
     }
 
     protected static function whereComponentHasActiveChildren(Builder $query): Builder

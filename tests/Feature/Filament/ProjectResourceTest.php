@@ -1487,6 +1487,18 @@ test('super admin can filter applications by current status', function () {
     componentWithActiveApi($dangerProject, $user, 'warning');
     componentWithActiveApi($dangerProject, $user, 'danger');
 
+    $derivedDangerProject = Project::factory()->create(['name' => 'Derived Danger App', 'created_by' => $user->id]);
+    componentWithActiveApi($derivedDangerProject, $user, 'danger', [
+        'current_status' => 'healthy',
+        'last_reported_status' => 'healthy',
+    ]);
+
+    $storedDangerHealthyProject = Project::factory()->create(['name' => 'Stored Danger Healthy App', 'created_by' => $user->id]);
+    componentWithActiveApi($storedDangerHealthyProject, $user, 'healthy', [
+        'current_status' => 'danger',
+        'last_reported_status' => 'danger',
+    ]);
+
     $staleComponentProject = Project::factory()->create(['name' => 'Stale Component App', 'created_by' => $user->id]);
     componentWithActiveApi($staleComponentProject, $user, 'healthy', [
         'is_stale' => true,
@@ -1586,23 +1598,23 @@ test('super admin can filter applications by current status', function () {
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'danger')
-        ->assertCanSeeTableRecords([$dangerProject, $websiteDangerProject, $sslOnlyDangerProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $staleComponentProject, $apiWarningProject, $websiteHealthyProject, $staleWebsiteProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $staleApiProject, $unknownStatusApiProject]);
+        ->assertCanSeeTableRecords([$dangerProject, $derivedDangerProject, $websiteDangerProject, $sslOnlyDangerProject])
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $storedDangerHealthyProject, $staleComponentProject, $apiWarningProject, $websiteHealthyProject, $staleWebsiteProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $staleApiProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'warning')
         ->assertCanSeeTableRecords([$warningProject, $apiWarningProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $staleApiProject, $websiteHealthyProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $dangerProject, $derivedDangerProject, $storedDangerHealthyProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $staleApiProject, $websiteHealthyProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'healthy')
-        ->assertCanSeeTableRecords([$healthyProject, $staleComponentProject, $websiteHealthyProject, $staleWebsiteProject, $staleApiProject])
-        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
+        ->assertCanSeeTableRecords([$healthyProject, $storedDangerHealthyProject, $staleComponentProject, $websiteHealthyProject, $staleWebsiteProject, $staleApiProject])
+        ->assertCanNotSeeTableRecords([$warningProject, $dangerProject, $derivedDangerProject, $websiteDangerProject, $sslOnlyDangerProject, $apiWarningProject, $missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('application_status', 'unknown')
         ->assertCanSeeTableRecords([$missingHeartbeatProject, $unknownProject, $disabledDangerProject, $uncheckedWebsiteProject, $unknownStatusApiProject])
-        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $apiWarningProject, $staleApiProject, $websiteHealthyProject]);
+        ->assertCanNotSeeTableRecords([$healthyProject, $warningProject, $dangerProject, $derivedDangerProject, $storedDangerHealthyProject, $staleComponentProject, $websiteDangerProject, $staleWebsiteProject, $sslOnlyDangerProject, $apiWarningProject, $staleApiProject, $websiteHealthyProject]);
 });
 
 test('application status rolls up enabled websites and api monitors', function () {
@@ -1719,6 +1731,16 @@ test('application status rolls up enabled websites and api monitors', function (
         ->and($missingHeartbeatProject->fresh()->application_status)->toBe('pending')
         ->and($unknownStatusApiProject->fresh()->application_status)->toBe('pending')
         ->and($mixedSurfaceProject->fresh()->application_status)->toBe('danger');
+});
+
+test('component derived summary ignores stale awaiting text once child checks report', function () {
+    $user = User::factory()->create();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $component = componentWithActiveApi($project, $user, 'danger', [
+        'summary' => 'Awaiting active child check results',
+    ]);
+
+    expect($component->fresh()->derivedStatusSummary())->toBe('At least one active child check is failing.');
 });
 
 test('super admin can filter applications to only failing', function () {

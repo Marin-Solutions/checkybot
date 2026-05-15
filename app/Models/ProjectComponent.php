@@ -156,12 +156,20 @@ class ProjectComponent extends Model
     public function derivedStatusSummary(): string
     {
         $status = $this->derivedCurrentStatus();
+        $storedSummary = $this->summary;
 
         if ($status === 'pending') {
             return 'Awaiting first active child check result.';
         }
 
-        return $this->summary ?? match ($status) {
+        if ($storedSummary !== null && ! in_array($storedSummary, [
+            'Awaiting active child check results',
+            'Awaiting first active child check result.',
+        ], true)) {
+            return $storedSummary;
+        }
+
+        return match ($status) {
             'healthy' => 'All active child checks are healthy.',
             'warning' => 'At least one active child check is warning.',
             'danger' => 'At least one active child check is failing.',
