@@ -36,6 +36,7 @@
             shades: [600],
         );
         $progress = $getProgress();
+        $displayProgress = (int) floor(max(0, min(100, (float) $progress)));
     @endphp
 
     <div
@@ -49,6 +50,6 @@
             <div style="{{ $barStyles }}; width: {{ min($progress, 100) }}%" class="fi-ta-progress-indicator"></div>
         </div>
 
-        <span class="fi-ta-progress-label">{{ $progress }}%</span>
+        <span class="fi-ta-progress-label">{{ $displayProgress }}%</span>
     </div>
 @endif
