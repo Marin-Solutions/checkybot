@@ -151,6 +151,7 @@ test('sync command sends the full declared component schema alongside due heartb
         ->assertExitCode(0);
 
     expect($fakeClient->componentPayloads)->toHaveCount(1)
+        ->and($fakeClient->componentPayloads[0]['full_manifest'])->toBeTrue()
         ->and($fakeClient->componentPayloads[0]['declared_components'])->toMatchArray([
             [
                 'name' => 'queue',
@@ -370,6 +371,7 @@ test('sync command posts an empty external check payload so package-managed remo
         ],
     ])->and($fakeClient->componentPayloads)->toBe([
         [
+            'full_manifest' => true,
             'declared_components' => [],
             'components' => [],
         ],
@@ -448,6 +450,7 @@ test('sync command registers a guided setup application before syncing package d
         ->and($fakeClient->checkPayloads)->toHaveCount(1)
         ->and($fakeClient->componentPayloads)->toBe([
             [
+                'full_manifest' => true,
                 'declared_components' => [],
                 'components' => [],
             ],
