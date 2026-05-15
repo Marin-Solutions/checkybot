@@ -613,6 +613,140 @@ test('legacy sync defaults nullable expected status to success status', function
     ]);
 });
 
+test('legacy sync does not count unchanged existing checks as updated', function () {
+    $payload = [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage-uptime',
+                'url' => 'https://example.com',
+                'interval' => '5m',
+                'enabled' => true,
+            ],
+        ],
+        'ssl_checks' => [
+            [
+                'name' => 'homepage-ssl',
+                'url' => 'https://secure.example.com',
+                'interval' => '1h',
+                'enabled' => true,
+            ],
+        ],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '10m',
+                'method' => 'POST',
+                'expected_status' => 202,
+                'timeout_seconds' => 15,
+                'save_failed_response' => false,
+                'enabled' => true,
+                'headers' => [
+                    'Authorization' => 'Bearer secret',
+                ],
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'probe' => true,
+                    'filters' => [],
+                ],
+                'assertions' => [
+                    [
+                        'data_path' => 'status',
+                        'assertion_type' => 'value_compare',
+                        'comparison_operator' => '=',
+                        'expected_value' => 'ok',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload)
+        ->assertOk()
+        ->assertJsonPath('summary.uptime_checks.created', 1)
+        ->assertJsonPath('summary.ssl_checks.created', 1)
+        ->assertJsonPath('summary.api_checks.created', 1)
+        ->assertJsonPath('summary.uptime_checks.updated', 0)
+        ->assertJsonPath('summary.ssl_checks.updated', 0)
+        ->assertJsonPath('summary.api_checks.updated', 0);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload);
+
+    $response->assertOk()
+        ->assertJsonPath('summary.uptime_checks.created', 0)
+        ->assertJsonPath('summary.ssl_checks.created', 0)
+        ->assertJsonPath('summary.api_checks.created', 0)
+        ->assertJsonPath('summary.uptime_checks.updated', 0)
+        ->assertJsonPath('summary.ssl_checks.updated', 0)
+        ->assertJsonPath('summary.api_checks.updated', 0)
+        ->assertJsonPath('summary.uptime_checks.deleted', 0)
+        ->assertJsonPath('summary.ssl_checks.deleted', 0)
+        ->assertJsonPath('summary.api_checks.deleted', 0);
+
+    expect($this->project->refresh()->latest_package_sync_summary)->toMatchArray([
+        'uptime_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'ssl_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'api_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+    ]);
+});
+
+test('legacy sync counts changed api assertions as an update', function () {
+    $payload = [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+                'assertions' => [
+                    [
+                        'data_path' => 'status',
+                        'assertion_type' => 'exists',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload)
+        ->assertOk()
+        ->assertJsonPath('summary.api_checks.created', 1)
+        ->assertJsonPath('summary.api_checks.updated', 0);
+
+    $payload['api_checks'][0]['assertions'][0]['data_path'] = 'data.status';
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload)
+        ->assertOk()
+        ->assertJsonPath('summary.api_checks.created', 0)
+        ->assertJsonPath('summary.api_checks.updated', 1);
+
+    $this->assertDatabaseHas('monitor_api_assertions', [
+        'data_path' => 'data.status',
+        'assertion_type' => 'exists',
+    ]);
+});
+
 test('updates existing checks', function () {
     Website::factory()->create([
         'project_id' => $this->project->id,
