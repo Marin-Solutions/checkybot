@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Checkybot\CreateControlProjectRequest;
 use App\Http\Requests\Checkybot\ListControlFailuresRequest;
 use App\Http\Requests\Checkybot\ListControlRunsRequest;
 use App\Http\Requests\Checkybot\UpsertControlCheckRequest;
@@ -32,6 +33,16 @@ class CheckybotControlController extends Controller
         return response()->json([
             'data' => $this->control->listProjects($request->user()),
         ]);
+    }
+
+    public function createProject(CreateControlProjectRequest $request): JsonResponse
+    {
+        $result = $this->control->createProject($request->user(), $request->validated());
+
+        return response()->json([
+            'message' => $result['created'] ? 'Project created.' : 'Project updated.',
+            'data' => $result,
+        ], $result['created'] ? 201 : 200);
     }
 
     public function project(Request $request, string $project): JsonResponse

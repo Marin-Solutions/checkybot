@@ -105,6 +105,70 @@ class CheckybotControlService
     }
 
     /**
+     * @param  array<string, mixed>  $data
+     * @return array{created: bool, project: array<string, mixed>}
+     */
+    public function createProject(User $user, array $data): array
+    {
+        return DB::transaction(function () use ($user, $data): array {
+            $project = $this->projectQuery($user)
+                ->where('environment', $data['environment'])
+                ->where('package_key', $data['key'])
+                ->lockForUpdate()
+                ->first();
+
+            if (! $project instanceof Project) {
+                $project = $this->projectQuery($user)
+                    ->where('environment', $data['environment'])
+                    ->where('identity_endpoint', $data['identity_endpoint'] ?? $data['base_url'])
+                    ->lockForUpdate()
+                    ->first();
+            }
+
+            $created = false;
+
+            if (! $project instanceof Project) {
+                $project = new Project([
+                    'created_by' => $user->id,
+                    'token' => hash('sha256', (string) Str::uuid()),
+                ]);
+                $created = true;
+            }
+
+            $project->fill([
+                'package_key' => $data['key'],
+                'name' => $data['name'],
+                'environment' => $data['environment'],
+                'base_url' => $data['base_url'],
+                'identity_endpoint' => $data['identity_endpoint'] ?? $data['base_url'],
+                'repository' => $data['repository'] ?? null,
+                'group' => $data['group'] ?? $project->group,
+                'technology' => $data['technology'] ?? $project->technology,
+                'package_version' => $data['package_version'] ?? $project->package_version,
+            ]);
+
+            $project->save();
+
+            $project->loadCount([
+                'packageManagedApis as checks_count',
+                'packageManagedApis as enabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', true),
+                'packageManagedApis as disabled_checks_count' => fn (Builder $query) => $query->where('is_enabled', false),
+                'packageManagedWebsites as website_checks_count',
+                'packageManagedWebsites as enabled_website_checks_count' => fn (Builder $query) => $this->activeWebsiteCheckConstraint($query),
+                'packageManagedWebsites as disabled_website_checks_count' => fn (Builder $query) => $this->disabledWebsiteCheckConstraint($query),
+                'components as components_count',
+                'activeComponents as active_components_count',
+                'components as archived_components_count' => fn (Builder $query) => $query->where('is_archived', true),
+            ]);
+
+            return [
+                'created' => $created,
+                'project' => $this->projectSummary($project),
+            ];
+        });
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     public function listChecks(User $user, string|int $projectKey): array

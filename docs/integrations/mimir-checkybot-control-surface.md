@@ -44,9 +44,24 @@ Example response:
 ### Projects
 
 - `GET /control/projects`
+- `POST /control/projects`
 - `GET /control/projects/{project}`
 
 `{project}` accepts either the numeric project id or the stable `package_key`.
+
+`POST /control/projects` creates or updates a project by stable `key` and `environment`, scoped to the API key owner. `identity_endpoint` defaults to `base_url` when omitted, so later package sync payloads attach to the same project.
+
+Example project creation request:
+
+```json
+{
+  "key": "convertr",
+  "name": "Convertr",
+  "environment": "production",
+  "base_url": "https://api.convertr.example",
+  "repository": "Marin-Solutions/convertr"
+}
+```
 
 Example project detail response:
 
@@ -237,6 +252,7 @@ Single-check run triggers accept optional `type=api` or `type=website` in the qu
 
 - `me`
 - `list_projects`
+- `create_project`
 - `get_project`
 - `list_checks`
 - `upsert_check`
@@ -248,6 +264,7 @@ Arguments:
 
 - `get_project`: `{ "project": "scrappa" }`
 - `list_checks`: `{ "project": "scrappa" }`
+- `create_project`: `{ "key": "convertr", "name": "Convertr", "environment": "production", "base_url": "https://api.convertr.example", "repository": "Marin-Solutions/convertr" }`
 - `upsert_check`: `{ "project": "scrappa", "key": "maps-search", "name": "Maps search", "url": "/api/google-maps/search", ... }`
 - `upsert_check` website: `{ "project": "scrappa", "key": "marketing-site", "type": "website", "check_types": ["uptime", "ssl"], "name": "Marketing site", "url": "/status", "schedule": "10m" }`
 - `disable_check`: `{ "project": "scrappa", "check": "maps-search" }`
