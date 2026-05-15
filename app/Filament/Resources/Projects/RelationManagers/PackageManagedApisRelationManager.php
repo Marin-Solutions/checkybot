@@ -153,7 +153,7 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->requiresConfirmation()
                     ->modalIcon('heroicon-o-bolt')
                     ->modalHeading('Run API monitor now')
-                    ->modalDescription('Checkybot will queue a real request against this endpoint and append the result to its diagnostic history when it completes. The monitor\'s live status is reserved for scheduled checks, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalDescription('Checkybot will queue a real request against this endpoint, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
                     ->visible(fn (MonitorApis $record): bool => $record->deleted_at === null && (bool) $record->is_enabled)

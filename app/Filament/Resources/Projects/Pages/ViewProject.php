@@ -67,7 +67,7 @@ class ViewProject extends ViewRecord
                 ->requiresConfirmation()
                 ->modalIcon('heroicon-o-bolt')
                 ->modalHeading('Run application diagnostics')
-                ->modalDescription('Checkybot will queue all enabled package-managed API and website diagnostics for this application. Results are appended to diagnostic history, so live status and alert notifications stay reserved for scheduled checks.')
+                ->modalDescription('Checkybot will queue all enabled package-managed API and website checks for this application. Results are appended to run history, update live status, and alert subscribers on status changes.')
                 ->modalSubmitActionLabel('Run diagnostics')
                 ->authorize(fn (): bool => $this->userCanRunDiagnostics())
                 ->action(function (): void {

@@ -525,7 +525,7 @@ class WebsiteResource extends Resource
                     ->requiresConfirmation()
                     ->modalIcon('heroicon-o-bolt')
                     ->modalHeading('Run website diagnostics now')
-                    ->modalDescription('Checkybot will queue the enabled diagnostics for this website and append the result to its diagnostic history when they complete. The website\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalDescription('Checkybot will queue the enabled checks for this website, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
                     ->visible(fn (Website $record): bool => (bool) $record->uptime_check || (bool) $record->ssl_check)

@@ -905,8 +905,8 @@ test('list run now action queues diagnostic job without running outbound request
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
-        ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic Status')
+        ->assertSee('Latest Manual Run')
+        ->assertSee('Manual Run Status')
         ->assertSee('Queued')
         ->assertSee('Queued At')
         ->assertSee('Apr 24, 2026');
@@ -1182,8 +1182,8 @@ test('view page run now action queues a diagnostic run', function () {
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
-        ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic Status')
+        ->assertSee('Latest Manual Run')
+        ->assertSee('Manual Run Status')
         ->assertSee('Queued')
         ->assertSee('Queued At')
         ->assertSee('Apr 24, 2026');
@@ -1314,7 +1314,7 @@ test('api monitor view shows evidence rich latest run overview', function () {
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSee('Overview')
-        ->assertSee('Latest Scheduled Run Evidence')
+        ->assertSee('Latest Run Evidence')
         ->assertSee('API check failed with HTTP status 500.')
         ->assertSee('Expected HTTP status 200, got 500.')
         ->assertSee('[redacted]')
@@ -1343,7 +1343,7 @@ test('api monitor view shows polling interval and due-state messaging', function
         ->assertSee($lastHeartbeatAt->copy()->addMinutes(15)->toDayDateTimeString());
 });
 
-test('api monitor view separates scheduled latest evidence from newer diagnostics', function () {
+test('api monitor view uses latest real run evidence and still labels manual runs', function () {
     $this->createResourcePermissions('MonitorApis');
 
     $user = $this->actingAsSuperAdmin();
@@ -1375,10 +1375,10 @@ test('api monitor view separates scheduled latest evidence from newer diagnostic
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
-        ->assertSee('Latest Scheduled Run Evidence')
-        ->assertSee('Scheduled API check succeeded.')
-        ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic API check failed.');
+        ->assertSee('Latest Run Evidence')
+        ->assertSee('Diagnostic API check failed.')
+        ->assertSee('Latest Manual Run')
+        ->assertDontSee('Scheduled API check succeeded.');
 
     expect($monitor->refresh()->latestScheduledResult->summary)->toBe('Scheduled API check succeeded.')
         ->and($monitor->latestDiagnosticResult->summary)->toBe('Diagnostic API check failed.');
@@ -1413,7 +1413,7 @@ test('api monitor view exposes latest scheduled failed assertion expected and ac
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
-        ->assertSee('Latest Scheduled Run Evidence')
+        ->assertSee('Latest Run Evidence')
         ->assertSee('Scheduled API check failed with assertion evidence.')
         ->assertSee('Failed Assertions')
         ->assertSee('Value comparison failed: expected = active')
@@ -1464,7 +1464,7 @@ test('api monitor view exposes latest diagnostic evidence blocks', function () {
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertSuccessful()
-        ->assertSee('Latest Diagnostic Run')
+        ->assertSee('Latest Manual Run')
         ->assertSee('Diagnostic API check failed with assertion evidence.')
         ->assertSee('Failed Assertions')
         ->assertSee('Value comparison failed: expected = active')

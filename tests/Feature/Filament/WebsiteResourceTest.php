@@ -1585,8 +1585,8 @@ test('view page run now action queues a website diagnostic without running heart
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic Status')
+        ->assertSee('Latest Manual Run')
+        ->assertSee('Manual Run Status')
         ->assertSee('Queued')
         ->assertSee('Queued At')
         ->assertSee('Apr 24, 2026');
@@ -1757,7 +1757,7 @@ test('view page excludes diagnostic rows from recent failures', function () {
         ->assertSee('Diagnostic-only failure.');
 });
 
-test('view page separates scheduled latest evidence from newer diagnostics', function () {
+test('view page uses latest real run evidence and still labels manual runs', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
         'created_by' => $user->id,
@@ -1785,10 +1785,10 @@ test('view page separates scheduled latest evidence from newer diagnostics', fun
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Latest Scheduled Result')
-        ->assertSee('Scheduled heartbeat succeeded.')
-        ->assertSee('Latest Diagnostic Run')
-        ->assertSee('Diagnostic heartbeat failed.');
+        ->assertSee('Latest Result')
+        ->assertSee('Diagnostic heartbeat failed.')
+        ->assertSee('Latest Manual Run')
+        ->assertDontSee('Scheduled heartbeat succeeded.');
 
     expect($website->refresh()->latestScheduledLogHistory->summary)->toBe('Scheduled heartbeat succeeded.')
         ->and($website->latestDiagnosticLogHistory->summary)->toBe('Diagnostic heartbeat failed.');
@@ -1808,7 +1808,7 @@ test('view page surfaces transport error evidence for failed uptime logs', funct
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertSuccessful()
-        ->assertSee('Latest Scheduled Transport Error')
+        ->assertSee('Latest Transport Error')
         ->assertSee('DNS failure')
         ->assertSee('code 6')
         ->assertSee('Could not resolve host');

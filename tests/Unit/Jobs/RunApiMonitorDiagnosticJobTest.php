@@ -3,6 +3,7 @@
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
 use App\Services\ApiMonitorExecutionService;
+use App\Services\HealthEventNotificationService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 
 test('run api monitor diagnostic job is queued with enough time for configured retries', function () {
@@ -25,7 +26,7 @@ test('run api monitor diagnostic job skips monitors disabled after dispatch', fu
     $executionService = Mockery::mock(ApiMonitorExecutionService::class);
     $executionService->shouldNotReceive('execute');
 
-    $job->handle($executionService);
+    $job->handle($executionService, app(HealthEventNotificationService::class));
 
     expect($monitor->refresh()->diagnostic_queued_at)->toBeNull();
 });

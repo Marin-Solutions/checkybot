@@ -1073,7 +1073,7 @@ test('control api rejects disabled website diagnostic runs', function () {
     Queue::assertNotPushed(LogUptimeSslJob::class);
 });
 
-test('control api triggers a diagnostic check run without moving live status or latest failures', function () {
+test('control api triggers a manual check run that updates live status without synthetic failures', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 500),
     ]);
@@ -1091,8 +1091,6 @@ test('control api triggers a diagnostic check run without moving live status or 
         'is_enabled' => true,
     ]);
 
-    $heartbeatBefore = $monitor->last_heartbeat_at;
-
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/control/projects/scrappa/checks/search-health/runs')
         ->assertOk()
@@ -1104,8 +1102,8 @@ test('control api triggers a diagnostic check run without moving live status or 
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('healthy')
-        ->and($monitor->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue();
+    expect($monitor->current_status)->toBe('danger')
+        ->and($monitor->last_heartbeat_at)->not->toBeNull();
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/failures?project=scrappa')
@@ -1310,7 +1308,7 @@ test('control api latest failures excludes recovered website and component rows'
         ->and(json_encode($response->json()))->not->toContain('Historical component failure');
 });
 
-test('control api diagnostic check run does not send failure notifications', function () {
+test('control api manual check run sends failure notifications', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),
     ]);
@@ -1349,12 +1347,15 @@ test('control api diagnostic check run does not send failure notifications', fun
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('healthy');
+    expect($monitor->current_status)->toBe('warning');
 
-    Mail::assertNothingSent();
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class, function (\App\Mail\HealthStatusAlert $mail): bool {
+        return $mail->event === 'heartbeat'
+            && $mail->status === 'warning';
+    });
 });
 
-test('control api diagnostic check run does not send recovery notifications', function () {
+test('control api manual check run sends recovery notifications', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),
     ]);
@@ -1387,9 +1388,12 @@ test('control api diagnostic check run does not send recovery notifications', fu
 
     $monitor->refresh();
 
-    expect($monitor->current_status)->toBe('danger');
+    expect($monitor->current_status)->toBe('healthy');
 
-    Mail::assertNothingSent();
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class, function (\App\Mail\HealthStatusAlert $mail): bool {
+        return $mail->event === 'recovered'
+            && $mail->status === 'healthy';
+    });
 });
 
 test('control api returns project detail and recent runs', function () {
@@ -2393,7 +2397,7 @@ test('control api project run reports when there are no enabled checks to queue'
     Bus::assertNothingBatched();
 });
 
-test('queued project diagnostic jobs do not send notifications for check status transitions', function () {
+test('queued project manual jobs send notifications for check status transitions', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),
     ]);
@@ -2431,12 +2435,12 @@ test('queued project diagnostic jobs do not send notifications for check status 
     $monitor->refresh();
     $result = $monitor->results()->latest('id')->first();
 
-    expect($monitor->current_status)->toBe('danger')
+    expect($monitor->current_status)->toBe('warning')
         ->and($result?->status)->toBe('warning')
         ->and($result?->run_source)->toBe(RunSource::OnDemand)
         ->and($result?->is_on_demand)->toBeTrue();
 
-    Mail::assertNothingSent();
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class);
 });
 
 test('control api trigger runs respect stored method and expected status', function () {

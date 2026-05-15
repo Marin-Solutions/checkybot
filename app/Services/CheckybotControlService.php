@@ -31,6 +31,7 @@ class CheckybotControlService
 {
     public function __construct(
         private readonly ApiMonitorExecutionService $executionService,
+        private readonly HealthEventNotificationService $notificationService,
     ) {}
 
     /**
@@ -1287,6 +1288,13 @@ class CheckybotControlService
         $execution = $this->executionService->execute($check, onDemand: true);
         /** @var MonitorApiResult $result */
         $result = $execution['result'];
+
+        $this->notificationService->notifyApiIfTransitioned(
+            $check,
+            $execution['previous_status'],
+            $execution['status'],
+            $execution['summary'],
+        );
 
         return [
             'check' => [

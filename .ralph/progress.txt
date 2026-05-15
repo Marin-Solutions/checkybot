@@ -17,3 +17,14 @@ Started: 2026-05-15 14:21:14
   - Both modern package sync and legacy project check sync restore soft-deleted package rows with `withTrashed()`.
   - Real execution jobs clear `awaiting_heartbeat_since`; sync paths should not set it for Pending lifecycle.
 ---
+
+## 2026-05-15 - SLICE-2
+- Made scheduled and manual API/website executions the owner of live health by having on-demand runs update `current_status`, `last_heartbeat_at`, `stale_at`, and summaries from their real result.
+- Updated manual API and website runs to trigger the same transition notifications as scheduled runs, while preserving `run_source = on_demand` history labels.
+- Updated Filament run evidence surfaces and tests so latest real runs control live evidence, manual runs are labeled as manual, and run history continues to show scheduled/manual rows together.
+- Files changed: API execution service, scheduled/manual API and website jobs, control service, run source labels, Filament monitor evidence views/actions, and focused API/job/Filament tests.
+- **Learnings for future iterations:**
+  - `RunSource::OnDemand` means a manual real check run; it is history metadata, not a signal to skip live status updates.
+  - `latestResult` / `latestLogHistory` should be used when presenting live check evidence; scheduled-only relations are for scheduled-specific comparisons.
+  - Manual website runs clear `diagnostic_queued_at` after completion but now also sync SSL expiry snapshots and transition alerts.
+---

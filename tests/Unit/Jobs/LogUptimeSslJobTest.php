@@ -318,7 +318,7 @@ test('job sends recovery notifications when a warning website returns to healthy
     });
 });
 
-test('on-demand runs do not notify and leave the live status fields untouched', function () {
+test('on-demand runs update live status and notify on transitions', function () {
     Http::fake([
         '*' => Http::response('', 500),
     ]);
@@ -351,11 +351,11 @@ test('on-demand runs do not notify and leave the live status fields untouched', 
     expect($log?->status)->toBe('danger')
         ->and($log?->run_source)->toBe(RunSource::OnDemand)
         ->and($log?->is_on_demand)->toBeTrue()
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at)->toBeNull()
-        ->and($website->status_summary)->toBeNull();
+        ->and($website->current_status)->toBe('danger')
+        ->and($website->last_heartbeat_at)->not->toBeNull()
+        ->and($website->status_summary)->toBe('Website heartbeat failed with HTTP status 500.');
 
-    Mail::assertNothingSent();
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class);
 });
 
 test('job sends notifications for failed manual website heartbeats', function () {
@@ -689,7 +689,7 @@ test('scheduled job does not overwrite a fresher ssl reminder timestamp when exp
         ->and($website->ssl_expiry_reminder_sent_at?->equalTo($reminderSentAt))->toBeTrue();
 });
 
-test('on-demand job does not sync ssl expiry date to website', function () {
+test('on-demand job syncs ssl expiry date to website', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
     Http::fake([
@@ -728,8 +728,8 @@ test('on-demand job does not sync ssl expiry date to website', function () {
     $website->refresh();
 
     expect($history?->ssl_expiry_date?->isSameDay('2026-06-01'))->toBeTrue()
-        ->and(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-05-01'))->toBeTrue()
-        ->and($website->ssl_expiry_reminder_sent_at)->not->toBeNull();
+        ->and(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-06-01'))->toBeTrue()
+        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull();
 });
 
 test('job includes ssl context when http and ssl are both dangerous', function () {
@@ -840,7 +840,7 @@ test('job leaves uptime-only status based on http when ssl check is disabled', f
         ->and($website->status_summary)->toBe('Website heartbeat succeeded with HTTP status 200.');
 });
 
-test('on-demand job records combined ssl risk without changing live status', function () {
+test('on-demand job records combined ssl risk and updates live status', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
     Http::fake([
@@ -874,6 +874,14 @@ test('on-demand job records combined ssl risk without changing live status', fun
         'status_summary' => 'Scheduler says the site is healthy.',
     ]);
 
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
     $job = new LogUptimeSslJob($website, onDemand: true);
     $job->handle(app(SslCertificateService::class));
 
@@ -882,10 +890,10 @@ test('on-demand job records combined ssl risk without changing live status', fun
 
     expect($history?->status)->toBe('warning')
         ->and($history?->summary)->toBe('SSL certificate expires in 6 day(s).')
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->status_summary)->toBe('Scheduler says the site is healthy.');
+        ->and($website->current_status)->toBe('warning')
+        ->and($website->status_summary)->toBe('SSL certificate expires in 6 day(s).');
 
-    Mail::assertNothingSent();
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class);
 });
 
 test('job sends recovery notifications when a manual website returns to healthy', function () {
@@ -1046,8 +1054,6 @@ test('on-demand job records ssl-only evidence when uptime check is disabled', fu
         'status_summary' => 'Scheduler-owned status.',
     ]);
 
-    $heartbeatBefore = $website->last_heartbeat_at;
-
     $job = new LogUptimeSslJob($website, onDemand: true);
     $job->handle(app(SslCertificateService::class));
 
@@ -1061,9 +1067,9 @@ test('on-demand job records ssl-only evidence when uptime check is disabled', fu
         ->and($history?->speed)->toBeNull()
         ->and($history?->run_source)->toBe(RunSource::OnDemand)
         ->and($history?->is_on_demand)->toBeTrue()
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
-        ->and($website->status_summary)->toBe('Scheduler-owned status.');
+        ->and($website->current_status)->toBe('warning')
+        ->and($website->last_heartbeat_at)->not->toBeNull()
+        ->and($website->status_summary)->toBe('SSL certificate expires in 14 day(s).');
 });
 
 test('job resolves the host before looking up the ssl certificate', function () {

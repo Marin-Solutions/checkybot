@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\MonitorApis;
 use App\Services\ApiMonitorExecutionService;
+use App\Services\HealthEventNotificationService;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -18,8 +19,10 @@ class RunApiMonitorDiagnosticJob implements ShouldQueue
         public MonitorApis $monitor,
     ) {}
 
-    public function handle(ApiMonitorExecutionService $executionService): void
-    {
+    public function handle(
+        ApiMonitorExecutionService $executionService,
+        HealthEventNotificationService $notificationService,
+    ): void {
         if ($this->batch()?->cancelled()) {
             $this->clearQueuedDiagnostic();
 
@@ -37,7 +40,14 @@ class RunApiMonitorDiagnosticJob implements ShouldQueue
         $this->monitor = $monitor;
 
         try {
-            $executionService->execute($this->monitor, onDemand: true);
+            $execution = $executionService->execute($this->monitor, onDemand: true);
+
+            $notificationService->notifyApiIfTransitioned(
+                $this->monitor,
+                $execution['previous_status'],
+                $execution['status'],
+                $execution['summary'],
+            );
         } finally {
             $this->clearQueuedDiagnostic();
         }
