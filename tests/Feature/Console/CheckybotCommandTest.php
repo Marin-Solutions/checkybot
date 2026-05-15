@@ -180,6 +180,38 @@ test('sync command sends the full declared component schema alongside due heartb
         ->and($fakeClient->componentPayloads[0]['components'][0]['name'])->toBe('database');
 });
 
+test('dry run shows declared components separately from due component heartbeats', function () {
+    $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
+
+    Checkybot::component('queue')
+        ->everyFiveMinutes()
+        ->metric('pending_jobs', fn (): int => 144)
+        ->warningWhen('>=', 100)
+        ->dangerWhen('>=', 200);
+
+    Checkybot::component('database')
+        ->everyMinute()
+        ->metric('reachable', fn (): bool => false)
+        ->dangerWhen('===', false);
+
+    Cache::forever(
+        'checkybot-laravel.components.identity:'.sha1('production|https://checkout.example.com').'.queue.last_reported_at',
+        now()->copy()->subMinute()->toISOString()
+    );
+
+    $this->artisan('checkybot:sync --dry-run')
+        ->expectsOutput('Checkybot Sync Starting...')
+        ->expectsOutput('Found 0 checks to sync, 2 declared components, and 1 due component to report')
+        ->expectsOutput('DRY RUN - No changes will be made')
+        ->expectsOutput('Declared Components (2):')
+        ->expectsOutput('  - queue every 5m')
+        ->expectsOutput('  - database every 1m')
+        ->expectsOutput('Due Component Heartbeats (1):')
+        ->expectsOutput('  - database every 1m')
+        ->doesntExpectOutput('Components:')
+        ->assertExitCode(0);
+});
+
 test('sync command sends external checks from the registry alongside due components', function () {
     $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
 

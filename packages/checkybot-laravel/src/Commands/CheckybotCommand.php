@@ -60,10 +60,18 @@ class CheckybotCommand extends Command
             ? $this->getDueComponents($registry, $observedAt, $componentContextKey)
             : [];
 
-        $this->comment("Found {$totalChecks} checks to sync and ".count($dueComponents).' due components to report');
+        $this->comment(sprintf(
+            'Found %d %s to sync, %d declared %s, and %d due %s to report',
+            $totalChecks,
+            $totalChecks === 1 ? 'check' : 'checks',
+            count($declaredComponents),
+            count($declaredComponents) === 1 ? 'component' : 'components',
+            count($dueComponents),
+            count($dueComponents) === 1 ? 'component' : 'components',
+        ));
 
         if ($this->option('dry-run')) {
-            $this->displayDryRun($checkPayload, $dueComponents);
+            $this->displayDryRun($checkPayload, $declaredComponents, $dueComponents);
 
             return self::SUCCESS;
         }
@@ -106,9 +114,10 @@ class CheckybotCommand extends Command
 
     /**
      * @param  array<string, array<int, array<string, mixed>>>  $payload
+     * @param  array<int, HealthComponent>  $declaredComponents
      * @param  array<int, HealthComponent>  $dueComponents
      */
-    protected function displayDryRun(array $payload, array $dueComponents): void
+    protected function displayDryRun(array $payload, array $declaredComponents, array $dueComponents): void
     {
         $this->line('');
         $this->comment('DRY RUN - No changes will be made');
@@ -124,13 +133,25 @@ class CheckybotCommand extends Command
             }
         }
 
+        $this->info('Declared Components ('.count($declaredComponents).'):');
+        if ($declaredComponents === []) {
+            $this->line('  - none declared');
+        } else {
+            foreach ($declaredComponents as $component) {
+                $this->line("  - {$component->getName()} every {$component->getInterval()}");
+            }
+        }
+        $this->line('');
+
+        $this->info('Due Component Heartbeats ('.count($dueComponents).'):');
         if ($dueComponents !== []) {
-            $this->info('Components:');
             foreach ($dueComponents as $component) {
                 $this->line("  - {$component->getName()} every {$component->getInterval()}");
             }
-            $this->line('');
+        } else {
+            $this->line('  - none due');
         }
+        $this->line('');
     }
 
     /**
