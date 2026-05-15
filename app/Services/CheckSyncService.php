@@ -213,9 +213,15 @@ class CheckSyncService
                 'last_synced_at' => $syncedAt,
             ];
 
+            $incomingAssertions = $this->canonicalIncomingLegacyAssertions($check['assertions'] ?? []);
+            $existingAssertions = $monitorApi instanceof MonitorApis
+                ? $this->canonicalExistingAssertions($monitorApi)
+                : [];
+            $assertionsChanged = $existingAssertions !== $incomingAssertions;
+
             if ($wasDisabledByMissingPackageSync) {
                 $data += $this->awaitingLiveHealthAttributes();
-            } elseif ($this->apiTargetChanged($monitorApi, $data, $check['assertions'] ?? [])) {
+            } elseif ($this->apiTargetChanged($monitorApi, $data, $assertionsChanged)) {
                 $data += $this->awaitingLiveHealthAttributes();
             }
 
@@ -226,7 +232,6 @@ class CheckSyncService
                 }
 
                 $configurationChanged = $wasRestored || $this->apiConfigurationChanged($monitorApi, $data);
-                $assertionsChanged = $this->apiAssertionsChanged($monitorApi, $check['assertions'] ?? []);
 
                 $monitorApi->update($data);
 
@@ -406,9 +411,8 @@ class CheckSyncService
 
     /**
      * @param  array<string, mixed>  $data
-     * @param  array<int, array<string, mixed>>  $assertions
      */
-    protected function apiTargetChanged(?MonitorApis $monitorApi, array $data, array $assertions): bool
+    protected function apiTargetChanged(?MonitorApis $monitorApi, array $data, bool $assertionsChanged): bool
     {
         if (! $monitorApi instanceof MonitorApis || $monitorApi->trashed()) {
             return false;
@@ -417,7 +421,7 @@ class CheckSyncService
         return $monitorApi->url !== $data['url']
             || $monitorApi->http_method !== $data['http_method']
             || (int) $monitorApi->expected_status !== (int) $data['expected_status']
-            || $this->canonicalExistingAssertions($monitorApi) !== $this->canonicalIncomingLegacyAssertions($assertions);
+            || $assertionsChanged;
     }
 
     /**
@@ -446,14 +450,6 @@ class CheckSyncService
         }
 
         return false;
-    }
-
-    /**
-     * @param  array<int, array<string, mixed>>  $assertions
-     */
-    protected function apiAssertionsChanged(MonitorApis $monitorApi, array $assertions): bool
-    {
-        return $this->canonicalExistingAssertions($monitorApi) !== $this->canonicalIncomingLegacyAssertions($assertions);
     }
 
     protected function normalizeRequestBodyForComparison(mixed $value): mixed
