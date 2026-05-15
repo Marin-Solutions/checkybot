@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Projects\RelationManagers;
 
+use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
 use App\Support\PackageCheckTableEvidence;
@@ -78,6 +79,16 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->badge()
                     ->color(fn (string $state): string => PackageCheckTableEvidence::freshnessColor($state))
                     ->description(fn (Website $record): ?string => PackageCheckTableEvidence::freshnessDescription($record)),
+                TextColumn::make('silenced_until')
+                    ->label('Snoozed')
+                    ->badge()
+                    ->color('warning')
+                    ->icon('heroicon-o-bell-slash')
+                    ->state(fn (Website $record): ?string => $record->isSilenced()
+                        ? 'Until '.$record->silenced_until->format('M j, H:i')
+                        : null)
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
@@ -91,6 +102,59 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     )),
             ])
             ->recordActions([
+                Action::make('snooze')
+                    ->label(fn (Website $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')
+                    ->icon('heroicon-o-bell-slash')
+                    ->color(fn (Website $record): string => $record->isSilenced() ? 'warning' : 'gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                    ->modalHeading('Snooze notifications for this website')
+                    ->modalDescription('Suppress alert delivery during a maintenance window. Checks keep running, the application status keeps updating, but no emails or webhooks fire while snoozed.')
+                    ->modalSubmitActionLabel('Snooze')
+                    ->fillForm(fn (Website $record): array => [
+                        'duration' => $record->isSilenced() ? 'custom' : '1h',
+                        'until' => $record->silenced_until,
+                    ])
+                    ->schema(MonitorSnoozeAction::formSchema())
+                    ->action(function (Website $record, array $data): void {
+                        $until = MonitorSnoozeAction::resolveUntil($data);
+
+                        if ($until === null) {
+                            Notification::make()
+                                ->title('Snooze time must be in the future')
+                                ->body('Pick a future moment, or use Unsnooze to clear the silence.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        $record->update(['silenced_until' => $until]);
+
+                        Notification::make()
+                            ->title('Notifications snoozed')
+                            ->body("Alerts paused for {$record->name} until {$until->format('M j, Y H:i')}.")
+                            ->success()
+                            ->send();
+                    }),
+                Action::make('unsnooze')
+                    ->label('Unsnooze')
+                    ->icon('heroicon-o-bell')
+                    ->color('gray')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                    ->visible(fn (Website $record): bool => $record->isSilenced())
+                    ->requiresConfirmation()
+                    ->modalHeading('Resume notifications')
+                    ->modalDescription('Notifications for this website will fire again on the next status change.')
+                    ->modalSubmitActionLabel('Unsnooze')
+                    ->action(function (Website $record): void {
+                        $record->update(['silenced_until' => null]);
+
+                        Notification::make()
+                            ->title('Notifications resumed')
+                            ->body("{$record->name} will alert again on the next status change.")
+                            ->success()
+                            ->send();
+                    }),
                 Action::make('run_now')
                     ->label('Run check now')
                     ->color('primary')
