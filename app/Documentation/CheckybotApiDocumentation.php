@@ -44,7 +44,7 @@ class CheckybotApiDocumentation
      *     operationId="syncPackageChecks",
      *     tags={"package"},
      *     summary="Sync package-managed API, uptime, and SSL checks",
-     *     description="The package payload is the source of truth for package-managed checks. Matching checks are overwritten on each sync, package-managed website descriptions are reset from package data, missing package checks are disabled, and uptime plus SSL may share one key when they describe the same website.",
+     *     description="The package payload is the source of truth for package-managed check configuration. Checkybot executes API, uptime, and SSL checks and owns live status/result history. Runtime heartbeat, stale, status, metric, or observed_at fields are rejected.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\RequestBody(
@@ -255,13 +255,13 @@ class CheckybotApiDocumentation
      *
      *         @OA\JsonContent(
      *             type="object",
-     *             required={"components"},
+     *             required={"declared_components"},
      *
      *             @OA\Property(
      *                 property="full_manifest",
      *                 type="boolean",
      *                 example=false,
-     *                 description="Set true only when declared_components and components represent the complete active component manifest; missing package components are archived only in full-manifest syncs."
+     *                 description="Set true only when declared_components represents the complete active component manifest; missing package components are archived only in full-manifest syncs."
      *             ),
      *             @OA\Property(
      *                 property="declared_components",
@@ -274,32 +274,6 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Database"),
      *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="5m")
-     *                 )
-     *             ),
-     *             @OA\Property(
-     *                 property="components",
-     *                 type="array",
-     *                 maxItems=100,
-     *
-     *                 @OA\Items(
-     *                     type="object",
-     *                     required={"name", "interval", "status", "observed_at"},
-     *
-     *                     @OA\Property(property="name", type="string", example="Database"),
-     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="5m"),
-     *                     @OA\Property(property="status", type="string", enum={"healthy", "warning", "danger"}, example="healthy"),
-     *                     @OA\Property(property="summary", type="string", nullable=true, example="Replication lag is normal"),
-     *                     @OA\Property(
-     *                         property="metrics",
-     *                         nullable=true,
-     *                         oneOf={
-     *
-     *                             @OA\Schema(type="object"),
-     *                             @OA\Schema(type="array", @OA\Items())
-     *                         }
-     *                     ),
-     *
-     *                     @OA\Property(property="observed_at", type="string", format="date-time", example="2026-04-22T07:00:00Z")
      *                 )
      *             )
      *         )

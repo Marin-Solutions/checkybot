@@ -83,7 +83,7 @@ Example project detail response:
       },
       "success": false,
       "status": "warning",
-      "summary": "API heartbeat is degraded with HTTP status 404.",
+      "summary": "API check is degraded with HTTP status 404.",
       "http_code": 404,
       "response_time_ms": 142,
       "transport_error_type": null,
@@ -117,7 +117,7 @@ Example project detail response:
 
 `{check}` is the stable package-managed check key. Disabling never deletes the definition or result history.
 
-`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project components in one list. Component rows use `"type": "component"` and include delivery state, declared heartbeat interval, stale threshold/timestamps, current metrics, and the latest heartbeat as `latest_result`. Check rows also include `supports_run`, `diagnostic_queued`, `diagnostic_queued_at`, and `latest_diagnostic_result`; API and website rows can be triggered through diagnostic run endpoints, while component rows report package-sent heartbeat evidence and are not directly runnable from the control API.
+`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project component declarations in one list. Component rows use `"type": "component"` and include delivery state plus declared interval. Component health is derived from linked active API and website checks; packages do not send component heartbeat, stale, status, or metric observations. Check rows also include `supports_run`, `diagnostic_queued`, `diagnostic_queued_at`, and `latest_diagnostic_result`; API and website rows can be triggered through diagnostic run endpoints, while component rows are not directly runnable from the control API.
 
 API checks are the default upsert type. Pass `"type": "website"` to create or update a package-managed website check. Website upserts accept `check_types` with `"uptime"`, `"ssl"`, or both; when omitted, Checkybot preserves the existing enabled website check types or defaults new website rows to uptime monitoring.
 
@@ -183,8 +183,6 @@ Example API upsert response:
       "status": "unknown",
       "status_summary": null,
       "last_synced_at": "2026-04-21T11:59:00Z",
-      "last_heartbeat_at": null,
-      "stale_at": null,
       "headers": {
         "Accept": "application/json",
         "Authorization": "[redacted]"
@@ -214,7 +212,7 @@ Example API upsert response:
 - `POST /control/projects/{project}/runs`
 - `POST /control/projects/{project}/checks/{check}/runs`
 
-These endpoints execute synchronously and return the fresh result payload immediately for API and website checks. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are diagnostic: they are appended to run history, but they do not move live status, alert subscribers, or appear in latest failure feeds. Components are heartbeat-driven and show `supports_run: false` in `list_checks`.
+These endpoints execute API checks synchronously and queue website checks. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are appended to run history, update live status, and use `run_source=on_demand`. Components are declarations and show `supports_run: false` in `list_checks`.
 
 Single-check run triggers accept optional `type=api` or `type=website` in the query string or JSON body. The type is required when an API check and website check share the same package key so the control API cannot trigger the wrong surface.
 
@@ -225,7 +223,7 @@ Single-check run triggers accept optional `type=api` or `type=website` in the qu
 - `GET /control/failures?project={project}&limit={1..100}`
 - `GET /control/projects/{project}/failures?limit={1..100}`
 
-`/runs` returns recent check run results. `/failures` returns recent warning or danger results only, including component warning/danger heartbeats with their metric evidence when a component is the latest failing surface.
+`/runs` returns recent API and website check run results. `/failures` returns recent warning or danger API and website results only.
 
 ## MCP Endpoint
 
@@ -300,7 +298,7 @@ curl https://checkybot.example.com/api/v1/control/projects/scrappa/checks \
 
 ## Known Limitations Left Intentionally for Later
 
-- The control surface manages package-managed API checks, website checks, and component visibility. Component definitions and heartbeats are still package-driven; the control API exposes their status and evidence but does not create or manually run component heartbeats.
+- The control surface manages package-managed API checks, website checks, and component visibility. Component definitions are package-driven, but component health is derived from active child checks that Checkybot executes.
 - Run triggers are synchronous HTTP calls. There is no async job dispatch or run queue surface yet.
 - The MCP endpoint is a focused tool surface, not a full general-purpose Checkybot admin API.
 - Result listing is limit-based only. Cursor pagination can be added later if Mimir needs deeper history windows.

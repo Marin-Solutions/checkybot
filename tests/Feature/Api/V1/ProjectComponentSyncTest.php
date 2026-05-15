@@ -4,7 +4,6 @@ use App\Models\ApiKey;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 
@@ -38,8 +37,7 @@ test('sync stores package component declarations without heartbeat history', fun
         ->and($database->last_reported_status)->toBe('unknown')
         ->and($database->last_heartbeat_at)->toBeNull()
         ->and($database->is_stale)->toBeFalse()
-        ->and($database->derivedCurrentStatus())->toBe('pending')
-        ->and(ProjectComponentHeartbeat::query()->count())->toBe(0);
+        ->and($database->derivedCurrentStatus())->toBe('pending');
 });
 
 test('sync rejects runtime component heartbeat observations', function () {
@@ -62,7 +60,36 @@ test('sync rejects runtime component heartbeat observations', function () {
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['components']);
 
-    expect(ProjectComponentHeartbeat::query()->count())->toBe(0);
+    expect(ProjectComponent::query()->count())->toBe(0);
+});
+
+test('sync rejects runtime fields inside component declarations', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/components/sync", [
+            'declared_components' => [
+                [
+                    'name' => 'queue',
+                    'interval' => '5m',
+                    'status' => 'warning',
+                    'summary' => 'Queue backlog is rising.',
+                    'metrics' => ['pending_jobs' => 100],
+                    'observed_at' => now()->toISOString(),
+                    'last_heartbeat_at' => now()->toISOString(),
+                    'stale_at' => now()->addMinutes(5)->toISOString(),
+                ],
+            ],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'declared_components.0.status',
+            'declared_components.0.summary',
+            'declared_components.0.metrics',
+            'declared_components.0.observed_at',
+            'declared_components.0.last_heartbeat_at',
+            'declared_components.0.stale_at',
+        ]);
+
+    expect(ProjectComponent::query()->count())->toBe(0);
 });
 
 test('full manifest archives missing package components but preserves their child check metadata', function () {

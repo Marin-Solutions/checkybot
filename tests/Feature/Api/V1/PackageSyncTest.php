@@ -180,6 +180,41 @@ test('package sync rejects invalid regex assertion patterns', function () {
     ]);
 });
 
+test('package sync rejects non server runtime health fields', function () {
+    $payload = packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'runtime-health',
+                'type' => 'api',
+                'name' => 'Runtime health',
+                'method' => 'GET',
+                'url' => '/health',
+                'schedule' => '5m',
+                'status' => 'danger',
+                'metrics' => ['latency_ms' => 123],
+                'observed_at' => now()->toISOString(),
+                'last_heartbeat_at' => now()->toISOString(),
+                'stale_at' => now()->addMinutes(5)->toISOString(),
+            ],
+        ],
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.status',
+            'checks.0.metrics',
+            'checks.0.observed_at',
+            'checks.0.last_heartbeat_at',
+            'checks.0.stale_at',
+        ]);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'runtime-health',
+    ]);
+});
+
 test('package sync rejects array expected values for comparison assertions', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([

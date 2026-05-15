@@ -183,9 +183,6 @@ class CheckybotImportService
             return;
         }
 
-        if ($runSource === 'heartbeat') {
-            $query->whereRaw('1 = 0');
-        }
     }
 
     public function findProject(User $user, string|int $projectKey): Project
@@ -386,14 +383,12 @@ class CheckybotImportService
             'interval_minutes' => $component->interval_minutes,
             'enabled' => ! (bool) $component->is_archived,
             'status' => $component->derivedCurrentStatus(),
-            'reported_status' => $component->last_reported_status,
             'status_summary' => $component->derivedStatusSummary(),
             'delivery_state' => $deliveryState,
             'delivery_state_label' => ProjectComponentDeliveryState::label($component),
             'is_archived' => (bool) $component->is_archived,
             'last_checked_at' => null,
             'silenced_until' => $component->silenced_until?->toISOString(),
-            'metrics' => [],
             'latest_result' => null,
             'raw' => [
                 'project_component_id' => $component->id,

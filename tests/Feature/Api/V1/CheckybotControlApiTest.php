@@ -10,7 +10,6 @@ use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\ProjectComponent;
-use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -818,13 +817,6 @@ test('control api disables listed component checks by name', function () {
         'is_stale' => true,
     ]);
 
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'queue-worker',
-        'status' => 'danger',
-        'summary' => 'Queue backlog is high.',
-    ]);
-
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/projects/scrappa/checks')
         ->assertOk()
@@ -1193,7 +1185,7 @@ test('control api latest failures only returns currently failing latest schedule
     expect(json_encode($response->json()))->not->toContain('Historical failure that has recovered');
 });
 
-test('control api latest failures includes website and component failures', function () {
+test('control api latest failures includes api and website failures only', function () {
     $apiMonitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -1225,37 +1217,17 @@ test('control api latest failures includes website and component failures', func
         'created_at' => now()->subMinutes(2),
     ]);
 
-    $component = ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue-worker',
-        'current_status' => 'warning',
-        'is_archived' => false,
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'queue-worker',
-        'status' => 'warning',
-        'event' => 'heartbeat',
-        'summary' => 'Queue latency is above threshold.',
-        'metrics' => ['latency_seconds' => 91],
-        'observed_at' => now()->subMinute(),
-    ]);
-
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/failures?project=scrappa')
         ->assertOk()
-        ->assertJsonCount(3, 'data')
-        ->assertJsonPath('data.0.check.type', 'component')
-        ->assertJsonPath('data.0.check.key', 'queue-worker')
-        ->assertJsonPath('data.0.metrics.latency_seconds', 91)
-        ->assertJsonPath('data.1.check.type', 'website')
-        ->assertJsonPath('data.1.check.key', 'marketing-uptime')
-        ->assertJsonPath('data.1.transport_error_type', 'dns')
-        ->assertJsonPath('data.2.check.key', 'api-health');
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.check.type', 'website')
+        ->assertJsonPath('data.0.check.key', 'marketing-uptime')
+        ->assertJsonPath('data.0.transport_error_type', 'dns')
+        ->assertJsonPath('data.1.check.key', 'api-health');
 });
 
-test('control api latest failures excludes recovered website and component rows', function () {
+test('control api latest failures excludes recovered website rows', function () {
     $website = Website::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -1277,35 +1249,12 @@ test('control api latest failures excludes recovered website and component rows'
         'created_at' => now()->subMinutes(5),
     ]);
 
-    $component = ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'scheduler',
-        'current_status' => 'healthy',
-        'is_archived' => false,
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'scheduler',
-        'status' => 'danger',
-        'summary' => 'Historical component failure.',
-        'observed_at' => now()->subMinutes(10),
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'scheduler',
-        'status' => 'healthy',
-        'summary' => 'Component recovered.',
-        'observed_at' => now()->subMinutes(5),
-    ]);
-
     $response = $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/failures?project=scrappa')
         ->assertOk()
         ->assertJsonCount(0, 'data');
 
-    expect(json_encode($response->json()))->not->toContain('Historical website failure')
-        ->and(json_encode($response->json()))->not->toContain('Historical component failure');
+    expect(json_encode($response->json()))->not->toContain('Historical website failure');
 });
 
 test('control api manual check run sends failure notifications', function () {
@@ -1441,48 +1390,23 @@ test('control api returns project detail and recent runs', function () {
         'created_at' => now()->addMinute(),
     ]);
 
-    $component = ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue-worker',
-        'current_status' => 'danger',
-        'last_reported_status' => 'danger',
-        'is_archived' => false,
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'queue-worker',
-        'status' => 'danger',
-        'event' => 'heartbeat',
-        'summary' => 'Queue worker heartbeat failed.',
-        'metrics' => ['failed_jobs' => 12],
-        'observed_at' => now()->addMinutes(2),
-        'created_at' => now()->subMinute(),
-    ]);
-
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/runs?project=scrappa')
         ->assertOk()
-        ->assertJsonCount(3, 'data')
-        ->assertJsonPath('data.0.check.key', 'queue-worker')
-        ->assertJsonPath('data.0.check.type', 'component')
-        ->assertJsonPath('data.0.summary', 'Queue worker heartbeat failed.')
-        ->assertJsonPath('data.0.metrics.failed_jobs', 12)
-        ->assertJsonPath('data.0.run_source', 'heartbeat')
-        ->assertJsonPath('data.1.check.key', 'landing-page')
-        ->assertJsonPath('data.1.check.type', 'website')
-        ->assertJsonPath('data.1.summary', 'Website diagnostic completed.')
-        ->assertJsonPath('data.2.check.key', 'search-health')
-        ->assertJsonPath('data.2.check.type', 'api')
-        ->assertJsonPath('data.2.status', 'warning');
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.check.key', 'landing-page')
+        ->assertJsonPath('data.0.check.type', 'website')
+        ->assertJsonPath('data.0.summary', 'Website diagnostic completed.')
+        ->assertJsonPath('data.1.check.key', 'search-health')
+        ->assertJsonPath('data.1.check.type', 'api')
+        ->assertJsonPath('data.1.status', 'warning');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/projects/scrappa/runs')
         ->assertOk()
-        ->assertJsonCount(3, 'data')
-        ->assertJsonPath('data.0.check.key', 'queue-worker')
-        ->assertJsonPath('data.1.check.key', 'landing-page')
-        ->assertJsonPath('data.2.check.key', 'search-health');
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('data.0.check.key', 'landing-page')
+        ->assertJsonPath('data.1.check.key', 'search-health');
 });
 
 test('control api result payloads include safe api failure evidence', function () {
@@ -1913,43 +1837,28 @@ test('control api lists queued diagnostic state and latest diagnostic evidence f
         ->assertJsonPath('data.1.latest_diagnostic_result.transport_error_type', 'timeout');
 });
 
-test('control api lists component checks with delivery state and latest heartbeat evidence', function () {
+test('control api lists component checks without heartbeat evidence', function () {
     $this->travelTo(now()->setTime(9, 30, 0));
 
     $component = ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'name' => 'queue-worker',
-        'summary' => 'Queue latency is above threshold.',
+        'summary' => 'At least one queue check is failing.',
         'declared_interval' => '2m',
         'interval_minutes' => 2,
-        'current_status' => 'healthy',
-        'last_reported_status' => 'warning',
-        'metrics' => ['latency_seconds' => 91],
-        'last_heartbeat_at' => now()->subMinutes(7),
-        'stale_detected_at' => now()->subMinute(),
-        'is_stale' => true,
         'is_archived' => false,
     ]);
 
-    ProjectComponentHeartbeat::factory()->create([
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
         'project_component_id' => $component->id,
-        'component_name' => 'queue-worker',
-        'status' => 'healthy',
-        'event' => 'heartbeat',
-        'summary' => 'Previous heartbeat was healthy.',
-        'metrics' => ['latency_seconds' => 12],
-        'observed_at' => now()->subMinutes(10),
-    ]);
-
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'queue-worker',
-        'status' => 'warning',
-        'event' => 'stale',
-        'summary' => 'Queue worker heartbeat is stale.',
-        'metrics' => ['latency_seconds' => 91],
-        'observed_at' => now()->subMinute(),
+        'source' => 'package',
+        'package_name' => 'queue-health',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Queue health check failed.',
     ]);
 
     ProjectComponent::factory()->archived()->create([
@@ -1957,74 +1866,102 @@ test('control api lists component checks with delivery state and latest heartbea
         'created_by' => $this->user->id,
         'name' => 'retired-worker',
         'summary' => 'Removed from package configuration.',
-        'last_heartbeat_at' => null,
     ]);
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/projects/scrappa/checks')
         ->assertOk()
-        ->assertJsonCount(2, 'data')
-        ->assertJsonPath('data.0.key', 'queue-worker')
-        ->assertJsonPath('data.0.type', 'component')
-        ->assertJsonPath('data.0.enabled', true)
-        ->assertJsonPath('data.0.supports_run', false)
-        ->assertJsonPath('data.0.status', 'danger')
-        ->assertJsonPath('data.0.reported_status', 'warning')
-        ->assertJsonPath('data.0.delivery_state', 'stale')
-        ->assertJsonPath('data.0.delivery_state_label', 'Stale')
-        ->assertJsonPath('data.0.declared_interval', '2m')
-        ->assertJsonPath('data.0.interval_minutes', 2)
-        ->assertJsonPath('data.0.last_heartbeat_at', now()->subMinutes(7)->toISOString())
-        ->assertJsonPath('data.0.stale_at', now()->subMinute()->toISOString())
-        ->assertJsonPath('data.0.stale_threshold_at', now()->subMinutes(4)->toISOString())
-        ->assertJsonPath('data.0.silenced_until', null)
-        ->assertJsonPath('data.0.is_stale', true)
-        ->assertJsonPath('data.0.metrics.latency_seconds', 91)
-        ->assertJsonPath('data.0.latest_result.check.type', 'component')
-        ->assertJsonPath('data.0.latest_result.status', 'warning')
-        ->assertJsonPath('data.0.latest_result.event', 'stale')
-        ->assertJsonPath('data.0.latest_result.summary', 'Queue worker heartbeat is stale.')
-        ->assertJsonPath('data.0.latest_result.metrics.latency_seconds', 91)
-        ->assertJsonPath('data.1.key', 'retired-worker')
+        ->assertJsonCount(3, 'data')
+        ->assertJsonPath('data.0.key', 'queue-health')
+        ->assertJsonPath('data.0.type', 'api')
+        ->assertJsonPath('data.1.key', 'queue-worker')
         ->assertJsonPath('data.1.type', 'component')
-        ->assertJsonPath('data.1.enabled', false)
-        ->assertJsonPath('data.1.delivery_state', 'archived')
-        ->assertJsonPath('data.1.delivery_state_label', 'Archived')
-        ->assertJsonPath('data.1.latest_result', null);
+        ->assertJsonPath('data.1.enabled', true)
+        ->assertJsonPath('data.1.supports_run', false)
+        ->assertJsonPath('data.1.status', 'danger')
+        ->assertJsonPath('data.1.delivery_state', 'active')
+        ->assertJsonPath('data.1.delivery_state_label', 'Active')
+        ->assertJsonPath('data.1.declared_interval', '2m')
+        ->assertJsonPath('data.1.interval_minutes', 2)
+        ->assertJsonPath('data.1.silenced_until', null)
+        ->assertJsonPath('data.1.latest_result', null)
+        ->assertJsonMissingPath('data.1.reported_status')
+        ->assertJsonMissingPath('data.1.last_heartbeat_at')
+        ->assertJsonMissingPath('data.1.stale_at')
+        ->assertJsonMissingPath('data.1.stale_threshold_at')
+        ->assertJsonMissingPath('data.1.is_stale')
+        ->assertJsonMissingPath('data.1.metrics')
+        ->assertJsonPath('data.2.key', 'retired-worker')
+        ->assertJsonPath('data.2.type', 'component')
+        ->assertJsonPath('data.2.enabled', false)
+        ->assertJsonPath('data.2.delivery_state', 'archived')
+        ->assertJsonPath('data.2.delivery_state_label', 'Archived')
+        ->assertJsonPath('data.2.latest_result', null);
+});
+
+test('control api list checks omits removed non-server heartbeat fields from api checks', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'current_status' => 'pending',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/projects/scrappa/checks')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.key', 'api-health')
+        ->assertJsonMissingPath('data.0.last_heartbeat_at')
+        ->assertJsonMissingPath('data.0.stale_at');
 });
 
 test('control api project summaries include active component counts and status buckets', function () {
-    ProjectComponent::factory()->create([
+    $healthyComponent = ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'name' => 'queue-worker',
+    ]);
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'project_component_id' => $healthyComponent->id,
+        'is_enabled' => true,
         'current_status' => 'healthy',
-        'last_heartbeat_at' => now()->subMinute(),
     ]);
 
-    ProjectComponent::factory()->create([
+    $warningComponent = ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'name' => 'scheduler',
+    ]);
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'project_component_id' => $warningComponent->id,
+        'is_enabled' => true,
         'current_status' => 'warning',
-        'last_heartbeat_at' => now()->subMinutes(2),
     ]);
 
-    ProjectComponent::factory()->create([
+    $dangerComponent = ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
         'name' => 'billing-sync',
-        'current_status' => 'healthy',
-        'last_heartbeat_at' => now()->subMinutes(20),
-        'is_stale' => true,
+    ]);
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'project_component_id' => $dangerComponent->id,
+        'is_enabled' => true,
+        'current_status' => 'danger',
     ]);
 
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
-        'name' => 'first-heartbeat-pending',
-        'current_status' => 'healthy',
-        'last_heartbeat_at' => null,
+        'name' => 'first-check-pending',
     ]);
 
     ProjectComponent::factory()->archived()->create([
@@ -2721,7 +2658,7 @@ test('mcp disable check accepts type to resolve ambiguous check keys', function 
         ->and($website->ssl_check)->toBeFalse();
 });
 
-test('mcp latest failures tool includes website and component failures', function () {
+test('mcp latest failures tool includes website failures and omits component heartbeats', function () {
     $website = Website::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -2737,21 +2674,6 @@ test('mcp latest failures tool includes website and component failures', functio
         'created_at' => now()->subMinutes(2),
     ]);
 
-    $component = ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'billing-worker',
-        'current_status' => 'danger',
-        'is_archived' => false,
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'billing-worker',
-        'status' => 'danger',
-        'summary' => 'Billing worker stopped reporting.',
-        'observed_at' => now()->subMinute(),
-    ]);
-
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
             'jsonrpc' => '2.0',
@@ -2765,13 +2687,12 @@ test('mcp latest failures tool includes website and component failures', functio
             ],
         ])
         ->assertOk()
-        ->assertJsonPath('result.structuredContent.0.check.type', 'component')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'billing-worker')
-        ->assertJsonPath('result.structuredContent.1.check.type', 'website')
-        ->assertJsonPath('result.structuredContent.1.check.key', 'app-uptime');
+        ->assertJsonCount(1, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.check.type', 'website')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'app-uptime');
 });
 
-test('mcp recent runs tool includes website diagnostics and component heartbeats', function () {
+test('mcp recent runs tool includes api and website diagnostics only', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -2799,22 +2720,6 @@ test('mcp recent runs tool includes website diagnostics and component heartbeats
         'created_at' => now()->subMinute(),
     ]);
 
-    $component = ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'billing-worker',
-        'current_status' => 'healthy',
-    ]);
-    ProjectComponentHeartbeat::factory()->create([
-        'project_component_id' => $component->id,
-        'component_name' => 'billing-worker',
-        'status' => 'healthy',
-        'event' => 'heartbeat',
-        'summary' => 'Billing worker heartbeat completed.',
-        'observed_at' => now(),
-        'created_at' => now()->subMinutes(3),
-    ]);
-
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
             'jsonrpc' => '2.0',
@@ -2828,15 +2733,12 @@ test('mcp recent runs tool includes website diagnostics and component heartbeats
             ],
         ])
         ->assertOk()
-        ->assertJsonPath('result.structuredContent.0.check.type', 'component')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'billing-worker')
-        ->assertJsonPath('result.structuredContent.0.run_source', 'heartbeat')
-        ->assertJsonPath('result.structuredContent.0.summary', 'Billing worker heartbeat completed.')
-        ->assertJsonPath('result.structuredContent.1.check.type', 'website')
-        ->assertJsonPath('result.structuredContent.1.check.key', 'app-uptime')
-        ->assertJsonPath('result.structuredContent.1.summary', 'Website diagnostic completed.')
-        ->assertJsonPath('result.structuredContent.2.check.type', 'api')
-        ->assertJsonPath('result.structuredContent.2.check.key', 'api-health');
+        ->assertJsonCount(2, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.check.type', 'website')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'app-uptime')
+        ->assertJsonPath('result.structuredContent.0.summary', 'Website diagnostic completed.')
+        ->assertJsonPath('result.structuredContent.1.check.type', 'api')
+        ->assertJsonPath('result.structuredContent.1.check.key', 'api-health');
 });
 
 test('mcp endpoint rejects invalid schedules with a field validation error', function () {

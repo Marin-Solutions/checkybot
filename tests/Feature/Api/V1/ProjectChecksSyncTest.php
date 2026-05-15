@@ -68,6 +68,49 @@ test('syncs uptime checks successfully', function () {
     ]);
 });
 
+test('project check sync rejects non server runtime health fields', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'homepage',
+                    'url' => 'https://example.com',
+                    'interval' => '5m',
+                    'status' => 'danger',
+                    'last_heartbeat_at' => now()->toISOString(),
+                    'stale_at' => now()->addMinutes(5)->toISOString(),
+                ],
+            ],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'api-health',
+                    'url' => 'https://example.com/health',
+                    'interval' => '5m',
+                    'metrics' => ['latency_ms' => 123],
+                    'observed_at' => now()->toISOString(),
+                ],
+            ],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'uptime_checks.0.status',
+            'uptime_checks.0.last_heartbeat_at',
+            'uptime_checks.0.stale_at',
+            'api_checks.0.metrics',
+            'api_checks.0.observed_at',
+        ]);
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+    ]);
+    $this->assertDatabaseMissing('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'api-health',
+    ]);
+});
+
 test('syncs ssl checks successfully', function () {
     $summary = $this->syncService->syncChecks($this->project, [
         'uptime_checks' => [],

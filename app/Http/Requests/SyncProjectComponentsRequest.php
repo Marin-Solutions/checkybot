@@ -32,8 +32,21 @@ class SyncProjectComponentsRequest extends FormRequest
             'full_manifest' => ['sometimes', 'boolean'],
 
             'declared_components' => ['present_if:full_manifest,true,1', 'array', 'max:100'],
+            'declared_components.*' => ['required', 'array:name,interval'],
             'declared_components.*.name' => ['required', 'string', 'max:255'],
             'declared_components.*.interval' => ['required', 'string', $this->intervalRule()],
+            'declared_components.*.status' => ['prohibited'],
+            'declared_components.*.current_status' => ['prohibited'],
+            'declared_components.*.reported_status' => ['prohibited'],
+            'declared_components.*.last_reported_status' => ['prohibited'],
+            'declared_components.*.summary' => ['prohibited'],
+            'declared_components.*.metrics' => ['prohibited'],
+            'declared_components.*.observed_at' => ['prohibited'],
+            'declared_components.*.last_heartbeat_at' => ['prohibited'],
+            'declared_components.*.stale_at' => ['prohibited'],
+            'declared_components.*.stale_detected_at' => ['prohibited'],
+            'declared_components.*.stale_threshold_at' => ['prohibited'],
+            'declared_components.*.is_stale' => ['prohibited'],
 
             'components' => ['prohibited'],
         ];
