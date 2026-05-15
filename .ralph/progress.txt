@@ -1,109 +1,19 @@
 # Ralph Progress Log
-Started: 2026-03-21 19:41:16
+Started: 2026-05-15 14:21:14
 
 ## Codebase Patterns
 <!-- Patterns accumulate here -->
-- Filament application setup snippets are safest as raw string state on the model rendered through a `TextEntry` `<pre>` block; `CodeEntry` depends on an optional syntax-highlighter package that is not installed in this app.
-- Package-facing Checkybot routes should use the shared `api.key` Bearer-token middleware and set the request user resolver, which lets Form Request ownership checks keep working without a separate package auth code path.
-- Package-managed monitoring records should be archived, not hard-deleted, when sync prunes them so history remains queryable in Filament and tests can assert archived visibility.
-- Health event routing should reuse `NotificationSetting` scopes plus `WebsiteServicesEnum` inspection values instead of introducing a parallel notification configuration path.
-- Application rollup status should be computed from non-archived components only, with `danger > warning > healthy` precedence so archived incidents do not affect current state.
-- Application detail pages should expose package-managed checks through dedicated `Project` relation managers that remove the soft-delete global scope, so sync-pruned records remain visible as archived history.
+- Package sync behavior is covered primarily by Pest feature tests under `tests/Feature/Api/V1/PackageSyncTest.php` and legacy sync coverage in `ProjectChecksSyncTest.php`.
 
 ## Iteration History
 <!-- Learnings append here -->
-## 2026-03-21 - STORY-1
-- Implemented package-managed heartbeat/status tracking for websites and API monitors, including archived visibility, stale escalation, and generic health alert mail/webhook delivery.
-- Added project component sync, stale detection, notification flow, heartbeat persistence, and Filament application/component views for active and archived component history.
-- Files changed:
-  - API sync and stale handling in `app/Http/Controllers/Api/V1/ProjectComponentsController.php`, `app/Http/Requests/SyncProjectComponentsRequest.php`, `app/Services/ProjectComponentSyncService.php`, `app/Services/ProjectComponentStaleService.php`, `app/Console/Commands/CheckProjectComponentStaleStatus.php`, `routes/api.php`, and `app/Console/Kernel.php`
-  - Package-managed check archive/status flow in `app/Services/CheckSyncService.php`, `app/Jobs/LogUptimeSslJob.php`, `app/Console/Commands/CheckApiMonitors.php`, `app/Console/Commands/MarkStalePackageChecks.php`, `app/Services/PackageHealthStatusService.php`, and `app/Services/HealthEventNotificationService.php`
-  - Persistence/UI updates in `app/Models/*`, `database/migrations/2026_03_21_194800_create_project_components_table.php`, `database/migrations/2026_03_21_194801_create_project_component_heartbeats_table.php`, `database/migrations/2026_03_21_194828_add_package_health_tracking_to_monitoring_tables.php`, and Filament resources under `app/Filament/Resources/Projects`, `app/Filament/Resources/ProjectComponents`, `app/Filament/Resources/WebsiteResource`, and `app/Filament/Resources/MonitorApisResource`
-  - Story coverage in `tests/Feature/Api/V1/ProjectChecksSyncTest.php`, `tests/Feature/Api/V1/ProjectComponentSyncTest.php`, `tests/Unit/Jobs/LogUptimeSslJobTest.php`, `tests/Unit/Commands/CheckApiMonitorsTest.php`, `tests/Unit/Commands/MarkStalePackageChecksTest.php`, `tests/Unit/Commands/CheckProjectComponentStaleStatusTest.php`, `tests/Feature/Filament/WebsiteResourceTest.php`, `tests/Feature/Filament/MonitorApisResourceTest.php`, and `tests/Feature/Filament/ProjectResourceTest.php`
+## 2026-05-15 - SLICE-1
+- Implemented Pending lifecycle for package-synced API, uptime, and SSL checks; created and reset checks now use `current_status = pending` without setting heartbeat timestamps.
+- Changed missing package-managed checks to soft-delete/archive while preserving historical result/log rows.
+- Deprecated the local package stale command into a no-op so package sync no longer manufactures stale failures or notifications.
+- Files changed: `app/Services/PackageSyncService.php`, `app/Services/CheckSyncService.php`, `app/Console/Commands/MarkStalePackageChecks.php`, `app/Support/HealthStatusLabel.php`, package sync feature tests, legacy sync feature tests, and stale command tests.
 - **Learnings for future iterations:**
-  - Project/application UI coverage is simplest when `Project` owns a first-class `components()` relationship and the Filament application list eagerly counts components.
-  - Archived visibility is easier to test via Filament trashed filters on soft-deleted package-managed checks and dedicated archived flags for component records.
-  - Stale detection should record a new history row when it flips state so operators can see timeout incidents alongside normal heartbeats.
+  - Package-managed checks use `source = package` plus `package_name` as the stable sync identity.
+  - Both modern package sync and legacy project check sync restore soft-deleted package rows with `withTrashed()`.
+  - Real execution jobs clear `awaiting_heartbeat_since`; sync paths should not set it for Pending lifecycle.
 ---
-
-
-## Verification Failed
-
-```
-
-```
-
-## 2026-03-21 - STORY-5
-- Implemented the base Application Filament flow so operators can create a record with only `name` and `environment`, while `created_by` and the pairing token are derived automatically on create.
-- Added a guided Laravel setup section on the Application view that renders a copyable install snippet with the Checkybot URL, `CHECKYBOT_APP_ID`, application name, environment, and follow-up sync commands.
-- Files changed
-  - `app/Filament/Resources/Projects/Schemas/ProjectForm.php`
-  - `app/Filament/Resources/Projects/Pages/CreateProject.php`
-  - `app/Filament/Resources/Projects/Schemas/ProjectInfolist.php`
-  - `app/Models/Project.php`
-  - `tests/Feature/Filament/ProjectGuidedSetupTest.php`
-  - `docs/plans/2026-03-21-story-5-application-foundation-guided-setup.md`
-  - `.ralph/prd.json`
-  - `.ralph/progress.txt`
-- **Learnings for future iterations:**
-  - Guided install content is easiest to keep consistent when the `Project` model owns snippet generation and the Filament view only handles presentation.
-  - A dedicated Filament feature test can cover both the create flow and the rendered infolist state without needing broader end-to-end browser coverage.
----
-
-## 2026-03-21 - STORY-4
-- Implemented a package registration handshake that authenticates with Bearer API keys, attaches guided installs to an existing application shell by hidden `app_id`, and auto-creates a new application when no `identity_endpoint + environment` match exists.
-- Switched package sync endpoints to the shared API-key middleware, added `identity_endpoint` storage plus registration service/controller/request flow on the backend, and updated the vendored package command/client/config to register before syncing checks or components.
-- Files changed:
-  - Backend auth and registration in `bootstrap/app.php`, `routes/api.php`, `app/Http/Middleware/ApiKeyAuthentication.php`, `app/Http/Controllers/Api/V1/ProjectRegistrationsController.php`, `app/Http/Requests/RegisterProjectRequest.php`, `app/Services/ProjectRegistrationService.php`, `app/Models/Project.php`, and `database/migrations/2026_03_21_203047_add_identity_endpoint_to_projects_table.php`
-  - Package handshake flow in `vendor/marin-solutions/checkybot-laravel/config/checkybot-laravel.php`, `vendor/marin-solutions/checkybot-laravel/src/CheckybotLaravelServiceProvider.php`, `vendor/marin-solutions/checkybot-laravel/src/ConfigValidator.php`, `vendor/marin-solutions/checkybot-laravel/src/Http/CheckybotClient.php`, and `vendor/marin-solutions/checkybot-laravel/src/Commands/CheckybotCommand.php`
-  - Story coverage and plan in `tests/Feature/Api/V1/ProjectRegistrationTest.php`, `tests/Feature/Api/V1/ProjectChecksSyncTest.php`, `tests/Feature/Api/V1/ProjectComponentSyncTest.php`, `tests/Feature/Console/CheckybotCommandTest.php`, and `docs/plans/2026-03-21-story-4-package-auth-registration-handshake.md`
-- **Learnings for future iterations:**
-  - Registration works cleanly as a thin service around `Project` when guided setup prefers `app_id` only for first attach and then falls back to `identity_endpoint + environment` matching for idempotent re-runs.
-  - Package command tests are easiest to keep stable when the fake `CheckybotClient` owns the resolved project id after registration, because sync assertions can then verify orchestration without real HTTP calls.
-  - Due-component cache keys should be derived from stable application identity inputs rather than a hard-coded project id so package-first bootstrap still has deterministic scheduling before the first sync completes.
----
-## 2026-03-21 - STORY-3
-- Implemented package-command external check sync coverage so `checkybot:sync` posts registry-defined uptime, SSL, and API checks and still sends an empty payload when code-defined checks are removed, allowing backend prune/archive logic to run.
-- Added read-only Application relation managers for package-managed websites and API monitors, including archived visibility directly from the Application record in Filament.
-- Files changed:
-  - Package command flow in `vendor/marin-solutions/checkybot-laravel/src/Commands/CheckybotCommand.php`
-  - Application UI in `app/Filament/Resources/Projects/ProjectResource.php`, `app/Filament/Resources/Projects/RelationManagers/PackageManagedWebsitesRelationManager.php`, and `app/Filament/Resources/Projects/RelationManagers/PackageManagedApisRelationManager.php`
-  - Story coverage and plan in `tests/Feature/Console/CheckybotCommandTest.php`, `tests/Feature/Filament/ProjectResourceTest.php`, and `docs/plans/2026-03-21-story-3-package-external-check-sync.md`
-- **Learnings for future iterations:**
-  - External-check prune behavior needs command-level coverage, not just backend sync-service tests, because skipping an empty payload bypasses server-side archive logic entirely.
-  - Package-managed check visibility is safest as read-only relation managers on the Application record, backed by package-scoped relationships that explicitly include soft-deleted rows for archived history.
----
-## 2026-03-21 - STORY-2
-- Implemented package health components in the vendored Laravel package with a fluent metric/threshold DSL, heartbeat payload evaluation, due-interval helper logic, and component sync client support for the existing Checkybot ingest endpoint.
-- Added application-level status rollup in Checkybot so Filament application list/detail views show the current worst active component status while leaving archived component history visible elsewhere.
-- Added story coverage for package component definition and due evaluation in `tests/Feature/Console/CheckybotCommandTest.php`, while reusing `tests/Feature/Api/V1/ProjectComponentSyncTest.php` for heartbeat ingest and extending `tests/Feature/Filament/ProjectResourceTest.php` for UI-visible rollup status.
-- Files changed:
-  - Vendored package: `vendor/marin-solutions/checkybot-laravel/src/Components/HealthComponent.php`, `vendor/marin-solutions/checkybot-laravel/src/Support/Interval.php`, `vendor/marin-solutions/checkybot-laravel/src/CheckRegistry.php`, `vendor/marin-solutions/checkybot-laravel/src/ConfigValidator.php`, `vendor/marin-solutions/checkybot-laravel/src/Facades/Checkybot.php`, `vendor/marin-solutions/checkybot-laravel/src/Http/CheckybotClient.php`, and `vendor/marin-solutions/checkybot-laravel/src/Commands/CheckybotCommand.php`
-  - Checkybot app: `app/Models/Project.php`, `app/Filament/Resources/Projects/ProjectResource.php`, `app/Filament/Resources/Projects/Tables/ProjectsTable.php`, and `app/Filament/Resources/Projects/Schemas/ProjectInfolist.php`
-  - Tests and planning: `tests/Feature/Console/CheckybotCommandTest.php`, `tests/Feature/Filament/ProjectResourceTest.php`, and `docs/plans/2026-03-21-story-2-package-health-components.md`
-- **Learnings for future iterations:**
-  - Package-side component threshold evaluation is simplest when the DSL only models one primary metric per component and computes status locally before transport.
-  - Current application status should stay computed at read time unless another story explicitly requires persistence; eager-loading active components is enough to avoid N+1 on the Filament list.
-  - Due-interval logic is worth isolating in a tiny helper because subtle Carbon directionality bugs are easy to miss without focused tests.
----
-
-
-## Verification Failed
-
-```
-
-```
-
-
-## Verification Failed
-
-```
-
-```
-
-
-## Verification Failed
-
-```
-
-```

@@ -68,12 +68,6 @@ class CheckSyncService
                 'last_synced_at' => $syncedAt,
             ];
 
-            if ($wasDisabledByMissingPackageSync) {
-                $data += $this->awaitingLiveHealthAttributes();
-            } elseif ($this->websiteTargetChanged($website, $data)) {
-                $data += $this->awaitingLiveHealthAttributes();
-            }
-
             if ($website) {
                 if ($website->trashed()) {
                     $website->restore();
@@ -82,13 +76,17 @@ class CheckSyncService
 
                 $configurationChanged = $wasRestored || $this->websiteConfigurationChanged($website, $data);
 
+                if ($wasDisabledByMissingPackageSync || $wasRestored || $this->websiteTargetChanged($website, $data)) {
+                    $data += $this->pendingLiveHealthAttributes();
+                }
+
                 $website->update($data);
 
                 if ($configurationChanged) {
                     $updated++;
                 }
             } else {
-                Website::create($data);
+                Website::create($data + $this->pendingLiveHealthAttributes());
                 $created++;
             }
         }
@@ -133,12 +131,6 @@ class CheckSyncService
                 'last_synced_at' => $syncedAt,
             ];
 
-            if ($wasDisabledByMissingPackageSync) {
-                $data += $this->awaitingLiveHealthAttributes();
-            } elseif ($this->websiteTargetChanged($website, $data)) {
-                $data += $this->awaitingLiveHealthAttributes();
-            }
-
             if ($website) {
                 if ($website->trashed()) {
                     $website->restore();
@@ -147,13 +139,17 @@ class CheckSyncService
 
                 $configurationChanged = $wasRestored || $this->websiteConfigurationChanged($website, $data);
 
+                if ($wasDisabledByMissingPackageSync || $wasRestored || $this->websiteTargetChanged($website, $data)) {
+                    $data += $this->pendingLiveHealthAttributes();
+                }
+
                 $website->update($data);
 
                 if ($configurationChanged) {
                     $updated++;
                 }
             } else {
-                Website::create($data);
+                Website::create($data + $this->pendingLiveHealthAttributes());
                 $created++;
             }
         }
@@ -219,12 +215,6 @@ class CheckSyncService
                 : [];
             $assertionsChanged = $existingAssertions !== $incomingAssertions;
 
-            if ($wasDisabledByMissingPackageSync) {
-                $data += $this->awaitingLiveHealthAttributes();
-            } elseif ($this->apiTargetChanged($monitorApi, $data, $assertionsChanged)) {
-                $data += $this->awaitingLiveHealthAttributes();
-            }
-
             if ($monitorApi) {
                 if ($monitorApi->trashed()) {
                     $monitorApi->restore();
@@ -232,6 +222,10 @@ class CheckSyncService
                 }
 
                 $configurationChanged = $wasRestored || $this->apiConfigurationChanged($monitorApi, $data);
+
+                if ($wasDisabledByMissingPackageSync || $wasRestored || $this->apiTargetChanged($monitorApi, $data, $assertionsChanged)) {
+                    $data += $this->pendingLiveHealthAttributes();
+                }
 
                 $monitorApi->update($data);
 
@@ -243,7 +237,7 @@ class CheckSyncService
                     $updated++;
                 }
             } else {
-                $monitorApi = MonitorApis::create($data);
+                $monitorApi = MonitorApis::create($data + $this->pendingLiveHealthAttributes());
                 $created++;
                 $existingApis->put($check['name'], $monitorApi);
                 $this->syncAssertions($monitorApi, $check['assertions'] ?? []);
@@ -347,27 +341,38 @@ class CheckSyncService
             $query->whereNotIn('package_name', $keepNames);
         }
 
-        return $query->update(MonitorApis::disabledHealthAttributes(self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY) + [
-            'is_enabled' => false,
-            'last_synced_at' => $syncedAt,
-        ]);
+        return $query->get()
+            ->each(function (MonitorApis $monitorApi) use ($syncedAt): void {
+                $monitorApi->forceFill(MonitorApis::disabledHealthAttributes(self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY) + [
+                    'is_enabled' => false,
+                    'last_synced_at' => $syncedAt,
+                ])->save();
+
+                $monitorApi->delete();
+            })
+            ->count();
     }
 
     protected function disableFullyOrphanedWebsites(Builder $query, Carbon $syncedAt): int
     {
-        return $query->update(Website::disabledLiveHealthAttributes(self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY) + [
-            'uptime_check' => false,
-            'ssl_check' => false,
-            'package_interval' => null,
-            'last_heartbeat_at' => null,
-            'last_synced_at' => $syncedAt,
-        ]);
+        return $query->get()
+            ->each(function (Website $website) use ($syncedAt): void {
+                $website->forceFill(Website::disabledLiveHealthAttributes(self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY) + [
+                    'uptime_check' => false,
+                    'ssl_check' => false,
+                    'package_interval' => null,
+                    'last_heartbeat_at' => null,
+                    'last_synced_at' => $syncedAt,
+                ])->save();
+
+                $website->delete();
+            })
+            ->count();
     }
 
     protected function wasApiDisabledByMissingPackageSync(?MonitorApis $monitorApi): bool
     {
         return $monitorApi instanceof MonitorApis
-            && ! $monitorApi->trashed()
             && ! $monitorApi->is_enabled
             && $monitorApi->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
     }
@@ -375,7 +380,6 @@ class CheckSyncService
     protected function wasWebsiteDisabledByMissingPackageSync(?Website $website): bool
     {
         return $website instanceof Website
-            && ! $website->trashed()
             && ! $website->uptime_check
             && ! $website->ssl_check
             && $website->status_summary === self::MISSING_PACKAGE_SYNC_STATUS_SUMMARY;
@@ -482,13 +486,13 @@ class CheckSyncService
     /**
      * @return array<string, mixed>
      */
-    protected function awaitingLiveHealthAttributes(): array
+    protected function pendingLiveHealthAttributes(): array
     {
         return [
-            'current_status' => 'unknown',
+            'current_status' => 'pending',
             'status_summary' => null,
             'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => now(),
+            'awaiting_heartbeat_since' => null,
             'stale_at' => null,
             'diagnostic_queued_at' => null,
         ];

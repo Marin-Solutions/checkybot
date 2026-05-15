@@ -347,7 +347,7 @@ test('legacy sync resets api live health when target-defining settings change', 
         'url' => 'https://api.example.com/new-health',
         'http_method' => 'POST',
         'expected_status' => 201,
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
         'last_heartbeat_at' => null,
         'stale_at' => null,
@@ -503,7 +503,6 @@ test('re-enables orphaned api checks when legacy sync reintroduces them without 
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
         'last_heartbeat_at' => null,
         'stale_at' => null,
-        'deleted_at' => null,
     ]);
 
     $summary = $this->syncService->syncChecks($this->project, [
@@ -530,11 +529,10 @@ test('re-enables orphaned api checks when legacy sync reintroduces them without 
         'url' => 'https://api.example.com/health',
         'package_interval' => '10m',
         'is_enabled' => true,
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
         'last_heartbeat_at' => null,
         'stale_at' => null,
-        'deleted_at' => null,
     ]);
 });
 
@@ -581,11 +579,10 @@ test('clears missing sync evidence when orphaned api checks return disabled', fu
         'package_name' => 'optional-health-check',
         'package_interval' => '10m',
         'is_enabled' => false,
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
         'last_heartbeat_at' => null,
         'stale_at' => null,
-        'deleted_at' => null,
     ]);
 });
 
@@ -814,7 +811,7 @@ test('legacy sync resets website live health when url changes', function () {
     $this->assertDatabaseHas('websites', [
         'id' => $website->id,
         'url' => 'https://new-url.com',
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
         'last_heartbeat_at' => null,
         'stale_at' => null,
@@ -864,7 +861,6 @@ test('disables orphaned uptime checks without deleting them', function () {
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
         'last_heartbeat_at' => null,
         'stale_at' => null,
-        'deleted_at' => null,
     ]);
     $this->assertDatabaseHas('websites', ['package_name' => 'new-check']);
 });
@@ -897,7 +893,6 @@ test('re-enables orphaned website checks without stale disabled evidence', funct
         'status_summary' => 'Disabled because it was missing from the latest package sync.',
         'last_heartbeat_at' => null,
         'stale_at' => null,
-        'deleted_at' => null,
     ]);
 
     $summary = $this->syncService->syncChecks($this->project, [
@@ -924,11 +919,10 @@ test('re-enables orphaned website checks without stale disabled evidence', funct
         'uptime_check' => true,
         'ssl_check' => false,
         'uptime_interval' => 10,
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
         'last_heartbeat_at' => null,
         'stale_at' => null,
-        'deleted_at' => null,
     ]);
 });
 
@@ -992,7 +986,6 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'last_heartbeat_at' => null,
         'stale_at' => null,
         'diagnostic_queued_at' => null,
-        'deleted_at' => null,
     ]);
 
     $this->assertDatabaseHas('monitor_apis', [
@@ -1003,7 +996,6 @@ test('disables orphaned package-managed checks and preserves their history', fun
         'last_heartbeat_at' => null,
         'stale_at' => null,
         'diagnostic_queued_at' => null,
-        'deleted_at' => null,
     ]);
 
     $this->assertDatabaseHas('website_log_history', [
@@ -1926,7 +1918,7 @@ test('transitioning from uptime-only to ssl-only does not restore uptime from th
         'package_name' => 'homepage',
         'uptime_check' => false,
         'ssl_check' => true,
-        'current_status' => 'unknown',
+        'current_status' => 'pending',
         'status_summary' => null,
         'last_heartbeat_at' => null,
         'stale_at' => null,

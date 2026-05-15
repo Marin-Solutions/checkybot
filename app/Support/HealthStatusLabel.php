@@ -9,6 +9,7 @@ class HealthStatusLabel
         return match ($status) {
             null => 'Unknown',
             'unknown' => 'Awaiting data',
+            'pending' => 'Pending',
             'healthy' => 'Healthy',
             'warning' => 'Warning',
             'danger' => 'Danger',
@@ -31,6 +32,9 @@ class HealthStatusLabel
             return $options;
         }
 
-        return ['unknown' => self::format('unknown')] + $options;
+        return [
+            'unknown' => self::format('unknown'),
+            'pending' => self::format('pending'),
+        ] + $options;
     }
 }

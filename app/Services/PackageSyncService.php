@@ -153,8 +153,8 @@ class PackageSyncService
             $assertionsChanged = ! $wasCreated
                 && $this->apiAssertionsChanged($monitorApi, $check['assertions'] ?? []);
 
-            if ($this->apiTargetChanged($monitorApi, $data, $assertionsChanged)) {
-                $data += $this->awaitingLiveHealthAttributes();
+            if ($wasCreated || $configChanged || $assertionsChanged) {
+                $data += $this->pendingLiveHealthAttributes();
             }
 
             $monitorApi->fill($data);
@@ -252,8 +252,8 @@ class PackageSyncService
                 || $website->wasChanged('deleted_at')
                 || $this->websiteConfigurationChanged($website, $data);
 
-            if ($this->websiteTargetChanged($website, $data)) {
-                $data += $this->awaitingLiveHealthAttributes();
+            if ($wasCreated || $wasRestored || $configChanged) {
+                $data += $this->pendingLiveHealthAttributes();
             }
 
             $website->fill($data);
@@ -434,10 +434,16 @@ class PackageSyncService
             $query->whereNotIn('package_name', array_values(array_unique($activeApiKeys)));
         }
 
-        return $query->update(MonitorApis::disabledHealthAttributes('Disabled because it was missing from the latest package sync.') + [
-            'is_enabled' => false,
-            'last_synced_at' => $syncedAt,
-        ]);
+        return $query->get()
+            ->each(function (MonitorApis $monitorApi) use ($syncedAt): void {
+                $monitorApi->forceFill(MonitorApis::disabledHealthAttributes('Archived because it was missing from the latest package sync.') + [
+                    'is_enabled' => false,
+                    'last_synced_at' => $syncedAt,
+                ])->save();
+
+                $monitorApi->delete();
+            })
+            ->count();
     }
 
     /**
@@ -454,10 +460,23 @@ class PackageSyncService
             $query->whereNotIn('package_name', array_values(array_unique($activeKeys)));
         }
 
-        return $query->update([
-            $type === 'uptime' ? 'uptime_check' : 'ssl_check' => false,
-            'last_synced_at' => $syncedAt,
-        ]);
+        return $query->get()
+            ->each(function (Website $website) use ($type, $syncedAt): void {
+                $website->forceFill([
+                    $type === 'uptime' ? 'uptime_check' : 'ssl_check' => false,
+                    'last_synced_at' => $syncedAt,
+                ])->save();
+
+                if (! $website->uptime_check && ! $website->ssl_check) {
+                    $website->forceFill(Website::disabledLiveHealthAttributes('Archived because it was missing from the latest package sync.') + [
+                        'package_interval' => null,
+                        'last_heartbeat_at' => null,
+                    ])->save();
+
+                    $website->delete();
+                }
+            })
+            ->count();
     }
 
     private function resetStatusForFullyDisabledWebsites(Project $project): void
@@ -501,13 +520,13 @@ class PackageSyncService
     /**
      * @return array<string, mixed>
      */
-    private function awaitingLiveHealthAttributes(): array
+    private function pendingLiveHealthAttributes(): array
     {
         return [
-            'current_status' => 'unknown',
+            'current_status' => 'pending',
             'status_summary' => null,
             'last_heartbeat_at' => null,
-            'awaiting_heartbeat_since' => now(),
+            'awaiting_heartbeat_since' => null,
             'stale_at' => null,
             'diagnostic_queued_at' => null,
         ];
