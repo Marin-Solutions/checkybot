@@ -1602,10 +1602,28 @@ class CheckybotControlService
     private function normalizeRequestBodyForComparison(mixed $value): mixed
     {
         if (is_array($value)) {
-            return json_encode($value);
+            return json_encode($this->preserveEmptyJsonObjects($value));
         }
 
         return $value;
+    }
+
+    private function preserveEmptyJsonObjects(mixed $value, bool $isRoot = true, bool $parentIsList = false): mixed
+    {
+        if (! is_array($value)) {
+            return $value;
+        }
+
+        if ($value === []) {
+            return $isRoot || $parentIsList ? [] : new \stdClass;
+        }
+
+        $isList = array_is_list($value);
+
+        return array_map(
+            fn (mixed $item): mixed => $this->preserveEmptyJsonObjects($item, false, $isList),
+            $value,
+        );
     }
 
     /**

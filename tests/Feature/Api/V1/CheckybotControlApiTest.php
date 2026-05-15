@@ -358,6 +358,60 @@ test('control api resets api live health when request configuration changes', fu
     expect($monitor->fresh()->awaiting_heartbeat_since)->not->toBeNull();
 });
 
+test('control api preserves api live health when nested empty object request body is unchanged', function () {
+    $payload = [
+        'name' => 'Search health',
+        'method' => 'POST',
+        'url' => '/api/search/health',
+        'expected_status' => 200,
+        'headers' => [
+            'Authorization' => 'Bearer package-token',
+        ],
+        'request_body_type' => 'json',
+        'request_body' => [
+            'filters' => [],
+            'ids' => [1, 2],
+        ],
+        'timeout_seconds' => 15,
+        'assertions' => [
+            ['type' => 'json_path_exists', 'path' => '$.data'],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', $payload)
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'search-health')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Current request configuration is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'awaiting_heartbeat_since' => null,
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->putJson('/api/v1/control/projects/scrappa/checks/search-health', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.check.status', 'healthy')
+        ->assertJsonPath('data.check.status_summary', 'Current request configuration is healthy.')
+        ->assertJsonPath('data.check.diagnostic_queued', true);
+
+    $monitor->refresh();
+
+    expect($monitor->request_body)->toBe('{"filters":{},"ids":[1,2]}')
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->last_heartbeat_at)->not->toBeNull()
+        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+        ->and($monitor->stale_at)->not->toBeNull()
+        ->and($monitor->diagnostic_queued_at)->not->toBeNull();
+});
+
 test('control api resets api live health when assertions change', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
