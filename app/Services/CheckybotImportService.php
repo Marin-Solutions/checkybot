@@ -71,19 +71,25 @@ class CheckybotImportService
     /**
      * @return array<string, mixed>
      */
-    public function getCheck(User $user, string|int $projectKey, string $checkKey): array
+    public function getCheck(User $user, string|int $projectKey, string $checkKey, ?string $type = null): array
     {
         $project = $this->findProject($user, $projectKey);
 
-        return $this->findCheck($project, $checkKey);
+        return $this->findCheck($project, $checkKey, $type);
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function findCheck(Project $project, string $checkKey): array
+    private function findCheck(Project $project, string $checkKey, ?string $type = null): array
     {
         $checks = $this->checksForProject($project);
+
+        if ($type !== null) {
+            $checks = $checks
+                ->filter(fn (array $check): bool => $check['type'] === $type)
+                ->values();
+        }
 
         $idMatches = $checks
             ->filter(fn (array $check): bool => $check['id'] === $checkKey)
@@ -133,9 +139,10 @@ class CheckybotImportService
         string $checkKey,
         int $limit = 25,
         string $runSource = 'all',
+        ?string $type = null,
     ): array {
         $project = $this->findProject($user, $projectKey);
-        $check = $this->findCheck($project, $checkKey);
+        $check = $this->findCheck($project, $checkKey, $type);
         $limit = min(max($limit, 1), 100);
 
         if ($check['storage'] === 'monitor_api') {
