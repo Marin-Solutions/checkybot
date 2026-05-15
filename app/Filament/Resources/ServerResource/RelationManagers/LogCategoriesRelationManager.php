@@ -80,7 +80,9 @@ class LogCategoriesRelationManager extends RelationManager
                     ->icon('heroicon-m-document-text')
                     ->modalHeading(fn (ServerLogCategory $record): string => "Collected files for {$record->name}")
                     ->modalSubmitAction(false)
-                    ->modalCancelActionLabel('Close')
+                    ->modalCancelAction(fn (Action $action): Action => $action
+                        ->name('closeLogFilesModal')
+                        ->label('Close'))
                     ->modalWidth('4xl')
                     ->visible(fn (ServerLogCategory $record): bool => $record->files_count > 0)
                     ->modalContent(fn (ServerLogCategory $record): View => view('filament.resources.server-resource.log-files-modal', [

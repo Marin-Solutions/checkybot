@@ -12,6 +12,11 @@ use Livewire\Attributes\On;
 
 class DiskUsedChart extends ChartWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
     protected ?string $heading = 'Disk Used';
 
     public ?Model $record = null;

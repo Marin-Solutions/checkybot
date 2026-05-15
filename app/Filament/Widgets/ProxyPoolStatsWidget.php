@@ -9,6 +9,11 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class ProxyPoolStatsWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
     protected static ?int $sort = 3;
 
     protected ?string $pollingInterval = '30s';
