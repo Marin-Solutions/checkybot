@@ -4,14 +4,11 @@ namespace MarinSolutions\CheckybotLaravel\Commands;
 
 use Composer\InstalledVersions;
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 use MarinSolutions\CheckybotLaravel\CheckRegistry;
 use MarinSolutions\CheckybotLaravel\Components\HealthComponent;
 use MarinSolutions\CheckybotLaravel\ConfigValidator;
 use MarinSolutions\CheckybotLaravel\Exceptions\CheckybotSyncException;
 use MarinSolutions\CheckybotLaravel\Http\CheckybotClient;
-use MarinSolutions\CheckybotLaravel\Support\Interval;
 
 class CheckybotCommand extends Command
 {
@@ -53,17 +50,12 @@ class CheckybotCommand extends Command
             + count($checkPayload['ssl_checks'])
             + count($checkPayload['api_checks']);
 
-        $observedAt = now();
-        $componentContextKey = $this->resolveComponentContextKey($config);
         $declaredComponents = $useRegistry ? $registry->getComponents() : [];
-        $dueComponents = $useRegistry
-            ? $this->getDueComponents($registry, $observedAt, $componentContextKey)
-            : [];
 
-        $this->comment("Found {$totalChecks} checks to sync and ".count($dueComponents).' due components to report');
+        $this->comment("Found {$totalChecks} checks to sync and ".count($declaredComponents).' components to declare');
 
         if ($this->option('dry-run')) {
-            $this->displayDryRun($checkPayload, $dueComponents);
+            $this->displayDryRun($checkPayload, $declaredComponents);
 
             return self::SUCCESS;
         }
@@ -82,17 +74,9 @@ class CheckybotCommand extends Command
                     fn (HealthComponent $component): array => $component->toArray(),
                     $declaredComponents
                 ),
-                'components' => array_map(
-                    fn (HealthComponent $component): array => $component->toHeartbeatPayload($observedAt),
-                    $dueComponents
-                ),
             ];
 
             $client->syncComponents($componentPayload);
-
-            if ($dueComponents !== []) {
-                $this->markComponentsAsReported($dueComponents, $observedAt, $componentContextKey);
-            }
 
             $this->info('Sync completed successfully');
 
@@ -106,9 +90,9 @@ class CheckybotCommand extends Command
 
     /**
      * @param  array<string, array<int, array<string, mixed>>>  $payload
-     * @param  array<int, HealthComponent>  $dueComponents
+     * @param  array<int, HealthComponent>  $declaredComponents
      */
-    protected function displayDryRun(array $payload, array $dueComponents): void
+    protected function displayDryRun(array $payload, array $declaredComponents): void
     {
         $this->line('');
         $this->comment('DRY RUN - No changes will be made');
@@ -124,9 +108,9 @@ class CheckybotCommand extends Command
             }
         }
 
-        if ($dueComponents !== []) {
+        if ($declaredComponents !== []) {
             $this->info('Components:');
-            foreach ($dueComponents as $component) {
+            foreach ($declaredComponents as $component) {
                 $this->line("  - {$component->getName()} every {$component->getInterval()}");
             }
             $this->line('');
@@ -150,38 +134,6 @@ class CheckybotCommand extends Command
         }
 
         $this->line('');
-    }
-
-    /**
-     * @return array<int, HealthComponent>
-     */
-    protected function getDueComponents(CheckRegistry $registry, Carbon $observedAt, string $componentContextKey): array
-    {
-        return array_values(array_filter(
-            $registry->getComponents(),
-            fn (HealthComponent $component): bool => $this->isComponentDue($component, $observedAt, $componentContextKey)
-        ));
-    }
-
-    protected function isComponentDue(HealthComponent $component, Carbon $observedAt, string $componentContextKey): bool
-    {
-        $lastReportedAt = Cache::get($this->componentCacheKey($componentContextKey, $component));
-
-        return Interval::isDue(
-            $component->getInterval(),
-            $lastReportedAt ? Carbon::parse($lastReportedAt) : null,
-            $observedAt
-        );
-    }
-
-    /**
-     * @param  array<int, HealthComponent>  $components
-     */
-    protected function markComponentsAsReported(array $components, Carbon $observedAt, string $componentContextKey): void
-    {
-        foreach ($components as $component) {
-            Cache::forever($this->componentCacheKey($componentContextKey, $component), $observedAt->toISOString());
-        }
     }
 
     /**
@@ -225,34 +177,5 @@ class CheckybotCommand extends Command
         return is_array($composer) && filled($composer['version'] ?? null)
             ? (string) $composer['version']
             : null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $config
-     */
-    protected function resolveComponentContextKey(array $config): string
-    {
-        if (filled($config['app_id'] ?? null)) {
-            return 'app:'.$config['app_id'];
-        }
-
-        if (filled($config['project_id'] ?? null)) {
-            return 'project:'.$config['project_id'];
-        }
-
-        return 'identity:'.sha1(sprintf(
-            '%s|%s',
-            $config['environment'] ?? '',
-            $config['identity_endpoint'] ?? '',
-        ));
-    }
-
-    protected function componentCacheKey(string $componentContextKey, HealthComponent $component): string
-    {
-        return sprintf(
-            'checkybot-laravel.components.%s.%s.last_reported_at',
-            $componentContextKey,
-            $component->getName(),
-        );
     }
 }

@@ -236,13 +236,10 @@ class ProjectInfolist
             return 'No summary recorded yet';
         }
 
-        $recordedHeartbeats = static::summaryNestedCount($summary, 'heartbeats', 'recorded');
-
         return collect([
             static::summaryPart('created', static::summaryNestedCount($summary, 'components', 'created')),
             static::summaryPart('updated', static::summaryNestedCount($summary, 'components', 'updated')),
             static::summaryPart('archived', static::summaryNestedCount($summary, 'components', 'archived')),
-            static::summaryPart($recordedHeartbeats === 1 ? 'heartbeat recorded' : 'heartbeats recorded', $recordedHeartbeats),
         ])
             ->filter()
             ->implode(', ') ?: 'No component changes';
@@ -264,15 +261,8 @@ class ProjectInfolist
             ->filter()
             ->implode(', ');
 
-        $heartbeatParts = collect([
-            static::summaryPart('recorded', static::summaryNestedCount($summary, 'heartbeats', 'recorded')),
-        ])
-            ->filter()
-            ->implode(', ');
-
         return collect([
             'Components: '.($componentParts === '' ? 'no changes' : $componentParts),
-            'Heartbeats: '.($heartbeatParts === '' ? 'none recorded' : $heartbeatParts),
         ])->implode(PHP_EOL);
     }
 

@@ -7,7 +7,6 @@ use App\Filament\Resources\ProjectComponents\Pages\CreateProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\EditProjectComponent;
 use App\Filament\Resources\ProjectComponents\Pages\ListProjectComponents;
 use App\Filament\Resources\ProjectComponents\Pages\ViewProjectComponent;
-use App\Filament\Resources\ProjectComponents\RelationManagers\HeartbeatsRelationManager;
 use App\Filament\Resources\ProjectComponents\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\ProjectComponents\Schemas\ProjectComponentForm;
 use App\Filament\Resources\ProjectComponents\Schemas\ProjectComponentInfolist;
@@ -63,7 +62,6 @@ class ProjectComponentResource extends Resource
     {
         return [
             NotificationSettingsRelationManager::class,
-            HeartbeatsRelationManager::class,
         ];
     }
 

@@ -121,7 +121,8 @@ class ProjectHealthOverviewWidget extends BaseWidget
         $components = ProjectComponent::query()
             ->where('project_id', $project->getKey())
             ->where('is_archived', false)
-            ->get(['current_status', 'is_stale', 'last_heartbeat_at']);
+            ->with(['activeMonitorApis', 'activeWebsites'])
+            ->get(['id', 'current_status', 'is_stale', 'last_heartbeat_at', 'is_archived']);
 
         $websites = Website::query()
             ->where('project_id', $project->getKey())
@@ -160,12 +161,9 @@ class ProjectHealthOverviewWidget extends BaseWidget
 
     private function classifyComponent(ProjectComponent $component): string
     {
-        return match (true) {
-            (bool) $component->is_stale => 'stale',
-            $component->current_status === 'healthy' => 'healthy',
-            in_array($component->current_status, ['warning', 'danger'], true) => 'failing',
-            $component->last_heartbeat_at === null => 'no_data',
-            $component->current_status === 'unknown' => 'no_data',
+        return match ($component->derivedCurrentStatus()) {
+            'healthy' => 'healthy',
+            'warning', 'danger' => 'failing',
             default => 'no_data',
         };
     }

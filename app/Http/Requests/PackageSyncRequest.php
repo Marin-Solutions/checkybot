@@ -74,6 +74,7 @@ class PackageSyncRequest extends FormRequest
             'checks' => ['present', 'array', 'max:200'],
             'checks.*.key' => ['required', 'string', 'alpha_dash', 'max:150'],
             'checks.*.type' => ['required', Rule::in(['api', 'ssl', 'uptime'])],
+            'checks.*.component' => ['nullable', 'string', 'max:255'],
             'checks.*.name' => ['required', 'string', 'max:255'],
             'checks.*.method' => ['required_if:checks.*.type,api', 'nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
             'checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],

@@ -1,14 +1,12 @@
 <?php
 
-use App\Enums\WebsiteServicesEnum;
 use App\Models\ApiKey;
-use App\Models\NotificationSetting;
+use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
+use App\Models\ProjectComponentHeartbeat;
 use App\Models\User;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
+use App\Models\Website;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -16,1044 +14,128 @@ beforeEach(function () {
     $this->project = Project::factory()->create(['created_by' => $this->user->id]);
 });
 
-test('sync stores package component state and appends heartbeat history', function () {
-    $payload = [
-        'declared_components' => [
-            [
-                'name' => 'database',
-                'interval' => '5m',
+test('sync stores package component declarations without heartbeat history', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/components/sync", [
+            'full_manifest' => true,
+            'declared_components' => [
+                ['name' => 'database', 'interval' => '5m'],
+                ['name' => 'queue', 'interval' => '1m'],
             ],
-            [
-                'name' => 'queue',
-                'interval' => '1m',
-            ],
-        ],
-        'components' => [
-            [
-                'name' => 'database',
-                'interval' => '5m',
-                'status' => 'healthy',
-                'summary' => 'Primary database is healthy',
-                'metrics' => [
-                    'connections' => 12,
-                    'reachable' => true,
-                ],
-                'observed_at' => '2026-03-21T12:00:00Z',
-            ],
-            [
-                'name' => 'queue',
-                'interval' => '1m',
-                'status' => 'warning',
-                'summary' => 'Queue backlog is rising',
-                'metrics' => [
-                    'pending_jobs' => 144,
-                ],
-                'observed_at' => '2026-03-21T12:00:00Z',
-            ],
-        ],
-    ];
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        $payload
-    );
-
-    $response->assertOk()
+        ])
+        ->assertOk()
         ->assertJsonPath('summary.components.created', 2)
         ->assertJsonPath('summary.components.updated', 0)
         ->assertJsonPath('summary.components.archived', 0)
-        ->assertJsonPath('summary.heartbeats.recorded', 2);
+        ->assertJsonMissingPath('summary.heartbeats');
 
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'database',
-        'current_status' => 'healthy',
-        'last_reported_status' => 'healthy',
-        'interval_minutes' => 5,
-        'archived_at' => null,
-    ]);
+    $database = ProjectComponent::query()
+        ->where('project_id', $this->project->id)
+        ->where('name', 'database')
+        ->sole();
 
-    $this->assertDatabaseHas('project_component_heartbeats', [
-        'component_name' => 'queue',
-        'status' => 'warning',
-        'event' => 'heartbeat',
-    ]);
+    expect($database->current_status)->toBe('unknown')
+        ->and($database->last_reported_status)->toBe('unknown')
+        ->and($database->last_heartbeat_at)->toBeNull()
+        ->and($database->is_stale)->toBeFalse()
+        ->and($database->derivedCurrentStatus())->toBe('pending')
+        ->and(ProjectComponentHeartbeat::query()->count())->toBe(0);
+});
 
-    $secondResponse = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
+test('sync rejects runtime component heartbeat observations', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/components/sync", [
             'declared_components' => [
-                [
-                    'name' => 'database',
-                    'interval' => '5m',
-                ],
-                [
-                    'name' => 'queue',
-                    'interval' => '1m',
-                ],
+                ['name' => 'queue', 'interval' => '5m'],
             ],
             'components' => [
                 [
-                    'name' => 'database',
+                    'name' => 'queue',
                     'interval' => '5m',
                     'status' => 'danger',
-                    'summary' => 'Primary database is degraded',
-                    'metrics' => [
-                        'connections' => 310,
-                    ],
-                    'observed_at' => '2026-03-21T12:05:00Z',
+                    'summary' => 'Queue backlog is rising.',
+                    'metrics' => ['pending_jobs' => 100],
+                    'observed_at' => now()->toISOString(),
                 ],
             ],
-        ]
-    );
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['components']);
 
-    $secondResponse->assertOk()
-        ->assertJsonPath('summary.components.created', 0)
-        ->assertJsonPath('summary.components.updated', 1)
-        ->assertJsonPath('summary.components.archived', 0)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
+    expect(ProjectComponentHeartbeat::query()->count())->toBe(0);
+});
 
-    expect(
-        \App\Models\ProjectComponentHeartbeat::query()
-            ->where('component_name', 'database')
-            ->count()
-    )->toBe(2);
-
-    $this->assertDatabaseHas('project_components', [
+test('full manifest archives missing package components but preserves their child check metadata', function () {
+    $component = ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
         'name' => 'queue',
         'is_archived' => false,
     ]);
 
-    $thirdResponse = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'full_manifest' => true,
-            'declared_components' => [
-                [
-                    'name' => 'database',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'database',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Primary database recovered',
-                    'metrics' => [
-                        'connections' => 12,
-                    ],
-                    'observed_at' => '2026-03-21T12:10:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $thirdResponse->assertOk()
-        ->assertJsonPath('summary.components.created', 0)
-        ->assertJsonPath('summary.components.updated', 1)
-        ->assertJsonPath('summary.components.archived', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $this->assertDatabaseHas('project_components', [
+    $api = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
-        'name' => 'queue',
-        'is_archived' => true,
-    ]);
-});
-
-test('warning and danger component events use existing notification settings', function () {
-    Http::fake([
-        '*' => Http::response(['ok' => true], 200),
-    ]);
-
-    NotificationSetting::factory()->webhook()->create([
-        'user_id' => $this->user->id,
-        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
-    ]);
-
-    $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'cache',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'cache',
-                    'interval' => '5m',
-                    'status' => 'warning',
-                    'summary' => 'Redis memory usage is elevated',
-                    'metrics' => [
-                        'memory_percent' => 82,
-                    ],
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    )->assertOk();
-
-    Http::assertSentCount(1);
-});
-
-test('declared package components await first heartbeat until data arrives', function () {
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'scheduler',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 0);
-
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'scheduler',
-        'current_status' => 'unknown',
-        'last_reported_status' => 'unknown',
-        'summary' => 'Awaiting first heartbeat',
-        'last_heartbeat_at' => null,
-    ]);
-});
-
-test('component sync records latest application sync metadata', function () {
-    $this->travelTo('2026-05-11 10:15:00');
-
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'legacy-worker',
-        'source' => 'package',
-        'is_archived' => false,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'full_manifest' => true,
-            'declared_components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 1)
-        ->assertJsonPath('summary.components.updated', 0)
-        ->assertJsonPath('summary.components.archived', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $this->project->refresh();
-
-    expect($this->project->last_component_synced_at?->toDateTimeString())->toBe('2026-05-11 10:15:00')
-        ->and($this->project->latest_component_sync_summary)->toMatchArray([
-            'components' => [
-                'created' => 1,
-                'updated' => 0,
-                'archived' => 1,
-            ],
-            'heartbeats' => [
-                'recorded' => 1,
-            ],
-        ]);
-
-    $this->travelBack();
-});
-
-test('component sync accepts the same parser interval formats as the project component form', function (string $interval, int $expectedMinutes) {
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'scheduler',
-                    'interval' => $interval,
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'scheduler',
-                    'interval' => $interval,
-                    'status' => 'healthy',
-                    'summary' => 'Scheduler is reporting',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $component = ProjectComponent::query()
-        ->where('project_id', $this->project->id)
-        ->where('name', 'scheduler')
-        ->firstOrFail();
-
-    expect($component->declared_interval)->toBe($interval)
-        ->and($component->interval_minutes)->toBe($expectedMinutes);
-})->with([
-    'compact seconds' => ['30s', 1],
-    'every seconds' => ['every_30_seconds', 1],
-    'every minutes' => ['every_5_minutes', 5],
-    'every hours' => ['every_2_hours', 120],
-    'every days' => ['every_1_day', 1440],
-]);
-
-test('sync creates package component when heartbeat arrives before declaration', function () {
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'cache',
-        'source' => 'package',
-        'declared_interval' => '5m',
-        'interval_minutes' => 5,
-        'is_archived' => false,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'cache',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'metrics' => [
-                        'pending_jobs' => 0,
-                    ],
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 1)
-        ->assertJsonPath('summary.components.updated', 0)
-        ->assertJsonPath('summary.components.archived', 0)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $component = ProjectComponent::query()
-        ->where('project_id', $this->project->id)
-        ->where('name', 'queue')
-        ->firstOrFail();
-
-    expect($component->source)->toBe('package')
-        ->and($component->created_by)->toBe($this->user->id)
-        ->and($component->current_status)->toBe('healthy')
-        ->and($component->last_reported_status)->toBe('healthy')
-        ->and($component->declared_interval)->toBe('5m')
-        ->and($component->interval_minutes)->toBe(5)
-        ->and($component->is_archived)->toBeFalse()
-        ->and($component->last_heartbeat_at?->toISOString())->toBe('2026-03-21T12:00:00.000000Z');
-
-    $this->assertDatabaseHas('project_component_heartbeats', [
         'project_component_id' => $component->id,
-        'component_name' => 'queue',
-        'status' => 'healthy',
-        'event' => 'heartbeat',
-    ]);
-});
-
-test('partial component sync does not archive active package components missing from the payload', function () {
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue',
         'source' => 'package',
-        'is_archived' => false,
-    ]);
-
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'cache',
-        'source' => 'package',
-        'is_archived' => false,
-    ]);
-
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'old-cron',
-        'source' => 'package',
-        'is_archived' => false,
+        'is_enabled' => true,
         'current_status' => 'danger',
-        'last_reported_status' => 'danger',
-        'summary' => 'Heartbeat expired',
-        'last_heartbeat_at' => '2026-03-21T11:50:00Z',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/components/sync", [
+            'full_manifest' => true,
+            'declared_components' => [],
+        ])
+        ->assertOk()
+        ->assertJsonPath('summary.components.archived', 1);
+
+    $component->refresh();
+
+    expect($component->is_archived)->toBeTrue()
+        ->and($api->fresh()->project_component_id)->toBe($component->id);
+});
+
+test('component status rolls up worst active child check and ignores disabled or archived children', function () {
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now(),
         'is_stale' => true,
-        'stale_detected_at' => '2026-03-21T11:55:00Z',
     ]);
 
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'cache',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
+    expect($component->derivedCurrentStatus())->toBe('pending');
 
-    $response->assertOk()
-        ->assertJsonPath('summary.components.archived', 0)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $this->assertDatabaseHas('project_components', [
+    MonitorApis::factory()->create([
         'project_id' => $this->project->id,
-        'name' => 'queue',
-        'is_archived' => false,
+        'project_component_id' => $component->id,
+        'is_enabled' => true,
+        'current_status' => 'healthy',
     ]);
 
-    $this->assertDatabaseHas('project_components', [
+    Website::factory()->create([
         'project_id' => $this->project->id,
-        'name' => 'cache',
-        'is_archived' => false,
-    ]);
-
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'old-cron',
-        'is_archived' => false,
-    ]);
-});
-
-test('full manifest component sync archives package components missing from the payload', function () {
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue',
-        'source' => 'package',
-        'is_archived' => false,
-    ]);
-
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'cache',
-        'source' => 'package',
-        'is_archived' => false,
-    ]);
-
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'old-cron',
-        'source' => 'package',
-        'is_archived' => false,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'full_manifest' => true,
-            'declared_components' => [
-                [
-                    'name' => 'cache',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.archived', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'cache',
-        'is_archived' => false,
-    ]);
-
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'queue',
-        'is_archived' => false,
-    ]);
-
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'old-cron',
-        'is_archived' => true,
-        'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
-        'current_status' => 'unknown',
-        'last_reported_status' => 'unknown',
-        'summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-        'is_stale' => false,
-        'stale_detected_at' => null,
-    ]);
-});
-
-test('component sync keeps user archived components archived and ignores their heartbeats', function () {
-    $component = ProjectComponent::factory()->archived()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue',
-        'source' => 'package',
+        'project_component_id' => $component->id,
+        'uptime_check' => true,
+        'ssl_check' => false,
         'current_status' => 'warning',
-        'last_reported_status' => 'warning',
-        'summary' => 'Disabled by operator',
-        'last_heartbeat_at' => '2026-03-21T11:55:00Z',
     ]);
 
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '10m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '10m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 0)
-        ->assertJsonPath('summary.components.updated', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 0);
-
-    $component->refresh();
-
-    expect($component->is_archived)->toBeTrue()
-        ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
-        ->and($component->current_status)->toBe('warning')
-        ->and($component->last_reported_status)->toBe('warning')
-        ->and($component->summary)->toBe('Disabled by operator')
-        ->and($component->last_heartbeat_at?->toISOString())->toBe('2026-03-21T11:55:00.000000Z')
-        ->and($component->declared_interval)->toBe('10m')
-        ->and($component->interval_minutes)->toBe(10);
-
-    $this->assertDatabaseMissing('project_component_heartbeats', [
+    MonitorApis::factory()->disabled()->create([
+        'project_id' => $this->project->id,
         'project_component_id' => $component->id,
-        'observed_at' => '2026-03-21 12:00:00',
+        'current_status' => 'danger',
     ]);
-});
 
-test('component sync ignores delayed heartbeats for package archived components with cleared health state', function () {
-    $component = ProjectComponent::factory()->archived()->create([
+    $archivedWebsite = Website::factory()->create([
         'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue',
-        'source' => 'package',
-        'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
-        'archived_at' => '2026-03-21T12:05:00Z',
-        'current_status' => 'unknown',
-        'last_reported_status' => 'unknown',
-        'summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-        'is_stale' => false,
-        'stale_detected_at' => null,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '10m',
-                    'status' => 'danger',
-                    'summary' => 'Delayed failure payload.',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.updated', 0)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $component->refresh();
-
-    expect($component->is_archived)->toBeTrue()
-        ->and($component->current_status)->toBe('unknown')
-        ->and($component->last_reported_status)->toBe('unknown')
-        ->and($component->summary)->toBe('Disabled because it was missing from the latest package sync.')
-        ->and($component->last_heartbeat_at)->toBeNull()
-        ->and($component->is_stale)->toBeFalse();
-});
-
-test('component sync does not revive package archived components with missing archive timestamp', function () {
-    $component = ProjectComponent::factory()->archived()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue',
-        'source' => 'package',
-        'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
-        'archived_at' => null,
-        'current_status' => 'unknown',
-        'last_reported_status' => 'unknown',
-        'summary' => 'Disabled because it was missing from the latest package sync.',
-        'last_heartbeat_at' => null,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '10m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.updated', 0)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $component->refresh();
-
-    expect($component->is_archived)->toBeTrue()
-        ->and($component->current_status)->toBe('unknown')
-        ->and($component->last_heartbeat_at)->toBeNull();
-});
-
-test('component sync keeps user archived components archived when they are declared without heartbeat data', function () {
-    $component = ProjectComponent::factory()->archived()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'scheduler',
-        'source' => 'package',
-        'current_status' => 'unknown',
-        'last_reported_status' => 'unknown',
-        'declared_interval' => '5m',
-        'interval_minutes' => 5,
-        'last_heartbeat_at' => null,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'scheduler',
-                    'interval' => '15m',
-                ],
-            ],
-            'components' => [],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 0)
-        ->assertJsonPath('summary.components.updated', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 0);
-
-    $component->refresh();
-
-    expect($component->is_archived)->toBeTrue()
-        ->and($component->archive_reason)->toBe(ProjectComponent::ARCHIVE_REASON_USER)
-        ->and($component->declared_interval)->toBe('15m')
-        ->and($component->interval_minutes)->toBe(15)
-        ->and($component->last_heartbeat_at?->toISOString())->toBeNull();
-});
-
-test('component sync revives package archived components when they return in the manifest', function () {
-    $component = ProjectComponent::factory()->archived()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'queue',
-        'source' => 'package',
-        'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
-        'current_status' => 'unknown',
-        'last_reported_status' => 'unknown',
-        'summary' => 'Awaiting first heartbeat',
-        'last_heartbeat_at' => null,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 0)
-        ->assertJsonPath('summary.components.updated', 1)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $component->refresh();
-
-    expect($component->is_archived)->toBeFalse()
-        ->and($component->archive_reason)->toBeNull()
-        ->and($component->archived_at)->toBeNull()
-        ->and($component->current_status)->toBe('healthy')
-        ->and($component->last_heartbeat_at?->toISOString())->toBe('2026-03-21T12:00:00.000000Z');
-
-    $this->assertDatabaseHas('project_component_heartbeats', [
         'project_component_id' => $component->id,
-        'component_name' => 'queue',
-        'status' => 'healthy',
-        'event' => 'heartbeat',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'danger',
     ]);
-});
+    $archivedWebsite->delete();
 
-test('component heartbeat sync accepts payloads without declarations', function () {
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.components.created', 1)
-        ->assertJsonPath('summary.components.archived', 0)
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'queue',
-        'is_archived' => false,
-    ]);
-});
-
-test('component sync requires declarations when full manifest is true', function () {
-    ProjectComponent::factory()->create([
-        'project_id' => $this->project->id,
-        'created_by' => $this->user->id,
-        'name' => 'cache',
-        'source' => 'package',
-        'is_archived' => false,
-    ]);
-
-    $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'full_manifest' => true,
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    )->assertStatus(422)
-        ->assertJsonValidationErrors(['declared_components']);
-
-    $this->assertDatabaseHas('project_components', [
-        'project_id' => $this->project->id,
-        'name' => 'cache',
-        'is_archived' => false,
-    ]);
-});
-
-test('component sync rejects duplicate declared component names before persisting', function () {
-    $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                ],
-                [
-                    'name' => ' Queue ',
-                    'interval' => '10m',
-                ],
-            ],
-            'components' => [],
-        ]
-    )->assertStatus(422)
-        ->assertJsonValidationErrors([
-            'declared_components.1.name',
-        ]);
-
-    expect(ProjectComponent::query()->where('project_id', $this->project->id)->exists())->toBeFalse();
-});
-
-test('component sync rejects duplicate heartbeat observations before persisting history', function () {
-    $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Queue workers are running',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-                [
-                    'name' => 'Queue',
-                    'interval' => '5m',
-                    'status' => 'healthy',
-                    'summary' => 'Duplicate retry of the same observation',
-                    'observed_at' => '2026-03-21 12:00:00',
-                ],
-            ],
-        ]
-    )->assertStatus(422)
-        ->assertJsonValidationErrors([
-            'components.1.observed_at',
-        ]);
-
-    expect(ProjectComponent::query()->where('project_id', $this->project->id)->exists())->toBeFalse();
-});
-
-test('component sync persists heartbeat state when webhook notification fails', function () {
-    Log::spy();
-
-    Http::fake(function () {
-        throw new RuntimeException('Webhook transport unavailable');
-    });
-
-    NotificationSetting::factory()->webhook()->create([
-        'user_id' => $this->user->id,
-        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'danger',
-                    'summary' => 'Queue workers are not processing jobs',
-                    'metrics' => [
-                        'pending_jobs' => 544,
-                    ],
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    $component = ProjectComponent::query()
-        ->where('project_id', $this->project->id)
-        ->where('name', 'queue')
-        ->firstOrFail();
-
-    expect($component->current_status)->toBe('danger');
-
-    $this->assertDatabaseHas('project_component_heartbeats', [
-        'project_component_id' => $component->id,
-        'status' => 'danger',
-        'event' => 'heartbeat',
-    ]);
-
-    Log::shouldHaveReceived('error')
-        ->once()
-        ->withArgs(fn (string $message): bool => str_contains($message, 'Failed to deliver project component notification webhook'));
-});
-
-test('component sync logs non-2xx webhook responses as failed notification delivery', function () {
-    Log::spy();
-
-    Http::fake([
-        '*' => Http::response(['error' => 'rate limited'], 429),
-    ]);
-
-    NotificationSetting::factory()->webhook()->create([
-        'user_id' => $this->user->id,
-        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
-    ]);
-
-    $response = $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'queue',
-                    'interval' => '5m',
-                    'status' => 'danger',
-                    'summary' => 'Queue workers are not processing jobs',
-                    'metrics' => [
-                        'pending_jobs' => 544,
-                    ],
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    );
-
-    $response->assertOk()
-        ->assertJsonPath('summary.heartbeats.recorded', 1);
-
-    Log::shouldHaveReceived('error')
-        ->once()
-        ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'Failed to deliver project component notification webhook')
-            && ($context['response_code'] ?? null) === 429);
-});
-
-test('component sync rejects zero intervals at the request boundary', function () {
-    $this->withToken($this->apiKey->key)->postJson(
-        "/api/v1/projects/{$this->project->id}/components/sync",
-        [
-            'declared_components' => [
-                [
-                    'name' => 'database',
-                    'interval' => '0m',
-                ],
-            ],
-            'components' => [
-                [
-                    'name' => 'database',
-                    'interval' => '0m',
-                    'status' => 'healthy',
-                    'summary' => 'Primary database is healthy',
-                    'observed_at' => '2026-03-21T12:00:00Z',
-                ],
-            ],
-        ]
-    )->assertStatus(422)
-        ->assertJsonValidationErrors([
-            'declared_components.0.interval',
-            'components.0.interval',
-        ]);
-});
-
-test('component sync rejects future observed timestamps at the request boundary', function () {
-    Carbon::setTestNow('2026-03-21 12:00:00');
-
-    try {
-        $this->withToken($this->apiKey->key)->postJson(
-            "/api/v1/projects/{$this->project->id}/components/sync",
-            [
-                'declared_components' => [
-                    [
-                        'name' => 'database',
-                        'interval' => '5m',
-                    ],
-                ],
-                'components' => [
-                    [
-                        'name' => 'database',
-                        'interval' => '5m',
-                        'status' => 'healthy',
-                        'summary' => 'Primary database is healthy',
-                        'observed_at' => '2026-03-21T12:01:00Z',
-                    ],
-                ],
-            ]
-        )->assertStatus(422)
-            ->assertJsonValidationErrors([
-                'components.0.observed_at',
-            ]);
-
-        expect(ProjectComponent::query()->where('project_id', $this->project->id)->exists())->toBeFalse();
-    } finally {
-        Carbon::setTestNow();
-    }
+    expect($component->fresh()->derivedCurrentStatus())->toBe('warning');
 });

@@ -154,18 +154,7 @@ class CheckybotImportService
         }
 
         if ($check['storage'] === 'project_component') {
-            if (! in_array($runSource, ['all', 'heartbeat'], true)) {
-                return [];
-            }
-
-            return ProjectComponentHeartbeat::query()
-                ->where('project_component_id', $check['database_id'])
-                ->orderByDesc('observed_at')
-                ->orderByDesc('id')
-                ->limit($limit)
-                ->get()
-                ->map(fn (ProjectComponentHeartbeat $heartbeat): array => $this->componentHeartbeatPayload($heartbeat))
-                ->all();
+            return [];
         }
 
         $query = WebsiteLogHistory::query()
@@ -387,10 +376,6 @@ class CheckybotImportService
      */
     private function componentCheckPayload(ProjectComponent $component): array
     {
-        $latestHeartbeat = $component->relationLoaded('latestHeartbeat')
-            ? $component->latestHeartbeat
-            : $component->latestHeartbeat()->first();
-
         $deliveryState = ProjectComponentDeliveryState::value($component);
 
         return [
@@ -406,23 +391,21 @@ class CheckybotImportService
             'declared_interval' => $component->declared_interval,
             'interval_minutes' => $component->interval_minutes,
             'enabled' => ! (bool) $component->is_archived,
-            'status' => $this->componentStatus($component),
+            'status' => $component->derivedCurrentStatus(),
             'reported_status' => $component->last_reported_status,
-            'status_summary' => $component->summary,
+            'status_summary' => $component->derivedStatusSummary(),
             'delivery_state' => $deliveryState,
             'delivery_state_label' => ProjectComponentDeliveryState::label($component),
-            'is_stale' => (bool) $component->is_stale,
+            'is_stale' => false,
             'is_archived' => (bool) $component->is_archived,
-            'last_checked_at' => $component->last_heartbeat_at?->toISOString(),
-            'last_heartbeat_at' => $component->last_heartbeat_at?->toISOString(),
-            'stale_at' => $component->stale_detected_at?->toISOString(),
-            'stale_detected_at' => $component->stale_detected_at?->toISOString(),
-            'stale_threshold_at' => $this->componentStaleThresholdAt($component),
+            'last_checked_at' => null,
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'stale_detected_at' => null,
+            'stale_threshold_at' => null,
             'silenced_until' => $component->silenced_until?->toISOString(),
-            'metrics' => $component->metrics,
-            'latest_result' => $latestHeartbeat instanceof ProjectComponentHeartbeat
-                ? $this->componentHeartbeatPayload($latestHeartbeat)
-                : null,
+            'metrics' => [],
+            'latest_result' => null,
             'raw' => [
                 'project_component_id' => $component->id,
                 'source' => $component->source,
@@ -432,19 +415,6 @@ class CheckybotImportService
             'created_at' => $component->created_at?->toISOString(),
             'updated_at' => $component->updated_at?->toISOString(),
         ];
-    }
-
-    private function componentStatus(ProjectComponent $component): string
-    {
-        if ((bool) $component->is_stale) {
-            return 'danger';
-        }
-
-        if ($component->last_heartbeat_at === null && $component->current_status === 'healthy') {
-            return 'unknown';
-        }
-
-        return $component->current_status ?? 'unknown';
     }
 
     private function componentStaleThresholdAt(ProjectComponent $component): ?string

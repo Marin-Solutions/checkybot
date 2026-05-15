@@ -18,6 +18,7 @@ class Project extends Model
         'healthy',
         'warning',
         'danger',
+        'pending',
     ];
 
     protected $fillable = [
@@ -162,7 +163,7 @@ class Project extends Model
     protected function statusRollupColumns(string $relation): array
     {
         return match ($relation) {
-            'activeComponents' => ['current_status', 'is_stale', 'last_heartbeat_at'],
+            'activeComponents' => ['id', 'current_status', 'is_stale', 'last_heartbeat_at', 'is_archived'],
             default => ['current_status', 'last_heartbeat_at', 'stale_at'],
         };
     }
@@ -170,17 +171,7 @@ class Project extends Model
     protected function effectiveSurfaceStatus(ProjectComponent|Website|MonitorApis $record): string
     {
         if ($record instanceof ProjectComponent) {
-            if ((bool) $record->is_stale) {
-                return 'danger';
-            }
-
-            if (in_array($record->current_status, ['warning', 'danger'], true)) {
-                return $record->current_status;
-            }
-
-            return $record->current_status === 'healthy' && $record->last_heartbeat_at !== null
-                ? 'healthy'
-                : 'unknown';
+            return $record->derivedCurrentStatus();
         }
 
         if ($record->stale_at !== null) {
@@ -201,7 +192,7 @@ class Project extends Model
         return match ($status) {
             'danger' => 3,
             'warning' => 2,
-            'unknown' => 1,
+            'pending', 'unknown' => 1,
             'healthy' => 0,
             default => 0,
         };

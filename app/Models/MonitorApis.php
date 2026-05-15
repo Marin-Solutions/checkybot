@@ -50,6 +50,7 @@ class MonitorApis extends Model
         'save_failed_response',
         'created_by',
         'project_id',
+        'project_component_id',
         'source',
         'package_name',
         'package_interval',
@@ -126,6 +127,11 @@ class MonitorApis extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function component(): BelongsTo
+    {
+        return $this->belongsTo(ProjectComponent::class, 'project_component_id');
     }
 
     public function assertions(): HasMany

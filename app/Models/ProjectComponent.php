@@ -86,6 +86,31 @@ class ProjectComponent extends Model
         return $this->hasMany(ProjectComponentHeartbeat::class)->latest('observed_at');
     }
 
+    public function monitorApis(): HasMany
+    {
+        return $this->hasMany(MonitorApis::class, 'project_component_id');
+    }
+
+    public function activeMonitorApis(): HasMany
+    {
+        return $this->monitorApis()->where('is_enabled', true);
+    }
+
+    public function websites(): HasMany
+    {
+        return $this->hasMany(Website::class, 'project_component_id');
+    }
+
+    public function activeWebsites(): HasMany
+    {
+        return $this->websites()
+            ->where(function ($query): void {
+                $query
+                    ->where('uptime_check', true)
+                    ->orWhere('ssl_check', true);
+            });
+    }
+
     public function latestHeartbeat(): HasOne
     {
         return $this->hasOne(ProjectComponentHeartbeat::class)->ofMany(
@@ -106,5 +131,81 @@ class ProjectComponent extends Model
     public function owner(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function derivedCurrentStatus(): string
+    {
+        if ((bool) $this->is_archived) {
+            return 'unknown';
+        }
+
+        $statuses = $this->activeChildStatuses();
+
+        if ($statuses === []) {
+            return 'pending';
+        }
+
+        return collect($statuses)
+            ->sortByDesc(fn (string $status): int => $this->statusPriority($status))
+            ->first() ?? 'pending';
+    }
+
+    public function derivedStatusSummary(): string
+    {
+        $status = $this->derivedCurrentStatus();
+
+        if ($status === 'pending') {
+            return 'Awaiting first active child check result.';
+        }
+
+        return $this->summary ?? match ($status) {
+            'healthy' => 'All active child checks are healthy.',
+            'warning' => 'At least one active child check is warning.',
+            'danger' => 'At least one active child check is failing.',
+            default => 'No active child check result is available.',
+        };
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function activeChildStatuses(): array
+    {
+        $apis = $this->relationLoaded('activeMonitorApis')
+            ? $this->activeMonitorApis
+            : $this->activeMonitorApis()->get(['current_status', 'last_heartbeat_at', 'stale_at']);
+
+        $websites = $this->relationLoaded('activeWebsites')
+            ? $this->activeWebsites
+            : $this->activeWebsites()->get(['current_status', 'last_heartbeat_at', 'stale_at']);
+
+        return $apis
+            ->map(fn (MonitorApis $api): string => $this->checkStatus($api))
+            ->merge($websites->map(fn (Website $website): string => $this->checkStatus($website)))
+            ->all();
+    }
+
+    private function checkStatus(MonitorApis|Website $check): string
+    {
+        if ($check->stale_at !== null) {
+            return 'danger';
+        }
+
+        if (in_array($check->current_status, ['healthy', 'warning', 'danger'], true)) {
+            return $check->current_status;
+        }
+
+        return 'pending';
+    }
+
+    private function statusPriority(string $status): int
+    {
+        return match ($status) {
+            'danger' => 3,
+            'warning' => 2,
+            'pending', 'unknown' => 1,
+            'healthy' => 0,
+            default => 1,
+        };
     }
 }

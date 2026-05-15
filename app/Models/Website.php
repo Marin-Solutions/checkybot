@@ -31,6 +31,7 @@ class Website extends Model
         'description',
         'created_by',
         'project_id',
+        'project_component_id',
         'uptime_check',
         'uptime_interval',
         'ssl_check',
@@ -289,6 +290,11 @@ class Website extends Model
     public function project(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function component(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ProjectComponent::class, 'project_component_id');
     }
 
     public function notificationChannels(): \Illuminate\Database\Eloquent\Relations\HasMany

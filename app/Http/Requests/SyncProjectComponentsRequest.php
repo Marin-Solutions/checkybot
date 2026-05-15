@@ -5,10 +5,8 @@ namespace App\Http\Requests;
 use App\Services\IntervalParser;
 use Closure;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Validator;
-use Throwable;
 
 class SyncProjectComponentsRequest extends FormRequest
 {
@@ -33,17 +31,11 @@ class SyncProjectComponentsRequest extends FormRequest
         return [
             'full_manifest' => ['sometimes', 'boolean'],
 
-            'declared_components' => ['required_if:full_manifest,true,1', 'array', 'max:100'],
+            'declared_components' => ['present_if:full_manifest,true,1', 'array', 'max:100'],
             'declared_components.*.name' => ['required', 'string', 'max:255'],
             'declared_components.*.interval' => ['required', 'string', $this->intervalRule()],
 
-            'components' => ['present', 'array', 'max:100'],
-            'components.*.name' => ['required', 'string', 'max:255'],
-            'components.*.interval' => ['required', 'string', $this->intervalRule()],
-            'components.*.status' => ['required', 'in:healthy,warning,danger'],
-            'components.*.summary' => ['nullable', 'string'],
-            'components.*.metrics' => ['nullable', 'array'],
-            'components.*.observed_at' => ['required', 'date', 'before_or_equal:now'],
+            'components' => ['prohibited'],
         ];
     }
 
@@ -53,7 +45,7 @@ class SyncProjectComponentsRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'components.*.observed_at.before_or_equal' => 'The observed timestamp cannot be in the future.',
+            'components.prohibited' => 'Component sync accepts declarations only; runtime heartbeat observations are no longer supported.',
         ];
     }
 
@@ -61,7 +53,6 @@ class SyncProjectComponentsRequest extends FormRequest
     {
         $validator->after(function (Validator $validator): void {
             $this->addDuplicateDeclarationErrors($validator);
-            $this->addDuplicateHeartbeatErrors($validator);
         });
     }
 
@@ -103,47 +94,6 @@ class SyncProjectComponentsRequest extends FormRequest
             }
 
             $seenNames[$normalizedName] = true;
-        }
-    }
-
-    private function addDuplicateHeartbeatErrors(Validator $validator): void
-    {
-        $heartbeats = $this->input('components', []);
-
-        if (! is_array($heartbeats)) {
-            return;
-        }
-
-        $seenHeartbeats = [];
-
-        foreach ($heartbeats as $index => $heartbeat) {
-            if (! is_array($heartbeat)) {
-                continue;
-            }
-
-            $name = $heartbeat['name'] ?? null;
-            $observedAt = $heartbeat['observed_at'] ?? null;
-
-            if (! is_string($name) || ! is_string($observedAt)) {
-                continue;
-            }
-
-            try {
-                $identity = $this->normalizedComponentName($name).'|'.Carbon::parse($observedAt)->toISOString();
-            } catch (Throwable) {
-                continue;
-            }
-
-            if (isset($seenHeartbeats[$identity])) {
-                $validator->errors()->add(
-                    "components.{$index}.observed_at",
-                    'Each component heartbeat observation must be unique by component name and observed_at.'
-                );
-
-                continue;
-            }
-
-            $seenHeartbeats[$identity] = true;
         }
     }
 

@@ -29,7 +29,7 @@ class CreateProjectComponent extends CreateRecord
         $data['declared_interval'] = $interval;
         $data['interval_minutes'] = IntervalParser::toMinutes($interval);
         $data['last_reported_status'] = 'unknown';
-        $data['summary'] = 'Awaiting first heartbeat';
+        $data['summary'] = 'Awaiting active child check results';
         $data['metrics'] = [];
         $data['is_stale'] = false;
         $data['stale_detected_at'] = null;
@@ -60,7 +60,7 @@ class CreateProjectComponent extends CreateRecord
         }
 
         throw ValidationException::withMessages([
-            'current_status' => ['New components must await their first heartbeat before they can be marked healthy, warning, or danger.'],
+            'current_status' => ['New components must await active child check results before they can be marked healthy, warning, or danger.'],
         ]);
     }
 }

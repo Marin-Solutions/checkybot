@@ -40,13 +40,13 @@ class ProjectComponentForm
                                 modifyQueryUsing: fn (Builder $query, Get $get): Builder => $query->where('project_id', $get('project_id')),
                             )
                             ->maxLength(255)
-                            ->helperText('Use the exact cron job, worker, or process name your heartbeat will report.'),
+                            ->helperText('Use the exact component name reported by the package declaration.'),
                         TextInput::make('declared_interval')
                             ->label('Interval')
                             ->required()
                             ->maxLength(50)
                             ->placeholder('5m')
-                            ->helperText('How often Checkybot should expect a heartbeat, for example 5m, 2h, or 1d.')
+                            ->helperText('How often the package refreshes this component declaration, for example 5m, 2h, or 1d.')
                             ->regex('/^([1-9]\d*[smhd]|every_[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$/'),
                         Select::make('current_status')
                             ->label('Status')
@@ -57,7 +57,7 @@ class ProjectComponentForm
                             ->required(),
                         Toggle::make('is_archived')
                             ->label('Archived')
-                            ->helperText('Archived components keep history but do not fire stale heartbeat alerts.')
+                            ->helperText('Archived components keep history but are excluded from derived health.')
                             ->default(false)
                             ->inline(false),
                     ])

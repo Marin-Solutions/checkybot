@@ -456,7 +456,6 @@ class CheckybotControlService
         return collect([
             ...$this->recentApiRuns($user, $project, $limit),
             ...$this->recentWebsiteRuns($user, $project, $limit),
-            ...$this->recentComponentRuns($user, $project, $limit),
         ])
             ->sortByDesc(fn (array $run): string => (string) ($run['checked_at'] ?? $run['created_at'] ?? ''))
             ->values()
@@ -535,7 +534,6 @@ class CheckybotControlService
         return collect([
             ...$this->latestApiFailures($user, $project, $limit),
             ...$this->latestWebsiteFailures($user, $project, $limit),
-            ...$this->latestComponentFailures($user, $project, $limit),
         ])
             ->sortByDesc(fn (array $failure): string => (string) ($failure['checked_at'] ?? $failure['created_at'] ?? ''))
             ->values()
@@ -935,7 +933,8 @@ class CheckybotControlService
         }
 
         $componentCounts = $project->activeComponents()
-            ->get(['current_status', 'is_stale', 'last_heartbeat_at'])
+            ->with(['activeMonitorApis', 'activeWebsites'])
+            ->get(['id', 'current_status', 'is_stale', 'last_heartbeat_at', 'is_archived'])
             ->map(fn (ProjectComponent $component): string => $this->componentStatusBucket($component))
             ->countBy()
             ->map(fn ($count): int => (int) $count)
@@ -967,17 +966,7 @@ class CheckybotControlService
 
     private function componentStatusBucket(ProjectComponent $component): string
     {
-        if ((bool) $component->is_stale) {
-            return 'danger';
-        }
-
-        if (in_array($component->current_status, ['warning', 'danger'], true)) {
-            return $component->current_status;
-        }
-
-        return $component->current_status === 'healthy' && $component->last_heartbeat_at !== null
-            ? 'healthy'
-            : 'unknown';
+        return $component->derivedCurrentStatus();
     }
 
     /**
@@ -1076,14 +1065,6 @@ class CheckybotControlService
      */
     private function componentCheckPayload(ProjectComponent $component): array
     {
-        $latestHeartbeat = $component->relationLoaded('latestHeartbeat')
-            ? $component->latestHeartbeat
-            : $component->latestHeartbeat()->first();
-
-        if ($latestHeartbeat instanceof ProjectComponentHeartbeat) {
-            $latestHeartbeat->setRelation('component', $component);
-        }
-
         $deliveryState = ProjectComponentDeliveryState::value($component);
 
         return [
@@ -1103,23 +1084,23 @@ class CheckybotControlService
             'supports_run' => false,
             'status' => $this->componentStatusBucket($component),
             'reported_status' => $component->last_reported_status,
-            'status_summary' => $component->summary,
+            'status_summary' => $component->derivedStatusSummary(),
             'delivery_state' => $deliveryState,
             'delivery_state_label' => ProjectComponentDeliveryState::label($component),
-            'is_stale' => (bool) $component->is_stale,
+            'is_stale' => false,
             'is_archived' => (bool) $component->is_archived,
             'last_synced_at' => null,
-            'last_heartbeat_at' => $component->last_heartbeat_at?->toISOString(),
-            'stale_at' => $component->stale_detected_at?->toISOString(),
-            'stale_detected_at' => $component->stale_detected_at?->toISOString(),
-            'stale_threshold_at' => $this->componentStaleThresholdAt($component),
+            'last_heartbeat_at' => null,
+            'stale_at' => null,
+            'stale_detected_at' => null,
+            'stale_threshold_at' => null,
             'silenced_until' => $component->silenced_until?->toISOString(),
-            'metrics' => $component->metrics,
+            'metrics' => [],
             'headers' => [],
             'request_body_type' => null,
             'has_request_body' => false,
             'assertions' => [],
-            'latest_result' => $latestHeartbeat instanceof ProjectComponentHeartbeat ? $this->componentHeartbeatPayload($latestHeartbeat) : null,
+            'latest_result' => null,
             'updated_at' => $component->updated_at?->toISOString(),
         ];
     }

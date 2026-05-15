@@ -28,3 +28,13 @@ Started: 2026-05-15 14:21:14
   - `latestResult` / `latestLogHistory` should be used when presenting live check evidence; scheduled-only relations are for scheduled-specific comparisons.
   - Manual website runs clear `diagnostic_queued_at` after completion but now also sync SSL expiry snapshots and transition alerts.
 ---
+## 2026-05-15 - SLICE-3
+- Converted package-managed application component sync to declaration-only behavior and rejected runtime component heartbeat observations.
+- Added optional component ownership for package API and website checks, and derived component live status from active child checks with disabled/archived checks excluded from health.
+- Disabled scheduled component stale detection and removed component heartbeat rows from default control/import incident and recent-run feeds.
+- Files changed: component sync request/service, project/component models and relations, package sync request/service, component/incident Filament surfaces, package command component payload, schedule registration, focused component sync/stale tests, and a package-check component migration.
+- **Learnings for future iterations:**
+  - Component rows still retain legacy heartbeat columns for now, but live component health should be read via `ProjectComponent::derivedCurrentStatus()`.
+  - Package checks may point to `project_component_id`; active API checks use `is_enabled`, and active website checks use `uptime_check` or `ssl_check`.
+  - Component sync summaries now contain only `components` counts; heartbeat counts are obsolete.
+---

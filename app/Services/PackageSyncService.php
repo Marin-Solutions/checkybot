@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use Illuminate\Support\Arr;
@@ -126,6 +127,7 @@ class PackageSyncService
             $normalizedSchedule = IntervalParser::normalizeOrFail($schedule, 'schedule');
             $data = [
                 'project_id' => $project->id,
+                'project_component_id' => $this->projectComponentIdFor($project, $check['component'] ?? null),
                 'created_by' => $project->created_by,
                 'title' => $check['name'],
                 'url' => $this->resolveUrl($project->base_url, $check['url']),
@@ -221,6 +223,7 @@ class PackageSyncService
             $enabled = $check['enabled'] ?? true;
             $data = [
                 'project_id' => $project->id,
+                'project_component_id' => $this->projectComponentIdFor($project, $check['component'] ?? null),
                 'created_by' => $project->created_by,
                 'name' => $check['name'],
                 'url' => $this->resolveUrl($project->base_url, $check['url']),
@@ -573,6 +576,18 @@ class PackageSyncService
         }
 
         return $schedule;
+    }
+
+    private function projectComponentIdFor(Project $project, mixed $componentName): ?int
+    {
+        if (! is_string($componentName) || blank($componentName)) {
+            return null;
+        }
+
+        return ProjectComponent::query()
+            ->where('project_id', $project->id)
+            ->where('name', $componentName)
+            ->value('id');
     }
 
     /**

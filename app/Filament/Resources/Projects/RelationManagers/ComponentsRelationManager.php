@@ -28,6 +28,7 @@ class ComponentsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('current_status')
+                    ->state(fn (ProjectComponent $record): string => $record->derivedCurrentStatus())
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => match ($state) {
@@ -44,10 +45,9 @@ class ComponentsRelationManager extends RelationManager
                     ->badge()
                     ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                 Tables\Columns\TextColumn::make('summary')
+                    ->state(fn (ProjectComponent $record): string => $record->derivedStatusSummary())
                     ->wrap()
                     ->limit(80),
-                Tables\Columns\TextColumn::make('last_heartbeat_at')
-                    ->sinceInUserZone(),
             ])
             ->filters([
                 HealthStatusFilter::makeForNonNullableColumn(),
