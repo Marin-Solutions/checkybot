@@ -465,11 +465,24 @@ test('control api website upserts default to uptime and can disable the website 
         ->assertJsonPath('data.check.check_types', ['uptime'])
         ->assertJsonPath('data.check.schedule', '5m');
 
+    Website::query()
+        ->where('package_name', 'homepage')
+        ->sole()
+        ->forceFill([
+            'current_status' => 'healthy',
+            'status_summary' => 'Homepage is healthy.',
+            'last_heartbeat_at' => now()->subMinutes(2),
+            'awaiting_heartbeat_since' => null,
+            'stale_at' => now()->addMinutes(8),
+            'diagnostic_queued_at' => now(),
+        ])
+        ->save();
+
     $this->withToken($this->apiKey->key)
         ->putJson('/api/v1/control/projects/scrappa/checks/homepage', [
             'type' => 'website',
             'name' => 'Homepage',
-            'url' => 'https://scrappa.test',
+            'url' => 'https://disabled.scrappa.test',
             'enabled' => false,
         ])
         ->assertOk()
@@ -480,11 +493,16 @@ test('control api website upserts default to uptime and can disable the website 
     $this->assertDatabaseHas('websites', [
         'project_id' => $this->project->id,
         'package_name' => 'homepage',
+        'url' => 'https://disabled.scrappa.test',
         'uptime_check' => false,
         'ssl_check' => false,
         'package_interval' => null,
         'current_status' => 'unknown',
         'status_summary' => 'Disabled by Checkybot control API.',
+        'last_heartbeat_at' => null,
+        'awaiting_heartbeat_since' => null,
+        'stale_at' => null,
+        'diagnostic_queued_at' => null,
     ]);
 });
 

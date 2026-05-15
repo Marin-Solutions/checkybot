@@ -267,11 +267,11 @@ class CheckybotControlService
                 'last_synced_at' => now(),
             ];
 
-            if ($this->websiteTargetChangedForUpsert($website, $resolvedUrl)) {
-                $payload += $this->awaitingWebsiteLiveHealthAttributes();
-            } elseif (! $enabled) {
+            if (! $enabled) {
                 $payload += Website::disabledLiveHealthAttributes('Disabled by Checkybot control API.');
                 $payload['last_heartbeat_at'] = null;
+            } elseif ($this->websiteTargetChangedForUpsert($website, $resolvedUrl)) {
+                $payload += $this->awaitingWebsiteLiveHealthAttributes();
             } elseif ($created || $wasRestored || ! $this->websiteHasEnabledStatusCheck($website)) {
                 $payload += $this->awaitingWebsiteLiveHealthAttributes();
             }
