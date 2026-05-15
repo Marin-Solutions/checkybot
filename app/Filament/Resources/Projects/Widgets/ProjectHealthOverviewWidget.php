@@ -114,7 +114,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
             ->where('project_id', $project->getKey())
             ->where('is_archived', false)
             ->with(['activeMonitorApis', 'activeWebsites'])
-            ->get(['id', 'current_status', 'is_archived']);
+            ->get(['id', 'current_status', 'is_archived', 'source']);
 
         $websites = Website::query()
             ->where('project_id', $project->getKey())

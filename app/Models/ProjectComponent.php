@@ -145,6 +145,10 @@ class ProjectComponent extends Model
         $statuses = $this->activeChildStatuses();
 
         if ($statuses === []) {
+            if ($this->source !== 'package' && in_array($this->current_status, ['healthy', 'warning', 'danger'], true)) {
+                return $this->cachedDerivedStatus = $this->current_status;
+            }
+
             return $this->cachedDerivedStatus = 'pending';
         }
 

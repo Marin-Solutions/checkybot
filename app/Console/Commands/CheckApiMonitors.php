@@ -87,7 +87,15 @@ class CheckApiMonitors extends Command
 
     private function latestScheduledResultAtSql(): string
     {
-        return '(select max(monitor_api_results.created_at) from monitor_api_results where monitor_api_results.monitor_api_id = monitor_apis.id and monitor_api_results.is_on_demand = 0)';
+        return '(select max(monitor_api_results.created_at) from monitor_api_results where monitor_api_results.monitor_api_id = monitor_apis.id and '.$this->scheduledRunPredicate('monitor_api_results.is_on_demand').')';
+    }
+
+    private function scheduledRunPredicate(string $column): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'pgsql' => "({$column} is null or {$column} = false)",
+            default => "({$column} is null or {$column} = 0)",
+        };
     }
 
     private function validIntervalSql(): string

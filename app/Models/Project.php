@@ -162,7 +162,7 @@ class Project extends Model
     protected function statusRollupColumns(string $relation): array
     {
         return match ($relation) {
-            'activeComponents' => ['id', 'current_status', 'is_archived'],
+            'activeComponents' => ['id', 'current_status', 'is_archived', 'source'],
             default => ['current_status'],
         };
     }

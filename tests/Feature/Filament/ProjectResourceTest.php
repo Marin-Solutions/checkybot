@@ -1743,6 +1743,16 @@ test('component derived summary ignores stale awaiting text once child checks re
     expect($component->fresh()->derivedStatusSummary())->toBe('At least one active child check is failing.');
 });
 
+test('component derived status preserves standalone component health without child checks', function () {
+    $component = ProjectComponent::factory()->create([
+        'source' => 'proxy_pool',
+        'current_status' => 'warning',
+        'last_reported_status' => 'warning',
+    ]);
+
+    expect($component->fresh()->derivedCurrentStatus())->toBe('warning');
+});
+
 test('super admin can filter applications to only failing', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');

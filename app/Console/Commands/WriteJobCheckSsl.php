@@ -186,6 +186,14 @@ class WriteJobCheckSsl extends Command
 
     private function latestScheduledLogAtSql(): string
     {
-        return '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and website_log_history.is_on_demand = 0)';
+        return '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and '.$this->scheduledRunPredicate('website_log_history.is_on_demand').')';
+    }
+
+    private function scheduledRunPredicate(string $column): string
+    {
+        return match (Website::query()->getConnection()->getDriverName()) {
+            'pgsql' => "({$column} is null or {$column} = false)",
+            default => "({$column} is null or {$column} = 0)",
+        };
     }
 }

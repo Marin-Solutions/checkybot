@@ -977,7 +977,7 @@ class CheckybotControlService
 
         $componentCounts = $project->activeComponents()
             ->with(['activeMonitorApis', 'activeWebsites'])
-            ->get(['id', 'current_status', 'is_archived'])
+            ->get(['id', 'current_status', 'is_archived', 'source'])
             ->map(fn (ProjectComponent $component): string => $this->componentStatusBucket($component))
             ->countBy()
             ->map(fn ($count): int => (int) $count)

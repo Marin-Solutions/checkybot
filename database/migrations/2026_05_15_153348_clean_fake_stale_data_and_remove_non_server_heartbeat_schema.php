@@ -159,7 +159,7 @@ return new class extends Migration
     private function recalculateComponentHealth(): void
     {
         DB::table('project_components')
-            ->select(['id', 'is_archived'])
+            ->select(['id', 'is_archived', 'source', 'current_status', 'summary'])
             ->orderBy('id')
             ->lazyById()
             ->each(function (object $component): void {
@@ -180,6 +180,7 @@ return new class extends Migration
 
                 $status = match (true) {
                     (bool) $component->is_archived => 'unknown',
+                    $statuses->isEmpty() && $component->source !== 'package' && in_array($component->current_status, ['healthy', 'warning', 'danger'], true) => $component->current_status,
                     $statuses->isEmpty() => 'pending',
                     $statuses->contains('danger') => 'danger',
                     $statuses->contains('warning') => 'warning',
@@ -192,7 +193,9 @@ return new class extends Migration
                     ->update([
                         'current_status' => $status,
                         'last_reported_status' => $status === 'unknown' ? 'unknown' : $status,
-                        'summary' => $status === 'pending' ? 'Awaiting first active child check result.' : null,
+                        'summary' => $statuses->isEmpty() && $status !== 'pending'
+                            ? $component->summary
+                            : ($status === 'pending' ? 'Awaiting first active child check result.' : null),
                     ]);
             });
     }
