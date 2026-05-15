@@ -292,10 +292,10 @@ class CheckybotMcpController extends Controller
         return [
             $this->tool('me', 'Verify Checkybot API authentication and app version.', []),
             $this->tool('list_projects', 'List Checkybot projects visible to the API key.', []),
-            $this->tool('get_project', 'Get project detail, check counts, and latest failure.', [
+            $this->tool('get_project', 'Get project detail, API/website/component check counts, health counts, and latest failure.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('list_checks', 'List package-managed API, website, and component checks for a project.', [
+            $this->tool('list_checks', 'List package-managed API checks, website checks, and component heartbeat checks for a project. Component checks include delivery state, stale timing, latest heartbeat metrics, and supports_run=false.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
             $this->tool('upsert_check', 'Create or update a package-managed API check by stable key.', [
@@ -318,20 +318,20 @@ class CheckybotMcpController extends Controller
                 'check' => ['type' => 'string'],
                 'type' => ['type' => 'string', 'enum' => ['api', 'website', 'component'], 'description' => 'Optional check type. Required when multiple check surfaces share the same key.'],
             ]),
-            $this->tool('trigger_run', 'Queue enabled checks for a project, or run a single check immediately.', [
+            $this->tool('trigger_run', 'Queue enabled API and website diagnostics for a project, or run a single API or website check immediately. Component heartbeats are reported by the component sync API and are not runnable from MCP.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string', 'description' => 'Optional check key.'],
                 'type' => ['type' => 'string', 'enum' => ['api', 'website'], 'description' => 'Optional runnable check type. Required when an API and website share the same key.'],
             ], ['project']),
-            $this->tool('get_run_batch', 'Get queued project diagnostic batch status.', [
+            $this->tool('get_run_batch', 'Get queued project diagnostic batch status for a batch returned by trigger_run. Returns project identity plus run_batch id, status, name, total_jobs, pending_jobs, failed_jobs, created_at, and finished_at.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
                 'batch' => ['type' => 'string', 'description' => 'Laravel batch id returned by trigger_run.'],
             ], ['project', 'batch']),
-            $this->tool('recent_runs', 'List recent API and website check run results.', [
+            $this->tool('recent_runs', 'List recent API runs, website diagnostics, and component heartbeat results. Component entries use run_source=heartbeat and include heartbeat metrics when reported.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
             ]),
-            $this->tool('latest_failures', 'List latest warning or danger check results.', [
+            $this->tool('latest_failures', 'List latest warning or danger API, website, and component heartbeat results.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
             ]),
