@@ -45,9 +45,25 @@ class CheckybotImportService
             'api_checks_count' => (int) $project->api_checks_count,
             'website_checks_count' => $websiteChecksCount,
             'component_checks_count' => $componentChecksCount,
+            'setup_verification' => $this->setupVerificationPayload($project),
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'created_at' => $project->created_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array{state: string, label: string, tone: string, summary: string, action: string, steps: array<int, array{title: string, status: string, description: string}>}
+     */
+    private function setupVerificationPayload(Project $project): array
+    {
+        return [
+            'state' => $project->setupVerificationState(),
+            'label' => $project->setupVerificationLabel(),
+            'tone' => $project->setupVerificationTone(),
+            'summary' => $project->setupVerificationSummary(),
+            'action' => $project->setupVerificationAction(),
+            'steps' => $project->setupVerificationSteps(),
         ];
     }
 
