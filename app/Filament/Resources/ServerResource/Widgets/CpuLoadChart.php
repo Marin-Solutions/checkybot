@@ -17,6 +17,8 @@ class CpuLoadChart extends ChartWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'CPU Load';
 
     public ?Model $record = null;

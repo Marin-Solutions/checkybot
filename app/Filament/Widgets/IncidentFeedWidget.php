@@ -26,6 +26,8 @@ class IncidentFeedWidget extends BaseWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?string $heading = 'Recent incidents';
 
     protected static ?string $description = 'Warning, danger and recovery transitions from websites and API monitors — in the order they happened.';

@@ -22,6 +22,8 @@ class SeoIssuesTableWidget extends BaseWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?string $heading = 'SEO Issues';
 
     protected int|string|array $columnSpan = 'full';

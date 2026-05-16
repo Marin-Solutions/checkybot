@@ -15,6 +15,8 @@ class ApiHealthStatsWidget extends BaseWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?int $sort = 2;
 
     protected ?string $pollingInterval = '30s';
