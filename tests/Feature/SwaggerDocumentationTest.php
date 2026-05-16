@@ -19,6 +19,7 @@ test('swagger documentation can be generated', function () {
             '/v1/control/projects/{project}/runs',
             '/v1/control/projects/{project}/runs/{batch}',
             '/v1/control/failures',
+            '/v1/control/issues',
             '/v1/mcp',
             '/v1/package/register',
             '/v1/package/sync',
@@ -81,5 +82,5 @@ test('swagger documentation can be generated', function () {
             fn ($schema) => $schema->type->toBe('object'),
             fn ($schema) => $schema->type->toBe('array'),
         )
-        ->and($documentation['paths'])->toHaveCount(21);
+        ->and($documentation['paths']['/v1/control/issues']['get']['responses'])->toHaveKeys(['200', '401', '404', '422']);
 });

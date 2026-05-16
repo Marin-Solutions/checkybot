@@ -3044,6 +3044,26 @@ test('mcp manages notification channels and global notification settings', funct
         ->assertJsonCount(1, 'result.structuredContent')
         ->assertJsonPath('result.structuredContent.0.id', $channelId);
 
+    Http::fake([
+        'https://hooks.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 515,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'test_notification_channel',
+                'arguments' => [
+                    'id' => $channelId,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.ok', true)
+        ->assertJsonPath('result.structuredContent.channel.last_delivery.succeeded', true);
+
     $settingResponse = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
             'jsonrpc' => '2.0',
@@ -3099,6 +3119,56 @@ test('mcp manages notification channels and global notification settings', funct
         ->assertJsonPath('result.structuredContent.setting.channel_type', 'MAIL')
         ->assertJsonPath('result.structuredContent.setting.address', 'alerts@example.test')
         ->assertJsonPath('result.structuredContent.setting.active', false);
+
+    Mail::fake();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 535,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'test_notification_setting',
+                'arguments' => [
+                    'id' => $settingId,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.ok', true)
+        ->assertJsonPath('result.structuredContent.setting.last_delivery.succeeded', true);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 536,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'delete_notification_setting',
+                'arguments' => [
+                    'id' => $settingId,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.deleted', true)
+        ->assertJsonPath('result.structuredContent.setting.id', $settingId);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 537,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'delete_notification_channel',
+                'arguments' => [
+                    'id' => $channelId,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.deleted', true)
+        ->assertJsonPath('result.structuredContent.channel.id', $channelId);
 });
 
 test('mcp does not delete notification channels still used by settings', function () {
@@ -3126,6 +3196,112 @@ test('mcp does not delete notification channels still used by settings', functio
         ->assertOk()
         ->assertJsonPath('error.code', -32000)
         ->assertJsonPath('error.message', 'Notification channel is still used by notification settings. Delete or move those settings first.');
+});
+
+test('mcp notification setting tools only manage global settings', function () {
+    $website = Website::factory()->create([
+        'created_by' => $this->user->id,
+    ]);
+
+    $websiteSetting = NotificationSetting::factory()->websiteScope()->email()->create([
+        'user_id' => $this->user->id,
+        'website_id' => $website->id,
+        'inspection' => 'WEBSITE_CHECK',
+        'address' => 'website-alerts@example.test',
+    ]);
+
+    $globalSetting = NotificationSetting::factory()->globalScope()->email()->create([
+        'user_id' => $this->user->id,
+        'inspection' => 'API_MONITOR',
+        'address' => 'global-alerts@example.test',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 55,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'list_notification_settings',
+                'arguments' => [],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonCount(1, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.id', $globalSetting->id);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 56,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'upsert_notification_setting',
+                'arguments' => [
+                    'id' => $websiteSetting->id,
+                    'inspection' => 'ALL_CHECK',
+                    'channel_type' => 'MAIL',
+                    'address' => 'rewritten@example.test',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32004);
+
+    $this->assertDatabaseHas('notification_settings', [
+        'id' => $websiteSetting->id,
+        'scope' => 'WEBSITE',
+        'website_id' => $website->id,
+        'address' => 'website-alerts@example.test',
+    ]);
+});
+
+test('mcp current issues does not hide older unhealthy components behind newer healthy components', function () {
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'healthy-component',
+        'current_status' => 'healthy',
+        'updated_at' => now(),
+    ]);
+
+    $dangerComponent = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'danger-component',
+        'current_status' => 'danger',
+        'summary' => 'Component is failing.',
+        'updated_at' => now()->subHour(),
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'project_component_id' => $dangerComponent->id,
+        'source' => 'package',
+        'package_name' => 'danger-child-api',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 57,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'type' => 'component',
+                    'limit' => 1,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonCount(1, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'danger-component')
+        ->assertJsonPath('result.structuredContent.0.status', 'danger');
 });
 
 test('mcp recent runs tool includes api and website diagnostics only', function () {

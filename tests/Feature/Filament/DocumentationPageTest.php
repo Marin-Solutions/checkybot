@@ -20,6 +20,8 @@ test('super admin can render developer documentation page', function () {
         ->assertSee('get_run_batch')
         ->assertSee('recent_runs')
         ->assertSee('current_issues')
+        ->assertSee('delete_notification_channel')
+        ->assertSee('test_notification_setting')
         ->assertSee('component status');
 });
 

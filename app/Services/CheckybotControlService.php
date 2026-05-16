@@ -785,6 +785,7 @@ class CheckybotControlService
         return NotificationSetting::query()
             ->with('channel')
             ->where('user_id', $user->id)
+            ->where('scope', NotificationScopesEnum::GLOBAL->value)
             ->latest('updated_at')
             ->get()
             ->map(fn (NotificationSetting $setting): array => $this->notificationSettingPayload($setting))
@@ -801,6 +802,7 @@ class CheckybotControlService
             $setting = isset($data['id'])
                 ? NotificationSetting::query()
                     ->where('user_id', $user->id)
+                    ->where('scope', NotificationScopesEnum::GLOBAL->value)
                     ->whereKey($data['id'])
                     ->lockForUpdate()
                     ->firstOrFail()
@@ -848,6 +850,7 @@ class CheckybotControlService
         $setting = NotificationSetting::query()
             ->with('channel')
             ->where('user_id', $user->id)
+            ->where('scope', NotificationScopesEnum::GLOBAL->value)
             ->whereKey($settingId)
             ->firstOrFail();
 
@@ -868,6 +871,7 @@ class CheckybotControlService
         $setting = NotificationSetting::query()
             ->with('channel')
             ->where('user_id', $user->id)
+            ->where('scope', NotificationScopesEnum::GLOBAL->value)
             ->whereKey($settingId)
             ->firstOrFail();
 
@@ -948,7 +952,6 @@ class CheckybotControlService
 
         return $query
             ->latest('updated_at')
-            ->limit($limit * 2)
             ->get()
             ->filter(fn (ProjectComponent $component): bool => in_array($this->componentStatusBucket($component), $statuses, true))
             ->take($limit)
@@ -1698,9 +1701,6 @@ class CheckybotControlService
         ];
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     /**
      * @return array<string, mixed>
      */

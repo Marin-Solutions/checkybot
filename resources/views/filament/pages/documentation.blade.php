@@ -401,8 +401,12 @@
                             'current_issues',
                             'list_notification_channels',
                             'upsert_notification_channel',
+                            'delete_notification_channel',
+                            'test_notification_channel',
                             'list_notification_settings',
                             'upsert_notification_setting',
+                            'delete_notification_setting',
+                            'test_notification_setting',
                         ] as $tool)
                             <div class="cb-docs-chip">{{ $tool }}</div>
                         @endforeach
