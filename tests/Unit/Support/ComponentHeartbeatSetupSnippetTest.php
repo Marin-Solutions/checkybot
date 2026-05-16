@@ -4,7 +4,7 @@ use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Support\ComponentHeartbeatSetupSnippet;
 
-test('component api snippet shell quotes component names and avoids expandable heredocs', function () {
+test('component api snippet shell quotes declarations and avoids expandable heredocs', function () {
     config(['app.url' => 'https://checkybot.example.com/']);
 
     $project = Project::factory()->create();
@@ -18,14 +18,33 @@ test('component api snippet shell quotes component names and avoids expandable h
 
     expect($snippet)
         ->toContain('Requires jq for safe JSON quoting.')
-        ->toContain("COMPONENT_NAME='queue $(touch /tmp/checkybot-owned)'")
         ->toContain('DECLARED_COMPONENTS_JSON=')
+        ->toContain('"name":"queue $(touch /tmp/checkybot-owned)"')
         ->toContain('jq -n')
-        ->toContain('--arg name "$COMPONENT_NAME"')
         ->toContain('--argjson declared_components "$DECLARED_COMPONENTS_JSON"')
+        ->toContain('full_manifest: true')
         ->toContain("https://checkybot.example.com/api/v1/projects/{$project->id}/components/sync")
         ->not->toContain('<<JSON')
         ->not->toContain('<<\'JSON\'');
+});
+
+test('component api snippet emits declaration only payload accepted by component sync', function () {
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'queue',
+        'declared_interval' => '5m',
+    ]);
+
+    $snippet = ComponentHeartbeatSetupSnippet::componentCurl($component);
+
+    expect($snippet)
+        ->toContain('declared_components: $declared_components')
+        ->not->toContain('      components: [{')
+        ->not->toContain('status:')
+        ->not->toContain('summary:')
+        ->not->toContain('metrics:')
+        ->not->toContain('observed_at');
 });
 
 test('checkybot url falls back to generated application root before hosted production', function () {
@@ -48,7 +67,7 @@ test('component snippets floor zero interval minutes at one minute', function ()
         ->toContain("->every('1m')");
 
     expect(ComponentHeartbeatSetupSnippet::componentCurl($component))
-        ->toContain("COMPONENT_INTERVAL='1m'");
+        ->toContain('"interval":"1m"');
 });
 
 test('component snippets do not emit legacy zero declared intervals', function () {
@@ -65,8 +84,8 @@ test('component snippets do not emit legacy zero declared intervals', function (
         ->not->toContain("->every('0m')");
 
     expect(ComponentHeartbeatSetupSnippet::componentCurl($component))
-        ->toContain("COMPONENT_INTERVAL='1m'")
-        ->not->toContain("COMPONENT_INTERVAL='0m'");
+        ->toContain('"interval":"1m"')
+        ->not->toContain('"interval":"0m"');
 });
 
 test('component api snippet declares active sibling package components', function () {
@@ -113,7 +132,6 @@ test('component api snippet keeps manual components out of declarations', functi
     $snippet = ComponentHeartbeatSetupSnippet::componentCurl($component);
 
     expect($snippet)
-        ->toContain("COMPONENT_NAME='manual-cron'")
         ->toContain('"name":"package-worker"')
         ->not->toContain('"name":"manual-cron"');
 });
