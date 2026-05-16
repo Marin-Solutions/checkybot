@@ -367,6 +367,7 @@
                             'GET /control/projects/{project}/runs/{batch}',
                             'GET /control/runs?project={project}&limit=25',
                             'GET /control/failures?project={project}&limit=25',
+                            'GET /control/issues?project={project}&type=api',
                         ] as $endpoint)
                             <div class="cb-docs-chip">{{ $endpoint }}</div>
                         @endforeach
@@ -397,13 +398,18 @@
                             'get_run_batch',
                             'recent_runs',
                             'latest_failures',
+                            'current_issues',
+                            'list_notification_channels',
+                            'upsert_notification_channel',
+                            'list_notification_settings',
+                            'upsert_notification_setting',
                         ] as $tool)
                             <div class="cb-docs-chip">{{ $tool }}</div>
                         @endforeach
                     </div>
 
                     <p>
-                        <span class="cb-docs-code">list_checks</span>, <span class="cb-docs-code">recent_runs</span>, and <span class="cb-docs-code">latest_failures</span> include component heartbeats alongside API and website results. Use <span class="cb-docs-code">get_run_batch</span> with the batch id returned by <span class="cb-docs-code">trigger_run</span> to poll queued project diagnostics.
+                        <span class="cb-docs-code">list_checks</span> and <span class="cb-docs-code">current_issues</span> include component status alongside API and website checks. <span class="cb-docs-code">recent_runs</span> and <span class="cb-docs-code">latest_failures</span> cover executable API and website results. Use <span class="cb-docs-code">get_run_batch</span> with the batch id returned by <span class="cb-docs-code">trigger_run</span> to poll queued project diagnostics.
                     </p>
                 </div>
             </div>

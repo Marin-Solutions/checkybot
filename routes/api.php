@@ -44,6 +44,7 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
         Route::get('/runs', [CheckybotControlController::class, 'runs']);
         Route::get('/projects/{project}/runs', [CheckybotControlController::class, 'projectRuns']);
         Route::get('/failures', [CheckybotControlController::class, 'failures']);
+        Route::get('/issues', [CheckybotControlController::class, 'issues']);
         Route::get('/projects/{project}/failures', [CheckybotControlController::class, 'projectFailures']);
     });
 

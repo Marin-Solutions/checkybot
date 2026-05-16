@@ -154,6 +154,30 @@ class CheckybotControlController extends Controller
         ]);
     }
 
+    public function issues(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'project' => ['nullable', 'string', 'max:255'],
+            'type' => ['nullable', 'in:all,api,website,component'],
+            'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
+            'statuses.*' => ['required', 'string', 'in:warning,danger,pending,unknown'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'exclude' => ['nullable', 'array', 'max:25'],
+            'exclude.*' => ['required', 'string', 'max:255'],
+        ]);
+
+        return response()->json([
+            'data' => $this->control->currentIssues(
+                $request->user(),
+                $data['project'] ?? null,
+                $data['type'] ?? null,
+                $data['statuses'] ?? ['warning', 'danger'],
+                $data['limit'] ?? 25,
+                $data['exclude'] ?? [],
+            ),
+        ]);
+    }
+
     public function projectFailures(ListControlFailuresRequest $request, string $project): JsonResponse
     {
         $data = $request->validated();

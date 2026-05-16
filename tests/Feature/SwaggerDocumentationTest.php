@@ -81,5 +81,5 @@ test('swagger documentation can be generated', function () {
             fn ($schema) => $schema->type->toBe('object'),
             fn ($schema) => $schema->type->toBe('array'),
         )
-        ->and($documentation['paths'])->toHaveCount(20);
+        ->and($documentation['paths'])->toHaveCount(21);
 });
