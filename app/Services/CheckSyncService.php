@@ -165,6 +165,7 @@ class CheckSyncService
         $updated = 0;
         $checkNames = array_values(array_unique(array_column($checks, 'name')));
         $existingApis = MonitorApis::withTrashed()
+            ->with('assertions')
             ->where('project_id', $project->id)
             ->where('source', 'package')
             ->whereIn('package_name', $checkNames)
@@ -503,20 +504,24 @@ class CheckSyncService
      */
     protected function canonicalExistingAssertions(MonitorApis $monitorApi): array
     {
-        return MonitorApiAssertion::query()
-            ->where('monitor_api_id', $monitorApi->id)
-            ->orderBy('sort_order')
-            ->orderBy('id')
-            ->get([
-                'data_path',
-                'assertion_type',
-                'expected_type',
-                'comparison_operator',
-                'expected_value',
-                'regex_pattern',
-                'sort_order',
-                'is_active',
-            ])
+        $assertions = $monitorApi->relationLoaded('assertions')
+            ? $monitorApi->assertions
+            : MonitorApiAssertion::query()
+                ->where('monitor_api_id', $monitorApi->id)
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get([
+                    'data_path',
+                    'assertion_type',
+                    'expected_type',
+                    'comparison_operator',
+                    'expected_value',
+                    'regex_pattern',
+                    'sort_order',
+                    'is_active',
+                ]);
+
+        return $assertions
             ->map(fn (MonitorApiAssertion $assertion): array => [
                 'data_path' => $assertion->data_path,
                 'assertion_type' => $assertion->assertion_type,
