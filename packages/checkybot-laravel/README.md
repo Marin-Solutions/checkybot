@@ -104,6 +104,7 @@ Checkybot::ssl('main-certificate')
 // API Checks with Assertions (Pest-style!)
 Checkybot::api('health-check')
     ->url(config('app.url') . '/api/health')
+    ->component('database')
     ->everyFiveMinutes()
     ->withToken(config('services.monitoring.token'))
     ->expect('status')->toEqual('healthy')
@@ -115,6 +116,8 @@ Checkybot::api('health-check')
 Checkybot::component('database')
     ->everyFiveMinutes();
 ```
+
+Attach checks to declared components with `->component('database')` so Checkybot can derive component health from the linked API, uptime, and SSL checks.
 
 ## Uptime Checks
 

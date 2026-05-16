@@ -5,6 +5,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -281,6 +282,117 @@ test('syncs api checks with assertions successfully', function () {
     expect($api->assertions)->toHaveCount(2)
         ->and($api->request_body_type)->toBe('form')
         ->and($api->request_body)->toBe('{"grant_type":"client_credentials","scope":"health"}');
+});
+
+test('legacy sync links package checks to declared project components', function () {
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'database-http',
+                'url' => 'https://database.example.com',
+                'interval' => '5m',
+                'component' => 'database',
+            ],
+        ],
+        'ssl_checks' => [
+            [
+                'name' => 'database-certificate',
+                'url' => 'https://database.example.com',
+                'interval' => '1d',
+                'component' => 'database',
+            ],
+        ],
+        'api_checks' => [
+            [
+                'name' => 'database-health',
+                'url' => 'https://database.example.com/health',
+                'interval' => '5m',
+                'component' => 'database',
+            ],
+        ],
+    ]);
+
+    expect($summary['uptime_checks']['created'])->toBe(1)
+        ->and($summary['ssl_checks']['created'])->toBe(1)
+        ->and($summary['api_checks']['created'])->toBe(1);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-http',
+        'project_component_id' => $component->id,
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-certificate',
+        'project_component_id' => $component->id,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-health',
+        'project_component_id' => $component->id,
+    ]);
+});
+
+test('legacy sync clears component links when package checks omit component names', function () {
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database-http',
+        'url' => 'https://database.example.com',
+        'source' => 'package',
+        'package_name' => 'database-http',
+        'package_interval' => '5m',
+        'project_component_id' => $component->id,
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'database-health',
+        'url' => 'https://database.example.com/health',
+        'source' => 'package',
+        'package_name' => 'database-health',
+        'package_interval' => '5m',
+        'project_component_id' => $component->id,
+        'created_by' => $this->user->id,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'database-http',
+                'url' => 'https://database.example.com',
+                'interval' => '5m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'database-health',
+                'url' => 'https://database.example.com/health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    expect($summary['uptime_checks']['updated'])->toBe(1)
+        ->and($summary['api_checks']['updated'])->toBe(1);
+
+    expect(Website::query()->where('package_name', 'database-http')->sole()->project_component_id)->toBeNull()
+        ->and(MonitorApis::query()->where('package_name', 'database-health')->sole()->project_component_id)->toBeNull();
 });
 
 test('updates api checks with execution settings from legacy sync', function () {

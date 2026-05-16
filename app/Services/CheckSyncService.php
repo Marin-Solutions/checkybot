@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -19,11 +20,12 @@ class CheckSyncService
     {
         return DB::transaction(function () use ($project, $payload) {
             $syncedAt = now();
+            $componentIdsByName = $this->projectComponentIdsByName($project);
 
             $summary = [
-                'uptime_checks' => $this->syncUptimeChecks($project, $payload['uptime_checks'] ?? [], $syncedAt),
-                'ssl_checks' => $this->syncSslChecks($project, $payload['ssl_checks'] ?? [], $syncedAt),
-                'api_checks' => $this->syncApiChecks($project, $payload['api_checks'] ?? [], $syncedAt),
+                'uptime_checks' => $this->syncUptimeChecks($project, $payload['uptime_checks'] ?? [], $syncedAt, $componentIdsByName),
+                'ssl_checks' => $this->syncSslChecks($project, $payload['ssl_checks'] ?? [], $syncedAt, $componentIdsByName),
+                'api_checks' => $this->syncApiChecks($project, $payload['api_checks'] ?? [], $syncedAt, $componentIdsByName),
             ];
 
             $project->fill([
@@ -35,7 +37,10 @@ class CheckSyncService
         });
     }
 
-    protected function syncUptimeChecks(Project $project, array $checks, Carbon $syncedAt): array
+    /**
+     * @param  array<string, int>  $componentIdsByName
+     */
+    protected function syncUptimeChecks(Project $project, array $checks, Carbon $syncedAt, array $componentIdsByName): array
     {
         $created = 0;
         $updated = 0;
@@ -55,6 +60,7 @@ class CheckSyncService
 
             $data = [
                 'project_id' => $project->id,
+                'project_component_id' => $this->projectComponentIdFor($componentIdsByName, $check['component'] ?? null),
                 'name' => $check['name'],
                 'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'description' => '',
@@ -96,7 +102,10 @@ class CheckSyncService
         return compact('created', 'updated', 'deleted');
     }
 
-    protected function syncSslChecks(Project $project, array $checks, Carbon $syncedAt): array
+    /**
+     * @param  array<string, int>  $componentIdsByName
+     */
+    protected function syncSslChecks(Project $project, array $checks, Carbon $syncedAt, array $componentIdsByName): array
     {
         $created = 0;
         $updated = 0;
@@ -116,6 +125,7 @@ class CheckSyncService
 
             $data = [
                 'project_id' => $project->id,
+                'project_component_id' => $this->projectComponentIdFor($componentIdsByName, $check['component'] ?? null),
                 'name' => $check['name'],
                 'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'description' => '',
@@ -159,7 +169,10 @@ class CheckSyncService
         return compact('created', 'updated', 'deleted');
     }
 
-    protected function syncApiChecks(Project $project, array $checks, Carbon $syncedAt): array
+    /**
+     * @param  array<string, int>  $componentIdsByName
+     */
+    protected function syncApiChecks(Project $project, array $checks, Carbon $syncedAt, array $componentIdsByName): array
     {
         $created = 0;
         $updated = 0;
@@ -182,6 +195,7 @@ class CheckSyncService
 
             $data = [
                 'project_id' => $project->id,
+                'project_component_id' => $this->projectComponentIdFor($componentIdsByName, $check['component'] ?? null),
                 'title' => $check['name'],
                 'url' => $this->resolveUrl($project->base_url, $check['url']),
                 'http_method' => array_key_exists('method', $check)
@@ -278,6 +292,29 @@ class CheckSyncService
         }
 
         return rtrim((string) $baseUrl, '/').'/'.ltrim($url, '/');
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function projectComponentIdsByName(Project $project): array
+    {
+        return ProjectComponent::query()
+            ->where('project_id', $project->id)
+            ->pluck('id', 'name')
+            ->all();
+    }
+
+    /**
+     * @param  array<string, int>  $componentIdsByName
+     */
+    private function projectComponentIdFor(array $componentIdsByName, mixed $componentName): ?int
+    {
+        if (! is_string($componentName) || blank($componentName)) {
+            return null;
+        }
+
+        return $componentIdsByName[$componentName] ?? null;
     }
 
     protected function pruneOrphanedWebsites(Project $project, array $keepNames, Carbon $syncedAt, bool $uptime = false, bool $ssl = false): int
@@ -511,6 +548,7 @@ class CheckSyncService
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get([
+                    'id',
                     'data_path',
                     'assertion_type',
                     'expected_type',
@@ -522,6 +560,10 @@ class CheckSyncService
                 ]);
 
         return $assertions
+            ->sortBy([
+                ['sort_order', 'asc'],
+                ['id', 'asc'],
+            ])
             ->map(fn (MonitorApiAssertion $assertion): array => [
                 'data_path' => $assertion->data_path,
                 'assertion_type' => $assertion->assertion_type,
