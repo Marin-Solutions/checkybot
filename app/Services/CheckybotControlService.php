@@ -3,12 +3,16 @@
 namespace App\Services;
 
 use App\Console\Commands\LogJobCheckUptimeSsl;
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\NotificationScopesEnum;
 use App\Enums\RunSource;
 use App\Jobs\LogUptimeSslJob;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\NotificationChannels;
+use App\Models\NotificationSetting;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\User;
@@ -619,6 +623,461 @@ class CheckybotControlService
             ->values()
             ->take($limit)
             ->all();
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     * @param  array<int, string>  $exclude
+     * @return array<int, array<string, mixed>>
+     */
+    public function currentIssues(
+        User $user,
+        ?string $projectKey = null,
+        ?string $type = null,
+        array $statuses = ['warning', 'danger'],
+        int $limit = 25,
+        array $exclude = [],
+    ): array {
+        $limit = min(max($limit, 1), 100);
+        $statuses = array_values(array_intersect($statuses, ['warning', 'danger', 'pending', 'unknown']));
+
+        if ($statuses === []) {
+            $statuses = ['warning', 'danger'];
+        }
+
+        $project = $projectKey !== null ? $this->findProject($user, $projectKey) : null;
+        $type = $type === 'all' ? null : $type;
+
+        $issues = collect();
+
+        if ($type === null || $type === 'api') {
+            $issues = $issues->merge($this->currentApiIssues($user, $project, $statuses, $limit));
+        }
+
+        if ($type === null || $type === 'website') {
+            $issues = $issues->merge($this->currentWebsiteIssues($user, $project, $statuses, $limit));
+        }
+
+        if ($type === null || $type === 'component') {
+            $issues = $issues->merge($this->currentComponentIssues($user, $project, $statuses, $limit));
+        }
+
+        return $issues
+            ->reject(fn (array $issue): bool => $this->matchesCurrentIssueExclude($issue, $exclude))
+            ->sort(function (array $a, array $b): int {
+                $statusComparison = $this->statusSortRank($a['status'] ?? null) <=> $this->statusSortRank($b['status'] ?? null);
+
+                if ($statusComparison !== 0) {
+                    return $statusComparison;
+                }
+
+                return strcmp(
+                    (string) ($b['last_checked_at'] ?? $b['updated_at'] ?? ''),
+                    (string) ($a['last_checked_at'] ?? $a['updated_at'] ?? ''),
+                );
+            })
+            ->values()
+            ->take($limit)
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listNotificationChannels(User $user): array
+    {
+        return NotificationChannels::query()
+            ->where('created_by', $user->id)
+            ->latest('updated_at')
+            ->get()
+            ->map(fn (NotificationChannels $channel): array => $this->notificationChannelPayload($channel))
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{created: bool, channel: array<string, mixed>}
+     */
+    public function upsertNotificationChannel(User $user, array $data): array
+    {
+        return DB::transaction(function () use ($user, $data): array {
+            $channel = isset($data['id'])
+                ? NotificationChannels::query()
+                    ->where('created_by', $user->id)
+                    ->whereKey($data['id'])
+                    ->lockForUpdate()
+                    ->firstOrFail()
+                : new NotificationChannels(['created_by' => $user->id]);
+
+            $created = ! $channel->exists;
+
+            $channel->fill([
+                'title' => $data['title'],
+                'method' => $data['method'],
+                'url' => $data['url'],
+                'description' => $data['description'] ?? null,
+                'request_body' => $data['request_body'] ?? [],
+            ]);
+            $channel->save();
+
+            return [
+                'created' => $created,
+                'channel' => $this->notificationChannelPayload($channel),
+            ];
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function deleteNotificationChannel(User $user, int $channelId): array
+    {
+        $channel = NotificationChannels::query()
+            ->where('created_by', $user->id)
+            ->whereKey($channelId)
+            ->firstOrFail();
+
+        $settingsCount = NotificationSetting::query()
+            ->where('user_id', $user->id)
+            ->where('notification_channel_id', $channel->id)
+            ->count();
+
+        if ($settingsCount > 0) {
+            abort(409, 'Notification channel is still used by notification settings. Delete or move those settings first.');
+        }
+
+        $payload = $this->notificationChannelPayload($channel);
+        $channel->delete();
+
+        return [
+            'deleted' => true,
+            'channel' => $payload,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function testNotificationChannel(User $user, int $channelId): array
+    {
+        $channel = NotificationChannels::query()
+            ->where('created_by', $user->id)
+            ->whereKey($channelId)
+            ->firstOrFail();
+
+        $response = $channel->sendWebhookNotification([
+            'message' => 'Checkybot webhook channel test',
+            'description' => 'This test confirms the saved webhook channel can receive Checkybot notifications.',
+        ], 'test');
+
+        return [
+            'ok' => (int) ($response['code'] ?? 0) >= 200 && (int) ($response['code'] ?? 0) < 300,
+            'summary' => NotificationChannels::summarizeDeliveryResponse($response),
+            'channel' => $this->notificationChannelPayload($channel->fresh()),
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    public function listNotificationSettings(User $user): array
+    {
+        return NotificationSetting::query()
+            ->with('channel')
+            ->where('user_id', $user->id)
+            ->where('scope', NotificationScopesEnum::GLOBAL->value)
+            ->latest('updated_at')
+            ->get()
+            ->map(fn (NotificationSetting $setting): array => $this->notificationSettingPayload($setting))
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{created: bool, setting: array<string, mixed>}
+     */
+    public function upsertNotificationSetting(User $user, array $data): array
+    {
+        return DB::transaction(function () use ($user, $data): array {
+            $setting = isset($data['id'])
+                ? NotificationSetting::query()
+                    ->where('user_id', $user->id)
+                    ->where('scope', NotificationScopesEnum::GLOBAL->value)
+                    ->whereKey($data['id'])
+                    ->lockForUpdate()
+                    ->firstOrFail()
+                : new NotificationSetting(['user_id' => $user->id]);
+
+            $created = ! $setting->exists;
+            $channelType = NotificationChannelTypesEnum::from($data['channel_type']);
+
+            if ($channelType === NotificationChannelTypesEnum::WEBHOOK) {
+                NotificationChannels::query()
+                    ->where('created_by', $user->id)
+                    ->whereKey($data['notification_channel_id'])
+                    ->firstOrFail();
+            }
+
+            $setting->fill([
+                'scope' => NotificationScopesEnum::GLOBAL->value,
+                'inspection' => $data['inspection'],
+                'channel_type' => $channelType->value,
+                'notification_channel_id' => $channelType === NotificationChannelTypesEnum::WEBHOOK
+                    ? $data['notification_channel_id']
+                    : null,
+                'address' => $channelType === NotificationChannelTypesEnum::MAIL
+                    ? $data['address']
+                    : null,
+                'flag_active' => $data['active'] ?? true,
+                'website_id' => null,
+                'monitor_api_id' => null,
+                'project_component_id' => null,
+            ]);
+            $setting->save();
+
+            return [
+                'created' => $created,
+                'setting' => $this->notificationSettingPayload($setting->fresh('channel')),
+            ];
+        });
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function deleteNotificationSetting(User $user, int $settingId): array
+    {
+        $setting = NotificationSetting::query()
+            ->with('channel')
+            ->where('user_id', $user->id)
+            ->where('scope', NotificationScopesEnum::GLOBAL->value)
+            ->whereKey($settingId)
+            ->firstOrFail();
+
+        $payload = $this->notificationSettingPayload($setting);
+        $setting->delete();
+
+        return [
+            'deleted' => true,
+            'setting' => $payload,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function testNotificationSetting(User $user, int $settingId): array
+    {
+        $setting = NotificationSetting::query()
+            ->with('channel')
+            ->where('user_id', $user->id)
+            ->where('scope', NotificationScopesEnum::GLOBAL->value)
+            ->whereKey($settingId)
+            ->firstOrFail();
+
+        $result = $setting->sendTestNotification();
+
+        return [
+            'ok' => $result['ok'],
+            'title' => $result['title'],
+            'body' => $result['body'],
+            'setting' => $this->notificationSettingPayload($setting->fresh('channel')),
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     * @return array<int, array<string, mixed>>
+     */
+    private function currentApiIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    {
+        $query = MonitorApis::query()
+            ->with(['project', 'assertions', 'latestResult', 'latestDiagnosticResult'])
+            ->where('created_by', $user->id)
+            ->where('is_enabled', true)
+            ->whereIn('current_status', $statuses);
+
+        if ($project instanceof Project) {
+            $query->where('project_id', $project->id);
+        }
+
+        return $query
+            ->orderByRaw("CASE current_status WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'pending' THEN 2 WHEN 'unknown' THEN 3 ELSE 4 END")
+            ->latest('updated_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (MonitorApis $check): array => $this->currentIssuePayload($check->project, $this->checkPayload($check)))
+            ->all();
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     * @return array<int, array<string, mixed>>
+     */
+    private function currentWebsiteIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    {
+        $query = Website::query()
+            ->with(['project', 'latestLogHistory', 'latestDiagnosticLogHistory'])
+            ->where('created_by', $user->id)
+            ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
+            ->whereIn('current_status', $statuses);
+
+        if ($project instanceof Project) {
+            $query->where('project_id', $project->id);
+        }
+
+        return $query
+            ->orderByRaw("CASE current_status WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'pending' THEN 2 WHEN 'unknown' THEN 3 ELSE 4 END")
+            ->latest('updated_at')
+            ->limit($limit)
+            ->get()
+            ->map(fn (Website $website): array => $this->currentIssuePayload($website->project, $this->websiteCheckPayload($website)))
+            ->all();
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     * @return array<int, array<string, mixed>>
+     */
+    private function currentComponentIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    {
+        $query = ProjectComponent::query()
+            ->with(['project', 'activeMonitorApis', 'activeWebsites'])
+            ->where('created_by', $user->id)
+            ->where('is_archived', false);
+
+        if ($project instanceof Project) {
+            $query->where('project_id', $project->id);
+        }
+
+        return $query
+            ->latest('updated_at')
+            ->get()
+            ->filter(fn (ProjectComponent $component): bool => in_array($this->componentStatusBucket($component), $statuses, true))
+            ->take($limit)
+            ->map(fn (ProjectComponent $component): array => $this->currentIssuePayload($component->project, $this->componentCheckPayload($component)))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $check
+     * @return array<string, mixed>
+     */
+    private function currentIssuePayload(?Project $project, array $check): array
+    {
+        return [
+            'project' => $project instanceof Project ? $this->projectIdentity($project) + [
+                'name' => $project->name,
+                'environment' => $project->environment,
+            ] : null,
+            'check' => $check,
+            'status' => $check['status'] ?? 'unknown',
+            'summary' => $check['status_summary'] ?? null,
+            'last_checked_at' => $check['last_checked_at'] ?? null,
+            'updated_at' => $check['updated_at'] ?? null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function notificationChannelPayload(NotificationChannels $channel): array
+    {
+        return [
+            'id' => $channel->id,
+            'title' => $channel->title,
+            'method' => $channel->method,
+            'url' => $channel->maskedWebhookUrlForDisplay(),
+            'description' => $channel->description,
+            'request_body' => $channel->maskedRequestBodyForDisplay(),
+            'last_delivery' => [
+                'kind' => $channel->last_delivery_kind,
+                'succeeded' => $channel->last_delivery_succeeded,
+                'response_code' => $channel->last_delivery_response_code,
+                'summary' => $channel->last_delivery_summary,
+                'attempted_at' => $channel->last_delivery_attempted_at?->toISOString(),
+            ],
+            'created_at' => $channel->created_at?->toISOString(),
+            'updated_at' => $channel->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function notificationSettingPayload(NotificationSetting $setting): array
+    {
+        $channelType = $setting->channel_type instanceof NotificationChannelTypesEnum
+            ? $setting->channel_type
+            : NotificationChannelTypesEnum::tryFrom((string) $setting->channel_type);
+        $scope = $setting->scope instanceof NotificationScopesEnum
+            ? $setting->scope
+            : NotificationScopesEnum::tryFrom((string) $setting->scope);
+
+        return [
+            'id' => $setting->id,
+            'scope' => $scope?->value ?? (string) $setting->scope,
+            'inspection' => $setting->inspection instanceof \BackedEnum
+                ? $setting->inspection->value
+                : (string) $setting->inspection,
+            'channel_type' => $channelType?->value ?? (string) $setting->channel_type,
+            'channel' => $setting->channel instanceof NotificationChannels
+                ? [
+                    'id' => $setting->channel->id,
+                    'title' => $setting->channel->title,
+                    'url' => $setting->channel->maskedWebhookUrlForDisplay(),
+                ]
+                : null,
+            'address' => $channelType === NotificationChannelTypesEnum::MAIL ? $setting->address : null,
+            'active' => (bool) $setting->flag_active,
+            'last_delivery' => [
+                'kind' => $setting->last_delivery_kind,
+                'succeeded' => $setting->last_delivery_succeeded,
+                'response_code' => $setting->last_delivery_response_code,
+                'summary' => $setting->last_delivery_summary,
+                'attempted_at' => $setting->last_delivery_attempted_at?->toISOString(),
+            ],
+            'created_at' => $setting->created_at?->toISOString(),
+            'updated_at' => $setting->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $issue
+     * @param  array<int, string>  $exclude
+     */
+    private function matchesCurrentIssueExclude(array $issue, array $exclude): bool
+    {
+        $exclude = collect($exclude)
+            ->filter(fn (mixed $value): bool => is_string($value) && trim($value) !== '')
+            ->map(fn (string $value): string => Str::lower(trim($value)))
+            ->values();
+
+        if ($exclude->isEmpty()) {
+            return false;
+        }
+
+        $check = $issue['check'] ?? [];
+        $haystack = Str::lower(implode(' ', array_filter([
+            $check['key'] ?? null,
+            $check['name'] ?? null,
+            $check['url'] ?? null,
+            $issue['summary'] ?? null,
+        ], fn (mixed $value): bool => is_scalar($value))));
+
+        return $exclude->contains(fn (string $needle): bool => str_contains($haystack, $needle));
+    }
+
+    private function statusSortRank(?string $status): int
+    {
+        return match ($status) {
+            'danger' => 0,
+            'warning' => 1,
+            'pending' => 2,
+            'unknown' => 3,
+            default => 4,
+        };
     }
 
     /**
@@ -1242,9 +1701,6 @@ class CheckybotControlService
         ];
     }
 
-    /**
-     * @return array<string, mixed>
-     */
     /**
      * @return array<string, mixed>
      */

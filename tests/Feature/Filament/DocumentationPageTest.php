@@ -19,7 +19,10 @@ test('super admin can render developer documentation page', function () {
         ->assertSee('upsert_check')
         ->assertSee('get_run_batch')
         ->assertSee('recent_runs')
-        ->assertSee('component heartbeats');
+        ->assertSee('current_issues')
+        ->assertSee('delete_notification_channel')
+        ->assertSee('test_notification_setting')
+        ->assertSee('component status');
 });
 
 test('developer documentation widget links setup entry points', function () {

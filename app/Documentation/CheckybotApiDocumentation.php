@@ -575,12 +575,35 @@ class CheckybotApiDocumentation
     public function listControlProjectFailures(): void {}
 
     /**
+     * @OA\Get(
+     *     path="/v1/control/issues",
+     *     operationId="listControlCurrentIssues",
+     *     tags={"control"},
+     *     summary="List current dashboard status issues",
+     *     description="Returns currently unhealthy or pending API monitors, website checks, and components. Use type=api to list API monitor issues only.",
+     *     security={{"checkybotApiKey": {}}},
+     *
+     *     @OA\Parameter(name="project", in="query", required=false, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="type", in="query", required=false, @OA\Schema(type="string", enum={"all", "api", "website", "component"})),
+     *     @OA\Parameter(name="statuses[]", in="query", required=false, @OA\Schema(type="array", @OA\Items(type="string", enum={"warning", "danger", "pending", "unknown"}))),
+     *     @OA\Parameter(name="exclude[]", in="query", required=false, @OA\Schema(type="array", @OA\Items(type="string"))),
+     *     @OA\Parameter(name="limit", in="query", required=false, @OA\Schema(type="integer", minimum=1, maximum=100)),
+     *
+     *     @OA\Response(response=200, description="Current dashboard issues"),
+     *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=404, description="Project not found"),
+     *     @OA\Response(response=422, description="Validation error")
+     * )
+     */
+    public function listControlCurrentIssues(): void {}
+
+    /**
      * @OA\Post(
      *     path="/v1/mcp",
      *     operationId="callCheckybotMcp",
      *     tags={"mcp"},
      *     summary="Call the Checkybot MCP JSON-RPC endpoint",
-     *     description="Authenticated JSON-RPC endpoint exposing tools such as me, list_projects, get_project, list_checks, upsert_check, disable_check, trigger_run, and latest_failures.",
+     *     description="Authenticated JSON-RPC endpoint exposing tools such as me, list_projects, get_project, list_checks, upsert_check, disable_check, trigger_run, latest_failures, current_issues, notification channel management, and notification setting management.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\RequestBody(

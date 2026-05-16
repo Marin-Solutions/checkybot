@@ -237,8 +237,11 @@ Single-check run triggers accept optional `type=api` or `type=website` in the qu
 - `GET /control/projects/{project}/runs?limit={1..100}`
 - `GET /control/failures?project={project}&limit={1..100}`
 - `GET /control/projects/{project}/failures?limit={1..100}`
+- `GET /control/issues?project={project}&type={all|api|website|component}&limit={1..100}`
 
 `/runs` returns recent API and website check run results. `/failures` returns recent warning or danger API and website results only.
+
+`/issues` returns current dashboard status issues across API monitors, website checks, and components. It accepts `statuses[]=warning|danger|pending|unknown` and `exclude[]` query parameters. For example, `/control/issues?project=scrappa&type=api&exclude[]=google%20search` lists unhealthy API monitors while omitting a known work-in-progress check.
 
 ## MCP Endpoint
 
@@ -256,7 +259,18 @@ Single-check run triggers accept optional `type=api` or `type=website` in the qu
 - `upsert_check`
 - `disable_check`
 - `trigger_run`
+- `get_run_batch`
+- `recent_runs`
 - `latest_failures`
+- `current_issues`
+- `list_notification_channels`
+- `upsert_notification_channel`
+- `delete_notification_channel`
+- `test_notification_channel`
+- `list_notification_settings`
+- `upsert_notification_setting`
+- `delete_notification_setting`
+- `test_notification_setting`
 
 Arguments:
 
@@ -267,7 +281,11 @@ Arguments:
 - `upsert_check` website: `{ "project": "scrappa", "key": "marketing-site", "type": "website", "check_types": ["uptime", "ssl"], "name": "Marketing site", "url": "/status", "schedule": "10m" }`
 - `disable_check`: `{ "project": "scrappa", "check": "maps-search" }`
 - `trigger_run`: `{ "project": "scrappa" }` or `{ "project": "scrappa", "check": "maps-search", "type": "api" }`
+- `recent_runs`: `{ "project": "scrappa", "limit": 10 }`
 - `latest_failures`: `{ "project": "scrappa", "limit": 10 }`
+- `current_issues`: `{ "project": "scrappa", "type": "api", "exclude": ["google search"] }`
+- `upsert_notification_channel`: `{ "title": "Ops webhook", "method": "POST", "url": "https://hooks.example.test/...", "request_body": { "message": "{message}", "description": "{description}" } }`
+- `upsert_notification_setting`: `{ "inspection": "API_MONITOR", "channel_type": "WEBHOOK", "notification_channel_id": 12, "active": true }`
 
 Example `tools/call` request:
 
