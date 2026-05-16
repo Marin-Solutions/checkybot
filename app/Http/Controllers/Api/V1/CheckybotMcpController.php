@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers\Api\V1;
 
-use App\Http\Controllers\Controller;
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\WebhookHttpMethod;
 use App\Enums\WebsiteServicesEnum;
+use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
 use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
