@@ -182,6 +182,66 @@ test('project read endpoint returns project metadata without secrets', function 
     expect(json_encode($response->json()))->not->toContain($this->project->token);
 });
 
+test('project read endpoint exposes setup verification diagnostics', function () {
+    $this->travelTo('2026-05-14 12:00:00');
+    config()->set('monitor.package_sync_stale_minutes', 15);
+
+    $waitingForRegistration = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Waiting Registration',
+        'environment' => 'production',
+    ]);
+
+    $waitingForFirstSync = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Waiting Sync',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://waiting-sync.test/checkybot/identity',
+        'package_version' => '1.2.3',
+    ]);
+
+    $staleSync = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Stale Sync',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://stale-sync.test/checkybot/identity',
+        'package_version' => '1.2.3',
+        'package_key' => 'stale-sync',
+        'base_url' => 'https://stale-sync.test',
+        'last_synced_at' => now()->subMinutes(16),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$waitingForRegistration->id}")
+        ->assertOk()
+        ->assertJsonPath('data.setup_verification.state', 'waiting_for_registration')
+        ->assertJsonPath('data.setup_verification.label', 'Waiting for registration')
+        ->assertJsonPath('data.setup_verification.tone', 'warning')
+        ->assertJsonPath('data.setup_verification.steps.0.title', 'Laravel package registration')
+        ->assertJsonPath('data.setup_verification.steps.0.status', 'pending')
+        ->assertJsonPath('data.setup_verification.steps.1.status', 'pending')
+        ->assertJsonPath('data.setup_verification.action', 'Copy the guided install snippet into the Laravel app, then run `php artisan checkybot:sync` once to trigger registration.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$waitingForFirstSync->id}")
+        ->assertOk()
+        ->assertJsonPath('data.setup_verification.state', 'waiting_for_first_sync')
+        ->assertJsonPath('data.setup_verification.steps.0.status', 'complete')
+        ->assertJsonPath('data.setup_verification.steps.0.description', 'Registration received from https://waiting-sync.test/checkybot/identity.')
+        ->assertJsonPath('data.setup_verification.steps.1.title', 'First package sync')
+        ->assertJsonPath('data.setup_verification.steps.1.status', 'pending')
+        ->assertJsonPath('data.setup_verification.summary', 'Checkybot has seen the Laravel package register this application, but the first package sync has not arrived yet.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$staleSync->id}")
+        ->assertOk()
+        ->assertJsonPath('data.setup_verification.state', 'sync_stale')
+        ->assertJsonPath('data.setup_verification.label', 'Sync stale')
+        ->assertJsonPath('data.setup_verification.tone', 'warning')
+        ->assertJsonPath('data.setup_verification.steps.1.status', 'stale')
+        ->assertJsonPath('data.setup_verification.steps.1.description', 'Last sync received 16 minutes ago, which is outside the 15 minute freshness window.');
+});
+
 test('checks read endpoint returns uptime ssl and api checks with current result context', function () {
     $uptime = Website::factory()->create([
         'project_id' => $this->project->id,
