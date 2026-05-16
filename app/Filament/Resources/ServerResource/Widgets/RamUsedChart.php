@@ -17,6 +17,8 @@ class RamUsedChart extends ChartWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'RAM Used';
 
     public ?Model $record = null;

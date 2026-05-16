@@ -14,6 +14,8 @@ class SeoHealthScoreTrendWidget extends ChartWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'SEO Health Score Trend';
 
     protected static ?int $sort = 4;

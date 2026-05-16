@@ -17,6 +17,8 @@ class DiskUsedChart extends ChartWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'Disk Used';
 
     public ?Model $record = null;

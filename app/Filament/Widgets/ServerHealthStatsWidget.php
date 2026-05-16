@@ -14,6 +14,8 @@ class ServerHealthStatsWidget extends BaseWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?int $sort = 1;
 
     protected ?string $pollingInterval = '30s';

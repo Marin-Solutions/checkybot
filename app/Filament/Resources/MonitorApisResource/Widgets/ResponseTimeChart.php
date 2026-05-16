@@ -15,6 +15,8 @@ class ResponseTimeChart extends ChartWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'Response Times';
 
     protected ?string $maxHeight = '300px';

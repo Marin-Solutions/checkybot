@@ -14,6 +14,8 @@ class ProxyPoolStatsWidget extends BaseWidget
      */
     public array $discoveredSchemaNames = [];
 
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?int $sort = 3;
 
     protected ?string $pollingInterval = '30s';
