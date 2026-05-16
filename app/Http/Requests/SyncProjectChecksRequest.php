@@ -45,6 +45,10 @@ class SyncProjectChecksRequest extends FormRequest
                     $check['url'] = trim($check['url']);
                 }
 
+                if (is_array($check) && isset($check['component']) && is_string($check['component'])) {
+                    $check['component'] = trim($check['component']);
+                }
+
                 return $check;
             }, $this->input($checkGroup));
         }
@@ -78,6 +82,7 @@ class SyncProjectChecksRequest extends FormRequest
             'uptime_checks.*.interval' => $this->intervalRules(),
             'uptime_checks.*.max_redirects' => ['integer', 'min:0', 'max:20'],
             'uptime_checks.*.enabled' => ['nullable', 'boolean'],
+            'uptime_checks.*.component' => ['nullable', 'string', 'max:255'],
 
             'ssl_checks' => ['array', 'max:100'],
             'ssl_checks.*.last_heartbeat_at' => ['prohibited'],
@@ -96,6 +101,7 @@ class SyncProjectChecksRequest extends FormRequest
             'ssl_checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'ssl_checks.*.interval' => $this->intervalRules(),
             'ssl_checks.*.enabled' => ['nullable', 'boolean'],
+            'ssl_checks.*.component' => ['nullable', 'string', 'max:255'],
 
             'api_checks' => ['array', 'max:100'],
             'api_checks.*.last_heartbeat_at' => ['prohibited'],
@@ -121,6 +127,7 @@ class SyncProjectChecksRequest extends FormRequest
             'api_checks.*.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
             'api_checks.*.save_failed_response' => ['nullable', 'boolean'],
             'api_checks.*.enabled' => ['boolean'],
+            'api_checks.*.component' => ['nullable', 'string', 'max:255'],
             'api_checks.*.assertions' => ['array'],
             'api_checks.*.assertions.*.data_path' => ['required', 'string'],
             'api_checks.*.assertions.*.assertion_type' => ['required', 'in:exists,not_exists,type_check,value_compare,array_length,regex_match'],

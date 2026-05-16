@@ -169,14 +169,17 @@ test('sync command sends external checks from the registry alongside due compone
 
     Checkybot::uptime('homepage')
         ->url('https://example.com')
+        ->component('queue')
         ->every('5m');
 
     Checkybot::ssl('certificate')
         ->url('https://example.com')
+        ->component('queue')
         ->every('1d');
 
     Checkybot::api('health')
         ->url('https://example.com/api/health')
+        ->component('queue')
         ->headers([
             'Accept' => 'application/json',
         ])
@@ -200,6 +203,8 @@ test('sync command sends external checks from the registry alongside due compone
 
         public array $componentPayloads = [];
 
+        public array $events = [];
+
         public function __construct() {}
 
         public function registerApplication(array $payload): array
@@ -217,6 +222,7 @@ test('sync command sends external checks from the registry alongside due compone
 
         public function syncChecks(array $payload): array
         {
+            $this->events[] = 'checks';
             $this->checkPayloads[] = $payload;
 
             return [
@@ -230,6 +236,7 @@ test('sync command sends external checks from the registry alongside due compone
 
         public function syncComponents(array $payload): array
         {
+            $this->events[] = 'components';
             $this->componentPayloads[] = $payload;
 
             return [];
@@ -248,6 +255,7 @@ test('sync command sends external checks from the registry alongside due compone
                     'name' => 'homepage',
                     'url' => 'https://example.com',
                     'interval' => '5m',
+                    'component' => 'queue',
                 ],
             ],
             'ssl_checks' => [
@@ -255,6 +263,7 @@ test('sync command sends external checks from the registry alongside due compone
                     'name' => 'certificate',
                     'url' => 'https://example.com',
                     'interval' => '1d',
+                    'component' => 'queue',
                 ],
             ],
             'api_checks' => [
@@ -262,6 +271,7 @@ test('sync command sends external checks from the registry alongside due compone
                     'name' => 'health',
                     'url' => 'https://example.com/api/health',
                     'interval' => '5m',
+                    'component' => 'queue',
                     'headers' => [
                         'Accept' => 'application/json',
                     ],
@@ -284,6 +294,7 @@ test('sync command sends external checks from the registry alongside due compone
             ],
         ])
         ->and($fakeClient->componentPayloads)->toHaveCount(1)
+        ->and($fakeClient->events)->toBe(['components', 'checks'])
         ->and($fakeClient->componentPayloads[0]['declared_components'][0])->toMatchArray([
             'name' => 'queue',
             'interval' => '1m',

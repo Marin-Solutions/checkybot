@@ -236,6 +236,6 @@ class ApiCheck extends BaseCheck
 
         $data['save_failed_response'] = $this->saveFailedResponse;
 
-        return $data;
+        return $this->withCommonPayload($data);
     }
 }

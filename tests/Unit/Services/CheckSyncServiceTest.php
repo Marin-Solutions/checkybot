@@ -3,12 +3,18 @@
 use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Services\CheckSyncService;
 use Illuminate\Support\Facades\DB;
 
 test('sync checks preloads package resources without per-item lookup queries', function () {
     $project = Project::factory()->create();
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'database',
+        'created_by' => $project->created_by,
+    ]);
 
     Website::factory()->create([
         'project_id' => $project->id,
@@ -62,17 +68,18 @@ test('sync checks preloads package resources without per-item lookup queries', f
 
     $payload = [
         'uptime_checks' => [
-            ['name' => 'uptime-existing', 'url' => 'https://uptime-existing.test', 'interval' => '5m'],
-            ['name' => 'uptime-new', 'url' => 'https://uptime-new.test', 'interval' => '10m'],
+            ['name' => 'uptime-existing', 'url' => 'https://uptime-existing.test', 'interval' => '5m', 'component' => 'database'],
+            ['name' => 'uptime-new', 'url' => 'https://uptime-new.test', 'interval' => '10m', 'component' => 'database'],
         ],
         'ssl_checks' => [
-            ['name' => 'ssl-new', 'url' => 'https://ssl-new.test', 'interval' => '30m'],
+            ['name' => 'ssl-new', 'url' => 'https://ssl-new.test', 'interval' => '30m', 'component' => 'database'],
         ],
         'api_checks' => [
             [
                 'name' => 'api-existing',
                 'url' => 'https://api-existing.test',
                 'interval' => '5m',
+                'component' => 'database',
                 'assertions' => [
                     [
                         'data_path' => 'data.status',
@@ -88,6 +95,7 @@ test('sync checks preloads package resources without per-item lookup queries', f
                 'name' => 'api-existing-secondary',
                 'url' => 'https://api-existing-secondary.test',
                 'interval' => '5m',
+                'component' => 'database',
                 'assertions' => [
                     [
                         'data_path' => 'data.ready',
@@ -97,7 +105,7 @@ test('sync checks preloads package resources without per-item lookup queries', f
                     ],
                 ],
             ],
-            ['name' => 'api-new', 'url' => 'https://api-new.test', 'interval' => '15m', 'assertions' => []],
+            ['name' => 'api-new', 'url' => 'https://api-new.test', 'interval' => '15m', 'component' => 'database', 'assertions' => []],
         ],
     ];
 
@@ -116,12 +124,16 @@ test('sync checks preloads package resources without per-item lookup queries', f
     $assertionPerItemSelectLookups = $queries->filter(
         fn (string $query) => preg_match('/^select\s+.*from\s+["`]?monitor_api_assertions["`]?\s+where\s+.*["`]?monitor_api_id["`]?\s*=\s*\?/i', $query) === 1
     );
+    $componentPerItemLookups = $queries->filter(
+        fn (string $query) => preg_match('/from\s+["`]?project_components["`]?\s+where\s+.*["`]?name["`]?\s*=\s*\?/i', $query) === 1
+    );
 
     expect($summary['uptime_checks']['created'])->toBe(1);
     expect($summary['api_checks']['created'])->toBe(1);
     expect($websitePerItemLookups)->toHaveCount(0);
     expect($apiPerItemLookups)->toHaveCount(0);
     expect($assertionPerItemSelectLookups)->toHaveCount(0);
+    expect($componentPerItemLookups)->toHaveCount(0);
 
     assertDatabaseHas('websites', [
         'project_id' => $project->id,

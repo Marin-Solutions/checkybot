@@ -174,7 +174,8 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
      *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="every_5_minutes"),
      *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5),
-     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true)
+     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
+     *                     @OA\Property(property="component", type="string", nullable=true, example="database")
      *                 )
      *             ),
      *             @OA\Property(
@@ -189,7 +190,8 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="name", type="string", example="Certificate"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
      *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="1d"),
-     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true)
+     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
+     *                     @OA\Property(property="component", type="string", nullable=true, example="database")
      *                 )
      *             ),
      *             @OA\Property(
@@ -208,6 +210,7 @@ class CheckybotApiDocumentation
      *                     @OA\Property(property="request_body_type", type="string", nullable=true, enum={"json", "form", "raw"}, example="json"),
      *                     @OA\Property(property="request_body", nullable=true, example={"email": "monitor@example.com", "password": "secret"}),
      *                     @OA\Property(property="save_failed_response", type="boolean", nullable=true, example=false, description="Set false to avoid storing failed response bodies for this API check."),
+     *                     @OA\Property(property="component", type="string", nullable=true, example="database"),
      *                     @OA\Property(
      *                         property="assertions",
      *                         type="array",

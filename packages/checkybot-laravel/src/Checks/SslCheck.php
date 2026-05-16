@@ -32,10 +32,10 @@ class SslCheck extends BaseCheck
      */
     public function toArray(): array
     {
-        return [
+        return $this->withCommonPayload([
             'name' => $this->name,
             'url' => $this->url,
             'interval' => $this->interval,
-        ];
+        ]);
     }
 }

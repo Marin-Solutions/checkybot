@@ -71,9 +71,6 @@ class CheckybotCommand extends Command
             $client = app(CheckybotClient::class);
             $client->registerApplication($this->buildRegistrationPayload($config));
 
-            $response = $client->syncChecks($checkPayload);
-            $this->displaySyncResults($response['summary'] ?? []);
-
             $componentPayload = [
                 'full_manifest' => true,
                 'declared_components' => array_map(
@@ -83,6 +80,9 @@ class CheckybotCommand extends Command
             ];
 
             $client->syncComponents($componentPayload);
+
+            $response = $client->syncChecks($checkPayload);
+            $this->displaySyncResults($response['summary'] ?? []);
 
             $this->info('Sync completed successfully');
 
