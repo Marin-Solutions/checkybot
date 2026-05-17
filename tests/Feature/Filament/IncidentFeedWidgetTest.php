@@ -175,8 +175,10 @@ describe('IncidentFeedWidget', function () {
         expect($component->getMountedActionModalHtml())
             ->toContain('Livewire modal homepage returned HTTP 503')
             ->toContain('Source row #'.$log->id)
-            ->toContain('Close')
-            ->not->toContain('closeEvidenceModal');
+            ->toContain('Close');
+
+        expect($component->instance()->getMountedAction()->getModalCancelAction()->getName())
+            ->toBe('closeEvidenceModal');
     });
 
     it('suppresses duplicate unhealthy rows until the severity changes', function () {
