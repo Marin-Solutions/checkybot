@@ -41,3 +41,36 @@ test('filament notifications hydrate already resolved notification payloads with
         ->and($collection->get('notification-2')->getTitle())
         ->toBe('Queued');
 });
+
+test('filament notifications discard malformed entries and unnamed actions while hydrating', function () {
+    $synth = (new ReflectionClass(\App\Livewire\FilamentNotificationsCollectionSynth::class))
+        ->newInstanceWithoutConstructor();
+
+    $collection = $synth->hydrate(
+        [
+            'malformed' => 6000,
+            'notification-3' => [
+                'id' => 'notification-3',
+                'title' => 'Saved',
+                'actions' => [
+                    ['label' => 'Missing name'],
+                    ['name' => 'view', 'label' => 'View'],
+                    [
+                        'actions' => [
+                            ['name' => 'grouped-view', 'label' => 'Grouped view'],
+                        ],
+                    ],
+                ],
+            ],
+        ],
+        ['class' => \Filament\Notifications\Collection::class],
+        fn (string $key, mixed $value): mixed => $value,
+    );
+
+    $notification = $collection->get('notification-3');
+
+    expect($collection)->toHaveCount(1)
+        ->and($notification)->toBeInstanceOf(Notification::class)
+        ->and($notification->toArray()['actions'])->toHaveCount(1)
+        ->and($notification->toArray()['actions'][0]['name'])->toBe('view');
+});

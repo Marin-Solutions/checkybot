@@ -89,8 +89,8 @@ class FilamentNotificationsCollectionSynth extends WireableSynth
             unset($notification['id']);
         }
 
-        if (array_key_exists('actions', $notification) && ! is_array($notification['actions'])) {
-            $notification['actions'] = [];
+        if (array_key_exists('actions', $notification)) {
+            $notification['actions'] = $this->normalizeNotificationActions($notification['actions']);
         }
 
         if (array_key_exists('viewData', $notification) && ! is_array($notification['viewData'])) {
@@ -98,6 +98,41 @@ class FilamentNotificationsCollectionSynth extends WireableSynth
         }
 
         return $notification;
+    }
+
+    private function normalizeNotificationActions(mixed $actions): array
+    {
+        if (! is_array($actions)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($actions as $action) {
+            if (! is_array($action)) {
+                continue;
+            }
+
+            if (array_key_exists('actions', $action)) {
+                continue;
+            }
+
+            if (blank($action['name'] ?? null)) {
+                continue;
+            }
+
+            $action['isOutlined'] = (bool) ($action['isOutlined'] ?? false);
+            $action['isDisabled'] = (bool) ($action['isDisabled'] ?? false);
+            $action['shouldClose'] = (bool) ($action['shouldClose'] ?? false);
+            $action['shouldMarkAsRead'] = (bool) ($action['shouldMarkAsRead'] ?? false);
+            $action['shouldMarkAsUnread'] = (bool) ($action['shouldMarkAsUnread'] ?? false);
+            $action['shouldOpenUrlInNewTab'] = (bool) ($action['shouldOpenUrlInNewTab'] ?? false);
+            $action['shouldPostToUrl'] = (bool) ($action['shouldPostToUrl'] ?? false);
+
+            $normalized[] = $action;
+        }
+
+        return $normalized;
     }
 
     private function looksLikeNotificationPayload(array $value): bool
