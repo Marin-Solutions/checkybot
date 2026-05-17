@@ -3,9 +3,9 @@
 use App\Jobs\RunScheduledApiMonitorJob;
 use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApiAssertion;
+use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
-use App\Services\ApiMonitorExecutionService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Http;
@@ -105,8 +105,12 @@ test('run scheduled api monitor job skips monitors disabled after dispatch', fun
     Http::assertNothingSent();
 });
 
-test('run scheduled api monitor job records execution exceptions as failed monitor results', function () {
+test('run scheduled api monitor job records execution throwables as failed monitor results', function () {
     Log::spy();
+
+    Http::fake(function () {
+        throw new Error('Unexpected monitor runner failure token=secret-value');
+    });
 
     $monitor = MonitorApis::factory()->create([
         'title' => 'unstable-health',
@@ -114,38 +118,38 @@ test('run scheduled api monitor job records execution exceptions as failed monit
         'current_status' => 'healthy',
     ]);
 
-    $executionService = Mockery::mock(ApiMonitorExecutionService::class);
-    $executionService
-        ->shouldReceive('execute')
-        ->once()
-        ->andThrow(new RuntimeException('Unexpected monitor runner failure'));
-
     (new RunScheduledApiMonitorJob($monitor))->handle(
-        $executionService,
+        app(\App\Services\ApiMonitorExecutionService::class),
         app(\App\Services\HealthEventNotificationService::class),
     );
 
     $monitor->refresh();
 
     expect($monitor->current_status)->toBe('danger')
-        ->and($monitor->status_summary)->toBe('API monitor run failed before completing the scheduled check.');
+        ->and($monitor->status_summary)->toBe('API monitor run failed before completing the check.');
 
     $this->assertDatabaseHas('monitor_api_results', [
         'monitor_api_id' => $monitor->id,
         'is_success' => false,
         'http_code' => 0,
         'status' => 'danger',
-        'summary' => 'API monitor run failed before completing the scheduled check.',
+        'summary' => 'API monitor run failed before completing the check.',
         'is_on_demand' => false,
+        'transport_error_type' => 'unknown',
     ]);
+
+    $result = MonitorApiResult::where('monitor_api_id', $monitor->id)->latest()->first();
+
+    expect($result->transport_error_message)->toBe('Unexpected monitor runner failure token=[redacted]')
+        ->and($result->response_body[MonitorApiResult::ERROR_METADATA_KEY] ?? null)->toBe('[redacted]');
 
     Log::shouldHaveReceived('warning')
         ->once()
         ->with(
-            'Recording failed scheduled API monitor run: Unexpected monitor runner failure',
+            'Recording failed API monitor execution as check evidence.',
             Mockery::on(fn (array $context): bool => ($context['monitor_id'] ?? null) === $monitor->id
                 && ($context['monitor_title'] ?? null) === 'unstable-health'
-                && ($context['exception'] ?? null) === RuntimeException::class)
+                && ($context['exception'] ?? null) === Error::class)
         );
 });
 
