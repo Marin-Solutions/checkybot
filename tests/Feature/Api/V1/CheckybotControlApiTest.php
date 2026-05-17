@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -3413,6 +3414,11 @@ test('mcp recent runs omits soft deleted checks', function () {
         ->assertJsonCount(1, 'result.structuredContent')
         ->assertJsonPath('result.structuredContent.0.check.key', 'active-api')
         ->assertJsonMissingPath('result.structuredContent.1');
+});
+
+test('recent run history tables have indexes for newest-first control queries', function () {
+    expect(Schema::hasIndex('monitor_api_results', 'monitor_api_results_created_id_idx'))->toBeTrue()
+        ->and(Schema::hasIndex('website_log_history', 'website_log_history_created_id_idx'))->toBeTrue();
 });
 
 test('mcp endpoint rejects invalid schedules with a field validation error', function () {
