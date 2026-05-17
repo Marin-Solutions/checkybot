@@ -3,6 +3,7 @@
 use App\Filament\Widgets\IncidentFeedWidget;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Illuminate\Database\Query\Builder as QueryBuilder;
@@ -50,6 +51,61 @@ describe('IncidentFeedWidget', function () {
             ->assertSee('All good')
             ->assertSee('RECOVERED')
             ->assertSee('Resolved');
+    });
+
+    it('shows linked component context and filters incidents by component', function () {
+        $checkoutComponent = ProjectComponent::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Checkout',
+        ]);
+
+        $searchComponent = ProjectComponent::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Search',
+        ]);
+
+        $checkoutApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $checkoutComponent->project_id,
+            'project_component_id' => $checkoutComponent->id,
+            'title' => 'Checkout API',
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $checkoutApi->id,
+            'summary' => 'Checkout payments failing',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $searchWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $searchComponent->project_id,
+            'project_component_id' => $searchComponent->id,
+            'name' => 'Search homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $searchWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Search homepage failing',
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('subject', 'Checkout API')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->component_id)->toBe($checkoutComponent->id)
+            ->and($incident->component_name)->toBe('Checkout');
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('Checkout')
+            ->assertSee('Search')
+            ->filterTable('component_id', (string) $checkoutComponent->id)
+            ->assertSee('Checkout')
+            ->assertSee('Checkout payments failing')
+            ->assertDontSee('Search homepage failing');
     });
 
     it('opens the exact website log evidence row from an incident', function () {
