@@ -19,7 +19,6 @@ test('run scheduled api monitor job is unique and queued with enough time for co
     expect($job)->toBeInstanceOf(ShouldQueue::class)
         ->toBeInstanceOf(ShouldBeUnique::class)
         ->and($job->tries)->toBe(1)
-        ->and($job->backoff)->toBe(60)
         ->and($job->timeout)->toBe(420)
         ->and($job->failOnTimeout)->toBeTrue()
         ->and($job->uniqueFor)->toBe(480)

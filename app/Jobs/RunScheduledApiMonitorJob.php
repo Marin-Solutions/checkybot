@@ -22,8 +22,6 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
 
     public int $tries = 1;
 
-    public int $backoff = 60;
-
     public int $timeout = 420;
 
     public bool $failOnTimeout = true;
