@@ -572,14 +572,15 @@ class CheckybotControlService
      */
     private function recentApiRuns(User $user, ?Project $project, int $limit): array
     {
-        $query = $this->resultQuery($user);
-
-        if ($project instanceof Project) {
-            $query->whereHas('monitorApi', fn (Builder $monitorQuery) => $monitorQuery->where('project_id', $project->id));
-        }
-
-        return $query->orderByDesc('created_at')
-            ->orderByDesc('id')
+        return MonitorApiResult::query()
+            ->with('monitorApi.project')
+            ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
+            ->where('monitor_apis.created_by', $user->id)
+            ->whereNull('monitor_apis.deleted_at')
+            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('monitor_apis.project_id', $project->id))
+            ->select('monitor_api_results.*')
+            ->orderByDesc('monitor_api_results.created_at')
+            ->orderByDesc('monitor_api_results.id')
             ->limit($limit)
             ->get()
             ->map(fn (MonitorApiResult $result): array => $this->resultPayload($result))
@@ -591,14 +592,15 @@ class CheckybotControlService
      */
     private function recentWebsiteRuns(User $user, ?Project $project, int $limit): array
     {
-        $query = $this->websiteResultQuery($user);
-
-        if ($project instanceof Project) {
-            $query->whereHas('website', fn (Builder $websiteQuery) => $websiteQuery->where('project_id', $project->id));
-        }
-
-        return $query->orderByDesc('created_at')
-            ->orderByDesc('id')
+        return WebsiteLogHistory::query()
+            ->with('website.project')
+            ->join('websites', 'websites.id', '=', 'website_log_history.website_id')
+            ->where('websites.created_by', $user->id)
+            ->whereNull('websites.deleted_at')
+            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('websites.project_id', $project->id))
+            ->select('website_log_history.*')
+            ->orderByDesc('website_log_history.created_at')
+            ->orderByDesc('website_log_history.id')
             ->limit($limit)
             ->get()
             ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result))
@@ -1090,38 +1092,28 @@ class CheckybotControlService
      */
     private function latestApiFailures(User $user, ?Project $project, int $limit): array
     {
-        $query = $this->resultQuery($user)
-            ->scheduled()
-            ->whereHas('monitorApi', function (Builder $monitorQuery): void {
-                $monitorQuery->where('is_enabled', true)
-                    ->whereIn('current_status', ['warning', 'danger']);
-            })
-            ->whereNotExists(function ($subQuery): void {
-                $subQuery->selectRaw('1')
-                    ->from('monitor_api_results as newer_results')
-                    ->whereColumn('newer_results.monitor_api_id', 'monitor_api_results.monitor_api_id')
-                    ->where('newer_results.is_on_demand', false)
-                    ->where(function ($newerResultQuery): void {
-                        $newerResultQuery->whereColumn('newer_results.created_at', '>', 'monitor_api_results.created_at')
-                            ->orWhere(function ($sameTimestampQuery): void {
-                                $sameTimestampQuery->whereColumn('newer_results.created_at', 'monitor_api_results.created_at')
-                                    ->whereColumn('newer_results.id', '>', 'monitor_api_results.id');
-                            });
-                    });
-            })
-            ->where(function (Builder $resultQuery): void {
-                $resultQuery->where('is_success', false)
-                    ->orWhereIn('status', ['warning', 'danger']);
-            });
-
-        if ($project instanceof Project) {
-            $query->whereHas('monitorApi', fn (Builder $monitorQuery) => $monitorQuery->where('project_id', $project->id));
-        }
-
-        return $query->latest()
-            ->limit($limit)
+        return MonitorApis::query()
+            ->with(['project', 'latestScheduledResult'])
+            ->where('created_by', $user->id)
+            ->where('is_enabled', true)
+            ->whereIn('current_status', ['warning', 'danger'])
+            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('project_id', $project->id))
             ->get()
+            ->map(function (MonitorApis $monitor): ?MonitorApiResult {
+                $result = $monitor->latestScheduledResult;
+
+                if ($result instanceof MonitorApiResult) {
+                    $result->setRelation('monitorApi', $monitor);
+                }
+
+                return $result;
+            })
+            ->filter(fn (?MonitorApiResult $result): bool => $result instanceof MonitorApiResult
+                && ((bool) $result->is_success === false || in_array($result->status, ['warning', 'danger'], true)))
+            ->sortByDesc(fn (MonitorApiResult $result): string => (string) $result->created_at)
+            ->take($limit)
             ->map(fn (MonitorApiResult $result): array => $this->resultPayload($result))
+            ->values()
             ->all();
     }
 
@@ -1130,45 +1122,34 @@ class CheckybotControlService
      */
     private function latestWebsiteFailures(User $user, ?Project $project, int $limit): array
     {
-        $query = WebsiteLogHistory::query()
-            ->with('website.project')
-            ->where('is_on_demand', false)
-            ->whereHas('website', function (Builder $websiteQuery) use ($user, $project): void {
-                $websiteQuery->where('created_by', $user->id)
-                    ->whereIn('current_status', ['warning', 'danger'])
-                    ->where(function (Builder $monitoringQuery): void {
-                        $monitoringQuery->where('uptime_check', true)
-                            ->orWhere('ssl_check', true);
-                    });
-
-                if ($project instanceof Project) {
-                    $websiteQuery->where('project_id', $project->id);
-                }
+        return Website::query()
+            ->with(['project', 'latestScheduledLogHistory'])
+            ->where('created_by', $user->id)
+            ->whereIn('current_status', ['warning', 'danger'])
+            ->where(function (Builder $query): void {
+                $query
+                    ->where('uptime_check', true)
+                    ->orWhere('ssl_check', true);
             })
-            ->whereNotExists(function ($subQuery): void {
-                $subQuery->selectRaw('1')
-                    ->from('website_log_history as newer_logs')
-                    ->whereColumn('newer_logs.website_id', 'website_log_history.website_id')
-                    ->where('newer_logs.is_on_demand', false)
-                    ->where(function ($newerLogQuery): void {
-                        $newerLogQuery->whereColumn('newer_logs.created_at', '>', 'website_log_history.created_at')
-                            ->orWhere(function ($sameTimestampQuery): void {
-                                $sameTimestampQuery->whereColumn('newer_logs.created_at', 'website_log_history.created_at')
-                                    ->whereColumn('newer_logs.id', '>', 'website_log_history.id');
-                            });
-                    });
-            })
-            ->where(function (Builder $logQuery): void {
-                $logQuery->whereIn('status', ['warning', 'danger'])
-                    ->orWhere('http_status_code', '>=', 400)
-                    ->orWhereNotNull('transport_error_type');
-            });
-
-        return $query->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->limit($limit)
+            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('project_id', $project->id))
             ->get()
+            ->map(function (Website $website): ?WebsiteLogHistory {
+                $result = $website->latestScheduledLogHistory;
+
+                if ($result instanceof WebsiteLogHistory) {
+                    $result->setRelation('website', $website);
+                }
+
+                return $result;
+            })
+            ->filter(fn (?WebsiteLogHistory $result): bool => $result instanceof WebsiteLogHistory
+                && (in_array($result->status, ['warning', 'danger'], true)
+                    || (int) $result->http_status_code >= 400
+                    || $result->transport_error_type !== null))
+            ->sortByDesc(fn (WebsiteLogHistory $result): string => (string) $result->created_at)
+            ->take($limit)
             ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result))
+            ->values()
             ->all();
     }
 
@@ -1290,20 +1271,6 @@ class CheckybotControlService
     private function projectQuery(User $user): Builder
     {
         return Project::query()->where('created_by', $user->id);
-    }
-
-    private function resultQuery(User $user): Builder
-    {
-        return MonitorApiResult::query()
-            ->with('monitorApi.project')
-            ->whereHas('monitorApi', fn (Builder $monitorQuery) => $monitorQuery->where('created_by', $user->id));
-    }
-
-    private function websiteResultQuery(User $user): Builder
-    {
-        return WebsiteLogHistory::query()
-            ->with('website.project')
-            ->whereHas('website', fn (Builder $websiteQuery) => $websiteQuery->where('created_by', $user->id));
     }
 
     /**

@@ -3353,6 +3353,68 @@ test('mcp recent runs tool includes api and website diagnostics only', function 
         ->assertJsonPath('result.structuredContent.1.check.key', 'api-health');
 });
 
+test('mcp recent runs omits soft deleted checks', function () {
+    $deletedMonitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'deleted-api',
+        'title' => 'Deleted API',
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $deletedMonitor->id,
+        'summary' => 'Deleted API diagnostic completed.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+    $deletedMonitor->delete();
+
+    $deletedWebsite = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'deleted-website',
+        'name' => 'Deleted website',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $deletedWebsite->id,
+        'summary' => 'Deleted website diagnostic completed.',
+        'created_at' => now()->subMinute(),
+    ]);
+    $deletedWebsite->delete();
+
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'active-api',
+        'title' => 'Active API',
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $monitor->id,
+        'summary' => 'Active API diagnostic completed.',
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 58,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'recent_runs',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'limit' => 10,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonCount(1, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'active-api')
+        ->assertJsonMissingPath('result.structuredContent.1');
+});
+
 test('mcp endpoint rejects invalid schedules with a field validation error', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
