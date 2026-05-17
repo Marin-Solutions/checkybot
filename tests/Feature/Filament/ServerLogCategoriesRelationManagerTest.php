@@ -26,7 +26,7 @@ test('server log category table surfaces collected file history and download act
         'created_at' => now()->subHour(),
     ]);
 
-    Livewire::test(LogCategoriesRelationManager::class, [
+    $component = Livewire::test(LogCategoriesRelationManager::class, [
         'ownerRecord' => $server,
         'pageClass' => EditServer::class,
     ])
@@ -37,5 +37,12 @@ test('server log category table surfaces collected file history and download act
         ->assertSee('latest-nginx.log')
         ->assertTableActionVisible('viewLogFiles', $category)
         ->assertTableActionVisible('downloadLatestLogFile', $category)
-        ->assertTableActionHasUrl('downloadLatestLogFile', route('server-log-file-history.download', $latestFile), $category);
+        ->assertTableActionHasUrl('downloadLatestLogFile', route('server-log-file-history.download', $latestFile), $category)
+        ->mountTableAction('viewLogFiles', $category)
+        ->assertSet('mountedActions.0.name', 'viewLogFiles')
+        ->assertSuccessful();
+
+    expect($component->getMountedActionModalHtml())
+        ->toContain('Close')
+        ->not->toContain('closeLogFilesModal');
 });
