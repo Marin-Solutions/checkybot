@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Projects\RelationManagers;
 
 use App\Filament\Resources\Support\MonitorSnoozeAction;
+use App\Filament\Support\HealthStatusFilter;
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
 use App\Support\HealthStatusLabel;
@@ -11,6 +12,7 @@ use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -80,7 +82,21 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
-            ->filters([])
+            ->filters([
+                HealthStatusFilter::make()
+                    ->label('Health'),
+                SelectFilter::make('monitoring_state')
+                    ->label('State')
+                    ->options([
+                        'active' => 'Active',
+                        'disabled' => 'Disabled',
+                        'archived' => 'Archived',
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $this->applyMonitoringStateFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    )),
+            ])
             ->recordActions([
                 Action::make('snooze')
                     ->label(fn (Website $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')
@@ -236,5 +252,22 @@ class PackageManagedWebsitesRelationManager extends RelationManager
         }
 
         return null;
+    }
+
+    private function applyMonitoringStateFilter(Builder $query, ?string $state): Builder
+    {
+        return match ($state) {
+            'active' => $query
+                ->whereNull('deleted_at')
+                ->where(fn (Builder $inner) => $inner
+                    ->where('uptime_check', true)
+                    ->orWhere('ssl_check', true)),
+            'disabled' => $query
+                ->whereNull('deleted_at')
+                ->where('uptime_check', false)
+                ->where('ssl_check', false),
+            'archived' => $query->whereNotNull('deleted_at'),
+            default => $query,
+        };
     }
 }

@@ -1211,6 +1211,194 @@ test('package-managed relation managers do not expose non-server freshness filte
         ->assertDontSee('Awaiting check');
 });
 
+test('super admin can filter package-managed websites by health and state', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $healthy = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'healthy-homepage',
+        'source' => 'package',
+        'package_name' => 'healthy-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    $warning = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'slow-homepage',
+        'source' => 'package',
+        'package_name' => 'slow-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    $pending = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'new-homepage',
+        'source' => 'package',
+        'package_name' => 'new-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => null,
+        'created_by' => $user->id,
+    ]);
+    $disabled = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'disabled-homepage',
+        'source' => 'package',
+        'package_name' => 'disabled-homepage',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    $archived = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'archived-homepage',
+        'source' => 'package',
+        'package_name' => 'archived-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    $archived->delete();
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('current_status', 'warning')
+        ->assertCanSeeTableRecords([$warning])
+        ->assertCanNotSeeTableRecords([$healthy, $pending, $disabled, $archived]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('current_status', 'unknown')
+        ->assertCanSeeTableRecords([$pending])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $disabled, $archived]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('monitoring_state', 'active')
+        ->assertCanSeeTableRecords([$healthy, $warning, $pending])
+        ->assertCanNotSeeTableRecords([$disabled, $archived]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('monitoring_state', 'disabled')
+        ->assertCanSeeTableRecords([$disabled])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $pending, $archived]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('monitoring_state', 'archived')
+        ->assertCanSeeTableRecords([$archived])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $pending, $disabled]);
+});
+
+test('super admin can filter package-managed api monitors by health and state', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $healthy = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'healthy-api',
+        'source' => 'package',
+        'package_name' => 'healthy-api',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    $warning = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'slow-api',
+        'source' => 'package',
+        'package_name' => 'slow-api',
+        'is_enabled' => true,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    $pending = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'new-api',
+        'source' => 'package',
+        'package_name' => 'new-api',
+        'is_enabled' => true,
+        'current_status' => null,
+        'created_by' => $user->id,
+    ]);
+    $disabled = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'title' => 'disabled-api',
+        'source' => 'package',
+        'package_name' => 'disabled-api',
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    $archived = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'archived-api',
+        'source' => 'package',
+        'package_name' => 'archived-api',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    $archived->delete();
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('current_status', 'warning')
+        ->assertCanSeeTableRecords([$warning])
+        ->assertCanNotSeeTableRecords([$healthy, $pending, $disabled, $archived]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('current_status', 'unknown')
+        ->assertCanSeeTableRecords([$pending])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $disabled, $archived]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('monitoring_state', 'active')
+        ->assertCanSeeTableRecords([$healthy, $warning, $pending])
+        ->assertCanNotSeeTableRecords([$disabled, $archived]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('monitoring_state', 'disabled')
+        ->assertCanSeeTableRecords([$disabled])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $pending, $archived]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('monitoring_state', 'archived')
+        ->assertCanSeeTableRecords([$archived])
+        ->assertCanNotSeeTableRecords([$healthy, $warning, $pending, $disabled]);
+});
+
 test('package-managed relation managers queue run now diagnostics for active checks', function () {
     Carbon::setTestNow('2026-05-10 12:00:00');
 
