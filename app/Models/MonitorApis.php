@@ -32,6 +32,8 @@ class MonitorApis extends Model
 
     public const INTERACTIVE_RUN_KEY = 'interactive';
 
+    public const SCHEDULED_RUN_KEY = 'scheduled';
+
     private const REMOVED_HEARTBEAT_ATTRIBUTES = [
         'last_heartbeat_at',
         'awaiting_heartbeat_since',
@@ -429,6 +431,12 @@ class MonitorApis extends Model
 
             $timeout = min($timeout > 0 ? $timeout : $interactiveTimeout, $interactiveTimeout);
             $retries = min($retries, $interactiveRetries);
+        } elseif ((bool) ($data[self::SCHEDULED_RUN_KEY] ?? false)) {
+            $scheduledTimeout = max(1, (int) config('monitor.api_scheduled_timeout', 90));
+            $scheduledRetries = max(0, (int) config('monitor.api_scheduled_retries', 3));
+
+            $timeout = min($timeout > 0 ? $timeout : $scheduledTimeout, $scheduledTimeout);
+            $retries = min($retries, $scheduledRetries);
         }
 
         return [
