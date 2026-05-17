@@ -572,15 +572,20 @@ class CheckybotControlService
      */
     private function recentApiRuns(User $user, ?Project $project, int $limit): array
     {
+        $monitorIds = MonitorApis::query()
+            ->where('created_by', $user->id)
+            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('project_id', $project->id))
+            ->pluck('id');
+
+        if ($monitorIds->isEmpty()) {
+            return [];
+        }
+
         return MonitorApiResult::query()
             ->with('monitorApi.project')
-            ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
-            ->where('monitor_apis.created_by', $user->id)
-            ->whereNull('monitor_apis.deleted_at')
-            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('monitor_apis.project_id', $project->id))
-            ->select('monitor_api_results.*')
-            ->orderByDesc('monitor_api_results.created_at')
-            ->orderByDesc('monitor_api_results.id')
+            ->whereIn('monitor_api_id', $monitorIds)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->limit($limit)
             ->get()
             ->map(fn (MonitorApiResult $result): array => $this->resultPayload($result))
@@ -592,15 +597,20 @@ class CheckybotControlService
      */
     private function recentWebsiteRuns(User $user, ?Project $project, int $limit): array
     {
+        $websiteIds = Website::query()
+            ->where('created_by', $user->id)
+            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('project_id', $project->id))
+            ->pluck('id');
+
+        if ($websiteIds->isEmpty()) {
+            return [];
+        }
+
         return WebsiteLogHistory::query()
             ->with('website.project')
-            ->join('websites', 'websites.id', '=', 'website_log_history.website_id')
-            ->where('websites.created_by', $user->id)
-            ->whereNull('websites.deleted_at')
-            ->when($project instanceof Project, fn (Builder $query): Builder => $query->where('websites.project_id', $project->id))
-            ->select('website_log_history.*')
-            ->orderByDesc('website_log_history.created_at')
-            ->orderByDesc('website_log_history.id')
+            ->whereIn('website_id', $websiteIds)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->limit($limit)
             ->get()
             ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result))
