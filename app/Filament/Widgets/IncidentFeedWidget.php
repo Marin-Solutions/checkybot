@@ -3,9 +3,11 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Resources\MonitorApisResource;
+use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\Incident;
 use App\Models\MonitorApiResult;
+use App\Models\ProjectComponent;
 use App\Models\WebsiteLogHistory;
 use Filament\Actions\Action;
 use Filament\Schemas\Components\View as SchemaView;
@@ -16,6 +18,7 @@ use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -86,6 +89,12 @@ class IncidentFeedWidget extends BaseWidget
                         'api' => 'heroicon-o-bolt',
                         default => 'heroicon-o-question-mark-circle',
                     }),
+                TextColumn::make('component_name')
+                    ->label('Component')
+                    ->placeholder('Unmapped')
+                    ->url(fn (Incident $record): ?string => $this->resolveComponentUrl($record), shouldOpenInNewTab: false)
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query->where('component_name', 'like', "%{$search}%"))
+                    ->wrap(),
                 TextColumn::make('subject')
                     ->label('Subject')
                     ->weight('bold')
@@ -133,6 +142,17 @@ class IncidentFeedWidget extends BaseWidget
                         return $query->where('source', $data['value']);
                     })
                     ->placeholder('All sources'),
+                SelectFilter::make('component_id')
+                    ->label('Component')
+                    ->options(fn (): array => $this->getComponentFilterOptions())
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->where('component_id', (int) $data['value']);
+                    })
+                    ->placeholder('All components'),
             ])
             ->recordActions([
                 Action::make('viewEvidence')
@@ -177,6 +197,21 @@ class IncidentFeedWidget extends BaseWidget
         return 'No warning, danger or recovery transitions from your websites or API monitors in the selected window.';
     }
 
+    /**
+     * @return array<int, string>
+     */
+    protected function getComponentFilterOptions(): array
+    {
+        $projectId = $this->getScopedProjectId();
+
+        return ProjectComponent::query()
+            ->where('created_by', Auth::id())
+            ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId))
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
+    }
+
     protected function buildIncidentsQuery(): Builder
     {
         return self::buildIncidentsQueryFor(
@@ -196,6 +231,11 @@ class IncidentFeedWidget extends BaseWidget
     {
         $websiteRuns = WebsiteLogHistory::query()
             ->join('websites', 'websites.id', '=', 'website_log_history.website_id')
+            ->leftJoin('project_components as website_components', function (JoinClause $join) use ($userId): void {
+                $join
+                    ->on('website_components.id', '=', 'websites.project_component_id')
+                    ->where('website_components.created_by', $userId);
+            })
             ->whereNull('websites.deleted_at')
             ->where('website_log_history.is_on_demand', false)
             ->where('websites.created_by', $userId)
@@ -213,6 +253,8 @@ class IncidentFeedWidget extends BaseWidget
             ')
             ->selectRaw('websites.name as subject')
             ->selectRaw('website_log_history.website_id as subject_id')
+            ->selectRaw('website_components.id as component_id')
+            ->selectRaw('website_components.name as component_name')
             ->selectRaw("COALESCE(NULLIF(website_log_history.summary, ''), CONCAT('HTTP ', COALESCE(website_log_history.http_status_code, 0))) as summary")
             ->selectRaw('website_log_history.created_at as occurred_at');
 
@@ -224,6 +266,11 @@ class IncidentFeedWidget extends BaseWidget
         // against its previous scheduled status.
         $apiRuns = MonitorApiResult::query()
             ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
+            ->leftJoin('project_components as api_components', function (JoinClause $join) use ($userId): void {
+                $join
+                    ->on('api_components.id', '=', 'monitor_apis.project_component_id')
+                    ->where('api_components.created_by', $userId);
+            })
             ->where('monitor_apis.created_by', $userId)
             ->whereNull('monitor_apis.deleted_at')
             ->where('monitor_api_results.is_on_demand', false)
@@ -247,6 +294,8 @@ class IncidentFeedWidget extends BaseWidget
             ')
             ->selectRaw('monitor_apis.title as subject')
             ->selectRaw('monitor_api_results.monitor_api_id as subject_id')
+            ->selectRaw('api_components.id as component_id')
+            ->selectRaw('api_components.name as component_name')
             ->selectRaw("COALESCE(NULLIF(monitor_api_results.summary, ''), CONCAT('HTTP ', COALESCE(monitor_api_results.http_code, 0))) as summary")
             ->selectRaw('monitor_api_results.created_at as occurred_at');
 
@@ -261,6 +310,8 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw('normalized_status as status')
             ->selectRaw('subject')
             ->selectRaw('subject_id')
+            ->selectRaw('component_id')
+            ->selectRaw('component_name')
             ->selectRaw('summary')
             ->selectRaw('occurred_at')
             ->selectRaw('
@@ -322,19 +373,19 @@ class IncidentFeedWidget extends BaseWidget
     {
         $windowRuns = DB::query()
             ->fromSub(clone $baseRuns, 'window_runs')
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'occurred_at')
             ->where('occurred_at', '>=', $since);
 
         $latestPriorRuns = DB::query()
             ->fromSub(
                 DB::query()
                     ->fromSub(clone $baseRuns, 'prior_runs')
-                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'summary', 'occurred_at')
+                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'occurred_at')
                     ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source, source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
                     ->where('occurred_at', '<', $since),
                 'ranked_prior_runs'
             )
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'occurred_at')
             ->where('prior_rank', 1);
 
         return $windowRuns->unionAll($latestPriorRuns);
@@ -347,6 +398,13 @@ class IncidentFeedWidget extends BaseWidget
             'api' => MonitorApisResource::getUrl('view', ['record' => $record->subject_id]),
             default => null,
         };
+    }
+
+    protected function resolveComponentUrl(Incident $record): ?string
+    {
+        return $record->component_id === null
+            ? null
+            : ProjectComponentResource::getUrl('view', ['record' => $record->component_id]);
     }
 
     protected function resolveEvidenceRecord(Incident $record): ?Model

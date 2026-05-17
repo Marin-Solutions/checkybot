@@ -4,6 +4,7 @@ use App\Filament\Resources\Projects\Widgets\ProjectIncidentFeedWidget;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Livewire\Livewire;
@@ -179,6 +180,64 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertSee('Project checkout API broke')
             ->assertDontSee('Other project API')
             ->assertDontSee('Other project API broke');
+    });
+
+    it('shows component context and keeps the component filter project scoped', function () {
+        $checkoutComponent = ProjectComponent::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Checkout',
+        ]);
+
+        $billingComponent = ProjectComponent::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Billing',
+        ]);
+
+        $otherComponent = ProjectComponent::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->otherProject->id,
+            'name' => 'Reporting',
+        ]);
+
+        $checkoutWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'project_component_id' => $checkoutComponent->id,
+            'name' => 'Checkout homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $checkoutWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Checkout homepage failing',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $billingApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'project_component_id' => $billingComponent->id,
+            'title' => 'Billing API',
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $billingApi->id,
+            'summary' => 'Billing API failing',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->assertSee('Checkout')
+            ->assertSee('Billing')
+            ->assertDontSee('Reporting')
+            ->filterTable('component_id', (string) $checkoutComponent->id)
+            ->assertSee('Checkout homepage failing')
+            ->assertDontSee('Billing API failing')
+            ->assertDontSee('Reporting');
+
+        expect($otherComponent->project_id)->toBe($this->otherProject->id);
     });
 
     it('excludes on-demand diagnostics from the project incident feed', function () {
