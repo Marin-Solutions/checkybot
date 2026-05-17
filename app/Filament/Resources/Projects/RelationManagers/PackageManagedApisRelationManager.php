@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Projects\RelationManagers;
 
 use App\Filament\Resources\Support\MonitorSnoozeAction;
+use App\Filament\Support\HealthStatusFilter;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
 use App\Support\HealthStatusLabel;
@@ -11,6 +12,7 @@ use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
@@ -71,7 +73,21 @@ class PackageManagedApisRelationManager extends RelationManager
                 TextColumn::make('package_interval')
                     ->label('Interval'),
             ])
-            ->filters([])
+            ->filters([
+                HealthStatusFilter::make()
+                    ->label('Health'),
+                SelectFilter::make('monitoring_state')
+                    ->label('State')
+                    ->options([
+                        'active' => 'Active',
+                        'disabled' => 'Disabled',
+                        'archived' => 'Archived',
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $this->applyMonitoringStateFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    )),
+            ])
             ->recordActions([
                 Action::make('snooze')
                     ->label(fn (MonitorApis $record): string => $record->isSilenced() ? 'Snoozed' : 'Snooze')
@@ -227,5 +243,19 @@ class PackageManagedApisRelationManager extends RelationManager
         }
 
         return null;
+    }
+
+    private function applyMonitoringStateFilter(Builder $query, ?string $state): Builder
+    {
+        return match ($state) {
+            'active' => $query
+                ->whereNull('deleted_at')
+                ->where('is_enabled', true),
+            'disabled' => $query
+                ->whereNull('deleted_at')
+                ->where('is_enabled', false),
+            'archived' => $query->whereNotNull('deleted_at'),
+            default => $query,
+        };
     }
 }
