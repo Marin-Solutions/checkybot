@@ -18,7 +18,10 @@ test('run scheduled api monitor job is unique and queued with enough time for co
 
     expect($job)->toBeInstanceOf(ShouldQueue::class)
         ->toBeInstanceOf(ShouldBeUnique::class)
+        ->and($job->tries)->toBe(1)
+        ->and($job->backoff)->toBe(60)
         ->and($job->timeout)->toBe(420)
+        ->and($job->failOnTimeout)->toBeTrue()
         ->and($job->uniqueFor)->toBe(480)
         ->and($job->uniqueId())->toBe("api-monitor:{$monitor->id}:scheduled");
 });
@@ -103,12 +106,13 @@ test('run scheduled api monitor job skips monitors disabled after dispatch', fun
     Http::assertNothingSent();
 });
 
-test('run scheduled api monitor job rethrows unexpected execution exceptions for queue handling', function () {
+test('run scheduled api monitor job records execution exceptions as failed monitor results', function () {
     Log::spy();
 
     $monitor = MonitorApis::factory()->create([
         'title' => 'unstable-health',
         'url' => 'https://api.example.com/unstable',
+        'current_status' => 'healthy',
     ]);
 
     $executionService = Mockery::mock(ApiMonitorExecutionService::class);
@@ -117,16 +121,51 @@ test('run scheduled api monitor job rethrows unexpected execution exceptions for
         ->once()
         ->andThrow(new RuntimeException('Unexpected monitor runner failure'));
 
-    expect(fn () => (new RunScheduledApiMonitorJob($monitor))->handle(
+    (new RunScheduledApiMonitorJob($monitor))->handle(
         $executionService,
         app(\App\Services\HealthEventNotificationService::class),
-    ))->toThrow(RuntimeException::class, 'Unexpected monitor runner failure');
+    );
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('danger')
+        ->and($monitor->status_summary)->toBe('API monitor run failed before completing the scheduled check.');
+
+    $this->assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'http_code' => 0,
+        'status' => 'danger',
+        'summary' => 'API monitor run failed before completing the scheduled check.',
+        'is_on_demand' => false,
+    ]);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->with(
+            'Recording failed scheduled API monitor run: Unexpected monitor runner failure',
+            Mockery::on(fn (array $context): bool => ($context['monitor_id'] ?? null) === $monitor->id
+                && ($context['monitor_title'] ?? null) === 'unstable-health'
+                && ($context['exception'] ?? null) === RuntimeException::class)
+        );
+});
+
+test('run scheduled api monitor job logs queue failure details', function () {
+    Log::spy();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'queue-timeout-health',
+    ]);
+
+    (new RunScheduledApiMonitorJob($monitor))->failed(new RuntimeException('Worker timeout'));
 
     Log::shouldHaveReceived('error')
         ->once()
         ->with(
-            'Error checking API monitor: Unexpected monitor runner failure',
+            'Scheduled API monitor job failed before a controlled result could be recorded.',
             Mockery::on(fn (array $context): bool => ($context['monitor_id'] ?? null) === $monitor->id
-                && ($context['monitor_title'] ?? null) === 'unstable-health')
+                && ($context['monitor_title'] ?? null) === 'queue-timeout-health'
+                && ($context['exception'] ?? null) === RuntimeException::class
+                && ($context['message'] ?? null) === 'Worker timeout')
         );
 });
