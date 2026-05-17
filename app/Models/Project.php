@@ -36,6 +36,8 @@ class Project extends Model
         'latest_package_sync_summary',
         'last_component_synced_at',
         'latest_component_sync_summary',
+        'latest_diagnostic_run_batch_id',
+        'latest_diagnostic_run_batch_queued_at',
         'token',
         'created_by',
     ];
@@ -48,6 +50,7 @@ class Project extends Model
             'latest_package_sync_summary' => 'array',
             'last_component_synced_at' => 'datetime',
             'latest_component_sync_summary' => 'array',
+            'latest_diagnostic_run_batch_queued_at' => 'datetime',
         ];
     }
 
