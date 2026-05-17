@@ -44,7 +44,7 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
 
         $this->monitor = $monitor;
 
-        $execution = $executionService->execute($this->monitor);
+        $execution = $executionService->execute($this->monitor, scheduled: true);
         $status = $execution['status'];
         $summary = $execution['summary'];
         $previousStatus = $execution['previous_status'];

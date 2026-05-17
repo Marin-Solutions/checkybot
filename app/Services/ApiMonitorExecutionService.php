@@ -22,7 +22,7 @@ class ApiMonitorExecutionService
      * @param  bool  $onDemand  When true, the run is labeled as a manual run in history.
      * @return array{result: MonitorApiResult, status: string, summary: string, previous_status: string|null}
      */
-    public function execute(MonitorApis $monitor, bool $onDemand = false): array
+    public function execute(MonitorApis $monitor, bool $onDemand = false, bool $scheduled = false): array
     {
         $startTime = microtime(true);
         try {
@@ -37,6 +37,7 @@ class ApiMonitorExecutionService
                 'title' => $monitor->title,
                 'expected_status' => $monitor->expected_status,
                 'timeout_seconds' => $monitor->timeout_seconds,
+                MonitorApis::SCHEDULED_RUN_KEY => $scheduled,
             ]);
         } catch (Throwable $exception) {
             Log::warning('Recording failed API monitor execution as check evidence.', [

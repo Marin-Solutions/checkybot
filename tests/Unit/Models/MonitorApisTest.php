@@ -287,9 +287,10 @@ test('interactive api tests cap configured timeout and retries', function () {
         ->and($result['error'])->toStartWith('Timeout:');
 });
 
-test('scheduled api tests keep the monitor timeout and configured retries', function () {
+test('scheduled api tests cap monitor timeout and keep configured retries', function () {
     config([
         'monitor.api_retries' => 2,
+        'monitor.api_scheduled_timeout' => 75,
         'monitor.api_interactive_timeout' => 4,
         'monitor.api_interactive_retries' => 0,
     ]);
@@ -297,7 +298,7 @@ test('scheduled api tests keep the monitor timeout and configured retries', func
     Log::shouldReceive('error')
         ->once()
         ->withArgs(fn (string $message, array $context): bool => $message === 'Transport error while testing API'
-            && $context['timeout'] === 120
+            && $context['timeout'] === 75
             && $context['retries'] === 2)
         ->andReturnNull();
 
@@ -310,6 +311,7 @@ test('scheduled api tests keep the monitor timeout and configured retries', func
         'method' => 'GET',
         'expected_status' => 200,
         'timeout_seconds' => 120,
+        'scheduled' => true,
     ]);
 
     expect($result['error'])->toStartWith('Timeout:');

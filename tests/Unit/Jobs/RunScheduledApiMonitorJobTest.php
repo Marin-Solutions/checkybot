@@ -6,6 +6,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use App\Services\ApiMonitorExecutionService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Http;
@@ -103,6 +104,29 @@ test('run scheduled api monitor job skips monitors disabled after dispatch', fun
     ]);
 
     Http::assertNothingSent();
+});
+
+test('run scheduled api monitor job uses the scheduled execution budget', function () {
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/scheduled-budget',
+    ]);
+
+    $executionService = Mockery::mock(ApiMonitorExecutionService::class);
+    $executionService
+        ->shouldReceive('execute')
+        ->once()
+        ->with(Mockery::on(fn (MonitorApis $value): bool => $value->is($monitor)), false, true)
+        ->andReturn([
+            'result' => new MonitorApiResult(['http_code' => 200]),
+            'status' => 'healthy',
+            'summary' => 'API monitor returned HTTP 200.',
+            'previous_status' => 'healthy',
+        ]);
+
+    (new RunScheduledApiMonitorJob($monitor))->handle(
+        $executionService,
+        app(\App\Services\HealthEventNotificationService::class),
+    );
 });
 
 test('run scheduled api monitor job records execution throwables as failed monitor results', function () {
