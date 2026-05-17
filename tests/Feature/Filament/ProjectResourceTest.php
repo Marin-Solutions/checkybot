@@ -28,6 +28,7 @@ use App\Models\User;
 use App\Models\Website;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Livewire\Livewire;
 
@@ -865,7 +866,55 @@ test('application detail action queues enabled package managed diagnostics', fun
     expect($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
         ->and($website->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00')
         ->and($disabledApiMonitor->refresh()->diagnostic_queued_at)->toBeNull()
-        ->and($pausedWebsite->refresh()->diagnostic_queued_at)->toBeNull();
+        ->and($pausedWebsite->refresh()->diagnostic_queued_at)->toBeNull()
+        ->and($project->refresh()->latest_diagnostic_run_batch_id)->not->toBeNull()
+        ->and($project->latest_diagnostic_run_batch_queued_at?->toDateTimeString())->toBe('2026-05-09 12:00:00');
+});
+
+test('application detail displays latest diagnostic batch progress', function () {
+    $this->createResourcePermissions('Project');
+    $queuedAt = Carbon::parse('2026-05-09 12:00:00');
+    $createdAt = $queuedAt->copy()->subMinute()->timestamp;
+
+    $owner = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create([
+        'name' => 'Checkout App',
+        'created_by' => $owner->id,
+        'package_key' => 'checkout-app',
+        'latest_diagnostic_run_batch_id' => 'batch-checkout-app',
+        'latest_diagnostic_run_batch_queued_at' => $queuedAt,
+    ]);
+
+    DB::table('job_batches')->insert([
+        'id' => 'batch-checkout-app',
+        'name' => 'Control project run: checkout-app',
+        'total_jobs' => 4,
+        'pending_jobs' => 1,
+        'failed_jobs' => 1,
+        'failed_job_ids' => json_encode(['failed-job-1']),
+        'options' => serialize([
+            'allowFailures' => true,
+            'checkybot_control' => [
+                'project_id' => $project->id,
+                'user_id' => $owner->id,
+            ],
+        ]),
+        'cancelled_at' => null,
+        'created_at' => $createdAt,
+        'finished_at' => null,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Application Diagnostics')
+        ->assertSee('Latest diagnostic batch')
+        ->assertSee('Running')
+        ->assertSee('3 of 4 queued checks have finished.')
+        ->assertSee('1 check failed during execution.')
+        ->assertSeeInOrder(['Total', '4'])
+        ->assertSeeInOrder(['Pending', '1'])
+        ->assertSeeInOrder(['Failed', '1'])
+        ->assertSee('batch-checkout-app');
 });
 
 test('application detail action reports when no enabled diagnostics can be queued', function () {

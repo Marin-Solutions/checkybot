@@ -24,6 +24,32 @@ class ViewProject extends ViewRecord
 
     public string $guidedSetupSnippet = '';
 
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function latestDiagnosticRunBatch(): ?array
+    {
+        $project = $this->getRecord();
+        $batchId = $project->latest_diagnostic_run_batch_id;
+
+        if (blank($batchId)) {
+            return null;
+        }
+
+        try {
+            $owner = $project->user()->firstOrFail();
+
+            return app(CheckybotControlService::class)
+                ->projectRunBatch($owner, $project->getKey(), $batchId)['run_batch'] ?? null;
+        } catch (HttpException $e) {
+            if ($e->getStatusCode() === 404) {
+                return null;
+            }
+
+            throw $e;
+        }
+    }
+
     public function mount(int|string $record): void
     {
         parent::mount($record);
@@ -125,6 +151,8 @@ class ViewProject extends ViewRecord
                             : "Checkybot queued {$queued} enabled application ".str('diagnostic')->plural($queued).'.')
                         ->success()
                         ->send();
+
+                    $this->record->refresh();
                 }),
             Actions\EditAction::make(),
         ];

@@ -112,6 +112,19 @@ class ProjectInfolist
                             ->state(fn (Project $record): string => static::latestComponentSyncSummaryDetail($record))
                             ->default('No summary recorded yet'),
                     ])->columns(2),
+                Section::make('Application Diagnostics')
+                    ->description('Latest application-wide diagnostic batch queued from the Run diagnostics action.')
+                    ->visible(fn (Project $record): bool => filled($record->latest_diagnostic_run_batch_id))
+                    ->schema([
+                        View::make('filament.resources.projects.diagnostic-run-batch-panel')
+                            ->key('diagnostic_run_batch_panel')
+                            ->viewData(fn (Project $record, ViewProject $livewire): array => [
+                                'batch' => $livewire->latestDiagnosticRunBatch(),
+                                'batchId' => $record->latest_diagnostic_run_batch_id,
+                                'queuedAt' => $record->latest_diagnostic_run_batch_queued_at,
+                            ])
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Guided Laravel Setup')
                     ->key('guided_setup')
                     ->description('Create an account API key here and copy a ready-to-run install snippet without leaving the application page.')

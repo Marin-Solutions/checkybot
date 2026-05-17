@@ -492,6 +492,11 @@ class CheckybotControlService
             ->allowFailures()
             ->dispatch();
 
+        $project->forceFill([
+            'latest_diagnostic_run_batch_id' => $batch->id,
+            'latest_diagnostic_run_batch_queued_at' => $queuedAt,
+        ])->save();
+
         return [
             'project' => $this->projectIdentity($project),
             'status' => 'queued',
