@@ -14,6 +14,13 @@ class ServerLogTimeframe extends Widget implements HasSchemas
 {
     use InteractsWithSchemas;
 
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected string $view = 'filament.resources.server-resource.widgets.server-log-timeframe';
 
     protected int|string|array $columnSpan = 'full';

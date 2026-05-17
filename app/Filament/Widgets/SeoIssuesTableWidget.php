@@ -138,9 +138,7 @@ class SeoIssuesTableWidget extends BaseWidget
                     ->modalDescription('Evidence, affected URLs, stored data, and practical fix guidance for this SEO issue.')
                     ->modalWidth('5xl')
                     ->modalSubmitAction(false)
-                    ->modalCancelAction(fn (Action $action): Action => $action
-                        ->name('closeIssueDetailsModal')
-                        ->label('Close'))
+                    ->modalCancelActionLabel('Close')
                     ->schema([
                         Section::make('Issue Overview')
                             ->schema([

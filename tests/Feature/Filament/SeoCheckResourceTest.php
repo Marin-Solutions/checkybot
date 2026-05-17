@@ -617,10 +617,11 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
         ],
     ]);
 
-    Livewire::test(SeoIssuesTableWidget::class, ['recordId' => $seoCheck->id])
+    $component = Livewire::test(SeoIssuesTableWidget::class, ['recordId' => $seoCheck->id])
         ->assertTableActionExists('view_issue_details', null, $issue)
         ->assertTableActionHasLabel('view_issue_details', 'View Details', $issue)
         ->mountTableAction('view_issue_details', $issue)
+        ->assertSet('mountedActions.0.name', 'view_issue_details')
         ->assertHasNoTableActionErrors()
         ->assertSchemaStateSet([
             'evidence_items' => [
@@ -688,6 +689,10 @@ test('seo issue table exposes issue detail action with evidence and fix guidance
                 'recommendation' => 'Repair the broken link or remove it.',
             ],
         ]);
+
+    expect($component->getMountedActionModalHtml())
+        ->toContain('Close')
+        ->not->toContain('closeIssueDetailsModal');
 });
 
 test('seo issue table sorts by severity priority by default', function () {

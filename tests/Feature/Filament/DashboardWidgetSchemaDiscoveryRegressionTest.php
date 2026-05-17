@@ -2,6 +2,7 @@
 
 use App\Filament\Resources\Projects\Widgets\ProjectHealthOverviewWidget;
 use App\Filament\Resources\Projects\Widgets\ProjectIncidentFeedWidget;
+use App\Filament\Resources\ServerResource\Widgets\ServerLogTimeframe;
 use App\Filament\Widgets\ApiHealthStatsWidget;
 use App\Filament\Widgets\IncidentFeedWidget;
 use App\Filament\Widgets\ProxyPoolStatsWidget;
@@ -73,5 +74,10 @@ it('keeps dashboard widget schema discovery state updateable across livewire pol
             'record' => Project::factory()->create(['created_by' => $user->id]),
         ],
         'table',
+    ],
+    'server log timeframe' => [
+        ServerLogTimeframe::class,
+        fn (): array => [],
+        'form',
     ],
 ]);
