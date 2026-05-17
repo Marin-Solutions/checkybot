@@ -54,10 +54,13 @@ test('filament notifications discard malformed entries and unnamed actions while
                 'title' => 'Saved',
                 'actions' => [
                     ['label' => 'Missing name'],
+                    ['name' => ['invalid'], 'label' => 'Invalid name'],
+                    ['name' => 42, 'label' => 'Numeric name'],
                     ['name' => 'view', 'label' => 'View'],
                     [
                         'actions' => [
                             ['name' => 'grouped-view', 'label' => 'Grouped view'],
+                            ['name' => null, 'label' => 'Nested missing name'],
                         ],
                     ],
                 ],
@@ -71,6 +74,8 @@ test('filament notifications discard malformed entries and unnamed actions while
 
     expect($collection)->toHaveCount(1)
         ->and($notification)->toBeInstanceOf(Notification::class)
-        ->and($notification->toArray()['actions'])->toHaveCount(1)
-        ->and($notification->toArray()['actions'][0]['name'])->toBe('view');
+        ->and($notification->toArray()['actions'])->toHaveCount(3)
+        ->and($notification->toArray()['actions'][0]['name'])->toBe('42')
+        ->and($notification->toArray()['actions'][1]['name'])->toBe('view')
+        ->and($notification->toArray()['actions'][2]['name'])->toBe('grouped-view');
 });

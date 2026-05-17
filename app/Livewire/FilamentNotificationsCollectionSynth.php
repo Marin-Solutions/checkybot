@@ -114,10 +114,18 @@ class FilamentNotificationsCollectionSynth extends WireableSynth
             }
 
             if (array_key_exists('actions', $action)) {
+                array_push($normalized, ...$this->normalizeNotificationActions($action['actions']));
+
                 continue;
             }
 
-            if (blank($action['name'] ?? null)) {
+            if (! is_scalar($action['name'] ?? null)) {
+                continue;
+            }
+
+            $action['name'] = (string) $action['name'];
+
+            if (blank($action['name'])) {
                 continue;
             }
 

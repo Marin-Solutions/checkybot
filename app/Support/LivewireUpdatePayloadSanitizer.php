@@ -2,7 +2,6 @@
 
 namespace App\Support;
 
-use Filament\Livewire\Notifications as PanelNotifications;
 use Filament\Notifications\Livewire\Notifications as BaseNotifications;
 use Livewire\Attributes\Locked;
 use Livewire\Mechanisms\ComponentRegistry;
@@ -110,10 +109,6 @@ class LivewireUpdatePayloadSanitizer
             $class = app(ComponentRegistry::class)->getClass($name);
         } catch (\Throwable) {
             return null;
-        }
-
-        if ($class === PanelNotifications::class) {
-            return $class;
         }
 
         return is_string($class) && class_exists($class) ? $class : null;
