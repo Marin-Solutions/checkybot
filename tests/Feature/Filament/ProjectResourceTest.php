@@ -19,6 +19,7 @@ use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelat
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Jobs\LogUptimeSslJob;
 use App\Jobs\RunApiMonitorDiagnosticJob;
+use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
@@ -26,6 +27,7 @@ use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -1446,6 +1448,152 @@ test('super admin can filter package-managed api monitors by health and state', 
         ->filterTable('monitoring_state', 'archived')
         ->assertCanSeeTableRecords([$archived])
         ->assertCanNotSeeTableRecords([$healthy, $warning, $pending, $disabled]);
+});
+
+test('package-managed relation managers surface manual run drift', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $driftingWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'drifting-homepage',
+        'source' => 'package',
+        'package_name' => 'drifting-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $driftingWebsite->id,
+        'status' => 'danger',
+        'summary' => 'Manual homepage failed.',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $matchingWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'matching-homepage',
+        'source' => 'package',
+        'package_name' => 'matching-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $matchingWebsite->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $missingWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'missing-manual-homepage',
+        'source' => 'package',
+        'package_name' => 'missing-manual-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    $driftingApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'drifting-api',
+        'source' => 'package',
+        'package_name' => 'drifting-api',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $driftingApi->id,
+        'status' => 'danger',
+        'summary' => 'Manual API failed.',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $matchingApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'matching-api',
+        'source' => 'package',
+        'package_name' => 'matching-api',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $matchingApi->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $missingApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'missing-manual-api',
+        'source' => 'package',
+        'package_name' => 'missing-manual-api',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableColumnExists('latestDiagnosticLogHistory.status')
+        ->assertSee('Manual')
+        ->assertTableColumnStateSet('latestDiagnosticLogHistory.status', 'danger', $driftingWebsite)
+        ->assertSee('Differs from live health.')
+        ->filterTable('manual_run_status', 'drift')
+        ->assertCanSeeTableRecords([$driftingWebsite])
+        ->assertCanNotSeeTableRecords([$matchingWebsite, $missingWebsite]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('manual_run_status', 'matching')
+        ->assertCanSeeTableRecords([$matchingWebsite])
+        ->assertCanNotSeeTableRecords([$driftingWebsite, $missingWebsite]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('manual_run_status', 'missing')
+        ->assertCanSeeTableRecords([$missingWebsite])
+        ->assertCanNotSeeTableRecords([$driftingWebsite, $matchingWebsite]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableColumnExists('latestDiagnosticResult.status')
+        ->assertSee('Manual')
+        ->assertTableColumnStateSet('latestDiagnosticResult.status', 'danger', $driftingApi)
+        ->assertSee('Differs from live health.')
+        ->filterTable('manual_run_status', 'drift')
+        ->assertCanSeeTableRecords([$driftingApi])
+        ->assertCanNotSeeTableRecords([$matchingApi, $missingApi]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('manual_run_status', 'matching')
+        ->assertCanSeeTableRecords([$matchingApi])
+        ->assertCanNotSeeTableRecords([$driftingApi, $missingApi]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('manual_run_status', 'missing')
+        ->assertCanSeeTableRecords([$missingApi])
+        ->assertCanNotSeeTableRecords([$driftingApi, $matchingApi]);
 });
 
 test('package-managed relation managers queue run now diagnostics for active checks', function () {
