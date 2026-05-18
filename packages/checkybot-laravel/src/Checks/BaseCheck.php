@@ -362,6 +362,14 @@ abstract class BaseCheck
     }
 
     /**
+     * Get the health component this check contributes to, if any.
+     */
+    public function getComponent(): ?string
+    {
+        return $this->component;
+    }
+
+    /**
      * Add shared optional attributes to a serialized check payload.
      *
      * @param  array<string, mixed>  $data

@@ -76,6 +76,7 @@ class ConfigValidator
         // Validate registry check names
         $this->validateRegistryCheckNames($registry, $errors);
         $this->validateRegistryComponentNames($registry, $errors);
+        $this->validateRegistryComponentReferences($registry, $errors);
 
         return [
             'valid' => empty($errors),
@@ -114,6 +115,32 @@ class ConfigValidator
 
         if (! empty($duplicates)) {
             $errors[] = 'Duplicate component names found: '.implode(', ', array_unique($duplicates));
+        }
+    }
+
+    /**
+     * @param  array<int, string>  $errors
+     */
+    protected function validateRegistryComponentReferences(CheckRegistry $registry, array &$errors): void
+    {
+        $componentNames = array_flip(array_map(fn ($component) => $component->getName(), $registry->getComponents()));
+
+        $checkTypes = [
+            'uptime' => $registry->getUptimeChecks(),
+            'ssl' => $registry->getSslChecks(),
+            'api' => $registry->getApiChecks(),
+        ];
+
+        foreach ($checkTypes as $type => $checks) {
+            foreach ($checks as $check) {
+                $component = $check->getComponent();
+
+                if ($component === null || isset($componentNames[$component])) {
+                    continue;
+                }
+
+                $errors[] = "The {$type} check \"{$check->getName()}\" references undeclared component \"{$component}\". Declare it with Checkybot::component('{$component}') or fix the component name.";
+            }
         }
     }
 

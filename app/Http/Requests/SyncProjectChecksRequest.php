@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Project;
 use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
@@ -190,6 +191,10 @@ class SyncProjectChecksRequest extends FormRequest
 
             $project = $this->route('project');
 
+            if ($project instanceof Project) {
+                $this->addComponentReferenceValidationErrors($validator, $project);
+            }
+
             if (! $project || filled($project->base_url)) {
                 return;
             }
@@ -213,6 +218,32 @@ class SyncProjectChecksRequest extends FormRequest
                 }
             }
         });
+    }
+
+    private function addComponentReferenceValidationErrors(Validator $validator, Project $project): void
+    {
+        $componentNames = array_flip($project->components()->pluck('name')->all());
+
+        foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
+            $checks = $this->input($checkGroup, []);
+
+            if (! is_array($checks)) {
+                continue;
+            }
+
+            foreach ($checks as $checkIndex => $check) {
+                $component = is_array($check) ? ($check['component'] ?? null) : null;
+
+                if (! is_string($component) || blank($component) || isset($componentNames[$component])) {
+                    continue;
+                }
+
+                $validator->errors()->add(
+                    "{$checkGroup}.{$checkIndex}.component",
+                    "The component \"{$component}\" has not been declared for this project. Sync it through declared_components or fix the component name."
+                );
+            }
+        }
     }
 
     /**

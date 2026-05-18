@@ -302,6 +302,21 @@ test('sync command sends external checks from the registry alongside due compone
         ->and($fakeClient->componentPayloads[0])->not->toHaveKey('components');
 });
 
+test('sync command rejects checks that reference undeclared components', function () {
+    Checkybot::uptime('homepage')
+        ->url('https://example.com')
+        ->component('queeu')
+        ->every('5m');
+
+    Checkybot::component('queue')
+        ->everyMinute();
+
+    $this->artisan('checkybot:sync')
+        ->expectsOutput('Configuration validation failed:')
+        ->expectsOutput('  - The uptime check "homepage" references undeclared component "queeu". Declare it with Checkybot::component(\'queeu\') or fix the component name.')
+        ->assertExitCode(1);
+});
+
 test('sync command posts an empty external check payload so package-managed removals can be pruned', function () {
     $fakeClient = new class extends CheckybotClient
     {
