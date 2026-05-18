@@ -374,7 +374,7 @@
                     </div>
 
                     <p>
-                        Control payloads include API checks, website checks, and component heartbeat checks. Component checks expose delivery state, stale timing, latest heartbeat metrics, and <span class="cb-docs-code">supports_run: false</span>. Project run batches return the batch id, status, name, job counts, and created or finished timestamps.
+                        Control payloads include API checks, website checks, and declared components. Component checks are declaration-only: they expose identity, schedule, derived status, delivery state, and <span class="cb-docs-code">supports_run: false</span>, but omit runtime heartbeat observations, stale timing, and metrics. Project run batches return the batch id, status, name, job counts, and created or finished timestamps.
                     </p>
                 </div>
 
@@ -413,7 +413,7 @@
                     </div>
 
                     <p>
-                        <span class="cb-docs-code">list_checks</span> and <span class="cb-docs-code">current_issues</span> include component status alongside API and website checks. <span class="cb-docs-code">recent_runs</span> and <span class="cb-docs-code">latest_failures</span> cover executable API and website results. Use <span class="cb-docs-code">get_run_batch</span> with the batch id returned by <span class="cb-docs-code">trigger_run</span> to poll queued project diagnostics.
+                        <span class="cb-docs-code">list_checks</span> includes declared components alongside API and website checks, and <span class="cb-docs-code">current_issues</span> can return derived component issues from their child checks. <span class="cb-docs-code">recent_runs</span> and <span class="cb-docs-code">latest_failures</span> cover executable API and website results only. Use <span class="cb-docs-code">get_run_batch</span> with the batch id returned by <span class="cb-docs-code">trigger_run</span> to poll queued project diagnostics.
                     </p>
                 </div>
             </div>

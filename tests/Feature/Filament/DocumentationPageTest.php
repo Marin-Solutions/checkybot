@@ -22,7 +22,8 @@ test('super admin can render developer documentation page', function () {
         ->assertSee('current_issues')
         ->assertSee('delete_notification_channel')
         ->assertSee('test_notification_setting')
-        ->assertSee('component status');
+        ->assertSee('Component checks are declaration-only')
+        ->assertSee('runtime heartbeat observations');
 });
 
 test('developer documentation widget links setup entry points', function () {
