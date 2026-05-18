@@ -1498,6 +1498,35 @@ test('package-managed relation managers surface manual run drift', function () {
         'created_by' => $user->id,
     ]);
 
+    $queuedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'queued-homepage',
+        'source' => 'package',
+        'package_name' => 'queued-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $queuedWebsite->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $queuedWebsiteWithoutResult = Website::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'queued-new-homepage',
+        'source' => 'package',
+        'package_name' => 'queued-new-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+
     $driftingApi = MonitorApis::factory()->create([
         'project_id' => $project->id,
         'title' => 'drifting-api',
@@ -1539,6 +1568,33 @@ test('package-managed relation managers surface manual run drift', function () {
         'created_by' => $user->id,
     ]);
 
+    $queuedApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'queued-api',
+        'source' => 'package',
+        'package_name' => 'queued-api',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $queuedApi->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $queuedApiWithoutResult = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'title' => 'queued-new-api',
+        'source' => 'package',
+        'package_name' => 'queued-new-api',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'diagnostic_queued_at' => now(),
+        'created_by' => $user->id,
+    ]);
+
     Livewire::test(PackageManagedWebsitesRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
@@ -1546,10 +1602,12 @@ test('package-managed relation managers surface manual run drift', function () {
         ->assertTableColumnExists('latestDiagnosticLogHistory.status')
         ->assertSee('Manual')
         ->assertTableColumnStateSet('latestDiagnosticLogHistory.status', 'danger', $driftingWebsite)
+        ->assertTableColumnStateSet('latestDiagnosticLogHistory.status', 'Queued', $queuedWebsite)
+        ->assertTableColumnStateSet('latestDiagnosticLogHistory.status', 'Queued', $queuedWebsiteWithoutResult)
         ->assertSee('Differs from live health.')
         ->filterTable('manual_run_status', 'drift')
         ->assertCanSeeTableRecords([$driftingWebsite])
-        ->assertCanNotSeeTableRecords([$matchingWebsite, $missingWebsite]);
+        ->assertCanNotSeeTableRecords([$matchingWebsite, $missingWebsite, $queuedWebsite, $queuedWebsiteWithoutResult]);
 
     Livewire::test(PackageManagedWebsitesRelationManager::class, [
         'ownerRecord' => $project,
@@ -1557,7 +1615,7 @@ test('package-managed relation managers surface manual run drift', function () {
     ])
         ->filterTable('manual_run_status', 'matching')
         ->assertCanSeeTableRecords([$matchingWebsite])
-        ->assertCanNotSeeTableRecords([$driftingWebsite, $missingWebsite]);
+        ->assertCanNotSeeTableRecords([$driftingWebsite, $missingWebsite, $queuedWebsite, $queuedWebsiteWithoutResult]);
 
     Livewire::test(PackageManagedWebsitesRelationManager::class, [
         'ownerRecord' => $project,
@@ -1565,7 +1623,15 @@ test('package-managed relation managers surface manual run drift', function () {
     ])
         ->filterTable('manual_run_status', 'missing')
         ->assertCanSeeTableRecords([$missingWebsite])
-        ->assertCanNotSeeTableRecords([$driftingWebsite, $matchingWebsite]);
+        ->assertCanNotSeeTableRecords([$driftingWebsite, $matchingWebsite, $queuedWebsite, $queuedWebsiteWithoutResult]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('manual_run_status', 'queued')
+        ->assertCanSeeTableRecords([$queuedWebsite, $queuedWebsiteWithoutResult])
+        ->assertCanNotSeeTableRecords([$driftingWebsite, $matchingWebsite, $missingWebsite]);
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
@@ -1574,10 +1640,12 @@ test('package-managed relation managers surface manual run drift', function () {
         ->assertTableColumnExists('latestDiagnosticResult.status')
         ->assertSee('Manual')
         ->assertTableColumnStateSet('latestDiagnosticResult.status', 'danger', $driftingApi)
+        ->assertTableColumnStateSet('latestDiagnosticResult.status', 'Queued', $queuedApi)
+        ->assertTableColumnStateSet('latestDiagnosticResult.status', 'Queued', $queuedApiWithoutResult)
         ->assertSee('Differs from live health.')
         ->filterTable('manual_run_status', 'drift')
         ->assertCanSeeTableRecords([$driftingApi])
-        ->assertCanNotSeeTableRecords([$matchingApi, $missingApi]);
+        ->assertCanNotSeeTableRecords([$matchingApi, $missingApi, $queuedApi, $queuedApiWithoutResult]);
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
@@ -1585,7 +1653,7 @@ test('package-managed relation managers surface manual run drift', function () {
     ])
         ->filterTable('manual_run_status', 'matching')
         ->assertCanSeeTableRecords([$matchingApi])
-        ->assertCanNotSeeTableRecords([$driftingApi, $missingApi]);
+        ->assertCanNotSeeTableRecords([$driftingApi, $missingApi, $queuedApi, $queuedApiWithoutResult]);
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
@@ -1593,7 +1661,15 @@ test('package-managed relation managers surface manual run drift', function () {
     ])
         ->filterTable('manual_run_status', 'missing')
         ->assertCanSeeTableRecords([$missingApi])
-        ->assertCanNotSeeTableRecords([$driftingApi, $matchingApi]);
+        ->assertCanNotSeeTableRecords([$driftingApi, $matchingApi, $queuedApi, $queuedApiWithoutResult]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->filterTable('manual_run_status', 'queued')
+        ->assertCanSeeTableRecords([$queuedApi, $queuedApiWithoutResult])
+        ->assertCanNotSeeTableRecords([$driftingApi, $matchingApi, $missingApi]);
 });
 
 test('package-managed relation managers queue run now diagnostics for active checks', function () {

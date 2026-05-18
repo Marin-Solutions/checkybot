@@ -116,6 +116,7 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                 SelectFilter::make('manual_run_status')
                     ->label('Manual run')
                     ->options([
+                        'queued' => 'Queued',
                         'drift' => 'Differs from live health',
                         'matching' => 'Matches live health',
                         'missing' => 'No manual run',
@@ -303,13 +304,36 @@ class PackageManagedWebsitesRelationManager extends RelationManager
     private function applyManualRunStatusFilter(Builder $query, ?string $state): Builder
     {
         return match ($state) {
-            'drift' => $query->whereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
-                ->whereRaw("COALESCE(website_log_history.status, '__missing__') <> COALESCE(websites.current_status, '__missing__')")),
-            'matching' => $query->whereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
-                ->whereRaw("COALESCE(website_log_history.status, '__missing__') = COALESCE(websites.current_status, '__missing__')")),
-            'missing' => $query->whereDoesntHave('latestDiagnosticLogHistory'),
+            'queued' => $this->applyQueuedManualRunFilter($query),
+            'drift' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(website_log_history.status, '__missing__') <> COALESCE(websites.current_status, '__missing__')")),
+            'matching' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(website_log_history.status, '__missing__') = COALESCE(websites.current_status, '__missing__')")),
+            'missing' => $query
+                ->whereNull('diagnostic_queued_at')
+                ->whereDoesntHave('latestDiagnosticLogHistory'),
             default => $query,
         };
+    }
+
+    private function applyQueuedManualRunFilter(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('diagnostic_queued_at')
+            ->where(fn (Builder $query): Builder => $query
+                ->whereDoesntHave('latestDiagnosticLogHistory')
+                ->orWhereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                    ->whereColumn('websites.diagnostic_queued_at', '>', 'website_log_history.created_at')));
+    }
+
+    private function applyCompletedManualRunFilter(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $query): Builder => $query
+            ->whereNull('diagnostic_queued_at')
+            ->orWhereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                ->whereColumn('websites.diagnostic_queued_at', '<=', 'website_log_history.created_at')));
     }
 
     private function manualRunDescription(Website $record): ?string

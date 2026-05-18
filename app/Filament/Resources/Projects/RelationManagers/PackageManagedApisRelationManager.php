@@ -107,6 +107,7 @@ class PackageManagedApisRelationManager extends RelationManager
                 SelectFilter::make('manual_run_status')
                     ->label('Manual run')
                     ->options([
+                        'queued' => 'Queued',
                         'drift' => 'Differs from live health',
                         'matching' => 'Matches live health',
                         'missing' => 'No manual run',
@@ -291,13 +292,36 @@ class PackageManagedApisRelationManager extends RelationManager
     private function applyManualRunStatusFilter(Builder $query, ?string $state): Builder
     {
         return match ($state) {
-            'drift' => $query->whereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
-                ->whereRaw("COALESCE(monitor_api_results.status, '__missing__') <> COALESCE(monitor_apis.current_status, '__missing__')")),
-            'matching' => $query->whereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
-                ->whereRaw("COALESCE(monitor_api_results.status, '__missing__') = COALESCE(monitor_apis.current_status, '__missing__')")),
-            'missing' => $query->whereDoesntHave('latestDiagnosticResult'),
+            'queued' => $this->applyQueuedManualRunFilter($query),
+            'drift' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(monitor_api_results.status, '__missing__') <> COALESCE(monitor_apis.current_status, '__missing__')")),
+            'matching' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(monitor_api_results.status, '__missing__') = COALESCE(monitor_apis.current_status, '__missing__')")),
+            'missing' => $query
+                ->whereNull('diagnostic_queued_at')
+                ->whereDoesntHave('latestDiagnosticResult'),
             default => $query,
         };
+    }
+
+    private function applyQueuedManualRunFilter(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('diagnostic_queued_at')
+            ->where(fn (Builder $query): Builder => $query
+                ->whereDoesntHave('latestDiagnosticResult')
+                ->orWhereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                    ->whereColumn('monitor_apis.diagnostic_queued_at', '>', 'monitor_api_results.created_at')));
+    }
+
+    private function applyCompletedManualRunFilter(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $query): Builder => $query
+            ->whereNull('diagnostic_queued_at')
+            ->orWhereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                ->whereColumn('monitor_apis.diagnostic_queued_at', '<=', 'monitor_api_results.created_at')));
     }
 
     private function manualRunDescription(MonitorApis $record): ?string
