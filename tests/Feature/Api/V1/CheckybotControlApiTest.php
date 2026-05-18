@@ -14,6 +14,7 @@ use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\Request as HttpRequest;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
@@ -2850,6 +2851,106 @@ test('mcp upsert check creates package managed website checks', function () {
         'ssl_check' => true,
         'package_interval' => '10m',
     ]);
+});
+
+test('mcp list checks does not lazy load result or component child relations', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'title' => 'API health',
+        'current_status' => 'danger',
+        'is_enabled' => true,
+    ]);
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'API scheduled check failed.',
+        'is_on_demand' => false,
+        'created_at' => now()->subMinutes(3),
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'API diagnostic completed.',
+        'is_on_demand' => true,
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'website-health',
+        'name' => 'Website health',
+        'current_status' => 'warning',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Website scheduled check failed.',
+        'is_on_demand' => false,
+        'created_at' => now()->subMinutes(2),
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'summary' => 'Website diagnostic completed.',
+        'created_at' => now(),
+    ]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'checkout',
+        'source' => 'package',
+    ]);
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'project_component_id' => $component->id,
+        'created_by' => $this->user->id,
+        'source' => 'manual',
+        'package_name' => 'checkout-api',
+        'current_status' => 'danger',
+        'is_enabled' => true,
+    ]);
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'project_component_id' => $component->id,
+        'created_by' => $this->user->id,
+        'source' => 'manual',
+        'package_name' => 'checkout-site',
+        'current_status' => 'healthy',
+        'uptime_check' => true,
+    ]);
+
+    $wasPreventingLazyLoading = Model::preventsLazyLoading();
+    Model::preventLazyLoading();
+
+    try {
+        $this->withToken($this->apiKey->key)
+            ->postJson('/api/v1/mcp', [
+                'jsonrpc' => '2.0',
+                'id' => 45,
+                'method' => 'tools/call',
+                'params' => [
+                    'name' => 'list_checks',
+                    'arguments' => [
+                        'project' => 'scrappa',
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonMissingPath('error')
+            ->assertJsonPath('result.structuredContent.0.key', 'api-health')
+            ->assertJsonPath('result.structuredContent.0.latest_result.check.key', 'api-health')
+            ->assertJsonPath('result.structuredContent.2.key', 'website-health')
+            ->assertJsonPath('result.structuredContent.1.key', 'checkout')
+            ->assertJsonPath('result.structuredContent.1.status', 'danger');
+    } finally {
+        Model::preventLazyLoading($wasPreventingLazyLoading);
+    }
 });
 
 test('mcp disable check accepts type to resolve ambiguous check keys', function () {
