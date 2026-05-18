@@ -26,6 +26,13 @@ test('run scheduled api monitor job is unique and queued with enough time for co
         ->and($job->uniqueId())->toBe("api-monitor:{$monitor->id}:scheduled");
 });
 
+test('redis queue lease is longer than scheduled api monitor timeout', function () {
+    $monitor = MonitorApis::factory()->create();
+    $job = new RunScheduledApiMonitorJob($monitor);
+
+    expect(config('queue.connections.redis.retry_after'))->toBeGreaterThan($job->timeout);
+});
+
 test('run scheduled api monitor job records live status and sends transition notifications', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'error']], 200),
