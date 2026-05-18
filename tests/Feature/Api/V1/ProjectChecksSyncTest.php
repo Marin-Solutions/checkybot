@@ -343,6 +343,12 @@ test('legacy sync links package checks to declared project components', function
 });
 
 test('legacy sync rejects checks that reference undeclared project components', function () {
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
     expect(fn () => $this->syncService->syncChecks($this->project, [
         'uptime_checks' => [
             [
@@ -366,6 +372,12 @@ test('project check sync returns validation errors for undeclared components', f
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'name' => 'databse',
         'created_by' => $this->user->id,
     ]);
 

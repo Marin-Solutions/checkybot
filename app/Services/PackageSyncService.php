@@ -51,7 +51,7 @@ class PackageSyncService
      */
     private function validateComponentReferences(Project $project, array $payload): void
     {
-        $componentIdsByName = $project->components()
+        $componentIdsByName = $project->activeComponents()
             ->pluck('id', 'name')
             ->all();
 
@@ -630,6 +630,7 @@ class PackageSyncService
 
         return ProjectComponent::query()
             ->where('project_id', $project->id)
+            ->where('is_archived', false)
             ->where('name', $componentName)
             ->value('id');
     }

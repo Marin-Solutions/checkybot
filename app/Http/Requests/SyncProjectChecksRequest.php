@@ -222,7 +222,7 @@ class SyncProjectChecksRequest extends FormRequest
 
     private function addComponentReferenceValidationErrors(Validator $validator, Project $project): void
     {
-        $componentNames = array_flip($project->components()->pluck('name')->all());
+        $componentNames = array_flip($project->activeComponents()->pluck('name')->all());
 
         foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
             $checks = $this->input($checkGroup, []);

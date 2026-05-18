@@ -1659,6 +1659,12 @@ test('package sync rejects checks that reference undeclared project components',
         'created_by' => $this->user->id,
     ]);
 
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
