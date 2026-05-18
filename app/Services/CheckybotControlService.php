@@ -219,15 +219,27 @@ class CheckybotControlService
             ->with(['assertions', 'latestResult', 'latestDiagnosticResult'])
             ->orderBy('package_name')
             ->get()
-            ->map(fn (MonitorApis $check): array => $this->checkPayload($check));
+            ->map(function (MonitorApis $check) use ($project): array {
+                $check->setRelation('project', $project);
+
+                return $this->checkPayload($check);
+            });
 
         $websiteChecks = $project->packageManagedWebsites()
             ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
             ->orderBy('package_name')
             ->get()
-            ->map(fn (Website $website): array => $this->websiteCheckPayload($website));
+            ->map(function (Website $website) use ($project): array {
+                $website->setRelation('project', $project);
+
+                return $this->websiteCheckPayload($website);
+            });
 
         $componentChecks = $project->components()
+            ->with([
+                'activeMonitorApis:id,project_component_id,current_status',
+                'activeWebsites:id,project_component_id,current_status',
+            ])
             ->orderBy('name')
             ->get()
             ->map(fn (ProjectComponent $component): array => $this->componentCheckPayload($component));
@@ -314,6 +326,7 @@ class CheckybotControlService
             }
 
             $check->load(['assertions', 'latestResult']);
+            $check->setRelation('project', $project);
 
             return [
                 'created' => $created,
@@ -383,6 +396,7 @@ class CheckybotControlService
             $website->fill($payload);
             $website->save();
             $website->load(['latestLogHistory', 'latestDiagnosticLogHistory']);
+            $website->setRelation('project', $project);
 
             return [
                 'created' => $created,
@@ -406,7 +420,10 @@ class CheckybotControlService
                 'archive_reason' => ProjectComponent::ARCHIVE_REASON_USER,
             ])->save();
 
-            return $this->componentCheckPayload($check->fresh());
+            return $this->componentCheckPayload($check->fresh([
+                'activeMonitorApis:id,project_component_id,current_status',
+                'activeWebsites:id,project_component_id,current_status',
+            ]));
         }
 
         if ($check instanceof Website) {
@@ -1196,6 +1213,10 @@ class CheckybotControlService
 
         if ($checkType === 'component') {
             return $project->components()
+                ->with([
+                    'activeMonitorApis:id,project_component_id,current_status',
+                    'activeWebsites:id,project_component_id,current_status',
+                ])
                 ->where('name', $checkKey)
                 ->firstOrFail();
         }
@@ -1211,6 +1232,10 @@ class CheckybotControlService
             ->first();
 
         $componentCheck = $project->components()
+            ->with([
+                'activeMonitorApis:id,project_component_id,current_status',
+                'activeWebsites:id,project_component_id,current_status',
+            ])
             ->where('name', $checkKey)
             ->first();
 
@@ -1458,6 +1483,14 @@ class CheckybotControlService
         $latestDiagnosticResult = $check->relationLoaded('latestDiagnosticResult')
             ? $check->latestDiagnosticResult
             : $check->latestDiagnosticResult()->first();
+
+        if ($latestResult instanceof MonitorApiResult) {
+            $latestResult->setRelation('monitorApi', $check);
+        }
+
+        if ($latestDiagnosticResult instanceof MonitorApiResult) {
+            $latestDiagnosticResult->setRelation('monitorApi', $check);
+        }
 
         return [
             'id' => $check->id,
