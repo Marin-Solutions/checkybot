@@ -315,7 +315,35 @@ test('scheduled api tests cap monitor timeout and retries', function () {
         MonitorApis::SCHEDULED_RUN_KEY => true,
     ]);
 
-    expect($result['error'])->toStartWith('Timeout:');
+    expect($result['error'])->toStartWith('Timeout:')
+        ->and($result['effective_timeout_seconds'])->toBe(75)
+        ->and($result['retry_count'])->toBe(2)
+        ->and($result['elapsed_wall_time_ms'])->toBeInt()
+        ->and($result['elapsed_wall_time_ms'])->toBeGreaterThanOrEqual(0);
+});
+
+test('test api returns execution evidence on successful requests', function () {
+    config([
+        'monitor.api_retries' => 3,
+        'monitor.api_retry_delay' => 1000,
+    ]);
+
+    Http::fake([
+        'https://api.example.test/*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/execution-evidence',
+        'method' => 'GET',
+        'expected_status' => 200,
+        'timeout_seconds' => 12,
+    ]);
+
+    expect($result['code'])->toBe(200)
+        ->and($result['effective_timeout_seconds'])->toBe(12)
+        ->and($result['retry_count'])->toBe(3)
+        ->and($result['elapsed_wall_time_ms'])->toBeInt()
+        ->and($result['elapsed_wall_time_ms'])->toBeGreaterThanOrEqual(0);
 });
 
 test('test api redacts sensitive query parameters before persisting transport errors', function () {

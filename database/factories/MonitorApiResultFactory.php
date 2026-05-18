@@ -19,6 +19,9 @@ class MonitorApiResultFactory extends Factory
             'monitor_api_id' => MonitorApis::factory(),
             'is_success' => $isSuccess,
             'response_time_ms' => fake()->numberBetween(50, 2000),
+            'effective_timeout_seconds' => 30,
+            'retry_count' => 3,
+            'elapsed_wall_time_ms' => fake()->numberBetween(50, 2000),
             'http_code' => $isSuccess ? 200 : fake()->randomElement([400, 404, 500, 503]),
             'failed_assertions' => $isSuccess ? null : [[
                 'path' => 'data.status',

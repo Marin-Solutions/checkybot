@@ -69,6 +69,12 @@ class ResultsRelationManager extends RelationManager
                     ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
                     ->sortable(),
 
+                Tables\Columns\TextColumn::make('elapsed_wall_time_ms')
+                    ->label('Wall Time')
+                    ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                    ->toggleable()
+                    ->sortable(),
+
                 Tables\Columns\TextColumn::make('http_code')
                     ->label('HTTP Code')
                     ->badge()
@@ -149,6 +155,15 @@ class ResultsRelationManager extends RelationManager
                         TextEntry::make('response_time_ms')
                             ->label('Response Time')
                             ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
+                        TextEntry::make('elapsed_wall_time_ms')
+                            ->label('Elapsed Wall Time')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
+                        TextEntry::make('effective_timeout_seconds')
+                            ->label('Effective Timeout')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}s" : '-'),
+                        TextEntry::make('retry_count')
+                            ->label('Retries')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? (string) $state : '-'),
                         TextEntry::make('created_at')
                             ->label('Captured At')
                             ->dateTimeInUserZone(),

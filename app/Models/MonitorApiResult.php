@@ -22,6 +22,9 @@ class MonitorApiResult extends Model
         'monitor_api_id',
         'is_success',
         'response_time_ms',
+        'effective_timeout_seconds',
+        'retry_count',
+        'elapsed_wall_time_ms',
         'http_code',
         'failed_assertions',
         'response_body',
@@ -41,6 +44,9 @@ class MonitorApiResult extends Model
         return [
             'is_success' => 'boolean',
             'response_time_ms' => 'integer',
+            'effective_timeout_seconds' => 'integer',
+            'retry_count' => 'integer',
+            'elapsed_wall_time_ms' => 'integer',
             'http_code' => 'integer',
             'failed_assertions' => 'array',
             'transport_error_code' => 'integer',
@@ -117,6 +123,9 @@ class MonitorApiResult extends Model
         }
 
         $responseTime = (int) ((microtime(true) - $startTime) * 1000);
+        $elapsedWallTime = isset($testResult['elapsed_wall_time_ms'])
+            ? (int) $testResult['elapsed_wall_time_ms']
+            : $responseTime;
 
         $savedResponseBody = static::prepareSavedResponseBody($api, $isSuccess, $testResult);
 
@@ -124,6 +133,9 @@ class MonitorApiResult extends Model
             'monitor_api_id' => $api->id,
             'is_success' => $isSuccess,
             'response_time_ms' => $responseTime,
+            'effective_timeout_seconds' => $testResult['effective_timeout_seconds'] ?? null,
+            'retry_count' => $testResult['retry_count'] ?? null,
+            'elapsed_wall_time_ms' => $elapsedWallTime,
             'http_code' => $testResult['code'],
             'failed_assertions' => $failedAssertions,
             'response_body' => $savedResponseBody,
