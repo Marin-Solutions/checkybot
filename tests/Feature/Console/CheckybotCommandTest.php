@@ -357,6 +357,7 @@ test('sync command posts an empty external check payload so package-managed remo
             'uptime_checks' => [],
             'ssl_checks' => [],
             'api_checks' => [],
+            'full_manifest' => true,
         ],
     ])->and($fakeClient->componentPayloads)->toBe([
         [

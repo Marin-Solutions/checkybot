@@ -45,6 +45,7 @@ class CheckybotCommand extends Command
         $checkPayload = $useRegistry
             ? $registry->toCheckArray()
             : $validator->transformPayload($config);
+        $checkPayload['full_manifest'] = true;
 
         $totalChecks = count($checkPayload['uptime_checks'])
             + count($checkPayload['ssl_checks'])

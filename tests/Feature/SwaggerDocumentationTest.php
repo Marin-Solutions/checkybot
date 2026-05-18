@@ -55,6 +55,7 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][1]['properties']['type']['enum'])->toBe(['ssl', 'uptime'])
         ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][1]['properties']['headers']['additionalProperties']['nullable'])->toBeTrue()
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['required'])->toBe(['name', 'url', 'interval'])
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['full_manifest']['type'])->toBe('boolean')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['properties']['enabled']['type'])->toBe('boolean')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['properties']['component']['type'])->toBe('string')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')

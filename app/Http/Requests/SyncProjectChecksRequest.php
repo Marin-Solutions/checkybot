@@ -61,6 +61,8 @@ class SyncProjectChecksRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'full_manifest' => ['sometimes', 'boolean'],
+
             'link_checks' => ['missing'],
             'open_graph_checks' => ['missing'],
 
@@ -154,11 +156,30 @@ class SyncProjectChecksRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            if ($this->isFullManifest()) {
+                foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
+                    if (! $this->has($checkGroup)) {
+                        $validator->errors()->add(
+                            $checkGroup,
+                            "The {$checkGroup} field must be present when full_manifest is true."
+                        );
+                    }
+                }
+
+                if ($validator->errors()->isNotEmpty()) {
+                    return;
+                }
+            }
+
             if (! $this->hasAnySyncChecks()) {
-                $validator->errors()->add(
-                    'checks',
-                    'At least one uptime, SSL, or API check is required for project check sync.'
-                );
+                if (! $this->isFullManifest()) {
+                    $validator->errors()->add(
+                        'checks',
+                        'At least one uptime, SSL, or API check is required unless full_manifest is true.'
+                    );
+
+                    return;
+                }
 
                 return;
             }
@@ -255,5 +276,10 @@ class SyncProjectChecksRequest extends FormRequest
         }
 
         return false;
+    }
+
+    private function isFullManifest(): bool
+    {
+        return filter_var($this->input('full_manifest', false), FILTER_VALIDATE_BOOLEAN);
     }
 }
