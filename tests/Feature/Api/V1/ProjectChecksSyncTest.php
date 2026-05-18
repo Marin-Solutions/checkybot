@@ -11,6 +11,7 @@ use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\CheckSyncService;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -398,6 +399,69 @@ test('legacy sync links package checks to declared project components', function
         'project_id' => $this->project->id,
         'package_name' => 'database-health',
         'project_component_id' => $component->id,
+    ]);
+});
+
+test('legacy sync rejects checks that reference undeclared project components', function () {
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
+    expect(fn () => $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'database-http',
+                'url' => 'https://database.example.com',
+                'interval' => '5m',
+                'component' => 'databse',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]))->toThrow(ValidationException::class);
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-http',
+    ]);
+});
+
+test('project check sync returns validation errors for undeclared components', function () {
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'database-http',
+                    'url' => 'https://database.example.com',
+                    'interval' => '5m',
+                    'component' => 'databse',
+                ],
+            ],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'uptime_checks.0.component',
+        ]);
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-http',
     ]);
 });
 

@@ -5,6 +5,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -1641,6 +1642,52 @@ test('package sync rejects shared keys outside the uptime ssl pair', function ()
         ->assertJsonValidationErrors([
             'checks.1.key',
         ]);
+});
+
+test('package sync rejects checks that reference undeclared project components', function () {
+    $project = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'scrappa',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://api.scrappa.co',
+        'base_url' => 'https://api.scrappa.co',
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'health',
+                    'type' => 'api',
+                    'name' => 'Health API',
+                    'method' => 'GET',
+                    'url' => '/health',
+                    'component' => 'databse',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.component',
+        ]);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'project_id' => $project->id,
+        'package_name' => 'health',
+    ]);
 });
 
 test('package sync service preserves website flags when uptime and ssl share a key', function () {

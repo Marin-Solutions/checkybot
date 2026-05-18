@@ -25,6 +25,7 @@ class PackageSyncService
         return DB::transaction(function () use ($user, $payload): array {
             $syncedAt = now();
             $project = $this->upsertProject($user, $payload, $syncedAt);
+            $this->validateComponentReferences($project, $payload);
             $apiSummary = $this->syncApiChecks($project, $payload, $syncedAt);
             $uptimeSummary = $this->syncWebsiteChecks($project, $payload, 'uptime', $syncedAt);
             $sslSummary = $this->syncWebsiteChecks($project, $payload, 'ssl', $syncedAt);
@@ -43,6 +44,32 @@ class PackageSyncService
                 'synced_at' => $syncedAt,
             ];
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function validateComponentReferences(Project $project, array $payload): void
+    {
+        $componentIdsByName = $project->activeComponents()
+            ->pluck('id', 'name')
+            ->all();
+
+        $errors = [];
+
+        foreach ($payload['checks'] ?? [] as $index => $check) {
+            $component = is_array($check) ? ($check['component'] ?? null) : null;
+
+            if (! is_string($component) || blank($component) || isset($componentIdsByName[$component])) {
+                continue;
+            }
+
+            $errors["checks.{$index}.component"][] = "The component \"{$component}\" has not been declared for this project. Sync it through declared_components or fix the component name.";
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**
@@ -603,6 +630,7 @@ class PackageSyncService
 
         return ProjectComponent::query()
             ->where('project_id', $project->id)
+            ->where('is_archived', false)
             ->where('name', $componentName)
             ->value('id');
     }

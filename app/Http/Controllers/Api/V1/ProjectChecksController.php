@@ -9,6 +9,7 @@ use App\Services\CheckSyncService;
 use App\Services\CheckybotImportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ProjectChecksController extends Controller
 {
@@ -79,6 +80,8 @@ class ProjectChecksController extends Controller
                 'message' => 'Checks synced successfully',
                 'summary' => $summary,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to sync checks',

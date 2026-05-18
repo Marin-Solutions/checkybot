@@ -10,6 +10,7 @@ use App\Models\Website;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 
 class CheckSyncService
@@ -18,6 +19,8 @@ class CheckSyncService
 
     public function syncChecks(Project $project, array $payload): array
     {
+        $this->validateComponentReferences($project, $payload);
+
         return DB::transaction(function () use ($project, $payload) {
             $syncedAt = now();
             $componentIdsByName = $this->projectComponentIdsByName($project);
@@ -35,6 +38,31 @@ class CheckSyncService
 
             return $summary;
         });
+    }
+
+    /**
+     * @param  array<string, array<int, array<string, mixed>>>  $payload
+     */
+    private function validateComponentReferences(Project $project, array $payload): void
+    {
+        $componentIdsByName = $this->projectComponentIdsByName($project);
+        $errors = [];
+
+        foreach (['uptime_checks', 'ssl_checks', 'api_checks'] as $checkGroup) {
+            foreach ($payload[$checkGroup] ?? [] as $index => $check) {
+                $component = $check['component'] ?? null;
+
+                if (! is_string($component) || blank($component) || isset($componentIdsByName[$component])) {
+                    continue;
+                }
+
+                $errors["{$checkGroup}.{$index}.component"][] = "The component \"{$component}\" has not been declared for this project. Sync it through declared_components or fix the component name.";
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
     }
 
     /**
@@ -301,6 +329,7 @@ class CheckSyncService
     {
         return ProjectComponent::query()
             ->where('project_id', $project->id)
+            ->where('is_archived', false)
             ->pluck('id', 'name')
             ->all();
     }
