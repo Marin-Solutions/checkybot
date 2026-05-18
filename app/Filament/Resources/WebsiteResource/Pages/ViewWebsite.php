@@ -26,13 +26,23 @@ class ViewWebsite extends ViewRecord
                 ->modalDescription('Checkybot will queue the enabled checks for this website, append the result to run history, update live status, and alert subscribers on status changes.')
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
-                ->visible(fn (): bool => (bool) $this->record->uptime_check || (bool) $this->record->ssl_check)
+                ->visible(fn (): bool => WebsiteResource::canRunDiagnostic($this->record))
                 ->disabled(fn (): bool => $this->record->hasQueuedDiagnostic())
                 ->action(function (): void {
                     $queuedStatePersisted = false;
 
                     try {
                         $this->record->refresh();
+
+                        if (! WebsiteResource::canRunDiagnostic($this->record)) {
+                            Notification::make()
+                                ->title('Diagnostic unavailable')
+                                ->body('Archived or disabled websites cannot run fresh diagnostics.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
 
                         if ($this->record->hasQueuedDiagnostic()) {
                             Notification::make()

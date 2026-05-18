@@ -705,6 +705,23 @@ test('api monitor list disables run now action while diagnostic is queued', func
         ->assertTableActionDisabled('run_now', $monitor);
 });
 
+test('api monitor list hides run now action for archived monitors', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+    $monitor->delete();
+
+    Livewire::test(ListMonitorApis::class)
+        ->filterTable('trashed', 'only')
+        ->assertCanSeeTableRecords([$monitor])
+        ->assertTableActionHidden('run_now', $monitor);
+});
+
 test('api monitor list average response time excludes on demand diagnostic runs', function () {
     $this->createResourcePermissions('MonitorApis');
 
@@ -1229,6 +1246,20 @@ test('view page hides run now action when api monitor is disabled', function () 
     $monitor = MonitorApis::factory()->disabled()->create([
         'created_by' => $user->id,
     ]);
+
+    Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page hides run now action when api monitor is archived', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'is_enabled' => true,
+    ]);
+    $monitor->delete();
 
     Livewire::test(ViewMonitorApis::class, ['record' => $monitor->id])
         ->assertActionHidden('run_now');

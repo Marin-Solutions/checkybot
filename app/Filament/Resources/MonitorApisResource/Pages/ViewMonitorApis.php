@@ -26,13 +26,23 @@ class ViewMonitorApis extends ViewRecord
                 ->modalDescription('Checkybot will queue a real request against this endpoint, append the result to run history, update live status, and alert subscribers on status changes.')
                 ->modalSubmitActionLabel('Run now')
                 ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
-                ->visible(fn (): bool => (bool) $this->record->is_enabled)
+                ->visible(fn (): bool => MonitorApisResource::canRunDiagnostic($this->record))
                 ->disabled(fn (): bool => $this->record->hasQueuedDiagnostic())
                 ->action(function (): void {
                     $queuedStatePersisted = false;
 
                     try {
                         $this->record->refresh();
+
+                        if (! MonitorApisResource::canRunDiagnostic($this->record)) {
+                            Notification::make()
+                                ->title('Diagnostic unavailable')
+                                ->body('Archived or disabled API monitors cannot run fresh diagnostics.')
+                                ->warning()
+                                ->send();
+
+                            return;
+                        }
 
                         if ($this->record->hasQueuedDiagnostic()) {
                             Notification::make()

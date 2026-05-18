@@ -65,6 +65,11 @@ class MonitorApisResource extends Resource
         return $query->where('is_enabled', true);
     }
 
+    public static function canRunDiagnostic(MonitorApis $record): bool
+    {
+        return ! $record->trashed() && (bool) $record->is_enabled;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
@@ -491,13 +496,23 @@ class MonitorApisResource extends Resource
                     ->modalDescription('Checkybot will queue a real request against this endpoint, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
-                    ->visible(fn (MonitorApis $record): bool => (bool) $record->is_enabled)
+                    ->visible(fn (MonitorApis $record): bool => static::canRunDiagnostic($record))
                     ->disabled(fn (MonitorApis $record): bool => $record->hasQueuedDiagnostic())
                     ->action(function (MonitorApis $record): void {
                         $queuedStatePersisted = false;
 
                         try {
                             $record->refresh();
+
+                            if (! static::canRunDiagnostic($record)) {
+                                Notification::make()
+                                    ->title('Diagnostic unavailable')
+                                    ->body('Archived or disabled API monitors cannot run fresh diagnostics.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
 
                             if ($record->hasQueuedDiagnostic()) {
                                 Notification::make()
