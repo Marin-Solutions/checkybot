@@ -184,6 +184,109 @@ describe('IncidentFeedWidget', function () {
             ->toBe('cancel');
     });
 
+    it('hydrates the evidence modal when Filament sends an unnamed nested action payload', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Hydration modal homepage',
+        ]);
+
+        $log = WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Hydration modal homepage returned HTTP 503',
+            'http_status_code' => 503,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'website')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($log->id);
+
+        $component = Livewire::test(IncidentFeedWidget::class)
+            ->mountTableAction('viewEvidence', $incident->getKey())
+            ->assertSuccessful();
+
+        $component
+            ->set('mountedActions', [
+                [
+                    'name' => 'viewEvidence',
+                    'arguments' => [],
+                    'context' => [
+                        'table' => true,
+                        'recordKey' => $incident->getKey(),
+                    ],
+                    'data' => [],
+                ],
+                [
+                    'name' => null,
+                    'arguments' => [],
+                    'context' => [],
+                    'data' => [],
+                ],
+            ])
+            ->set('discoveredSchemaNames', ['table'])
+            ->assertSuccessful()
+            ->assertSet('mountedActions.0.name', 'viewEvidence');
+
+        expect($component->instance()->mountedActions)->toHaveCount(1);
+        expect($component->getMountedActionModalHtml())
+            ->toContain('Hydration modal homepage returned HTTP 503')
+            ->toContain('Close');
+    });
+
+    it('hydrates the evidence modal when Livewire updates a nested mounted action name', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Nested modal homepage',
+        ]);
+
+        $log = WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Nested modal homepage returned HTTP 503',
+            'http_status_code' => 503,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'website')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($log->id);
+
+        $component = Livewire::test(IncidentFeedWidget::class)
+            ->mountTableAction('viewEvidence', $incident->getKey())
+            ->set('mountedActions', [
+                [
+                    'name' => 'viewEvidence',
+                    'arguments' => [],
+                    'context' => [
+                        'table' => true,
+                        'recordKey' => $incident->getKey(),
+                    ],
+                    'data' => [],
+                ],
+                [
+                    'name' => 'cancel',
+                    'arguments' => [],
+                    'context' => [],
+                    'data' => [],
+                ],
+            ])
+            ->set('mountedActions.1.name', null)
+            ->assertSuccessful()
+            ->assertSet('mountedActions.0.name', 'viewEvidence');
+
+        expect($component->instance()->mountedActions)->toHaveCount(1);
+        expect($component->getMountedActionModalHtml())
+            ->toContain('Nested modal homepage returned HTTP 503')
+            ->toContain('Close');
+    });
+
     it('suppresses duplicate unhealthy rows until the severity changes', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,

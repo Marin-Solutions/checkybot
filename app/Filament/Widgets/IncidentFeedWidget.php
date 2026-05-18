@@ -45,6 +45,28 @@ class IncidentFeedWidget extends BaseWidget
 
     protected const NON_INCIDENT_STATUSES = ['healthy', 'unknown'];
 
+    public function hydrateMountedActions(array $mountedActions): void
+    {
+        $this->mountedActions = $this->filterNamedMountedActions($mountedActions);
+    }
+
+    public function updatedMountedActions(mixed $value = null, ?string $key = null): void
+    {
+        $this->mountedActions = $this->filterNamedMountedActions($this->mountedActions ?? []);
+    }
+
+    /**
+     * @param  array<mixed>  $mountedActions
+     * @return array<int, array<string, mixed>>
+     */
+    protected function filterNamedMountedActions(array $mountedActions): array
+    {
+        return array_values(array_filter(
+            $mountedActions,
+            fn (mixed $action): bool => is_array($action) && filled($action['name'] ?? null),
+        ));
+    }
+
     public function table(Table $table): Table
     {
         return $table
