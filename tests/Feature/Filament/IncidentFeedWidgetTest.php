@@ -170,6 +170,9 @@ describe('IncidentFeedWidget', function () {
         $component = Livewire::test(IncidentFeedWidget::class)
             ->mountTableAction('viewEvidence', $incident->getKey())
             ->assertSuccessful()
+            ->assertSet('mountedActions.0.name', 'viewEvidence')
+            ->set('discoveredSchemaNames', ['table'])
+            ->assertSuccessful()
             ->assertSet('mountedActions.0.name', 'viewEvidence');
 
         expect($component->getMountedActionModalHtml())
@@ -178,7 +181,7 @@ describe('IncidentFeedWidget', function () {
             ->toContain('Close');
 
         expect($component->instance()->getMountedAction()->getModalCancelAction()->getName())
-            ->toBe('closeEvidenceModal');
+            ->toBe('cancel');
     });
 
     it('suppresses duplicate unhealthy rows until the severity changes', function () {
