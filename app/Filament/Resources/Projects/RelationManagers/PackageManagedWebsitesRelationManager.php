@@ -48,6 +48,23 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->badge()
                     ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                TextColumn::make('latestDiagnosticLogHistory.status')
+                    ->label('Manual')
+                    ->state(fn (Website $record): ?string => $record->hasQueuedDiagnostic()
+                        ? 'Queued'
+                        : $record->latestDiagnosticLogHistory?->status)
+                    ->formatStateUsing(fn (?string $state): string => $state === 'Queued'
+                        ? $state
+                        : HealthStatusLabel::format($state))
+                    ->badge()
+                    ->color(fn (?string $state): string => $state === 'Queued'
+                        ? 'warning'
+                        : HealthStatusLabel::color($state))
+                    ->icon(fn (Website $record): ?string => $this->manualRunDrifts($record)
+                        ? 'heroicon-o-exclamation-triangle'
+                        : null)
+                    ->description(fn (Website $record): ?string => $this->manualRunDescription($record))
+                    ->placeholder('—'),
                 TextColumn::make('deleted_at')
                     ->label('State')
                     ->state(fn (Website $record): string => $this->monitoringState($record))
@@ -93,6 +110,18 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                         'archived' => 'Archived',
                     ])
                     ->query(fn (Builder $query, array $data): Builder => $this->applyMonitoringStateFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    )),
+                SelectFilter::make('manual_run_status')
+                    ->label('Manual run')
+                    ->options([
+                        'queued' => 'Queued',
+                        'drift' => 'Differs from live health',
+                        'matching' => 'Matches live health',
+                        'missing' => 'No manual run',
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $this->applyManualRunStatusFilter(
                         $query,
                         $data['value'] ?? null,
                     )),
@@ -226,6 +255,7 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                 ViewAction::make(),
             ])
             ->modifyQueryUsing(fn (Builder $query) => $query
+                ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
                 ->withoutGlobalScopes([
                     SoftDeletingScope::class,
                 ]))
@@ -269,5 +299,64 @@ class PackageManagedWebsitesRelationManager extends RelationManager
             'archived' => $query->whereNotNull('deleted_at'),
             default => $query,
         };
+    }
+
+    private function applyManualRunStatusFilter(Builder $query, ?string $state): Builder
+    {
+        return match ($state) {
+            'queued' => $this->applyQueuedManualRunFilter($query),
+            'drift' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(website_log_history.status, '__missing__') <> COALESCE(websites.current_status, '__missing__')")),
+            'matching' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(website_log_history.status, '__missing__') = COALESCE(websites.current_status, '__missing__')")),
+            'missing' => $query
+                ->whereNull('diagnostic_queued_at')
+                ->whereDoesntHave('latestDiagnosticLogHistory'),
+            default => $query,
+        };
+    }
+
+    private function applyQueuedManualRunFilter(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('diagnostic_queued_at')
+            ->where(fn (Builder $query): Builder => $query
+                ->whereDoesntHave('latestDiagnosticLogHistory')
+                ->orWhereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                    ->whereColumn('websites.diagnostic_queued_at', '>', 'website_log_history.created_at')));
+    }
+
+    private function applyCompletedManualRunFilter(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $query): Builder => $query
+            ->whereNull('diagnostic_queued_at')
+            ->orWhereHas('latestDiagnosticLogHistory', fn (Builder $query): Builder => $query
+                ->whereColumn('websites.diagnostic_queued_at', '<=', 'website_log_history.created_at')));
+    }
+
+    private function manualRunDescription(Website $record): ?string
+    {
+        if ($record->hasQueuedDiagnostic()) {
+            return 'Manual run is queued.';
+        }
+
+        if ($record->latestDiagnosticLogHistory === null) {
+            return null;
+        }
+
+        if ($this->manualRunDrifts($record)) {
+            return 'Differs from live health.';
+        }
+
+        return 'Matches live health.';
+    }
+
+    private function manualRunDrifts(Website $record): bool
+    {
+        return ! $record->hasQueuedDiagnostic()
+            && $record->latestDiagnosticLogHistory !== null
+            && $record->latestDiagnosticLogHistory->status !== $record->current_status;
     }
 }

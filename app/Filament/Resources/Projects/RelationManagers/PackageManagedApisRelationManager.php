@@ -39,6 +39,23 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->badge()
                     ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                TextColumn::make('latestDiagnosticResult.status')
+                    ->label('Manual')
+                    ->state(fn (MonitorApis $record): ?string => $record->hasQueuedDiagnostic()
+                        ? 'Queued'
+                        : $record->latestDiagnosticResult?->status)
+                    ->formatStateUsing(fn (?string $state): string => $state === 'Queued'
+                        ? $state
+                        : HealthStatusLabel::format($state))
+                    ->badge()
+                    ->color(fn (?string $state): string => $state === 'Queued'
+                        ? 'warning'
+                        : HealthStatusLabel::color($state))
+                    ->icon(fn (MonitorApis $record): ?string => $this->manualRunDrifts($record)
+                        ? 'heroicon-o-exclamation-triangle'
+                        : null)
+                    ->description(fn (MonitorApis $record): ?string => $this->manualRunDescription($record))
+                    ->placeholder('—'),
                 TextColumn::make('deleted_at')
                     ->label('State')
                     ->state(fn (MonitorApis $record): string => $this->monitoringState($record))
@@ -84,6 +101,18 @@ class PackageManagedApisRelationManager extends RelationManager
                         'archived' => 'Archived',
                     ])
                     ->query(fn (Builder $query, array $data): Builder => $this->applyMonitoringStateFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    )),
+                SelectFilter::make('manual_run_status')
+                    ->label('Manual run')
+                    ->options([
+                        'queued' => 'Queued',
+                        'drift' => 'Differs from live health',
+                        'matching' => 'Matches live health',
+                        'missing' => 'No manual run',
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => $this->applyManualRunStatusFilter(
                         $query,
                         $data['value'] ?? null,
                     )),
@@ -217,6 +246,7 @@ class PackageManagedApisRelationManager extends RelationManager
                 ViewAction::make(),
             ])
             ->modifyQueryUsing(fn (Builder $query) => $query
+                ->with(['latestResult', 'latestDiagnosticResult'])
                 ->withoutGlobalScopes([
                     SoftDeletingScope::class,
                 ]))
@@ -257,5 +287,64 @@ class PackageManagedApisRelationManager extends RelationManager
             'archived' => $query->whereNotNull('deleted_at'),
             default => $query,
         };
+    }
+
+    private function applyManualRunStatusFilter(Builder $query, ?string $state): Builder
+    {
+        return match ($state) {
+            'queued' => $this->applyQueuedManualRunFilter($query),
+            'drift' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(monitor_api_results.status, '__missing__') <> COALESCE(monitor_apis.current_status, '__missing__')")),
+            'matching' => $this->applyCompletedManualRunFilter($query)
+                ->whereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                    ->whereRaw("COALESCE(monitor_api_results.status, '__missing__') = COALESCE(monitor_apis.current_status, '__missing__')")),
+            'missing' => $query
+                ->whereNull('diagnostic_queued_at')
+                ->whereDoesntHave('latestDiagnosticResult'),
+            default => $query,
+        };
+    }
+
+    private function applyQueuedManualRunFilter(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('diagnostic_queued_at')
+            ->where(fn (Builder $query): Builder => $query
+                ->whereDoesntHave('latestDiagnosticResult')
+                ->orWhereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                    ->whereColumn('monitor_apis.diagnostic_queued_at', '>', 'monitor_api_results.created_at')));
+    }
+
+    private function applyCompletedManualRunFilter(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $query): Builder => $query
+            ->whereNull('diagnostic_queued_at')
+            ->orWhereHas('latestDiagnosticResult', fn (Builder $query): Builder => $query
+                ->whereColumn('monitor_apis.diagnostic_queued_at', '<=', 'monitor_api_results.created_at')));
+    }
+
+    private function manualRunDescription(MonitorApis $record): ?string
+    {
+        if ($record->hasQueuedDiagnostic()) {
+            return 'Manual run is queued.';
+        }
+
+        if ($record->latestDiagnosticResult === null) {
+            return null;
+        }
+
+        if ($this->manualRunDrifts($record)) {
+            return 'Differs from live health.';
+        }
+
+        return 'Matches live health.';
+    }
+
+    private function manualRunDrifts(MonitorApis $record): bool
+    {
+        return ! $record->hasQueuedDiagnostic()
+            && $record->latestDiagnosticResult !== null
+            && $record->latestDiagnosticResult->status !== $record->current_status;
     }
 }
