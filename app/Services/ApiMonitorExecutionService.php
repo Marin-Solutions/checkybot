@@ -51,7 +51,69 @@ class ApiMonitorExecutionService
 
         $status = $this->statusService->apiStatusFromResult($rawResult, $monitor->expected_status);
         $summary = $rawResult['summary'] ?? $this->statusService->summaryForApi($rawResult, $monitor->expected_status);
-        [$result, $previousStatus] = DB::transaction(function () use ($monitor, $onDemand, $rawResult, $startTime, $status, $summary): array {
+        [$result, $previousStatus] = $this->persistResult(
+            $monitor,
+            $rawResult,
+            $startTime,
+            $status,
+            $summary,
+            $onDemand ? RunSource::OnDemand : RunSource::Scheduled,
+        );
+
+        return [
+            'result' => $result,
+            'status' => $status,
+            'summary' => $summary,
+            'previous_status' => $previousStatus,
+        ];
+    }
+
+    /**
+     * Persist a failed result for failures that happen outside the HTTP
+     * execution path, such as worker timeouts or queue-layer exceptions.
+     *
+     * @return array{result: MonitorApiResult, status: string, summary: string, previous_status: string|null}
+     */
+    public function recordScheduledFailure(MonitorApis $monitor, ?Throwable $exception): array
+    {
+        $startTime = microtime(true);
+        $rawResult = $this->failedExecutionResult(
+            $exception,
+            'API monitor run failed before the scheduled check could complete.',
+        );
+
+        $status = $this->statusService->apiStatusFromResult($rawResult, $monitor->expected_status);
+        $summary = $rawResult['summary'];
+
+        [$result, $previousStatus] = $this->persistResult(
+            $monitor,
+            $rawResult,
+            $startTime,
+            $status,
+            $summary,
+            RunSource::Scheduled,
+        );
+
+        return [
+            'result' => $result,
+            'status' => $status,
+            'summary' => $summary,
+            'previous_status' => $previousStatus,
+        ];
+    }
+
+    /**
+     * @return array{0: MonitorApiResult, 1: string|null}
+     */
+    private function persistResult(
+        MonitorApis $monitor,
+        array $rawResult,
+        float $startTime,
+        string $status,
+        string $summary,
+        RunSource $runSource,
+    ): array {
+        return DB::transaction(function () use ($monitor, $rawResult, $startTime, $status, $summary, $runSource): array {
             $lockedMonitor = MonitorApis::query()
                 ->whereKey($monitor->getKey())
                 ->lockForUpdate()
@@ -65,7 +127,7 @@ class ApiMonitorExecutionService
                 $startTime,
                 $status,
                 $summary,
-                $onDemand ? RunSource::OnDemand : RunSource::Scheduled,
+                $runSource,
             );
 
             $lockedMonitor->forceFill([
@@ -78,34 +140,30 @@ class ApiMonitorExecutionService
 
             return [$result, $previousStatus];
         });
-
-        return [
-            'result' => $result,
-            'status' => $status,
-            'summary' => $summary,
-            'previous_status' => $previousStatus,
-        ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function failedExecutionResult(Throwable $exception): array
+    private function failedExecutionResult(?Throwable $exception, string $summary = 'API monitor run failed before completing the check.'): array
     {
-        $message = ApiMonitorEvidenceRedactor::redactTransportErrorMessage($exception->getMessage());
+        $message = ApiMonitorEvidenceRedactor::redactTransportErrorMessage($exception?->getMessage());
+        $error = $exception
+            ? trim($exception::class.': '.($message ?? 'Unknown API monitor execution failure'))
+            : 'Unknown API monitor execution failure';
 
         return [
             'code' => 0,
             'body' => null,
             'raw_body' => null,
             'assertions' => [],
-            'error' => trim($exception::class.': '.($message ?? 'Unknown API monitor execution failure')),
+            'error' => $error,
             'request_headers' => [],
             'response_headers' => [],
             'transport_error_type' => 'unknown',
             'transport_error_message' => $message,
-            'transport_error_code' => (int) $exception->getCode(),
-            'summary' => 'API monitor run failed before completing the check.',
+            'transport_error_code' => $exception ? (int) $exception->getCode() : null,
+            'summary' => $summary,
         ];
     }
 }

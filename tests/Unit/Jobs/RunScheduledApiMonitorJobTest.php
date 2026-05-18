@@ -177,14 +177,42 @@ test('run scheduled api monitor job records execution throwables as failed monit
         );
 });
 
-test('run scheduled api monitor job logs queue failure details', function () {
+test('run scheduled api monitor job records queue failures as failed monitor results', function () {
     Log::spy();
+    Mail::fake();
 
     $monitor = MonitorApis::factory()->create([
         'title' => 'queue-timeout-health',
+        'current_status' => 'healthy',
     ]);
 
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $monitor->created_by,
+            'inspection' => \App\Enums\WebsiteServicesEnum::API_MONITOR,
+        ]);
+
     (new RunScheduledApiMonitorJob($monitor))->failed(new RuntimeException('Worker timeout'));
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('danger')
+        ->and($monitor->status_summary)->toBe('API monitor run failed before the scheduled check could complete.');
+
+    $this->assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'http_code' => 0,
+        'status' => 'danger',
+        'summary' => 'API monitor run failed before the scheduled check could complete.',
+        'is_on_demand' => false,
+        'transport_error_type' => 'unknown',
+        'transport_error_message' => 'Worker timeout',
+    ]);
+
+    Mail::assertSent(HealthStatusAlert::class, 1);
 
     Log::shouldHaveReceived('error')
         ->once()
@@ -195,4 +223,33 @@ test('run scheduled api monitor job logs queue failure details', function () {
                 && ($context['exception'] ?? null) === RuntimeException::class
                 && ($context['message'] ?? null) === 'Worker timeout')
         );
+});
+
+test('run scheduled api monitor job failure hook does not duplicate an already recorded scheduled result', function () {
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'already-recorded-health',
+        'current_status' => 'healthy',
+    ]);
+
+    $job = new RunScheduledApiMonitorJob($monitor);
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'http_code' => 0,
+        'status' => 'danger',
+        'summary' => 'API monitor run failed before completing the check.',
+        'transport_error_type' => 'unknown',
+        'transport_error_message' => 'Existing controlled failure',
+        'created_at' => now()->addSecond(),
+    ]);
+
+    $job->failed(new RuntimeException('Worker timeout after result'));
+
+    expect(MonitorApiResult::where('monitor_api_id', $monitor->id)->count())->toBe(1);
+
+    $this->assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+        'transport_error_message' => 'Worker timeout after result',
+    ]);
 });
