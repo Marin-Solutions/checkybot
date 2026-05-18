@@ -112,6 +112,66 @@ test('project check sync rejects non server runtime health fields', function () 
     ]);
 });
 
+test('project check sync rejects empty manifests without full manifest confirmation', function () {
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['checks']);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'deleted_at' => null,
+    ]);
+});
+
+test('project check sync accepts full empty manifests and archives package checks', function () {
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'is_enabled' => true,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'full_manifest' => true,
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ])
+        ->assertOk()
+        ->assertJsonPath('summary.uptime_checks.deleted', 1)
+        ->assertJsonPath('summary.ssl_checks.deleted', 0)
+        ->assertJsonPath('summary.api_checks.deleted', 1);
+
+    expect(Website::withTrashed()->where('project_id', $this->project->id)->where('package_name', 'homepage')->first()?->trashed())->toBeTrue()
+        ->and(MonitorApis::withTrashed()->where('project_id', $this->project->id)->where('package_name', 'api-health')->first()?->trashed())->toBeTrue();
+});
+
 test('syncs ssl checks successfully', function () {
     $summary = $this->syncService->syncChecks($this->project, [
         'uptime_checks' => [],

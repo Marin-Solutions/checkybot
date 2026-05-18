@@ -162,6 +162,12 @@ class CheckybotApiDocumentation
      *             type="object",
      *
      *             @OA\Property(
+     *                 property="full_manifest",
+     *                 type="boolean",
+     *                 example=false,
+     *                 description="Set true only when uptime_checks, ssl_checks, and api_checks represent the complete active check manifest; empty arrays archive missing package-managed checks only in full-manifest syncs."
+     *             ),
+     *             @OA\Property(
      *                 property="uptime_checks",
      *                 type="array",
      *                 maxItems=100,
