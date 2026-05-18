@@ -42,10 +42,18 @@ test('monitor api result tracks diagnostic run source', function () {
 });
 
 test('monitor api result casts response time to integer', function () {
-    $result = MonitorApiResult::factory()->create(['response_time_ms' => '150']);
+    $result = MonitorApiResult::factory()->create([
+        'response_time_ms' => '150',
+        'effective_timeout_seconds' => '30',
+        'retry_count' => '2',
+        'elapsed_wall_time_ms' => '62000',
+    ]);
 
     expect($result->response_time_ms)->toBeInt();
-    expect($result->response_time_ms)->toBe(150);
+    expect($result->response_time_ms)->toBe(150)
+        ->and($result->effective_timeout_seconds)->toBe(30)
+        ->and($result->retry_count)->toBe(2)
+        ->and($result->elapsed_wall_time_ms)->toBe(62000);
 });
 
 test('monitor api result casts http code to integer', function () {
@@ -147,6 +155,30 @@ test('record result stores header snapshots for run evidence', function () {
 
     expect($result->request_headers)->toBe(['Authorization' => '[redacted]'])
         ->and($result->response_headers)->toBe(['content-type' => 'application/json']);
+});
+
+test('record result stores retry and timeout execution evidence', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 0,
+        'body' => null,
+        'assertions' => [],
+        'effective_timeout_seconds' => 30,
+        'retry_count' => 2,
+        'elapsed_wall_time_ms' => 92000,
+        'transport_error_type' => 'timeout',
+        'transport_error_message' => 'cURL error 28: Operation timed out after 30000 milliseconds',
+        'transport_error_code' => 28,
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'danger', 'API check timed out.');
+
+    expect($result->effective_timeout_seconds)->toBe(30)
+        ->and($result->retry_count)->toBe(2)
+        ->and($result->elapsed_wall_time_ms)->toBe(92000)
+        ->and($result->transport_error_type)->toBe('timeout');
 });
 
 test('record result only saves response body on error', function () {

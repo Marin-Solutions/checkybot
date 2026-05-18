@@ -54,6 +54,10 @@ class MonitorApiInfolist
                             ->label('Latest Response Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->response_time_ms !== null ? "{$record->latestResult->response_time_ms}ms" : null)
                             ->default('-'),
+                        TextEntry::make('latest_result_elapsed_wall_time')
+                            ->label('Latest Wall Time')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestResult?->elapsed_wall_time_ms !== null ? "{$record->latestResult->elapsed_wall_time_ms}ms" : null)
+                            ->default('-'),
                         TextEntry::make('package_interval')
                             ->label('Polling Interval')
                             ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')
@@ -151,6 +155,18 @@ class MonitorApiInfolist
                             ->hidden(fn (MonitorApis $record): bool => blank($record->latestResult?->transport_error_type))
                             ->copyable()
                             ->columnSpanFull(),
+                        TextEntry::make('latest_scheduled_execution_timeout')
+                            ->label('Effective Timeout')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestResult?->effective_timeout_seconds !== null ? "{$record->latestResult->effective_timeout_seconds}s" : null)
+                            ->default('-'),
+                        TextEntry::make('latest_scheduled_retry_count')
+                            ->label('Retries')
+                            ->state(fn (MonitorApis $record): ?int => $record->latestResult?->retry_count)
+                            ->default('-'),
+                        TextEntry::make('latest_scheduled_elapsed_wall_time')
+                            ->label('Elapsed Wall Time')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestResult?->elapsed_wall_time_ms !== null ? "{$record->latestResult->elapsed_wall_time_ms}ms" : null)
+                            ->default('-'),
                         RepeatableEntry::make('latest_failed_assertions')
                             ->label('Failed Assertions')
                             ->state(fn (MonitorApis $record): array => ApiMonitorEvidenceFormatter::normalizeAssertions($record->latestResult?->failed_assertions))
@@ -237,6 +253,18 @@ class MonitorApiInfolist
                         TextEntry::make('latest_diagnostic_response_time')
                             ->label('Response Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->response_time_ms !== null ? "{$record->latestDiagnosticResult->response_time_ms}ms" : null)
+                            ->default('-'),
+                        TextEntry::make('latest_diagnostic_elapsed_wall_time')
+                            ->label('Elapsed Wall Time')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->elapsed_wall_time_ms !== null ? "{$record->latestDiagnosticResult->elapsed_wall_time_ms}ms" : null)
+                            ->default('-'),
+                        TextEntry::make('latest_diagnostic_execution_timeout')
+                            ->label('Effective Timeout')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->effective_timeout_seconds !== null ? "{$record->latestDiagnosticResult->effective_timeout_seconds}s" : null)
+                            ->default('-'),
+                        TextEntry::make('latest_diagnostic_retry_count')
+                            ->label('Retries')
+                            ->state(fn (MonitorApis $record): ?int => $record->latestDiagnosticResult?->retry_count)
                             ->default('-'),
                         TextEntry::make('latest_diagnostic_summary')
                             ->label('Summary')

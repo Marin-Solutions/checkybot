@@ -295,6 +295,8 @@ class MonitorApis extends Model
 
         $responseData = self::initializeResponseData();
         $httpConfig = self::getHttpConfiguration($data);
+        $responseData['effective_timeout_seconds'] = $httpConfig['timeout'];
+        $responseData['retry_count'] = $httpConfig['retries'];
         $sanitizedUrl = self::sanitizeUrlForLogs($url);
         try {
             $storedMonitor = isset($data['id']) && (! array_key_exists('headers', $data) || ! array_key_exists('request_body', $data))
@@ -313,17 +315,17 @@ class MonitorApis extends Model
             $responseData = self::applyExpectedStatusAssertion($responseData, $expectedStatus);
 
             if (! self::requiresJsonAssertions($data)) {
-                return $responseData;
+                return self::withElapsedWallTime($responseData, $startTime);
             }
 
             $responseData = self::parseJsonResponse($responseData);
             if (self::jsonParsingFailed($responseData)) {
-                return $responseData;
+                return self::withElapsedWallTime($responseData, $startTime);
             }
 
             $responseData = self::runAssertions($data, $responseData);
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         } catch (ConnectionException $exception) {
             $transportError = UptimeTransportError::fromThrowable($exception);
 
@@ -347,7 +349,7 @@ class MonitorApis extends Model
             $responseData['transport_error_message'] = self::sanitizeLogMessage($transportError['message'], $url);
             $responseData['transport_error_code'] = $transportError['code'];
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         } catch (RequestException $exception) {
             Log::error('Request error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
@@ -377,7 +379,7 @@ class MonitorApis extends Model
             $responseData['error'] = self::sanitizeLogMessage($exception->getMessage(), $url);
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         } catch (\Exception $exception) {
             Log::error('Unexpected error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
@@ -394,7 +396,7 @@ class MonitorApis extends Model
             $responseData['error'] = 'Unexpected error: '.$sanitizedMessage;
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         }
     }
 
@@ -409,6 +411,9 @@ class MonitorApis extends Model
             'request_headers' => [],
             'response_headers' => [],
             'response_time_ms' => 0,
+            'effective_timeout_seconds' => null,
+            'retry_count' => null,
+            'elapsed_wall_time_ms' => 0,
             'transport_error_type' => null,
             'transport_error_message' => null,
             'transport_error_code' => null,
@@ -418,6 +423,13 @@ class MonitorApis extends Model
     private static function elapsedMilliseconds(float $startTime): int
     {
         return (int) round((microtime(true) - $startTime) * 1000);
+    }
+
+    private static function withElapsedWallTime(array $responseData, float $startTime): array
+    {
+        $responseData['elapsed_wall_time_ms'] = self::elapsedMilliseconds($startTime);
+
+        return $responseData;
     }
 
     private static function getHttpConfiguration(array $data): array
