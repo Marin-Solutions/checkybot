@@ -50,9 +50,9 @@ class IncidentFeedWidget extends BaseWidget
         $this->mountedActions = $this->filterNamedMountedActions($mountedActions);
     }
 
-    public function updatedMountedActions(array $mountedActions): void
+    public function updatedMountedActions(mixed $value = null, ?string $key = null): void
     {
-        $this->mountedActions = $this->filterNamedMountedActions($mountedActions);
+        $this->mountedActions = $this->filterNamedMountedActions($this->mountedActions ?? []);
     }
 
     /**
