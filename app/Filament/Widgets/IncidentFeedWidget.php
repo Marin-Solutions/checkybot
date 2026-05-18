@@ -162,9 +162,7 @@ class IncidentFeedWidget extends BaseWidget
                     ->modalDescription(fn (Incident $record): string => "Exact supporting run for {$record->subject}.")
                     ->modalWidth('5xl')
                     ->modalSubmitAction(false)
-                    ->modalCancelAction(fn (Action $action): Action => $action
-                        ->name('closeEvidenceModal')
-                        ->label('Close'))
+                    ->modalCancelActionLabel('Close')
                     ->schema([
                         SchemaView::make('filament.widgets.incident-feed-evidence-modal')
                             ->viewData(fn (Incident $record): array => [
