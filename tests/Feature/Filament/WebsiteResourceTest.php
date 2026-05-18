@@ -1355,6 +1355,20 @@ test('website list hides run now action when uptime and ssl checks are disabled'
         ->assertTableActionHidden('run_now', $website);
 });
 
+test('website list hides run now action for archived websites', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+    $website->delete();
+
+    Livewire::test(ListWebsites::class)
+        ->filterTable('trashed', 'only')
+        ->assertCanSeeTableRecords([$website])
+        ->assertTableActionHidden('run_now', $website);
+});
+
 test('website list disables run now action while website diagnostic is queued', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create([
@@ -1650,6 +1664,18 @@ test('view page hides run now action when uptime and ssl checks are disabled', f
         'uptime_check' => false,
         'ssl_check' => false,
     ]);
+
+    Livewire::test(ViewWebsite::class, ['record' => $website->id])
+        ->assertActionHidden('run_now');
+});
+
+test('view page hides run now action when website is archived', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'uptime_check' => true,
+    ]);
+    $website->delete();
 
     Livewire::test(ViewWebsite::class, ['record' => $website->id])
         ->assertActionHidden('run_now');

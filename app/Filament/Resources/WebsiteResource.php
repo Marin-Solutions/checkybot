@@ -55,6 +55,11 @@ class WebsiteResource extends Resource
             ->where('ssl_check', false);
     }
 
+    public static function canRunDiagnostic(Website $record): bool
+    {
+        return ! $record->trashed() && ((bool) $record->uptime_check || (bool) $record->ssl_check);
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
@@ -516,13 +521,23 @@ class WebsiteResource extends Resource
                     ->modalDescription('Checkybot will queue the enabled checks for this website, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
-                    ->visible(fn (Website $record): bool => (bool) $record->uptime_check || (bool) $record->ssl_check)
+                    ->visible(fn (Website $record): bool => static::canRunDiagnostic($record))
                     ->disabled(fn (Website $record): bool => $record->hasQueuedDiagnostic())
                     ->action(function (Website $record): void {
                         $queuedStatePersisted = false;
 
                         try {
                             $record->refresh();
+
+                            if (! static::canRunDiagnostic($record)) {
+                                Notification::make()
+                                    ->title('Diagnostic unavailable')
+                                    ->body('Archived or disabled websites cannot run fresh diagnostics.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
 
                             if ($record->hasQueuedDiagnostic()) {
                                 Notification::make()
