@@ -343,7 +343,8 @@ class PackageManagedApisRelationManager extends RelationManager
 
     private function manualRunDrifts(MonitorApis $record): bool
     {
-        return $record->latestDiagnosticResult !== null
+        return ! $record->hasQueuedDiagnostic()
+            && $record->latestDiagnosticResult !== null
             && $record->latestDiagnosticResult->status !== $record->current_status;
     }
 }

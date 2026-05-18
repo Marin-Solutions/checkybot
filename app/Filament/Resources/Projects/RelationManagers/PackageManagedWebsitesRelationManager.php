@@ -355,7 +355,8 @@ class PackageManagedWebsitesRelationManager extends RelationManager
 
     private function manualRunDrifts(Website $record): bool
     {
-        return $record->latestDiagnosticLogHistory !== null
+        return ! $record->hasQueuedDiagnostic()
+            && $record->latestDiagnosticLogHistory !== null
             && $record->latestDiagnosticLogHistory->status !== $record->current_status;
     }
 }
