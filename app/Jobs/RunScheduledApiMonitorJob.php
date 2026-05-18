@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
+use Psr\Log\LogLevel;
 use Throwable;
 
 class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
@@ -41,27 +42,44 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
         ApiMonitorExecutionService $executionService,
         HealthEventNotificationService $notificationService,
     ): void {
-        $monitor = $this->monitor->fresh();
+        try {
+            $monitor = $this->monitor->fresh();
 
-        if (! $monitor?->is_enabled) {
-            return;
+            if (! $monitor?->is_enabled) {
+                return;
+            }
+
+            $this->monitor = $monitor;
+
+            $execution = $executionService->execute($this->monitor, scheduled: true);
+            $status = $execution['status'];
+            $summary = $execution['summary'];
+            $previousStatus = $execution['previous_status'];
+
+            $notificationService->notifyApiIfTransitioned($this->monitor, $previousStatus, $status, $summary);
+        } catch (Throwable $exception) {
+            $this->recordQueueFailure(
+                $exception,
+                'Scheduled API monitor job recovered a queue/runtime failure as monitor evidence.',
+                LogLevel::WARNING,
+            );
         }
-
-        $this->monitor = $monitor;
-
-        $execution = $executionService->execute($this->monitor, scheduled: true);
-        $status = $execution['status'];
-        $summary = $execution['summary'];
-        $previousStatus = $execution['previous_status'];
-
-        $notificationService->notifyApiIfTransitioned($this->monitor, $previousStatus, $status, $summary);
     }
 
     public function failed(?Throwable $exception): void
     {
+        $this->recordQueueFailure(
+            $exception,
+            'Scheduled API monitor job failed before a controlled result could be recorded.',
+            LogLevel::ERROR,
+        );
+    }
+
+    private function recordQueueFailure(?Throwable $exception, string $message, string $level): void
+    {
         $monitor = $this->monitor->fresh(['latestScheduledResult']);
 
-        Log::error('Scheduled API monitor job failed before a controlled result could be recorded.', [
+        Log::log($level, $message, [
             'monitor_id' => $this->monitor->id,
             'monitor_title' => $this->monitor->title,
             'exception' => $exception ? $exception::class : null,
@@ -72,7 +90,7 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
             return;
         }
 
-        $dispatchedAt = Carbon::parse($this->dispatchedAt ?? now()->toISOString());
+        $dispatchedAt = Carbon::parse($this->dispatchedAt ?? now()->toISOString())->startOfSecond();
         if ($monitor->latestScheduledResult?->created_at?->greaterThanOrEqualTo($dispatchedAt)) {
             return;
         }

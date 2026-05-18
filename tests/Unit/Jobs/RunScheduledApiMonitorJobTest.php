@@ -7,6 +7,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Services\ApiMonitorExecutionService;
+use App\Services\HealthEventNotificationService;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Http;
@@ -184,6 +185,124 @@ test('run scheduled api monitor job records execution throwables as failed monit
         );
 });
 
+test('run scheduled api monitor job recovers service throwables as failed monitor results without failing the queue job', function () {
+    Log::spy();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'service-crash-health',
+        'current_status' => 'healthy',
+    ]);
+
+    $executionService = Mockery::mock(ApiMonitorExecutionService::class);
+    $executionService
+        ->shouldReceive('execute')
+        ->once()
+        ->with(Mockery::on(fn (MonitorApis $value): bool => $value->is($monitor)), false, true)
+        ->andThrow(new RuntimeException('Queue runtime failure token=secret-value'));
+
+    $notificationService = Mockery::mock(HealthEventNotificationService::class);
+    $notificationService
+        ->shouldReceive('notifyApiIfTransitioned')
+        ->once()
+        ->with(
+            Mockery::on(fn (MonitorApis $value): bool => $value->is($monitor)),
+            'healthy',
+            'danger',
+            'API monitor run failed before the scheduled check could complete.',
+        )
+        ->andReturnTrue();
+
+    $this->app->instance(HealthEventNotificationService::class, $notificationService);
+
+    (new RunScheduledApiMonitorJob($monitor))->handle($executionService, $notificationService);
+
+    $monitor->refresh();
+
+    expect($monitor->current_status)->toBe('danger')
+        ->and($monitor->status_summary)->toBe('API monitor run failed before the scheduled check could complete.');
+
+    $this->assertDatabaseHas('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'http_code' => 0,
+        'status' => 'danger',
+        'summary' => 'API monitor run failed before the scheduled check could complete.',
+        'is_on_demand' => false,
+        'transport_error_type' => 'unknown',
+        'transport_error_message' => 'Queue runtime failure token=[redacted]',
+    ]);
+
+    Log::shouldHaveReceived('log')
+        ->once()
+        ->with(
+            'warning',
+            'Scheduled API monitor job recovered a queue/runtime failure as monitor evidence.',
+            Mockery::on(fn (array $context): bool => ($context['monitor_id'] ?? null) === $monitor->id
+                && ($context['monitor_title'] ?? null) === 'service-crash-health'
+                && ($context['exception'] ?? null) === RuntimeException::class
+                && ($context['message'] ?? null) === 'Queue runtime failure token=secret-value')
+        );
+});
+
+test('run scheduled api monitor job does not duplicate evidence when notification delivery throws after execution', function () {
+    Log::spy();
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'notification-crash-health',
+        'current_status' => 'healthy',
+    ]);
+
+    $executionService = Mockery::mock(ApiMonitorExecutionService::class);
+    $notificationService = Mockery::mock(HealthEventNotificationService::class);
+
+    $executionService
+        ->shouldReceive('execute')
+        ->once()
+        ->with(Mockery::on(fn (MonitorApis $value): bool => $value->is($monitor)), false, true)
+        ->andReturnUsing(function (MonitorApis $value): array {
+            $result = MonitorApiResult::recordResult(
+                $value,
+                [
+                    'code' => 200,
+                    'body' => ['status' => 'ok'],
+                    'raw_body' => '{"status":"ok"}',
+                    'assertions' => [],
+                    'request_headers' => [],
+                    'response_headers' => [],
+                ],
+                microtime(true),
+                'healthy',
+                'API monitor returned HTTP 200.',
+            );
+
+            $value->forceFill([
+                'current_status' => 'healthy',
+                'status_summary' => 'API monitor returned HTTP 200.',
+            ])->save();
+
+            return [
+                'result' => $result,
+                'status' => 'healthy',
+                'summary' => 'API monitor returned HTTP 200.',
+                'previous_status' => 'healthy',
+            ];
+        });
+
+    $notificationService
+        ->shouldReceive('notifyApiIfTransitioned')
+        ->once()
+        ->andThrow(new RuntimeException('Notification transport crashed'));
+
+    (new RunScheduledApiMonitorJob($monitor))->handle($executionService, $notificationService);
+
+    expect(MonitorApiResult::where('monitor_api_id', $monitor->id)->count())->toBe(1);
+
+    $this->assertDatabaseMissing('monitor_api_results', [
+        'monitor_api_id' => $monitor->id,
+        'transport_error_message' => 'Notification transport crashed',
+    ]);
+});
+
 test('run scheduled api monitor job records queue failures as failed monitor results', function () {
     Log::spy();
     Mail::fake();
@@ -221,9 +340,10 @@ test('run scheduled api monitor job records queue failures as failed monitor res
 
     Mail::assertSent(HealthStatusAlert::class, 1);
 
-    Log::shouldHaveReceived('error')
+    Log::shouldHaveReceived('log')
         ->once()
         ->with(
+            'error',
             'Scheduled API monitor job failed before a controlled result could be recorded.',
             Mockery::on(fn (array $context): bool => ($context['monitor_id'] ?? null) === $monitor->id
                 && ($context['monitor_title'] ?? null) === 'queue-timeout-health'
