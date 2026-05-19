@@ -39,6 +39,13 @@ class SeoCheck extends Model
         'manual_dispatch_failed',
     ];
 
+    private const TIMEOUT_LIKE_PATTERNS = [
+        '%timeout%',
+        '%Timeout%',
+        '%timed out%',
+        '%Timed out%',
+    ];
+
     protected $fillable = [
         'website_id',
         'status',
@@ -211,13 +218,16 @@ class SeoCheck extends Model
             self::FAILURE_REASON_TIMEOUT => $query
                 ->where('status', self::STATUS_FAILED)
                 ->where(function (Builder $query): void {
-                    $query
-                        ->where('failure_summary', 'like', '%timeout%')
-                        ->orWhere('failure_summary', 'like', '%timed out%')
-                        ->orWhere('failure_context->exception', 'like', '%Timeout%')
-                        ->orWhere('failure_context->exception_class', 'like', '%Timeout%')
-                        ->orWhere('failure_context->exception_message', 'like', '%timeout%')
-                        ->orWhere('failure_context->exception_message', 'like', '%timed out%');
+                    foreach ([
+                        'failure_summary',
+                        'failure_context->exception',
+                        'failure_context->exception_class',
+                        'failure_context->exception_message',
+                    ] as $column) {
+                        foreach (self::TIMEOUT_LIKE_PATTERNS as $pattern) {
+                            $query->orWhere($column, 'like', $pattern);
+                        }
+                    }
                 }),
             self::FAILURE_REASON_STUCK_RUN_EXPIRY => $query
                 ->where('status', self::STATUS_FAILED)
@@ -248,9 +258,13 @@ class SeoCheck extends Model
                 ->where(function (Builder $query): void {
                     $query
                         ->whereNull('failure_summary')
-                        ->orWhere('failure_summary', 'not like', 'SEO check expired after%')
-                        ->where('failure_summary', 'not like', '%timeout%')
-                        ->where('failure_summary', 'not like', '%timed out%');
+                        ->orWhere(function (Builder $query): void {
+                            $query->where('failure_summary', 'not like', 'SEO check expired after%');
+
+                            foreach (self::TIMEOUT_LIKE_PATTERNS as $pattern) {
+                                $query->where('failure_summary', 'not like', $pattern);
+                            }
+                        });
                 })
                 ->where(function (Builder $query): void {
                     foreach ([
@@ -262,9 +276,9 @@ class SeoCheck extends Model
                             $query
                                 ->whereNull($column)
                                 ->orWhere(function (Builder $query) use ($column): void {
-                                    $query
-                                        ->where($column, 'not like', '%timeout%')
-                                        ->where($column, 'not like', '%timed out%');
+                                    foreach (self::TIMEOUT_LIKE_PATTERNS as $pattern) {
+                                        $query->where($column, 'not like', $pattern);
+                                    }
                                 });
                         });
                     }

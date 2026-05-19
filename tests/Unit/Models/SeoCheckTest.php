@@ -88,7 +88,7 @@ test('failure reason filters only include matching failed seo checks', function 
         'failure_summary' => 'SEO crawler failed before the crawl could complete.',
         'failure_context' => [
             'exception_class' => 'RuntimeException',
-            'exception_message' => 'Operation timed out while crawling.',
+            'exception_message' => 'Operation Timeout while crawling.',
         ],
     ]);
     $summaryTimeout = SeoCheck::factory()->failed()->create([
