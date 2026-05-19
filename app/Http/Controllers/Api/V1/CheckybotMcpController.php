@@ -217,7 +217,7 @@ class CheckybotMcpController extends Controller
     {
         $data = Validator::make($arguments, [
             'project' => ['nullable', 'string', 'max:255'],
-            'type' => ['nullable', Rule::in(['all', 'api', 'website', 'component'])],
+            'type' => ['nullable', Rule::in(['all', 'project', 'api', 'website', 'component'])],
             'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
             'statuses.*' => ['required', 'string', Rule::in(['warning', 'danger', 'pending', 'unknown'])],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -503,9 +503,9 @@ class CheckybotMcpController extends Controller
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
             ]),
-            $this->tool('current_issues', 'List currently unhealthy or pending checks from the dashboard status surface. Use type=api to see unhealthy API monitors only, and exclude to omit known work-in-progress checks.', [
+            $this->tool('current_issues', 'List currently unhealthy or pending checks and project setup problems from the dashboard status surface. Use type=api to see unhealthy API monitors only, type=project to see stale or incomplete package setup, and exclude to omit known work-in-progress checks.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
-                'type' => ['type' => 'string', 'enum' => ['all', 'api', 'website', 'component'], 'default' => 'all'],
+                'type' => ['type' => 'string', 'enum' => ['all', 'project', 'api', 'website', 'component'], 'default' => 'all'],
                 'statuses' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['warning', 'danger', 'pending', 'unknown']], 'default' => ['warning', 'danger']],
                 'limit' => ['type' => 'integer', 'default' => 25],
                 'exclude' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Case-insensitive substrings matched against check key, name, URL, or summary.'],

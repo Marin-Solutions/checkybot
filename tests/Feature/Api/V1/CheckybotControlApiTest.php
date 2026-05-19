@@ -3098,6 +3098,67 @@ test('control api and mcp list current unhealthy issues with filters', function 
         ->assertJsonPath('result.structuredContent.0.check.key', 'billing-health');
 });
 
+test('control api exposes stale package setup as a project current issue', function () {
+    $this->travelTo('2026-05-14 12:00:00');
+    config()->set('monitor.package_sync_stale_minutes', 15);
+
+    $this->project->forceFill([
+        'identity_endpoint' => 'https://api.scrappa.test/checkybot/identity',
+        'package_version' => '1.2.3',
+        'last_synced_at' => now()->subMinutes(16),
+        'updated_at' => now()->subMinute(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.type', 'project')
+        ->assertJsonPath('data.0.check.key', 'scrappa')
+        ->assertJsonPath('data.0.check.supports_run', false)
+        ->assertJsonPath('data.0.check.setup_verification.state', 'sync_stale')
+        ->assertJsonPath('data.0.status', 'warning')
+        ->assertJsonPath('data.0.project.key', 'scrappa')
+        ->assertJsonPath('data.0.last_checked_at', now()->subMinutes(16)->toISOString());
+
+    $response = $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=project')
+        ->assertOk()
+        ->assertJsonPath('data.0.action', 'Run `php artisan checkybot:sync` in the Laravel app, confirm the scheduler is still executing `Schedule::command(\'checkybot:sync\')->everyMinute();`, and inspect the app logs if the command fails.');
+
+    expect($response->json('data.0.summary'))->toContain('The Laravel scheduler or package integration may have stopped.');
+});
+
+test('mcp exposes incomplete package setup as a project current issue', function () {
+    $project = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'name' => 'Waiting Sync',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://waiting-sync.test/checkybot/identity',
+        'package_version' => '1.2.3',
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 42,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+                'arguments' => [
+                    'project' => (string) $project->id,
+                    'type' => 'project',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonCount(1, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.check.type', 'project')
+        ->assertJsonPath('result.structuredContent.0.check.setup_verification.state', 'waiting_for_first_sync')
+        ->assertJsonPath('result.structuredContent.0.status', 'warning')
+        ->assertJsonPath('result.structuredContent.0.action', 'Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.');
+});
+
 test('mcp manages notification channels and global notification settings', function () {
     $channelResponse = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [

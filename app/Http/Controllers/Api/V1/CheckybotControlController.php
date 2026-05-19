@@ -158,7 +158,7 @@ class CheckybotControlController extends Controller
     {
         $data = $request->validate([
             'project' => ['nullable', 'string', 'max:255'],
-            'type' => ['nullable', 'in:all,api,website,component'],
+            'type' => ['nullable', 'in:all,project,api,website,component'],
             'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
             'statuses.*' => ['required', 'string', 'in:warning,danger,pending,unknown'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
