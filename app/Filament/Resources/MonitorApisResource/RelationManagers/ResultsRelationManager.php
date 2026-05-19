@@ -10,6 +10,7 @@ use App\Support\ApiMonitorEvidenceFormatter;
 use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -18,6 +19,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ResultsRelationManager extends RelationManager
 {
@@ -121,6 +123,17 @@ class ResultsRelationManager extends RelationManager
                 Tables\Filters\Filter::make('assertion_failures')
                     ->label('Assertion failures')
                     ->query(fn ($query) => $query->whereJsonLength('failed_assertions', '>', 0)),
+                Tables\Filters\Filter::make('assertion_path')
+                    ->label('Assertion path')
+                    ->schema([
+                        TextInput::make('path')
+                            ->label('Assertion path')
+                            ->placeholder('data.parsed'),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => static::filterByFailedAssertionPath($query, $data))
+                    ->indicateUsing(fn (array $data): array => filled($data['path'] ?? null)
+                        ? ['path' => 'Assertion path: '.trim((string) $data['path'])]
+                        : []),
                 Tables\Filters\Filter::make('no_response')
                     ->label('No response')
                     ->query(fn ($query) => $query->where('http_code', 0)),
@@ -265,5 +278,33 @@ class ResultsRelationManager extends RelationManager
                 $type->value => UptimeTransportError::label($type),
             ])
             ->all();
+    }
+
+    private static function filterByFailedAssertionPath(Builder $query, array $data): Builder
+    {
+        $path = trim((string) ($data['path'] ?? ''));
+
+        if ($path === '') {
+            return $query;
+        }
+
+        $column = $query->getModel()->qualifyColumn('failed_assertions');
+        $driver = $query->getConnection()->getDriverName();
+
+        return match ($driver) {
+            'mysql', 'mariadb' => $query->whereRaw(
+                "JSON_CONTAINS({$column}, JSON_OBJECT('path', ?), '$')",
+                [$path],
+            ),
+            'pgsql' => $query->whereRaw(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements({$column}::jsonb) assertion WHERE assertion->>'path' = ?)",
+                [$path],
+            ),
+            'sqlite' => $query->whereRaw(
+                "EXISTS (SELECT 1 FROM json_each({$column}) WHERE json_extract(json_each.value, '$.path') = ?)",
+                [$path],
+            ),
+            default => $query->where($column, 'like', '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], '"path":'.json_encode($path)).'%'),
+        };
     }
 }
