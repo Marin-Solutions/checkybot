@@ -685,7 +685,7 @@ class CheckybotControlService
         $limit = min(max($limit, 1), 100);
         $statuses = array_values(array_intersect($statuses, ['warning', 'danger', 'pending', 'unknown']));
         $cause = in_array($cause, self::CURRENT_ISSUE_CAUSES, true) ? $cause : null;
-        $queryLimit = $cause !== null ? 100 : $limit;
+        $queryLimit = $cause === null ? $limit : null;
 
         if ($statuses === []) {
             $statuses = ['warning', 'danger'];
@@ -697,7 +697,7 @@ class CheckybotControlService
         $issues = collect();
 
         if ($type === null || $type === 'project') {
-            $issues = $issues->merge($this->currentProjectIssues($user, $project, $statuses, $limit));
+            $issues = $issues->merge($this->currentProjectIssues($user, $project, $statuses, $queryLimit));
         }
 
         if ($type === null || $type === 'api') {
@@ -940,7 +940,7 @@ class CheckybotControlService
      * @param  array<int, string>  $statuses
      * @return array<int, array<string, mixed>>
      */
-    private function currentProjectIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    private function currentProjectIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = $this->projectQuery($user);
 
@@ -952,7 +952,7 @@ class CheckybotControlService
             ->latest('updated_at')
             ->get()
             ->filter(fn (Project $project): bool => in_array($this->projectSetupIssueStatus($project), $statuses, true))
-            ->take($limit)
+            ->when($limit !== null, fn ($projects) => $projects->take($limit))
             ->map(fn (Project $project): array => $this->projectSetupIssuePayload($project))
             ->values()
             ->all();
@@ -962,7 +962,7 @@ class CheckybotControlService
      * @param  array<int, string>  $statuses
      * @return array<int, array<string, mixed>>
      */
-    private function currentApiIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    private function currentApiIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = MonitorApis::query()
             ->with(['project', 'assertions', 'latestResult', 'latestDiagnosticResult'])
@@ -977,7 +977,7 @@ class CheckybotControlService
         return $query
             ->orderByRaw("CASE current_status WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'pending' THEN 2 WHEN 'unknown' THEN 3 ELSE 4 END")
             ->latest('updated_at')
-            ->limit($limit)
+            ->when($limit !== null, fn (Builder $query): Builder => $query->limit($limit))
             ->get()
             ->map(fn (MonitorApis $check): array => $this->currentIssuePayload(
                 $check->project,
@@ -991,7 +991,7 @@ class CheckybotControlService
      * @param  array<int, string>  $statuses
      * @return array<int, array<string, mixed>>
      */
-    private function currentWebsiteIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    private function currentWebsiteIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = Website::query()
             ->with(['project', 'latestLogHistory', 'latestDiagnosticLogHistory'])
@@ -1006,7 +1006,7 @@ class CheckybotControlService
         return $query
             ->orderByRaw("CASE current_status WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'pending' THEN 2 WHEN 'unknown' THEN 3 ELSE 4 END")
             ->latest('updated_at')
-            ->limit($limit)
+            ->when($limit !== null, fn (Builder $query): Builder => $query->limit($limit))
             ->get()
             ->map(fn (Website $website): array => $this->currentIssuePayload(
                 $website->project,
@@ -1020,7 +1020,7 @@ class CheckybotControlService
      * @param  array<int, string>  $statuses
      * @return array<int, array<string, mixed>>
      */
-    private function currentComponentIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    private function currentComponentIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = ProjectComponent::query()
             ->with(['project', 'activeMonitorApis', 'activeWebsites'])
@@ -1035,7 +1035,7 @@ class CheckybotControlService
             ->latest('updated_at')
             ->get()
             ->filter(fn (ProjectComponent $component): bool => in_array($this->componentStatusBucket($component), $statuses, true))
-            ->take($limit)
+            ->when($limit !== null, fn ($components) => $components->take($limit))
             ->map(fn (ProjectComponent $component): array => $this->currentIssuePayload(
                 $component->project,
                 $this->componentCheckPayload($component),
@@ -1078,11 +1078,15 @@ class CheckybotControlService
                 return $result->transport_error_type;
             }
 
-            if ($this->hasFailedAssertions($result->failed_assertions)) {
-                return 'assertion';
+            $httpCause = $this->httpCause($result->http_code);
+
+            if ($httpCause !== null) {
+                return $httpCause;
             }
 
-            return $this->httpCause($result->http_code) ?? $this->summaryCause($result->summary);
+            return $this->hasFailedAssertions($result->failed_assertions)
+                ? 'assertion'
+                : $this->summaryCause($result->summary);
         }
 
         return $this->summaryCause($check->status_summary);
@@ -1187,6 +1191,7 @@ class CheckybotControlService
             ],
             'status' => $this->projectSetupIssueStatus($project),
             'summary' => $project->setupVerificationSummary(),
+            'cause' => 'stale_setup',
             'action' => $project->setupVerificationAction(),
             'last_checked_at' => $project->last_synced_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),

@@ -3175,7 +3175,11 @@ test('control api and mcp filter current issues by failure cause', function () {
     MonitorApiResult::factory()->failed()->create([
         'monitor_api_id' => $rateLimited->id,
         'http_code' => 429,
-        'failed_assertions' => [],
+        'failed_assertions' => [[
+            'path' => 'data.ok',
+            'type' => 'value_compare',
+            'message' => 'Expected true.',
+        ]],
         'summary' => 'API check failed with HTTP status 429.',
     ]);
 
@@ -3270,6 +3274,63 @@ test('control api and mcp filter current issues by failure cause', function () {
         ->getJson('/api/v1/control/issues?cause=http')
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['cause']);
+});
+
+test('control api cause filter searches beyond the unfiltered source cap', function () {
+    $serverError = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'older-server-error',
+        'title' => 'Older server error',
+        'url' => 'https://api.scrappa.test/server-error',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'API check failed with HTTP status 503.',
+        'updated_at' => now()->subDay(),
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $serverError->id,
+        'http_code' => 503,
+        'failed_assertions' => [],
+        'summary' => 'API check failed with HTTP status 503.',
+        'created_at' => now()->subDay(),
+    ]);
+
+    for ($i = 0; $i < 101; $i++) {
+        $assertionFailure = MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'package_name' => "newer-assertion-{$i}",
+            'title' => "Newer assertion {$i}",
+            'url' => "https://api.scrappa.test/assertion/{$i}",
+            'is_enabled' => true,
+            'current_status' => 'danger',
+            'status_summary' => 'Response assertion failed.',
+            'updated_at' => now()->subMinutes($i),
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $assertionFailure->id,
+            'http_code' => 200,
+            'failed_assertions' => [[
+                'path' => 'data.ok',
+                'type' => 'value_compare',
+                'message' => 'Expected true.',
+            ]],
+            'summary' => 'Response assertion failed.',
+            'created_at' => now()->subMinutes($i),
+        ]);
+    }
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=api&cause=http_5xx&limit=1')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.key', 'older-server-error')
+        ->assertJsonPath('data.0.cause', 'http_5xx');
 });
 
 test('mcp manages notification channels and global notification settings', function () {
