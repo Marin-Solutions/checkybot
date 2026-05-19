@@ -111,6 +111,26 @@ class IncidentFeedWidget extends BaseWidget
                         'api' => 'heroicon-o-bolt',
                         default => 'heroicon-o-question-mark-circle',
                     }),
+                TextColumn::make('cause_key')
+                    ->label('Cause')
+                    ->badge()
+                    ->placeholder('—')
+                    ->formatStateUsing(fn (?string $state): string => self::formatCauseLabel($state))
+                    ->color(fn (?string $state): string => match ($state) {
+                        'timeout' => 'warning',
+                        'dns', 'ssl', 'http', 'assertion' => 'danger',
+                        'other' => 'gray',
+                        default => 'gray',
+                    })
+                    ->icon(fn (?string $state): ?string => match ($state) {
+                        'timeout' => 'heroicon-o-clock',
+                        'dns' => 'heroicon-o-globe-alt',
+                        'ssl' => 'heroicon-o-lock-closed',
+                        'http' => 'heroicon-o-server-stack',
+                        'assertion' => 'heroicon-o-check-badge',
+                        'other' => 'heroicon-o-question-mark-circle',
+                        default => null,
+                    }),
                 TextColumn::make('component_name')
                     ->label('Component')
                     ->placeholder('Unmapped')
@@ -164,6 +184,17 @@ class IncidentFeedWidget extends BaseWidget
                         return $query->where('source', $data['value']);
                     })
                     ->placeholder('All sources'),
+                SelectFilter::make('cause_key')
+                    ->label('Cause')
+                    ->options(self::getCauseFilterOptions())
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->where('cause_key', $data['value']);
+                    })
+                    ->placeholder('All causes'),
                 SelectFilter::make('component_id')
                     ->label('Component')
                     ->options(fn (): array => $this->getComponentFilterOptions())
@@ -278,6 +309,7 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw('website_components.id as component_id')
             ->selectRaw('website_components.name as component_name')
             ->selectRaw("COALESCE(NULLIF(website_log_history.summary, ''), CONCAT('HTTP ', COALESCE(website_log_history.http_status_code, 0))) as summary")
+            ->selectRaw(self::websiteCauseKeySql().' as cause_key')
             ->selectRaw('website_log_history.created_at as occurred_at');
 
         // API results use a stricter severity definition than websites:
@@ -319,6 +351,7 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw('api_components.id as component_id')
             ->selectRaw('api_components.name as component_name')
             ->selectRaw("COALESCE(NULLIF(monitor_api_results.summary, ''), CONCAT('HTTP ', COALESCE(monitor_api_results.http_code, 0))) as summary")
+            ->selectRaw(self::apiCauseKeySql().' as cause_key')
             ->selectRaw('monitor_api_results.created_at as occurred_at');
 
         $runs = self::limitRunsToFeedWindow($websiteRuns->toBase(), $since)
@@ -335,6 +368,7 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw('component_id')
             ->selectRaw('component_name')
             ->selectRaw('summary')
+            ->selectRaw('cause_key')
             ->selectRaw('occurred_at')
             ->selectRaw('
                 FIRST_VALUE(current_monitoring_enabled) OVER (
@@ -395,22 +429,95 @@ class IncidentFeedWidget extends BaseWidget
     {
         $windowRuns = DB::query()
             ->fromSub(clone $baseRuns, 'window_runs')
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'cause_key', 'occurred_at')
             ->where('occurred_at', '>=', $since);
 
         $latestPriorRuns = DB::query()
             ->fromSub(
                 DB::query()
                     ->fromSub(clone $baseRuns, 'prior_runs')
-                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'occurred_at')
+                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'cause_key', 'occurred_at')
                     ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source, source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
                     ->where('occurred_at', '<', $since),
                 'ranked_prior_runs'
             )
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'cause_key', 'occurred_at')
             ->where('prior_rank', 1);
 
         return $windowRuns->unionAll($latestPriorRuns);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected static function getCauseFilterOptions(): array
+    {
+        return [
+            'timeout' => 'Timeout',
+            'dns' => 'DNS failure',
+            'http' => 'HTTP error',
+            'ssl' => 'SSL failure',
+            'assertion' => 'Assertion failure',
+            'other' => 'Other failure',
+        ];
+    }
+
+    protected static function formatCauseLabel(?string $cause): string
+    {
+        return match ($cause) {
+            'timeout' => 'Timeout',
+            'dns' => 'DNS',
+            'http' => 'HTTP',
+            'ssl' => 'SSL',
+            'assertion' => 'Assertion',
+            'other' => 'Other',
+            default => '—',
+        };
+    }
+
+    protected static function websiteCauseKeySql(): string
+    {
+        return "
+            CASE
+                WHEN COALESCE(NULLIF(website_log_history.status, ''), 'unknown') IN ('healthy', 'unknown') THEN NULL
+                WHEN website_log_history.transport_error_type = 'dns' THEN 'dns'
+                WHEN website_log_history.transport_error_type = 'timeout' THEN 'timeout'
+                WHEN website_log_history.transport_error_type = 'tls' THEN 'ssl'
+                WHEN website_log_history.http_status_code BETWEEN 400 AND 599 THEN 'http'
+                WHEN website_log_history.ssl_expiry_date IS NOT NULL THEN 'ssl'
+                ELSE 'other'
+            END
+        ";
+    }
+
+    protected static function apiCauseKeySql(): string
+    {
+        return "
+            CASE
+                WHEN (
+                    CASE
+                        WHEN NULLIF(monitor_api_results.status, '') IS NOT NULL THEN monitor_api_results.status
+                        WHEN monitor_api_results.is_success = 0 THEN 'danger'
+                        ELSE 'healthy'
+                    END
+                ) IN ('healthy', 'unknown') THEN NULL
+                WHEN monitor_api_results.transport_error_type = 'dns' THEN 'dns'
+                WHEN monitor_api_results.transport_error_type = 'timeout' THEN 'timeout'
+                WHEN monitor_api_results.transport_error_type = 'tls' THEN 'ssl'
+                WHEN ".self::failedAssertionsPresentSql('monitor_api_results.failed_assertions')." THEN 'assertion'
+                WHEN monitor_api_results.http_code BETWEEN 400 AND 599 THEN 'http'
+                ELSE 'other'
+            END
+        ";
+    }
+
+    protected static function failedAssertionsPresentSql(string $column): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'sqlite' => "json_array_length({$column}) > 0",
+            'pgsql' => "jsonb_typeof({$column}::jsonb) = 'array' AND jsonb_array_length({$column}::jsonb) > 0",
+            default => "JSON_LENGTH({$column}) > 0",
+        };
     }
 
     protected function resolveTargetUrl(Incident $record): ?string

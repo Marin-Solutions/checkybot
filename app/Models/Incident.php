@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int|null $component_id linked application component id, when the check is mapped
  * @property string|null $component_name linked application component name, when the check is mapped
  * @property string|null $summary evidence line describing why the event happened
+ * @property string|null $cause_key normalized failure cause for filtering: timeout | dns | http | ssl | assertion | other
  * @property \Illuminate\Support\Carbon $occurred_at when the failure transition occurred
  */
 class Incident extends Model
