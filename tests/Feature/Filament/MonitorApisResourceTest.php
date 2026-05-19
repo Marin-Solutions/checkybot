@@ -1757,6 +1757,19 @@ test('api monitor results list can filter repeated failure causes', function () 
         ]],
     ]);
 
+    $differentAssertionFailure = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'status' => 'danger',
+        'summary' => 'Parsed payload assertion failed.',
+        'http_code' => 200,
+        'failed_assertions' => [[
+            'path' => 'data.parsed',
+            'type' => 'exists',
+            'message' => 'Expected parsed payload to exist.',
+        ]],
+    ]);
+
     $clientError = MonitorApiResult::factory()->create([
         'monitor_api_id' => $monitor->id,
         'is_success' => false,
@@ -1784,20 +1797,28 @@ test('api monitor results list can filter repeated failure causes', function () 
         ->assertCanNotSeeTableRecords([$assertionFailure, $clientError, $serverError])
         ->resetTableFilters()
         ->filterTable('assertion_failures', true)
+        ->assertCanSeeTableRecords([$assertionFailure, $differentAssertionFailure])
+        ->assertCanNotSeeTableRecords([$transportFailure, $clientError, $serverError])
+        ->resetTableFilters()
+        ->filterTable('assertion_path', ['path' => 'data.status'])
         ->assertCanSeeTableRecords([$assertionFailure])
+        ->assertCanNotSeeTableRecords([$transportFailure, $differentAssertionFailure, $clientError, $serverError])
+        ->resetTableFilters()
+        ->filterTable('assertion_path', ['path' => 'data.parsed'])
+        ->assertCanSeeTableRecords([$differentAssertionFailure])
         ->assertCanNotSeeTableRecords([$transportFailure, $clientError, $serverError])
         ->resetTableFilters()
         ->filterTable('no_response', true)
         ->assertCanSeeTableRecords([$transportFailure])
-        ->assertCanNotSeeTableRecords([$assertionFailure, $clientError, $serverError])
+        ->assertCanNotSeeTableRecords([$assertionFailure, $differentAssertionFailure, $clientError, $serverError])
         ->resetTableFilters()
         ->filterTable('http_4xx', true)
         ->assertCanSeeTableRecords([$clientError])
-        ->assertCanNotSeeTableRecords([$transportFailure, $assertionFailure, $serverError])
+        ->assertCanNotSeeTableRecords([$transportFailure, $assertionFailure, $differentAssertionFailure, $serverError])
         ->resetTableFilters()
         ->filterTable('http_5xx', true)
         ->assertCanSeeTableRecords([$serverError])
-        ->assertCanNotSeeTableRecords([$transportFailure, $assertionFailure, $clientError]);
+        ->assertCanNotSeeTableRecords([$transportFailure, $assertionFailure, $differentAssertionFailure, $clientError]);
 });
 
 test('api monitor evidence infolist mounts cleanly for failed assertions with actual and expected', function () {
