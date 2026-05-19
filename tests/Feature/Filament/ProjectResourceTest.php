@@ -1728,6 +1728,124 @@ test('package-managed relation managers queue run now diagnostics for active che
         ->and($apiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00');
 });
 
+test('package-managed relation managers bulk queue selected active diagnostics', function () {
+    Carbon::setTestNow('2026-05-10 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+    Queue::fake();
+
+    $project = Project::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $activeWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+    $disabledWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'disabled-homepage',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'created_by' => $user->id,
+    ]);
+    $queuedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'queued-homepage',
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now()->subMinute(),
+        'created_by' => $user->id,
+    ]);
+    $archivedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'archived-homepage',
+        'uptime_check' => true,
+        'created_by' => $user->id,
+    ]);
+    $archivedWebsite->delete();
+
+    $activeApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+    $disabledApiMonitor = MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'disabled-api',
+        'created_by' => $user->id,
+    ]);
+    $queuedApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'queued-api',
+        'is_enabled' => true,
+        'diagnostic_queued_at' => now()->subMinute(),
+        'created_by' => $user->id,
+    ]);
+    $archivedApiMonitor = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'package_name' => 'archived-api',
+        'is_enabled' => true,
+        'created_by' => $user->id,
+    ]);
+    $archivedApiMonitor->delete();
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableBulkActionExists('run_selected_diagnostics')
+        ->assertTableBulkActionHasLabel('run_selected_diagnostics', 'Run selected diagnostics')
+        ->callTableBulkAction('run_selected_diagnostics', collect([
+            $activeWebsite,
+            $disabledWebsite,
+            $queuedWebsite,
+            $archivedWebsite,
+        ]))
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('1 diagnostic queued');
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableBulkActionExists('run_selected_diagnostics')
+        ->assertTableBulkActionHasLabel('run_selected_diagnostics', 'Run selected diagnostics')
+        ->callTableBulkAction('run_selected_diagnostics', collect([
+            $activeApiMonitor,
+            $disabledApiMonitor,
+            $queuedApiMonitor,
+            $archivedApiMonitor,
+        ]))
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('1 diagnostic queued');
+
+    Queue::assertPushed(LogUptimeSslJob::class, fn (LogUptimeSslJob $job): bool => $job->website->is($activeWebsite) && $job->onDemand === true);
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, fn (RunApiMonitorDiagnosticJob $job): bool => $job->monitor->is($activeApiMonitor));
+    Queue::assertPushed(LogUptimeSslJob::class, 1);
+    Queue::assertPushed(RunApiMonitorDiagnosticJob::class, 1);
+
+    expect($activeWebsite->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00')
+        ->and($disabledWebsite->refresh()->diagnostic_queued_at)->toBeNull()
+        ->and($queuedWebsite->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 11:59:00')
+        ->and(Website::withTrashed()->find($archivedWebsite->id)->diagnostic_queued_at)->toBeNull()
+        ->and($activeApiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 12:00:00')
+        ->and($disabledApiMonitor->refresh()->diagnostic_queued_at)->toBeNull()
+        ->and($queuedApiMonitor->refresh()->diagnostic_queued_at?->toDateTimeString())->toBe('2026-05-10 11:59:00')
+        ->and(MonitorApis::withTrashed()->find($archivedApiMonitor->id)->diagnostic_queued_at)->toBeNull();
+});
+
 test('package-managed website checks can be snoozed and unsnoozed from application detail', function () {
     Carbon::setTestNow('2026-05-10 12:00:00');
 
@@ -1851,14 +1969,16 @@ test('admin without monitor update permissions cannot snooze package-managed che
         'pageClass' => ViewProject::class,
     ])
         ->assertTableActionHidden('snooze')
-        ->assertTableActionHidden('unsnooze', $website);
+        ->assertTableActionHidden('unsnooze', $website)
+        ->assertTableBulkActionHidden('run_selected_diagnostics');
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
         'pageClass' => ViewProject::class,
     ])
         ->assertTableActionHidden('snooze')
-        ->assertTableActionHidden('unsnooze', $apiMonitor);
+        ->assertTableActionHidden('unsnooze', $apiMonitor)
+        ->assertTableBulkActionHidden('run_selected_diagnostics');
 });
 
 test('package-managed relation managers guard run now diagnostics for inactive checks', function () {
