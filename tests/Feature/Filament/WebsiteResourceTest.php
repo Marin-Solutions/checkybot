@@ -2005,6 +2005,56 @@ test('log history relation manager renders transport error evidence', function (
         ->assertSee('SSL certificate problem');
 });
 
+test('log history relation manager can filter repeated failure causes', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $transportFailure = WebsiteLogHistory::factory()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'summary' => 'DNS lookup failed.',
+    ]);
+
+    $clientError = WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'warning',
+        'summary' => 'Homepage returned 404.',
+        'http_status_code' => 404,
+    ]);
+
+    $serverError = WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'summary' => 'Homepage returned 503.',
+        'http_status_code' => 503,
+    ]);
+
+    $healthy = WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Heartbeat received successfully.',
+        'http_status_code' => 200,
+    ]);
+
+    Livewire::test(LogHistoryRelationManager::class, [
+        'ownerRecord' => $website,
+        'pageClass' => ViewWebsite::class,
+    ])
+        ->filterTable('transport_error_type', 'dns')
+        ->assertCanSeeTableRecords([$transportFailure])
+        ->assertCanNotSeeTableRecords([$clientError, $serverError, $healthy])
+        ->resetTableFilters()
+        ->filterTable('no_response', true)
+        ->assertCanSeeTableRecords([$transportFailure])
+        ->assertCanNotSeeTableRecords([$clientError, $serverError, $healthy])
+        ->resetTableFilters()
+        ->filterTable('http_4xx', true)
+        ->assertCanSeeTableRecords([$clientError])
+        ->assertCanNotSeeTableRecords([$transportFailure, $serverError, $healthy])
+        ->resetTableFilters()
+        ->filterTable('http_5xx', true)
+        ->assertCanSeeTableRecords([$serverError])
+        ->assertCanNotSeeTableRecords([$transportFailure, $clientError, $healthy]);
+});
+
 test('log history relation manager exposes website run evidence modal for transport failures', function () {
     $user = $this->actingAsSuperAdmin();
     $website = Website::factory()->create(['created_by' => $user->id]);
