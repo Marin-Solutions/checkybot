@@ -2458,6 +2458,159 @@ test('super admin can filter project components relation manager by delivery sta
         ->assertCanNotSeeTableRecords([$snoozed, $pending, $active]);
 });
 
+test('component tables show active failing api and website child counts', function () {
+    $this->createResourcePermissions('Project');
+    $this->createResourcePermissions('ProjectComponent');
+
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'checkout',
+        'created_by' => $user->id,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'is_enabled' => true,
+        'current_status' => 'warning',
+        'created_by' => $user->id,
+    ]);
+    MonitorApis::factory()->disabled()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ComponentsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Failing APIs')
+        ->assertSee('Failing Websites')
+        ->assertTableColumnStateSet('active_failing_monitor_apis_count', 2, $component)
+        ->assertTableColumnStateSet('active_failing_websites_count', 1, $component);
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertSuccessful()
+        ->assertTableColumnStateSet('active_failing_monitor_apis_count', 2, $component)
+        ->assertTableColumnStateSet('active_failing_websites_count', 1, $component);
+});
+
+test('package-managed child relation managers filter by component', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $checkout = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'checkout',
+        'created_by' => $user->id,
+    ]);
+    $billing = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'billing',
+        'created_by' => $user->id,
+    ]);
+
+    $checkoutWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $checkout->id,
+        'name' => 'checkout-homepage',
+        'source' => 'package',
+        'package_name' => 'checkout-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    $billingWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $billing->id,
+        'name' => 'billing-homepage',
+        'source' => 'package',
+        'package_name' => 'billing-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    $checkoutApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $checkout->id,
+        'title' => 'checkout-api',
+        'source' => 'package',
+        'package_name' => 'checkout-api',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+    $billingApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => $billing->id,
+        'title' => 'billing-api',
+        'source' => 'package',
+        'package_name' => 'billing-api',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Component')
+        ->filterTable('project_component_id', $checkout->id)
+        ->assertCanSeeTableRecords([$checkoutWebsite])
+        ->assertCanNotSeeTableRecords([$billingWebsite]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Component')
+        ->filterTable('project_component_id', $checkout->id)
+        ->assertCanSeeTableRecords([$checkoutApi])
+        ->assertCanNotSeeTableRecords([$billingApi]);
+});
+
 test('super admin can filter application components to only failing', function () {
     $this->createResourcePermissions('Project');
     $this->createResourcePermissions('ProjectComponent');

@@ -6,6 +6,7 @@ use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Support\HealthStatusFilter;
 use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
+use App\Models\ProjectComponent;
 use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
@@ -104,6 +105,11 @@ class PackageManagedApisRelationManager extends RelationManager
                         $query,
                         $data['value'] ?? null,
                     )),
+                SelectFilter::make('project_component_id')
+                    ->label('Component')
+                    ->options(fn (): array => $this->componentFilterOptions())
+                    ->searchable()
+                    ->preload(),
                 SelectFilter::make('manual_run_status')
                     ->label('Manual run')
                     ->options([
@@ -287,6 +293,15 @@ class PackageManagedApisRelationManager extends RelationManager
             'archived' => $query->whereNotNull('deleted_at'),
             default => $query,
         };
+    }
+
+    private function componentFilterOptions(): array
+    {
+        return ProjectComponent::query()
+            ->where('project_id', $this->getOwnerRecord()->getKey())
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
     }
 
     private function applyManualRunStatusFilter(Builder $query, ?string $state): Builder
