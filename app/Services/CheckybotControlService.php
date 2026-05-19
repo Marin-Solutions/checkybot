@@ -31,6 +31,15 @@ use Illuminate\Validation\ValidationException;
 
 class CheckybotControlService
 {
+    private const CURRENT_ISSUE_CAUSES = [
+        'timeout',
+        'dns',
+        'http_4xx',
+        'http_5xx',
+        'assertion',
+        'stale_setup',
+    ];
+
     public function __construct(
         private readonly ApiMonitorExecutionService $executionService,
         private readonly HealthEventNotificationService $notificationService,
@@ -671,9 +680,12 @@ class CheckybotControlService
         array $statuses = ['warning', 'danger'],
         int $limit = 25,
         array $exclude = [],
+        ?string $cause = null,
     ): array {
         $limit = min(max($limit, 1), 100);
         $statuses = array_values(array_intersect($statuses, ['warning', 'danger', 'pending', 'unknown']));
+        $cause = in_array($cause, self::CURRENT_ISSUE_CAUSES, true) ? $cause : null;
+        $queryLimit = $cause !== null ? 100 : $limit;
 
         if ($statuses === []) {
             $statuses = ['warning', 'danger'];
@@ -689,19 +701,20 @@ class CheckybotControlService
         }
 
         if ($type === null || $type === 'api') {
-            $issues = $issues->merge($this->currentApiIssues($user, $project, $statuses, $limit));
+            $issues = $issues->merge($this->currentApiIssues($user, $project, $statuses, $queryLimit));
         }
 
         if ($type === null || $type === 'website') {
-            $issues = $issues->merge($this->currentWebsiteIssues($user, $project, $statuses, $limit));
+            $issues = $issues->merge($this->currentWebsiteIssues($user, $project, $statuses, $queryLimit));
         }
 
         if ($type === null || $type === 'component') {
-            $issues = $issues->merge($this->currentComponentIssues($user, $project, $statuses, $limit));
+            $issues = $issues->merge($this->currentComponentIssues($user, $project, $statuses, $queryLimit));
         }
 
         return $issues
             ->reject(fn (array $issue): bool => $this->matchesCurrentIssueExclude($issue, $exclude))
+            ->when($cause !== null, fn ($issues) => $issues->where('cause', $cause))
             ->sort(function (array $a, array $b): int {
                 $statusComparison = $this->statusSortRank($a['status'] ?? null) <=> $this->statusSortRank($b['status'] ?? null);
 
@@ -966,7 +979,11 @@ class CheckybotControlService
             ->latest('updated_at')
             ->limit($limit)
             ->get()
-            ->map(fn (MonitorApis $check): array => $this->currentIssuePayload($check->project, $this->checkPayload($check)))
+            ->map(fn (MonitorApis $check): array => $this->currentIssuePayload(
+                $check->project,
+                $this->checkPayload($check),
+                $this->currentApiIssueCause($check),
+            ))
             ->all();
     }
 
@@ -991,7 +1008,11 @@ class CheckybotControlService
             ->latest('updated_at')
             ->limit($limit)
             ->get()
-            ->map(fn (Website $website): array => $this->currentIssuePayload($website->project, $this->websiteCheckPayload($website)))
+            ->map(fn (Website $website): array => $this->currentIssuePayload(
+                $website->project,
+                $this->websiteCheckPayload($website),
+                $this->currentWebsiteIssueCause($website),
+            ))
             ->all();
     }
 
@@ -1015,7 +1036,11 @@ class CheckybotControlService
             ->get()
             ->filter(fn (ProjectComponent $component): bool => in_array($this->componentStatusBucket($component), $statuses, true))
             ->take($limit)
-            ->map(fn (ProjectComponent $component): array => $this->currentIssuePayload($component->project, $this->componentCheckPayload($component)))
+            ->map(fn (ProjectComponent $component): array => $this->currentIssuePayload(
+                $component->project,
+                $this->componentCheckPayload($component),
+                $this->currentComponentIssueCause($component),
+            ))
             ->values()
             ->all();
     }
@@ -1024,7 +1049,7 @@ class CheckybotControlService
      * @param  array<string, mixed>  $check
      * @return array<string, mixed>
      */
-    private function currentIssuePayload(?Project $project, array $check): array
+    private function currentIssuePayload(?Project $project, array $check, ?string $cause): array
     {
         return [
             'project' => $project instanceof Project ? $this->projectIdentity($project) + [
@@ -1034,9 +1059,109 @@ class CheckybotControlService
             'check' => $check,
             'status' => $check['status'] ?? 'unknown',
             'summary' => $check['status_summary'] ?? null,
+            'cause' => $cause,
             'last_checked_at' => $check['last_checked_at'] ?? null,
             'updated_at' => $check['updated_at'] ?? null,
         ];
+    }
+
+    private function currentApiIssueCause(MonitorApis $check): ?string
+    {
+        $result = $check->relationLoaded('latestResult') ? $check->latestResult : $check->latestResult()->first();
+
+        if ($this->isStaleSetupIssue($check->getRawOriginal('stale_at'), $check->status_summary)) {
+            return 'stale_setup';
+        }
+
+        if ($result instanceof MonitorApiResult) {
+            if (in_array($result->transport_error_type, ['dns', 'timeout'], true)) {
+                return $result->transport_error_type;
+            }
+
+            if ($this->hasFailedAssertions($result->failed_assertions)) {
+                return 'assertion';
+            }
+
+            return $this->httpCause($result->http_code) ?? $this->summaryCause($result->summary);
+        }
+
+        return $this->summaryCause($check->status_summary);
+    }
+
+    private function currentWebsiteIssueCause(Website $website): ?string
+    {
+        $result = $website->relationLoaded('latestLogHistory') ? $website->latestLogHistory : $website->latestLogHistory()->first();
+
+        if ($this->isStaleSetupIssue($website->getRawOriginal('stale_at'), $website->status_summary)) {
+            return 'stale_setup';
+        }
+
+        if ($result instanceof WebsiteLogHistory) {
+            if (in_array($result->transport_error_type, ['dns', 'timeout'], true)) {
+                return $result->transport_error_type;
+            }
+
+            return $this->httpCause($result->http_status_code) ?? $this->summaryCause($result->summary);
+        }
+
+        return $this->summaryCause($website->status_summary);
+    }
+
+    private function currentComponentIssueCause(ProjectComponent $component): ?string
+    {
+        return $this->componentStatusBucket($component) === 'pending'
+            ? 'stale_setup'
+            : $this->summaryCause($component->derivedStatusSummary());
+    }
+
+    private function httpCause(?int $code): ?string
+    {
+        return match (true) {
+            $code !== null && $code >= 400 && $code <= 499 => 'http_4xx',
+            $code !== null && $code >= 500 && $code <= 599 => 'http_5xx',
+            default => null,
+        };
+    }
+
+    private function hasFailedAssertions(mixed $failedAssertions): bool
+    {
+        return is_array($failedAssertions) && $failedAssertions !== [];
+    }
+
+    private function isStaleSetupIssue(mixed $staleAt, ?string $summary): bool
+    {
+        return filled($staleAt) || $this->summaryCause($summary) === 'stale_setup';
+    }
+
+    private function summaryCause(?string $summary): ?string
+    {
+        $summary = Str::lower((string) $summary);
+
+        if ($summary === '') {
+            return null;
+        }
+
+        if (str_contains($summary, 'could not resolve') || str_contains($summary, 'dns')) {
+            return 'dns';
+        }
+
+        if (str_contains($summary, 'timed out') || str_contains($summary, 'timeout')) {
+            return 'timeout';
+        }
+
+        if (str_contains($summary, 'assertion')) {
+            return 'assertion';
+        }
+
+        if (str_contains($summary, 'no heartbeat') || str_contains($summary, 'no scheduled api check') || str_contains($summary, 'awaiting first active child')) {
+            return 'stale_setup';
+        }
+
+        if (preg_match('/http\s+([45]\d{2})/', $summary, $matches) === 1) {
+            return $this->httpCause((int) $matches[1]);
+        }
+
+        return null;
     }
 
     /**
