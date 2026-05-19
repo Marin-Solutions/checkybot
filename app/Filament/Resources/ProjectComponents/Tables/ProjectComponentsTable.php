@@ -23,12 +23,19 @@ use Illuminate\Database\Eloquent\Collection;
 
 class ProjectComponentsTable
 {
+    private const FAILING_CHILD_STATUSES = ['warning', 'danger'];
+
     public static function configure(Table $table): Table
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
                 'activeMonitorApis:id,project_component_id,current_status',
                 'activeWebsites:id,project_component_id,current_status,uptime_check,ssl_check',
+            ])->withCount([
+                'activeMonitorApis as active_failing_monitor_apis_count' => fn (Builder $query): Builder => $query
+                    ->whereIn('current_status', self::FAILING_CHILD_STATUSES),
+                'activeWebsites as active_failing_websites_count' => fn (Builder $query): Builder => $query
+                    ->whereIn('current_status', self::FAILING_CHILD_STATUSES),
             ]))
             ->columns([
                 TextColumn::make('name')
@@ -46,6 +53,20 @@ class ProjectComponentsTable
                         'danger' => 'danger',
                         default => 'gray',
                     }),
+                TextColumn::make('active_failing_monitor_apis_count')
+                    ->label('Failing APIs')
+                    ->state(fn (ProjectComponent $record): int => self::activeFailingMonitorApisCount($record))
+                    ->badge()
+                    ->alignCenter()
+                    ->formatStateUsing(fn (int $state): string => number_format($state))
+                    ->color(fn (int $state): string => $state > 0 ? 'danger' : 'gray'),
+                TextColumn::make('active_failing_websites_count')
+                    ->label('Failing Websites')
+                    ->state(fn (ProjectComponent $record): int => self::activeFailingWebsitesCount($record))
+                    ->badge()
+                    ->alignCenter()
+                    ->formatStateUsing(fn (int $state): string => number_format($state))
+                    ->color(fn (int $state): string => $state > 0 ? 'danger' : 'gray'),
                 TextColumn::make('delivery_state')
                     ->label('Delivery State')
                     ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
@@ -89,6 +110,40 @@ class ProjectComponentsTable
                     ->label('Add component')
                     ->icon('heroicon-o-plus'),
             ]);
+    }
+
+    private static function activeFailingMonitorApisCount(ProjectComponent $record): int
+    {
+        if ($record->active_failing_monitor_apis_count !== null) {
+            return (int) $record->active_failing_monitor_apis_count;
+        }
+
+        if ($record->relationLoaded('activeMonitorApis')) {
+            return $record->activeMonitorApis
+                ->whereIn('current_status', self::FAILING_CHILD_STATUSES)
+                ->count();
+        }
+
+        return $record->activeMonitorApis()
+            ->whereIn('current_status', self::FAILING_CHILD_STATUSES)
+            ->count();
+    }
+
+    private static function activeFailingWebsitesCount(ProjectComponent $record): int
+    {
+        if ($record->active_failing_websites_count !== null) {
+            return (int) $record->active_failing_websites_count;
+        }
+
+        if ($record->relationLoaded('activeWebsites')) {
+            return $record->activeWebsites
+                ->whereIn('current_status', self::FAILING_CHILD_STATUSES)
+                ->count();
+        }
+
+        return $record->activeWebsites()
+            ->whereIn('current_status', self::FAILING_CHILD_STATUSES)
+            ->count();
     }
 
     public static function recordActions(bool $includeEdit = true): array

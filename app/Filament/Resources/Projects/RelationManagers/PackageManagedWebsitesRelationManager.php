@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Projects\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Support\HealthStatusFilter;
 use App\Jobs\LogUptimeSslJob;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
@@ -113,6 +114,11 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                         $query,
                         $data['value'] ?? null,
                     )),
+                SelectFilter::make('project_component_id')
+                    ->label('Component')
+                    ->options(fn (): array => $this->componentFilterOptions())
+                    ->searchable()
+                    ->preload(),
                 SelectFilter::make('manual_run_status')
                     ->label('Manual run')
                     ->options([
@@ -299,6 +305,15 @@ class PackageManagedWebsitesRelationManager extends RelationManager
             'archived' => $query->whereNotNull('deleted_at'),
             default => $query,
         };
+    }
+
+    private function componentFilterOptions(): array
+    {
+        return ProjectComponent::query()
+            ->where('project_id', $this->getOwnerRecord()->getKey())
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
     }
 
     private function applyManualRunStatusFilter(Builder $query, ?string $state): Builder
