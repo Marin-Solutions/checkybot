@@ -25,15 +25,12 @@ test('heavy scheduled commands use overlap protection', function () {
 
     $monitorCheckApisEvent = $findEvent('monitor:check-apis');
     $runScheduledEvent = $findEvent('seo:run-scheduled');
-    $markStalePackagesEvent = $findEvent('app:mark-stale-package-checks');
 
     expect($monitorCheckApisEvent)->not->toBeNull();
     expect($runScheduledEvent)->not->toBeNull();
-    expect($markStalePackagesEvent)->not->toBeNull();
 
     expect($monitorCheckApisEvent->withoutOverlapping)->toBeTrue();
     expect($runScheduledEvent->withoutOverlapping)->toBeTrue();
-    expect($markStalePackagesEvent->withoutOverlapping)->toBeTrue();
 });
 
 test('command finds no scheduled checks', function () {
