@@ -514,7 +514,7 @@ class IncidentFeedWidget extends BaseWidget
     {
         return match (DB::connection()->getDriverName()) {
             'sqlite' => "json_array_length({$column}) > 0",
-            'pgsql' => "jsonb_array_length({$column}::jsonb) > 0",
+            'pgsql' => "jsonb_typeof({$column}::jsonb) = 'array' AND jsonb_array_length({$column}::jsonb) > 0",
             default => "JSON_LENGTH({$column}) > 0",
         };
     }

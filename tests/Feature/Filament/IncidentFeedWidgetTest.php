@@ -184,8 +184,14 @@ describe('IncidentFeedWidget', function () {
             ->where('subject', 'Assertion API')
             ->first();
 
+        $timeoutIncident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('subject', 'Timeout API')
+            ->first();
+
         expect($assertionIncident)->not->toBeNull()
-            ->and($assertionIncident->cause_key)->toBe('assertion');
+            ->and($assertionIncident->cause_key)->toBe('assertion')
+            ->and($timeoutIncident)->not->toBeNull()
+            ->and($timeoutIncident->cause_key)->toBe('timeout');
 
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('Assertion')
