@@ -188,6 +188,72 @@ test('website seo checks list filters by seo schedule next run window', function
         ->assertCanNotSeeTableRecords([$overdue, $soon, $later, $inactiveDue]);
 });
 
+test('website seo checks list exposes latest source and failure details', function () {
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'name' => 'Blocked SEO site',
+    ]);
+
+    SeoCheck::factory()->failed()->create([
+        'website_id' => $website->id,
+        'failure_summary' => SeoHealthCheckService::NO_CRAWLABLE_URLS_FAILURE_SUMMARY,
+        'failure_context' => [
+            'failure_reason' => 'no_crawlable_urls',
+            'website_url' => $website->url,
+        ],
+        'crawl_summary' => [
+            'is_scheduled' => true,
+            'failure_reason' => 'no_crawlable_urls',
+        ],
+    ]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->assertCanSeeTableRecords([$website])
+        ->assertTableColumnExists('latestSeoCheck.run_source_label')
+        ->assertTableColumnExists('latestSeoCheck.failure_reason_label')
+        ->assertTableColumnExists('latestSeoCheck.failure_summary')
+        ->assertSee('Scheduled')
+        ->assertSee('No crawlable URLs')
+        ->assertSee(SeoHealthCheckService::NO_CRAWLABLE_URLS_FAILURE_SUMMARY);
+});
+
+test('website seo checks list filters by latest source and failure reason', function () {
+    $user = $this->actingAsSuperAdmin();
+    $scheduledNoUrls = Website::factory()->create(['created_by' => $user->id, 'name' => 'Scheduled no URLs']);
+    $manualStartup = Website::factory()->create(['created_by' => $user->id, 'name' => 'Manual startup failure']);
+    $manualTimeout = Website::factory()->create(['created_by' => $user->id, 'name' => 'Manual timeout failure']);
+
+    SeoCheck::factory()->failed()->create([
+        'website_id' => $scheduledNoUrls->id,
+        'failure_summary' => SeoHealthCheckService::NO_CRAWLABLE_URLS_FAILURE_SUMMARY,
+        'failure_context' => ['failure_reason' => 'no_crawlable_urls'],
+        'crawl_summary' => ['is_scheduled' => true, 'failure_reason' => 'no_crawlable_urls'],
+    ]);
+    SeoCheck::factory()->failed()->create([
+        'website_id' => $manualStartup->id,
+        'failure_summary' => 'Manual SEO check could not start: robots service unavailable',
+        'failure_context' => ['failure_reason' => 'manual_startup_failed'],
+        'crawl_summary' => ['is_manual' => true, 'failure_reason' => 'manual_startup_failed'],
+    ]);
+    SeoCheck::factory()->failed()->create([
+        'website_id' => $manualTimeout->id,
+        'failure_summary' => 'Operation timed out after 900 seconds.',
+        'failure_context' => ['exception_class' => RuntimeException::class],
+        'crawl_summary' => ['is_manual' => true],
+    ]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('latest_seo_check_source', 'scheduled')
+        ->assertCanSeeTableRecords([$scheduledNoUrls])
+        ->assertCanNotSeeTableRecords([$manualStartup, $manualTimeout]);
+
+    Livewire::test(ListWebsiteSeoChecks::class)
+        ->filterTable('latest_seo_check_failure_reason', SeoCheck::FAILURE_REASON_STARTUP)
+        ->assertCanSeeTableRecords([$manualStartup])
+        ->assertCanNotSeeTableRecords([$scheduledNoUrls, $manualTimeout]);
+});
+
 test('seo check list only includes checks for websites owned by the current user', function () {
     $this->createResourcePermissions('SeoCheck');
 
@@ -208,6 +274,69 @@ test('seo check list only includes checks for websites owned by the current user
     Livewire::test(ListSeoChecks::class)
         ->assertCanSeeTableRecords([$ownSeoCheck])
         ->assertCanNotSeeTableRecords([$otherSeoCheck]);
+});
+
+test('seo check list exposes source and failure details', function () {
+    $this->createResourcePermissions('SeoCheck');
+
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['ViewAny:SeoCheck', 'View:SeoCheck']);
+    $website = Website::factory()->create(['created_by' => $user->id]);
+    $seoCheck = SeoCheck::factory()->failed()->create([
+        'website_id' => $website->id,
+        'failure_summary' => 'SEO check expired after running for more than 30 minutes without finishing.',
+        'failure_context' => [
+            'expired_by' => 'App\\Console\\Commands\\ExpireStuckSeoChecks',
+            'previous_status' => SeoCheck::STATUS_RUNNING,
+        ],
+        'crawl_summary' => ['is_scheduled' => true],
+    ]);
+
+    Livewire::test(ListSeoChecks::class)
+        ->assertCanSeeTableRecords([$seoCheck])
+        ->assertTableColumnExists('run_source_label')
+        ->assertTableColumnExists('failure_reason_label')
+        ->assertTableColumnExists('failure_summary')
+        ->assertSee('Scheduled')
+        ->assertSee('Stuck-run expiry')
+        ->assertSee('SEO check expired after running for more than 30 minutes without finishing.');
+});
+
+test('seo check list filters by source and failure reason', function () {
+    $this->createResourcePermissions('SeoCheck');
+
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['ViewAny:SeoCheck', 'View:SeoCheck']);
+    $website = Website::factory()->create(['created_by' => $user->id]);
+
+    $scheduledNoUrls = SeoCheck::factory()->failed()->create([
+        'website_id' => $website->id,
+        'failure_summary' => SeoHealthCheckService::NO_CRAWLABLE_URLS_FAILURE_SUMMARY,
+        'failure_context' => ['failure_reason' => 'no_crawlable_urls'],
+        'crawl_summary' => ['is_scheduled' => true, 'failure_reason' => 'no_crawlable_urls'],
+    ]);
+    $manualStartup = SeoCheck::factory()->failed()->create([
+        'website_id' => $website->id,
+        'failure_summary' => 'Manual SEO check could not start: robots service unavailable',
+        'failure_context' => ['failure_reason' => 'manual_startup_failed'],
+        'crawl_summary' => ['is_manual' => true, 'failure_reason' => 'manual_startup_failed'],
+    ]);
+    $manualTimeout = SeoCheck::factory()->failed()->create([
+        'website_id' => $website->id,
+        'failure_summary' => 'SEO crawler timed out before the crawl could complete.',
+        'failure_context' => ['exception_class' => RuntimeException::class],
+        'crawl_summary' => ['is_manual' => true],
+    ]);
+
+    Livewire::test(ListSeoChecks::class)
+        ->filterTable('run_source', 'scheduled')
+        ->assertCanSeeTableRecords([$scheduledNoUrls])
+        ->assertCanNotSeeTableRecords([$manualStartup, $manualTimeout]);
+
+    Livewire::test(ListSeoChecks::class)
+        ->filterTable('failure_reason', SeoCheck::FAILURE_REASON_TIMEOUT)
+        ->assertCanSeeTableRecords([$manualTimeout])
+        ->assertCanNotSeeTableRecords([$scheduledNoUrls, $manualStartup]);
 });
 
 test('seo check policy requires ownership through the related website', function () {

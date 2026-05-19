@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\WebsiteSeoCheckResource\Pages;
+use App\Models\SeoCheck;
 use App\Models\Website;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -57,6 +58,27 @@ class WebsiteSeoCheckResource extends Resource
                         default => 'gray',
                     })
                     ->placeholder('No checks'),
+                Tables\Columns\TextColumn::make('latestSeoCheck.run_source_label')
+                    ->label('Latest Source')
+                    ->badge()
+                    ->color(fn (Website $record): string => $record->latestSeoCheck?->run_source === 'scheduled' ? 'info' : 'gray')
+                    ->placeholder('No checks'),
+                Tables\Columns\TextColumn::make('latestSeoCheck.failure_reason_label')
+                    ->label('Failure Reason')
+                    ->badge()
+                    ->color(fn (?string $state): string => match ($state) {
+                        'No crawlable URLs' => 'warning',
+                        'Startup failed', 'Timeout', 'Stuck-run expiry' => 'danger',
+                        'Other failure' => 'gray',
+                        default => 'gray',
+                    })
+                    ->placeholder('None'),
+                Tables\Columns\TextColumn::make('latestSeoCheck.failure_summary')
+                    ->label('Failure Summary')
+                    ->limit(80)
+                    ->wrap()
+                    ->placeholder('None')
+                    ->tooltip(fn (?string $state): ?string => $state),
                 Tables\Columns\TextColumn::make('seoSchedule.is_active')
                     ->label('SEO Schedule')
                     ->badge()
@@ -169,6 +191,44 @@ class WebsiteSeoCheckResource extends Resource
 
                         return $query->whereHas('latestSeoCheck', function (Builder $query) use ($data) {
                             $query->where('status', $data['value']);
+                        });
+                    }),
+                Tables\Filters\SelectFilter::make('latest_seo_check_source')
+                    ->label('Latest Source')
+                    ->options([
+                        'scheduled' => 'Scheduled',
+                        'manual' => 'Manual',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! $data['value']) {
+                            return $query;
+                        }
+
+                        return $query->whereHas('latestSeoCheck', function (Builder $query) use ($data): void {
+                            if ($data['value'] === 'scheduled') {
+                                $query->where('crawl_summary->is_scheduled', true);
+
+                                return;
+                            }
+
+                            $query->where(function (Builder $query): void {
+                                $query
+                                    ->where('crawl_summary->is_manual', true)
+                                    ->orWhereNull('crawl_summary->is_scheduled')
+                                    ->orWhere('crawl_summary->is_scheduled', false);
+                            });
+                        });
+                    }),
+                Tables\Filters\SelectFilter::make('latest_seo_check_failure_reason')
+                    ->label('Failure Reason')
+                    ->options(SeoCheck::failureReasonFilterOptions())
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! $data['value']) {
+                            return $query;
+                        }
+
+                        return $query->whereHas('latestSeoCheck', function (Builder $query) use ($data): void {
+                            SeoCheck::applyFailureReasonFilter($query, $data['value']);
                         });
                     }),
                 Tables\Filters\SelectFilter::make('seo_schedule_state')

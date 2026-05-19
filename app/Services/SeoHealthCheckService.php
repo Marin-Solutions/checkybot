@@ -65,7 +65,9 @@ class SeoHealthCheckService
 
         Log::info('Found '.count($crawlableUrls)." crawlable URLs for {$website->url}");
 
-        $seoCheck = DB::transaction(function () use ($website, $crawlableUrls) {
+        $userId = auth()->id() ?: $website->created_by;
+
+        $seoCheck = DB::transaction(function () use ($website, $crawlableUrls, $userId) {
             // Lock the website row so concurrent manual starts re-check under the same database lock.
             Website::query()
                 ->whereKey($website->id)
@@ -91,6 +93,8 @@ class SeoHealthCheckService
                 'crawl_summary' => [
                     'sitemap_urls_found' => count($crawlableUrls) > 1,
                     'robots_txt_checked' => true,
+                    'manual_by' => $userId,
+                    'is_manual' => true,
                 ],
             ]);
         });
