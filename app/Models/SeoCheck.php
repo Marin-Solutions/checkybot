@@ -33,6 +33,12 @@ class SeoCheck extends Model
 
     public const FAILURE_REASON_OTHER = 'other';
 
+    private const STARTUP_FAILURE_REASONS = [
+        'manual_startup_failed',
+        'scheduled_startup_failed',
+        'manual_dispatch_failed',
+    ];
+
     protected $fillable = [
         'website_id',
         'status',
@@ -140,7 +146,7 @@ class SeoCheck extends Model
             return self::FAILURE_REASON_NO_CRAWLABLE_URLS;
         }
 
-        if (in_array($reason, ['manual_startup_failed', 'scheduled_startup_failed', 'manual_dispatch_failed'], true)) {
+        if (in_array($reason, self::STARTUP_FAILURE_REASONS, true)) {
             return self::FAILURE_REASON_STARTUP;
         }
 
@@ -188,30 +194,38 @@ class SeoCheck extends Model
     public static function applyFailureReasonFilter(Builder $query, string $reason): Builder
     {
         return match ($reason) {
-            self::FAILURE_REASON_NO_CRAWLABLE_URLS => $query->where(function (Builder $query): void {
-                $query
-                    ->where('failure_context->failure_reason', self::FAILURE_REASON_NO_CRAWLABLE_URLS)
-                    ->orWhere('crawl_summary->failure_reason', self::FAILURE_REASON_NO_CRAWLABLE_URLS);
-            }),
-            self::FAILURE_REASON_STARTUP => $query->where(function (Builder $query): void {
-                $query
-                    ->whereIn('failure_context->failure_reason', ['manual_startup_failed', 'scheduled_startup_failed', 'manual_dispatch_failed'])
-                    ->orWhereIn('crawl_summary->failure_reason', ['manual_startup_failed', 'scheduled_startup_failed', 'manual_dispatch_failed']);
-            }),
-            self::FAILURE_REASON_TIMEOUT => $query->where(function (Builder $query): void {
-                $query
-                    ->where('failure_summary', 'like', '%timeout%')
-                    ->orWhere('failure_summary', 'like', '%timed out%')
-                    ->orWhere('failure_context->exception', 'like', '%Timeout%')
-                    ->orWhere('failure_context->exception_class', 'like', '%Timeout%')
-                    ->orWhere('failure_context->exception_message', 'like', '%timeout%')
-                    ->orWhere('failure_context->exception_message', 'like', '%timed out%');
-            }),
-            self::FAILURE_REASON_STUCK_RUN_EXPIRY => $query->where(function (Builder $query): void {
-                $query
-                    ->whereNotNull('failure_context->expired_by')
-                    ->orWhere('failure_summary', 'like', 'SEO check expired after%');
-            }),
+            self::FAILURE_REASON_NO_CRAWLABLE_URLS => $query
+                ->where('status', self::STATUS_FAILED)
+                ->where(function (Builder $query): void {
+                    $query
+                        ->where('failure_context->failure_reason', self::FAILURE_REASON_NO_CRAWLABLE_URLS)
+                        ->orWhere('crawl_summary->failure_reason', self::FAILURE_REASON_NO_CRAWLABLE_URLS);
+                }),
+            self::FAILURE_REASON_STARTUP => $query
+                ->where('status', self::STATUS_FAILED)
+                ->where(function (Builder $query): void {
+                    $query
+                        ->whereIn('failure_context->failure_reason', self::STARTUP_FAILURE_REASONS)
+                        ->orWhereIn('crawl_summary->failure_reason', self::STARTUP_FAILURE_REASONS);
+                }),
+            self::FAILURE_REASON_TIMEOUT => $query
+                ->where('status', self::STATUS_FAILED)
+                ->where(function (Builder $query): void {
+                    $query
+                        ->where('failure_summary', 'like', '%timeout%')
+                        ->orWhere('failure_summary', 'like', '%timed out%')
+                        ->orWhere('failure_context->exception', 'like', '%Timeout%')
+                        ->orWhere('failure_context->exception_class', 'like', '%Timeout%')
+                        ->orWhere('failure_context->exception_message', 'like', '%timeout%')
+                        ->orWhere('failure_context->exception_message', 'like', '%timed out%');
+                }),
+            self::FAILURE_REASON_STUCK_RUN_EXPIRY => $query
+                ->where('status', self::STATUS_FAILED)
+                ->where(function (Builder $query): void {
+                    $query
+                        ->whereNotNull('failure_context->expired_by')
+                        ->orWhere('failure_summary', 'like', 'SEO check expired after%');
+                }),
             self::FAILURE_REASON_OTHER => $query
                 ->where('status', self::STATUS_FAILED)
                 ->where(function (Builder $query): void {
@@ -219,9 +233,7 @@ class SeoCheck extends Model
                         ->whereNull('failure_context->failure_reason')
                         ->orWhereNotIn('failure_context->failure_reason', [
                             self::FAILURE_REASON_NO_CRAWLABLE_URLS,
-                            'manual_startup_failed',
-                            'scheduled_startup_failed',
-                            'manual_dispatch_failed',
+                            ...self::STARTUP_FAILURE_REASONS,
                         ]);
                 })
                 ->where(function (Builder $query): void {
@@ -229,9 +241,7 @@ class SeoCheck extends Model
                         ->whereNull('crawl_summary->failure_reason')
                         ->orWhereNotIn('crawl_summary->failure_reason', [
                             self::FAILURE_REASON_NO_CRAWLABLE_URLS,
-                            'manual_startup_failed',
-                            'scheduled_startup_failed',
-                            'manual_dispatch_failed',
+                            ...self::STARTUP_FAILURE_REASONS,
                         ]);
                 })
                 ->whereNull('failure_context->expired_by')
@@ -241,6 +251,23 @@ class SeoCheck extends Model
                         ->orWhere('failure_summary', 'not like', 'SEO check expired after%')
                         ->where('failure_summary', 'not like', '%timeout%')
                         ->where('failure_summary', 'not like', '%timed out%');
+                })
+                ->where(function (Builder $query): void {
+                    foreach ([
+                        'failure_context->exception',
+                        'failure_context->exception_class',
+                        'failure_context->exception_message',
+                    ] as $column) {
+                        $query->where(function (Builder $query) use ($column): void {
+                            $query
+                                ->whereNull($column)
+                                ->orWhere(function (Builder $query) use ($column): void {
+                                    $query
+                                        ->where($column, 'not like', '%timeout%')
+                                        ->where($column, 'not like', '%timed out%');
+                                });
+                        });
+                    }
                 }),
             default => $query,
         };
