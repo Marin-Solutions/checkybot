@@ -108,6 +108,93 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('Search homepage failing');
     });
 
+    it('shows and filters website incidents by derived failure cause', function () {
+        $dnsWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'DNS outage homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->transportError('dns')->create([
+            'website_id' => $dnsWebsite->id,
+            'summary' => 'DNS lookup failed for homepage',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $httpWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'HTTP outage homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $httpWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Homepage returned HTTP 503',
+            'http_status_code' => 503,
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $dnsIncident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('subject', 'DNS outage homepage')
+            ->first();
+
+        expect($dnsIncident)->not->toBeNull()
+            ->and($dnsIncident->cause_key)->toBe('dns');
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('DNS')
+            ->assertSee('HTTP')
+            ->filterTable('cause_key', 'dns')
+            ->assertSee('DNS lookup failed for homepage')
+            ->assertDontSee('Homepage returned HTTP 503');
+    });
+
+    it('shows and filters API incidents by assertion and transport causes', function () {
+        $assertionApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Assertion API',
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $assertionApi->id,
+            'summary' => 'Expected active status.',
+            'http_code' => 200,
+            'failed_assertions' => [[
+                'path' => 'data.status',
+                'type' => 'value_compare',
+                'message' => 'Expected active status.',
+            ]],
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $timeoutApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Timeout API',
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $timeoutApi->id,
+            'summary' => 'API request timed out',
+            'http_code' => 0,
+            'failed_assertions' => null,
+            'transport_error_type' => 'timeout',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $assertionIncident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('subject', 'Assertion API')
+            ->first();
+
+        expect($assertionIncident)->not->toBeNull()
+            ->and($assertionIncident->cause_key)->toBe('assertion');
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('Assertion')
+            ->assertSee('Timeout')
+            ->filterTable('cause_key', 'assertion')
+            ->assertSee('Expected active status.')
+            ->assertDontSee('API request timed out');
+    });
+
     it('opens the exact website log evidence row from an incident', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
@@ -445,7 +532,10 @@ describe('IncidentFeedWidget', function () {
                 ->selectRaw('1 as current_monitoring_enabled')
                 ->selectRaw('? as subject', ["{$source} subject"])
                 ->selectRaw('? as subject_id', [$sourceSubjectId])
+                ->selectRaw('NULL as component_id')
+                ->selectRaw('NULL as component_name')
                 ->selectRaw('? as summary', ["{$source} summary"])
+                ->selectRaw('NULL as cause_key')
                 ->selectRaw('? as occurred_at', [$occurredAt->toDateTimeString()]);
         };
 
