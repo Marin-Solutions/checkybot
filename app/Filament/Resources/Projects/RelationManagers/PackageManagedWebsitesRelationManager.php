@@ -9,6 +9,8 @@ use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
+use Filament\Actions\BulkAction;
+use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -17,6 +19,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 class PackageManagedWebsitesRelationManager extends RelationManager
@@ -260,6 +263,24 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     }),
                 ViewAction::make(),
             ])
+            ->bulkActions([
+                BulkActionGroup::make([
+                    BulkAction::make('run_selected_diagnostics')
+                        ->label('Run selected diagnostics')
+                        ->icon('heroicon-o-bolt')
+                        ->color('primary')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                        ->requiresConfirmation()
+                        ->modalIcon('heroicon-o-bolt')
+                        ->modalHeading('Run selected website diagnostics')
+                        ->modalDescription('Checkybot will queue fresh diagnostics for selected active websites and skip archived, disabled, or already queued rows.')
+                        ->modalSubmitActionLabel('Run diagnostics')
+                        ->action(function (Collection $records): void {
+                            $this->queueSelectedDiagnostics($records);
+                        })
+                        ->deselectRecordsAfterCompletion(),
+                ]),
+            ])
             ->modifyQueryUsing(fn (Builder $query) => $query
                 ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
                 ->withoutGlobalScopes([
@@ -279,6 +300,84 @@ class PackageManagedWebsitesRelationManager extends RelationManager
         }
 
         return 'Active';
+    }
+
+    private function queueSelectedDiagnostics(Collection $records): void
+    {
+        $queued = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($records as $record) {
+            $queuedStatePersisted = false;
+
+            try {
+                $record->refresh();
+
+                if ($record->deleted_at !== null || (! $record->uptime_check && ! $record->ssl_check) || $record->hasQueuedDiagnostic()) {
+                    $skipped++;
+
+                    continue;
+                }
+
+                $record->forceFill([
+                    'diagnostic_queued_at' => now(),
+                ])->save();
+                $queuedStatePersisted = true;
+
+                LogUptimeSslJob::dispatch($record->withoutRelations(), onDemand: true);
+                $queued++;
+            } catch (\Throwable $e) {
+                $failed++;
+
+                if ($queuedStatePersisted) {
+                    $record->forceFill([
+                        'diagnostic_queued_at' => null,
+                    ])->save();
+                }
+
+                Log::error('Bulk package-managed website diagnostic dispatch failed from project relation action', [
+                    'website_id' => $record->id,
+                    'project_id' => $record->project_id,
+                    'exception' => $e,
+                ]);
+            }
+        }
+
+        $this->sendBulkDiagnosticsNotification($queued, $skipped, $failed);
+    }
+
+    private function sendBulkDiagnosticsNotification(int $queued, int $skipped, int $failed): void
+    {
+        $skippedMessage = $skipped > 0
+            ? " Skipped {$skipped} archived, disabled, or already queued ".str('row')->plural($skipped).'.'
+            : '';
+
+        if ($queued === 0 && $failed === 0) {
+            Notification::make()
+                ->title('No diagnostics queued')
+                ->body('Every selected website was archived, disabled, or already queued.')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
+        if ($failed > 0) {
+            Notification::make()
+                ->title($queued === 0 ? 'Diagnostics could not be queued' : "{$queued} ".str('diagnostic')->plural($queued).' queued')
+                ->body("Checkybot could not queue {$failed} selected website ".str('diagnostic')->plural($failed).'. Check the application logs for details.'.$skippedMessage)
+                ->danger()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->title($queued === 1 ? '1 diagnostic queued' : "{$queued} diagnostics queued")
+            ->body('Checkybot will run the selected website checks in the background and add the evidence to diagnostic history.'.$skippedMessage)
+            ->success()
+            ->send();
     }
 
     private function monitoringStateDescription(Website $record): ?string
