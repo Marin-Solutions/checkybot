@@ -201,6 +201,36 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('API request timed out');
     });
 
+    it('derives ssl cause for ssl-only expiry incidents', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Certificate expiry check',
+            'uptime_check' => false,
+            'ssl_check' => true,
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'warning',
+            'summary' => 'Certificate expires soon',
+            'http_status_code' => null,
+            'ssl_expiry_date' => now()->addDays(3),
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('subject', 'Certificate expiry check')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->cause_key)->toBe('ssl');
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('SSL')
+            ->filterTable('cause_key', 'ssl')
+            ->assertSee('Certificate expires soon');
+    });
+
     it('opens the exact website log evidence row from an incident', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,

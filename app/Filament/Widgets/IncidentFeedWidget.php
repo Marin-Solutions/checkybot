@@ -484,6 +484,7 @@ class IncidentFeedWidget extends BaseWidget
                 WHEN website_log_history.transport_error_type = 'timeout' THEN 'timeout'
                 WHEN website_log_history.transport_error_type = 'tls' THEN 'ssl'
                 WHEN website_log_history.http_status_code BETWEEN 400 AND 599 THEN 'http'
+                WHEN website_log_history.ssl_expiry_date IS NOT NULL THEN 'ssl'
                 ELSE 'other'
             END
         ";
