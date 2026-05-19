@@ -2,10 +2,12 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 class SeoCheck extends Model
 {
@@ -20,6 +22,16 @@ class SeoCheck extends Model
     public const STATUS_FAILED = 'failed';
 
     public const STATUS_CANCELLED = 'cancelled';
+
+    public const FAILURE_REASON_NO_CRAWLABLE_URLS = 'no_crawlable_urls';
+
+    public const FAILURE_REASON_STARTUP = 'startup';
+
+    public const FAILURE_REASON_TIMEOUT = 'timeout';
+
+    public const FAILURE_REASON_STUCK_RUN_EXPIRY = 'stuck_run_expiry';
+
+    public const FAILURE_REASON_OTHER = 'other';
 
     protected $fillable = [
         'website_id',
@@ -93,6 +105,145 @@ class SeoCheck extends Model
     public function isCancellable(): bool
     {
         return in_array($this->status, [self::STATUS_PENDING, self::STATUS_RUNNING], true);
+    }
+
+    public function getRunSourceAttribute(): string
+    {
+        $crawlSummary = $this->crawl_summary ?? [];
+
+        if (($crawlSummary['is_scheduled'] ?? false) === true) {
+            return 'scheduled';
+        }
+
+        return 'manual';
+    }
+
+    public function getRunSourceLabelAttribute(): string
+    {
+        return match ($this->run_source) {
+            'scheduled' => 'Scheduled',
+            default => 'Manual',
+        };
+    }
+
+    public function getFailureReasonAttribute(): ?string
+    {
+        if (! $this->isFailed()) {
+            return null;
+        }
+
+        $failureContext = $this->failure_context ?? [];
+        $crawlSummary = $this->crawl_summary ?? [];
+        $reason = $failureContext['failure_reason'] ?? $crawlSummary['failure_reason'] ?? null;
+
+        if ($reason === self::FAILURE_REASON_NO_CRAWLABLE_URLS) {
+            return self::FAILURE_REASON_NO_CRAWLABLE_URLS;
+        }
+
+        if (in_array($reason, ['manual_startup_failed', 'scheduled_startup_failed', 'manual_dispatch_failed'], true)) {
+            return self::FAILURE_REASON_STARTUP;
+        }
+
+        if (($failureContext['expired_by'] ?? null) || str_starts_with((string) $this->failure_summary, 'SEO check expired after')) {
+            return self::FAILURE_REASON_STUCK_RUN_EXPIRY;
+        }
+
+        $failureText = strtolower(implode(' ', array_filter([
+            $this->failure_summary,
+            $failureContext['exception'] ?? null,
+            $failureContext['exception_class'] ?? null,
+            $failureContext['exception_message'] ?? null,
+        ])));
+
+        if (Str::contains($failureText, ['timeout', 'timed out'])) {
+            return self::FAILURE_REASON_TIMEOUT;
+        }
+
+        return self::FAILURE_REASON_OTHER;
+    }
+
+    public function getFailureReasonLabelAttribute(): ?string
+    {
+        return match ($this->failure_reason) {
+            self::FAILURE_REASON_NO_CRAWLABLE_URLS => 'No crawlable URLs',
+            self::FAILURE_REASON_STARTUP => 'Startup failed',
+            self::FAILURE_REASON_TIMEOUT => 'Timeout',
+            self::FAILURE_REASON_STUCK_RUN_EXPIRY => 'Stuck-run expiry',
+            self::FAILURE_REASON_OTHER => 'Other failure',
+            default => null,
+        };
+    }
+
+    public static function failureReasonFilterOptions(): array
+    {
+        return [
+            self::FAILURE_REASON_STARTUP => 'Startup failed',
+            self::FAILURE_REASON_NO_CRAWLABLE_URLS => 'No crawlable URLs',
+            self::FAILURE_REASON_TIMEOUT => 'Timeout',
+            self::FAILURE_REASON_STUCK_RUN_EXPIRY => 'Stuck-run expiry',
+            self::FAILURE_REASON_OTHER => 'Other failure',
+        ];
+    }
+
+    public static function applyFailureReasonFilter(Builder $query, string $reason): Builder
+    {
+        return match ($reason) {
+            self::FAILURE_REASON_NO_CRAWLABLE_URLS => $query->where(function (Builder $query): void {
+                $query
+                    ->where('failure_context->failure_reason', self::FAILURE_REASON_NO_CRAWLABLE_URLS)
+                    ->orWhere('crawl_summary->failure_reason', self::FAILURE_REASON_NO_CRAWLABLE_URLS);
+            }),
+            self::FAILURE_REASON_STARTUP => $query->where(function (Builder $query): void {
+                $query
+                    ->whereIn('failure_context->failure_reason', ['manual_startup_failed', 'scheduled_startup_failed', 'manual_dispatch_failed'])
+                    ->orWhereIn('crawl_summary->failure_reason', ['manual_startup_failed', 'scheduled_startup_failed', 'manual_dispatch_failed']);
+            }),
+            self::FAILURE_REASON_TIMEOUT => $query->where(function (Builder $query): void {
+                $query
+                    ->where('failure_summary', 'like', '%timeout%')
+                    ->orWhere('failure_summary', 'like', '%timed out%')
+                    ->orWhere('failure_context->exception', 'like', '%Timeout%')
+                    ->orWhere('failure_context->exception_class', 'like', '%Timeout%')
+                    ->orWhere('failure_context->exception_message', 'like', '%timeout%')
+                    ->orWhere('failure_context->exception_message', 'like', '%timed out%');
+            }),
+            self::FAILURE_REASON_STUCK_RUN_EXPIRY => $query->where(function (Builder $query): void {
+                $query
+                    ->whereNotNull('failure_context->expired_by')
+                    ->orWhere('failure_summary', 'like', 'SEO check expired after%');
+            }),
+            self::FAILURE_REASON_OTHER => $query
+                ->where('status', self::STATUS_FAILED)
+                ->where(function (Builder $query): void {
+                    $query
+                        ->whereNull('failure_context->failure_reason')
+                        ->orWhereNotIn('failure_context->failure_reason', [
+                            self::FAILURE_REASON_NO_CRAWLABLE_URLS,
+                            'manual_startup_failed',
+                            'scheduled_startup_failed',
+                            'manual_dispatch_failed',
+                        ]);
+                })
+                ->where(function (Builder $query): void {
+                    $query
+                        ->whereNull('crawl_summary->failure_reason')
+                        ->orWhereNotIn('crawl_summary->failure_reason', [
+                            self::FAILURE_REASON_NO_CRAWLABLE_URLS,
+                            'manual_startup_failed',
+                            'scheduled_startup_failed',
+                            'manual_dispatch_failed',
+                        ]);
+                })
+                ->whereNull('failure_context->expired_by')
+                ->where(function (Builder $query): void {
+                    $query
+                        ->whereNull('failure_summary')
+                        ->orWhere('failure_summary', 'not like', 'SEO check expired after%')
+                        ->where('failure_summary', 'not like', '%timeout%')
+                        ->where('failure_summary', 'not like', '%timed out%');
+                }),
+            default => $query,
+        };
     }
 
     public function getDurationInSeconds(): ?int

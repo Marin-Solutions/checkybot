@@ -7,6 +7,7 @@ use App\Models\SeoCheck;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class SeoCheckResource extends Resource
 {
@@ -49,6 +50,26 @@ class SeoCheckResource extends Resource
                         'pending' => 'gray',
                     })
                     ->sortable(),
+                Tables\Columns\TextColumn::make('run_source_label')
+                    ->label('Source')
+                    ->badge()
+                    ->color(fn (SeoCheck $record): string => $record->run_source === 'scheduled' ? 'info' : 'gray'),
+                Tables\Columns\TextColumn::make('failure_reason_label')
+                    ->label('Failure Reason')
+                    ->badge()
+                    ->color(fn (?string $state): string => match ($state) {
+                        'No crawlable URLs' => 'warning',
+                        'Startup failed', 'Timeout', 'Stuck-run expiry' => 'danger',
+                        'Other failure' => 'gray',
+                        default => 'gray',
+                    })
+                    ->placeholder('None'),
+                Tables\Columns\TextColumn::make('failure_summary')
+                    ->label('Failure Summary')
+                    ->limit(80)
+                    ->wrap()
+                    ->placeholder('None')
+                    ->tooltip(fn (?string $state): ?string => $state),
                 Tables\Columns\TextColumn::make('total_urls_crawled')
                     ->label('URLs Crawled')
                     ->numeric()
@@ -94,6 +115,38 @@ class SeoCheckResource extends Resource
                         'failed' => 'Failed',
                         'cancelled' => 'Cancelled',
                     ]),
+                Tables\Filters\SelectFilter::make('run_source')
+                    ->label('Source')
+                    ->options([
+                        'scheduled' => 'Scheduled',
+                        'manual' => 'Manual',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! $data['value']) {
+                            return $query;
+                        }
+
+                        if ($data['value'] === 'scheduled') {
+                            return $query->where('crawl_summary->is_scheduled', true);
+                        }
+
+                        return $query->where(function (Builder $query): void {
+                            $query
+                                ->where('crawl_summary->is_manual', true)
+                                ->orWhereNull('crawl_summary->is_scheduled')
+                                ->orWhere('crawl_summary->is_scheduled', false);
+                        });
+                    }),
+                Tables\Filters\SelectFilter::make('failure_reason')
+                    ->label('Failure Reason')
+                    ->options(SeoCheck::failureReasonFilterOptions())
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (! $data['value']) {
+                            return $query;
+                        }
+
+                        return SeoCheck::applyFailureReasonFilter($query, $data['value']);
+                    }),
             ])
             ->actions([
                 \Filament\Actions\ViewAction::make(),
