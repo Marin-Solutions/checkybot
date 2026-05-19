@@ -708,6 +708,17 @@ test('application list shows and filters setup verification status', function ()
         'last_synced_at' => null,
     ]);
 
+    $whitespaceOnly = Project::factory()->create([
+        'name' => 'Whitespace Only App',
+        'created_by' => $user->id,
+        'identity_endpoint' => '   ',
+        'package_version' => '   ',
+        'package_key' => '   ',
+        'base_url' => '   ',
+        'repository' => '   ',
+        'last_synced_at' => null,
+    ]);
+
     $waitingForFirstSync = Project::factory()->create([
         'name' => 'Registered App',
         'created_by' => $user->id,
@@ -742,23 +753,23 @@ test('application list shows and filters setup verification status', function ()
 
     Livewire::test(ListProjects::class)
         ->filterTable('setup_verification_state', 'waiting_for_registration')
-        ->assertCanSeeTableRecords([$waitingForRegistration])
+        ->assertCanSeeTableRecords([$waitingForRegistration, $whitespaceOnly])
         ->assertCanNotSeeTableRecords([$waitingForFirstSync, $syncStale, $synced]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('setup_verification_state', 'waiting_for_first_sync')
         ->assertCanSeeTableRecords([$waitingForFirstSync])
-        ->assertCanNotSeeTableRecords([$waitingForRegistration, $syncStale, $synced]);
+        ->assertCanNotSeeTableRecords([$waitingForRegistration, $whitespaceOnly, $syncStale, $synced]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('setup_verification_state', 'sync_stale')
         ->assertCanSeeTableRecords([$syncStale])
-        ->assertCanNotSeeTableRecords([$waitingForRegistration, $waitingForFirstSync, $synced]);
+        ->assertCanNotSeeTableRecords([$waitingForRegistration, $whitespaceOnly, $waitingForFirstSync, $synced]);
 
     Livewire::test(ListProjects::class)
         ->filterTable('setup_verification_state', 'synced')
         ->assertCanSeeTableRecords([$synced])
-        ->assertCanNotSeeTableRecords([$waitingForRegistration, $waitingForFirstSync, $syncStale]);
+        ->assertCanNotSeeTableRecords([$waitingForRegistration, $whitespaceOnly, $waitingForFirstSync, $syncStale]);
 });
 
 test('application detail shows package sync status metadata', function () {

@@ -278,7 +278,7 @@ class ProjectsTable
     {
         return $query
             ->whereNotNull($column)
-            ->where($column, '!=', '');
+            ->where(DB::raw("TRIM({$column})"), '!=', '');
     }
 
     protected static function whereBlank(Builder $query, string $column): Builder
@@ -286,7 +286,7 @@ class ProjectsTable
         return $query->where(function (Builder $query) use ($column): void {
             $query
                 ->whereNull($column)
-                ->orWhere($column, '');
+                ->orWhere(DB::raw("TRIM({$column})"), '');
         });
     }
 
