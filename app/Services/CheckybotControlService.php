@@ -684,6 +684,10 @@ class CheckybotControlService
 
         $issues = collect();
 
+        if ($type === null || $type === 'project') {
+            $issues = $issues->merge($this->currentProjectIssues($user, $project, $statuses, $limit));
+        }
+
         if ($type === null || $type === 'api') {
             $issues = $issues->merge($this->currentApiIssues($user, $project, $statuses, $limit));
         }
@@ -923,6 +927,28 @@ class CheckybotControlService
      * @param  array<int, string>  $statuses
      * @return array<int, array<string, mixed>>
      */
+    private function currentProjectIssues(User $user, ?Project $project, array $statuses, int $limit): array
+    {
+        $query = $this->projectQuery($user);
+
+        if ($project instanceof Project) {
+            $query->whereKey($project->id);
+        }
+
+        return $query
+            ->latest('updated_at')
+            ->get()
+            ->filter(fn (Project $project): bool => in_array($this->projectSetupIssueStatus($project), $statuses, true))
+            ->take($limit)
+            ->map(fn (Project $project): array => $this->projectSetupIssuePayload($project))
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, string>  $statuses
+     * @return array<int, array<string, mixed>>
+     */
     private function currentApiIssues(User $user, ?Project $project, array $statuses, int $limit): array
     {
         $query = MonitorApis::query()
@@ -1011,6 +1037,43 @@ class CheckybotControlService
             'last_checked_at' => $check['last_checked_at'] ?? null,
             'updated_at' => $check['updated_at'] ?? null,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function projectSetupIssuePayload(Project $project): array
+    {
+        $setupVerification = $this->setupVerificationPayload($project);
+
+        return [
+            'project' => $this->projectIdentity($project) + [
+                'name' => $project->name,
+                'environment' => $project->environment,
+            ],
+            'check' => [
+                'type' => 'project',
+                'key' => $project->package_key ?? (string) $project->id,
+                'name' => "{$project->name} setup",
+                'supports_run' => false,
+                'setup_verification' => $setupVerification,
+                'created_at' => $project->created_at?->toISOString(),
+                'updated_at' => $project->updated_at?->toISOString(),
+            ],
+            'status' => $this->projectSetupIssueStatus($project),
+            'summary' => $project->setupVerificationSummary(),
+            'action' => $project->setupVerificationAction(),
+            'last_checked_at' => $project->last_synced_at?->toISOString(),
+            'updated_at' => $project->updated_at?->toISOString(),
+        ];
+    }
+
+    private function projectSetupIssueStatus(Project $project): string
+    {
+        return match ($project->setupVerificationState()) {
+            'synced' => 'healthy',
+            default => 'warning',
+        };
     }
 
     /**
