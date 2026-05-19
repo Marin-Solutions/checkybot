@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\WebsiteResource\RelationManagers;
 
 use App\Enums\RunSource;
+use App\Enums\UptimeTransportErrorType;
 use App\Models\WebsiteLogHistory;
 use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
@@ -70,6 +71,18 @@ class LogHistoryRelationManager extends RelationManager
                 Tables\Filters\SelectFilter::make('run_source')
                     ->label('Run')
                     ->options(RunSource::options()),
+                Tables\Filters\SelectFilter::make('transport_error_type')
+                    ->label('Transport error')
+                    ->options(static::transportErrorOptions()),
+                Tables\Filters\Filter::make('no_response')
+                    ->label('No response')
+                    ->query(fn ($query) => $query->where('http_status_code', 0)),
+                Tables\Filters\Filter::make('http_4xx')
+                    ->label('HTTP 4xx')
+                    ->query(fn ($query) => $query->whereBetween('http_status_code', [400, 499])),
+                Tables\Filters\Filter::make('http_5xx')
+                    ->label('HTTP 5xx')
+                    ->query(fn ($query) => $query->whereBetween('http_status_code', [500, 599])),
             ])
             ->defaultSort('created_at', 'desc')
             ->headerActions([])
@@ -157,6 +170,15 @@ class LogHistoryRelationManager extends RelationManager
             'danger' => 'danger',
             default => 'gray',
         };
+    }
+
+    private static function transportErrorOptions(): array
+    {
+        return collect(UptimeTransportErrorType::cases())
+            ->mapWithKeys(fn (UptimeTransportErrorType $type): array => [
+                $type->value => UptimeTransportError::label($type),
+            ])
+            ->all();
     }
 
     private static function httpCodeColor(?int $code): string

@@ -1725,6 +1725,81 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('1');
 });
 
+test('api monitor results list can filter repeated failure causes', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+    ]);
+
+    $transportFailure = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'status' => 'danger',
+        'summary' => 'DNS lookup failed.',
+        'http_code' => 0,
+        'failed_assertions' => null,
+        'transport_error_type' => 'dns',
+    ]);
+
+    $assertionFailure = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'status' => 'danger',
+        'summary' => 'JSON assertion failed.',
+        'http_code' => 200,
+        'failed_assertions' => [[
+            'path' => 'data.status',
+            'type' => 'value_compare',
+            'message' => 'Expected active, got pending.',
+        ]],
+    ]);
+
+    $clientError = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'status' => 'warning',
+        'summary' => 'Endpoint returned 404.',
+        'http_code' => 404,
+        'failed_assertions' => null,
+    ]);
+
+    $serverError = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'status' => 'danger',
+        'summary' => 'Endpoint returned 503.',
+        'http_code' => 503,
+        'failed_assertions' => null,
+    ]);
+
+    Livewire::test(ResultsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => ViewMonitorApis::class,
+    ])
+        ->filterTable('transport_error_type', 'dns')
+        ->assertCanSeeTableRecords([$transportFailure])
+        ->assertCanNotSeeTableRecords([$assertionFailure, $clientError, $serverError])
+        ->resetTableFilters()
+        ->filterTable('assertion_failures', true)
+        ->assertCanSeeTableRecords([$assertionFailure])
+        ->assertCanNotSeeTableRecords([$transportFailure, $clientError, $serverError])
+        ->resetTableFilters()
+        ->filterTable('no_response', true)
+        ->assertCanSeeTableRecords([$transportFailure])
+        ->assertCanNotSeeTableRecords([$assertionFailure, $clientError, $serverError])
+        ->resetTableFilters()
+        ->filterTable('http_4xx', true)
+        ->assertCanSeeTableRecords([$clientError])
+        ->assertCanNotSeeTableRecords([$transportFailure, $assertionFailure, $serverError])
+        ->resetTableFilters()
+        ->filterTable('http_5xx', true)
+        ->assertCanSeeTableRecords([$serverError])
+        ->assertCanNotSeeTableRecords([$transportFailure, $assertionFailure, $clientError]);
+});
+
 test('api monitor evidence infolist mounts cleanly for failed assertions with actual and expected', function () {
     $this->createResourcePermissions('MonitorApis');
 

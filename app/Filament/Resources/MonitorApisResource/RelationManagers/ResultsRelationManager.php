@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
 use App\Enums\RunSource;
+use App\Enums\UptimeTransportErrorType;
 use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
 use App\Models\MonitorApiResult;
 use App\Support\ApiMonitorEvidenceFormatter;
@@ -114,6 +115,21 @@ class ResultsRelationManager extends RelationManager
                 Tables\Filters\SelectFilter::make('run_source')
                     ->label('Run')
                     ->options(RunSource::options()),
+                Tables\Filters\SelectFilter::make('transport_error_type')
+                    ->label('Transport error')
+                    ->options(static::transportErrorOptions()),
+                Tables\Filters\Filter::make('assertion_failures')
+                    ->label('Assertion failures')
+                    ->query(fn ($query) => $query->whereJsonLength('failed_assertions', '>', 0)),
+                Tables\Filters\Filter::make('no_response')
+                    ->label('No response')
+                    ->query(fn ($query) => $query->where('http_code', 0)),
+                Tables\Filters\Filter::make('http_4xx')
+                    ->label('HTTP 4xx')
+                    ->query(fn ($query) => $query->whereBetween('http_code', [400, 499])),
+                Tables\Filters\Filter::make('http_5xx')
+                    ->label('HTTP 5xx')
+                    ->query(fn ($query) => $query->whereBetween('http_code', [500, 599])),
             ])
             ->recordActions([
                 ViewAction::make()
@@ -240,5 +256,14 @@ class ResultsRelationManager extends RelationManager
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    private static function transportErrorOptions(): array
+    {
+        return collect(UptimeTransportErrorType::cases())
+            ->mapWithKeys(fn (UptimeTransportErrorType $type): array => [
+                $type->value => UptimeTransportError::label($type),
+            ])
+            ->all();
     }
 }
