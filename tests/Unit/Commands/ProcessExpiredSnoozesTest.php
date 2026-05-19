@@ -414,13 +414,13 @@ test('command skips manual ssl-only websites without an interval because schedul
     Mail::assertNothingSent();
 });
 
-test('command alerts on a package-managed website with uptime_check off because MarkStalePackageChecks keeps current_status fresh', function () {
+test('command alerts on a package-managed ssl website with uptime_check off because scheduled ssl keeps current_status fresh', function () {
     Mail::fake();
 
     // syncSslChecks() creates package SSL websites with uptime_check=false.
-    // LogUptimeSslJob never runs for them, but MarkStalePackageChecks does
-    // and writes current_status='danger' on staleness — so a snooze that
-    // expires while one is unhealthy must still re-fire the alert.
+    // LogUptimeSslJob never runs for them, but the scheduled SSL runner still
+    // writes current_status='danger' — so a snooze that expires while one is
+    // unhealthy must still re-fire the alert.
     $website = Website::factory()->create([
         'source' => 'package',
         'package_interval' => '5m',
