@@ -220,6 +220,7 @@ class CheckybotMcpController extends Controller
             'type' => ['nullable', Rule::in(['all', 'project', 'api', 'website', 'component'])],
             'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
             'statuses.*' => ['required', 'string', Rule::in(['warning', 'danger', 'pending', 'unknown'])],
+            'cause' => ['nullable', 'string', Rule::in(['timeout', 'dns', 'http_4xx', 'http_5xx', 'assertion', 'stale_setup'])],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'exclude' => ['nullable', 'array', 'max:25'],
             'exclude.*' => ['required', 'string', 'max:255'],
@@ -232,6 +233,7 @@ class CheckybotMcpController extends Controller
             $data['statuses'] ?? ['warning', 'danger'],
             $data['limit'] ?? 25,
             $data['exclude'] ?? [],
+            $data['cause'] ?? null,
         );
     }
 
@@ -507,6 +509,7 @@ class CheckybotMcpController extends Controller
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'type' => ['type' => 'string', 'enum' => ['all', 'project', 'api', 'website', 'component'], 'default' => 'all'],
                 'statuses' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['warning', 'danger', 'pending', 'unknown']], 'default' => ['warning', 'danger']],
+                'cause' => ['type' => 'string', 'enum' => ['timeout', 'dns', 'http_4xx', 'http_5xx', 'assertion', 'stale_setup'], 'description' => 'Optional failure class filter.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
                 'exclude' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Case-insensitive substrings matched against check key, name, URL, or summary.'],
             ]),
