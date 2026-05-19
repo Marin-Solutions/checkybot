@@ -690,6 +690,77 @@ test('application list and detail show the worst active component status', funct
         ->assertSee('Failing');
 });
 
+test('application list shows and filters setup verification status', function () {
+    $this->createResourcePermissions('Project');
+
+    Carbon::setTestNow('2026-05-19 12:00:00');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $waitingForRegistration = Project::factory()->create([
+        'name' => 'Unregistered App',
+        'created_by' => $user->id,
+        'identity_endpoint' => null,
+        'package_version' => null,
+        'package_key' => null,
+        'base_url' => null,
+        'repository' => null,
+        'last_synced_at' => null,
+    ]);
+
+    $waitingForFirstSync = Project::factory()->create([
+        'name' => 'Registered App',
+        'created_by' => $user->id,
+        'identity_endpoint' => 'https://registered.test/checkybot/identity',
+        'package_version' => '1.2.0',
+        'package_key' => null,
+        'base_url' => null,
+        'repository' => null,
+        'last_synced_at' => null,
+    ]);
+
+    $syncStale = Project::factory()->create([
+        'name' => 'Stale Sync App',
+        'created_by' => $user->id,
+        'package_key' => 'stale-sync-app',
+        'last_synced_at' => now()->subMinutes(20),
+    ]);
+
+    $synced = Project::factory()->create([
+        'name' => 'Synced App',
+        'created_by' => $user->id,
+        'package_key' => 'synced-app',
+        'last_synced_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(ListProjects::class)
+        ->assertSuccessful()
+        ->assertSee('Waiting for registration')
+        ->assertSee('Waiting for first sync')
+        ->assertSee('Sync stale')
+        ->assertSee('Synced');
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('setup_verification_state', 'waiting_for_registration')
+        ->assertCanSeeTableRecords([$waitingForRegistration])
+        ->assertCanNotSeeTableRecords([$waitingForFirstSync, $syncStale, $synced]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('setup_verification_state', 'waiting_for_first_sync')
+        ->assertCanSeeTableRecords([$waitingForFirstSync])
+        ->assertCanNotSeeTableRecords([$waitingForRegistration, $syncStale, $synced]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('setup_verification_state', 'sync_stale')
+        ->assertCanSeeTableRecords([$syncStale])
+        ->assertCanNotSeeTableRecords([$waitingForRegistration, $waitingForFirstSync, $synced]);
+
+    Livewire::test(ListProjects::class)
+        ->filterTable('setup_verification_state', 'synced')
+        ->assertCanSeeTableRecords([$synced])
+        ->assertCanNotSeeTableRecords([$waitingForRegistration, $waitingForFirstSync, $syncStale]);
+});
+
 test('application detail shows package sync status metadata', function () {
     $this->createResourcePermissions('Project');
 

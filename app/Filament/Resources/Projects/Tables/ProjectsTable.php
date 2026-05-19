@@ -34,6 +34,13 @@ class ProjectsTable
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                TextColumn::make('setup_verification_state')
+                    ->label('Setup')
+                    ->state(fn (Project $record): string => $record->setupVerificationState())
+                    ->badge()
+                    ->formatStateUsing(fn (string $state, Project $record): string => $record->setupVerificationLabel())
+                    ->color(fn (string $state, Project $record): string => $record->setupVerificationTone())
+                    ->tooltip(fn (Project $record): string => $record->setupVerificationSummary()),
                 TextColumn::make('environment')
                     ->badge()
                     ->default('Unknown'),
@@ -83,6 +90,29 @@ class ProjectsTable
                     ->label('Show only failing')
                     ->toggle()
                     ->query(fn (Builder $query): Builder => static::whereHasFailingSurface($query)),
+                SelectFilter::make('setup_verification_state')
+                    ->label('Setup Status')
+                    ->options([
+                        'waiting_for_registration' => 'Waiting for registration',
+                        'waiting_for_first_sync' => 'Waiting for first sync',
+                        'sync_stale' => 'Sync stale',
+                        'synced' => 'Synced',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $value = $data['value'] ?? null;
+
+                        if ($value === null || $value === '') {
+                            return $query;
+                        }
+
+                        return match ($value) {
+                            'waiting_for_registration' => static::whereWaitingForRegistration($query),
+                            'waiting_for_first_sync' => static::whereWaitingForFirstSync($query),
+                            'sync_stale' => static::whereSyncStale($query),
+                            'synced' => static::whereSynced($query),
+                            default => $query,
+                        };
+                    }),
             ])
             ->recordActions([
                 ViewAction::make(),
@@ -184,6 +214,85 @@ class ProjectsTable
                     static::whereHasWarningSurface($query);
                 });
         });
+    }
+
+    protected static function whereWaitingForRegistration(Builder $query): Builder
+    {
+        return static::whereHasNotReceivedFirstPackageSync($query)
+            ->where(fn (Builder $query) => static::whereBlank($query, 'identity_endpoint'))
+            ->where(fn (Builder $query) => static::whereBlank($query, 'package_version'));
+    }
+
+    protected static function whereWaitingForFirstSync(Builder $query): Builder
+    {
+        return static::whereHasNotReceivedFirstPackageSync($query)
+            ->where(function (Builder $query): void {
+                static::whereFilled($query, 'identity_endpoint')
+                    ->orWhere(function (Builder $query): void {
+                        static::whereFilled($query, 'package_version');
+                    });
+            });
+    }
+
+    protected static function whereSyncStale(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('last_synced_at')
+            ->where('last_synced_at', '<', now()->subMinutes(static::packageSyncStaleMinutes()));
+    }
+
+    protected static function whereSynced(Builder $query): Builder
+    {
+        return static::whereHasReceivedFirstPackageSync($query)
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('last_synced_at')
+                    ->orWhere('last_synced_at', '>=', now()->subMinutes(static::packageSyncStaleMinutes()));
+            });
+    }
+
+    protected static function whereHasReceivedFirstPackageSync(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            static::whereFilled($query, 'package_key')
+                ->orWhere(function (Builder $query): void {
+                    static::whereFilled($query, 'base_url');
+                })
+                ->orWhere(function (Builder $query): void {
+                    static::whereFilled($query, 'repository');
+                })
+                ->orWhereNotNull('last_synced_at');
+        });
+    }
+
+    protected static function whereHasNotReceivedFirstPackageSync(Builder $query): Builder
+    {
+        return $query
+            ->where(fn (Builder $query) => static::whereBlank($query, 'package_key'))
+            ->where(fn (Builder $query) => static::whereBlank($query, 'base_url'))
+            ->where(fn (Builder $query) => static::whereBlank($query, 'repository'))
+            ->whereNull('last_synced_at');
+    }
+
+    protected static function whereFilled(Builder $query, string $column): Builder
+    {
+        return $query
+            ->whereNotNull($column)
+            ->where($column, '!=', '');
+    }
+
+    protected static function whereBlank(Builder $query, string $column): Builder
+    {
+        return $query->where(function (Builder $query) use ($column): void {
+            $query
+                ->whereNull($column)
+                ->orWhere($column, '');
+        });
+    }
+
+    protected static function packageSyncStaleMinutes(): int
+    {
+        return max(1, (int) config('monitor.package_sync_stale_minutes', 15));
     }
 
     protected static function whereHasDangerSurface(Builder $query): Builder
