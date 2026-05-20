@@ -73,7 +73,7 @@ class ServerLogFileHistory extends Model
                 $content .= "\n";
                 $content .= 'tail -c 2097152 '.escapeshellarg($logCategory['log_directory']).' > '.$escapedTmpLog;
                 $content .= "\n\n";
-                $content .= "curl -4 -s -X POST \\\n";
+                $content .= "curl -4 -fsS -o /dev/null -X POST \\\n";
                 $content .= ' $API_LOG_URL\\'."\n";
                 $content .= ' -H \'Authorization: Bearer \'$TOKEN_ID \\'."\n";
                 $content .= ' -F '.escapeshellarg($curlLogFormValue).' \\'."\n";
