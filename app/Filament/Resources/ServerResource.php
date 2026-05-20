@@ -269,7 +269,29 @@ class ServerResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // Tables\Filters\TrashedFilter::make(),
+                Tables\Filters\SelectFilter::make('server_attention')
+                    ->label('Server Attention')
+                    ->options([
+                        'offline_reporters' => 'Offline reporters',
+                        'stale_metrics' => 'Stale metrics',
+                        'warning_usage' => 'Warning usage',
+                        'critical_usage' => 'Critical usage',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $value = $data['value'] ?? null;
+
+                        if ($value === null || $value === '') {
+                            return $query;
+                        }
+
+                        return match ($value) {
+                            'offline_reporters' => self::whereOfflineReporter($query),
+                            'stale_metrics' => self::whereStaleMetrics($query),
+                            'warning_usage' => self::whereWarningUsage($query),
+                            'critical_usage' => self::whereCriticalUsage($query),
+                            default => $query,
+                        };
+                    }),
             ])
             ->actions([
                 \Filament\Actions\Action::make('copy_script')
@@ -400,5 +422,111 @@ class ServerResource extends Resource
         }
 
         return 'Last reporter update '.Carbon::parse($record->latest_server_history_created_at)->diffForHumans().'.';
+    }
+
+    private static function whereOfflineReporter(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereNull('sih.id')
+                ->orWhere('sih.created_at', '<', self::latestHistoryFreshAfter());
+        });
+    }
+
+    private static function whereStaleMetrics(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('sih.id')
+            ->where('sih.created_at', '<', self::latestHistoryFreshAfter());
+    }
+
+    private static function whereWarningUsage(Builder $query): Builder
+    {
+        return self::whereFreshReporter($query)
+            ->where(fn (Builder $query) => self::whereAnyMetricWarning($query))
+            ->where(fn (Builder $query) => self::whereNoMetricCritical($query));
+    }
+
+    private static function whereCriticalUsage(Builder $query): Builder
+    {
+        return self::whereFreshReporter($query)
+            ->where(fn (Builder $query) => self::whereAnyMetricCritical($query));
+    }
+
+    private static function whereFreshReporter(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('sih.id')
+            ->where('sih.created_at', '>=', self::latestHistoryFreshAfter());
+    }
+
+    private static function whereAnyMetricWarning(Builder $query): Builder
+    {
+        return $query
+            ->where(fn (Builder $query) => self::whereMetricBetween($query, self::diskUsageExpression(), 75, 90))
+            ->orWhere(fn (Builder $query) => self::whereMetricBetween($query, self::ramUsageExpression(), 75, 90))
+            ->orWhere(fn (Builder $query) => self::whereMetricBetween($query, self::cpuUsageExpression(), 75, 90));
+    }
+
+    private static function whereAnyMetricCritical(Builder $query): Builder
+    {
+        return $query
+            ->where(fn (Builder $query) => self::whereMetricAtLeast($query, self::diskUsageExpression(), 90))
+            ->orWhere(fn (Builder $query) => self::whereMetricAtLeast($query, self::ramUsageExpression(), 90))
+            ->orWhere(fn (Builder $query) => self::whereMetricAtLeast($query, self::cpuUsageExpression(), 90));
+    }
+
+    private static function whereNoMetricCritical(Builder $query): Builder
+    {
+        return $query
+            ->where(fn (Builder $query) => self::whereMetricBelowOrMissing($query, 'sih.disk_free_percentage', self::diskUsageExpression(), 90))
+            ->where(fn (Builder $query) => self::whereMetricBelowOrMissing($query, 'sih.ram_free_percentage', self::ramUsageExpression(), 90))
+            ->where(fn (Builder $query) => self::whereMetricBelowOrMissing($query, 'sih.cpu_load', self::cpuUsageExpression(), 90));
+    }
+
+    private static function whereMetricBetween(Builder $query, string $expression, int $minimum, int $maximum): Builder
+    {
+        return $query
+            ->whereRaw("{$expression} >= ?", [$minimum])
+            ->whereRaw("{$expression} < ?", [$maximum]);
+    }
+
+    private static function whereMetricAtLeast(Builder $query, string $expression, int $minimum): Builder
+    {
+        return $query->whereRaw("{$expression} >= ?", [$minimum]);
+    }
+
+    private static function whereMetricBelowOrMissing(Builder $query, string $column, string $expression, int $minimum): Builder
+    {
+        return $query
+            ->whereNull($column)
+            ->orWhere($column, '')
+            ->orWhereRaw("{$expression} < ?", [$minimum]);
+    }
+
+    private static function diskUsageExpression(): string
+    {
+        return "(100 - CAST(NULLIF(REPLACE(REPLACE(sih.disk_free_percentage, '%', ''), ' ', ''), '') AS DECIMAL(10, 4)))";
+    }
+
+    private static function ramUsageExpression(): string
+    {
+        return "(100 - CAST(NULLIF(REPLACE(REPLACE(sih.ram_free_percentage, '%', ''), ' ', ''), '') AS DECIMAL(10, 4)))";
+    }
+
+    private static function cpuUsageExpression(): string
+    {
+        return "(
+            CAST(NULLIF(REPLACE(REPLACE(sih.cpu_load, ',', '.'), ' ', ''), '') AS DECIMAL(10, 4)) /
+            CASE
+                WHEN servers.cpu_cores IS NULL OR servers.cpu_cores < 1 THEN 1
+                ELSE servers.cpu_cores
+            END
+        ) * 100";
+    }
+
+    private static function latestHistoryFreshAfter(): Carbon
+    {
+        return now()->subMinutes(Server::REPORTER_FRESHNESS_WINDOW_MINUTES);
     }
 }

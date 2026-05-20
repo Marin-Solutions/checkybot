@@ -77,7 +77,7 @@ test('server list shows current metric bars when latest reporter history is fres
         ->assertCanSeeTableRecords([$server])
         ->assertSee('Online')
         ->assertSee('90%')
-        ->assertDontSee('Stale');
+        ->assertDontSeeHtml('data-stale-server-metric');
 });
 
 test('server list metric labels omit decimal places', function () {
@@ -102,4 +102,150 @@ test('server list metric labels omit decimal places', function () {
         ->assertSeeHtml('<span class="fi-ta-progress-label">40%</span>')
         ->assertDontSeeHtml('<span class="fi-ta-progress-label">38.96875%</span>')
         ->assertDontSeeHtml('<span class="fi-ta-progress-label">40.9%</span>');
+});
+
+test('server list filters offline reporters', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $freshServer = Server::factory()->create(['created_by' => $user->id]);
+    $staleServer = Server::factory()->create(['created_by' => $user->id]);
+    $neverReportedServer = Server::factory()->create(['created_by' => $user->id]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $freshServer->id,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $staleServer->id,
+        'created_at' => now()->subMinutes(3),
+    ]);
+
+    Livewire::test(ListServers::class)
+        ->filterTable('server_attention', 'offline_reporters')
+        ->assertCanSeeTableRecords([$staleServer, $neverReportedServer])
+        ->assertCanNotSeeTableRecords([$freshServer]);
+});
+
+test('server list filters stale metrics without showing servers that never reported', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $freshServer = Server::factory()->create(['created_by' => $user->id]);
+    $staleServer = Server::factory()->create(['created_by' => $user->id]);
+    $neverReportedServer = Server::factory()->create(['created_by' => $user->id]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $freshServer->id,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $staleServer->id,
+        'created_at' => now()->subMinutes(3),
+    ]);
+
+    Livewire::test(ListServers::class)
+        ->filterTable('server_attention', 'stale_metrics')
+        ->assertCanSeeTableRecords([$staleServer])
+        ->assertCanNotSeeTableRecords([$freshServer, $neverReportedServer]);
+});
+
+test('server list filters warning usage', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthyServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $warningServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $criticalServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $staleWarningServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $blankMetricsServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $healthyServer->id,
+        'cpu_load' => 1,
+        'ram_free_percentage' => 60,
+        'disk_free_percentage' => 60,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $warningServer->id,
+        'cpu_load' => 1,
+        'ram_free_percentage' => 25,
+        'disk_free_percentage' => 60,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $criticalServer->id,
+        'cpu_load' => 1,
+        'ram_free_percentage' => 5,
+        'disk_free_percentage' => 60,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $staleWarningServer->id,
+        'cpu_load' => 1,
+        'ram_free_percentage' => 25,
+        'disk_free_percentage' => 60,
+        'created_at' => now()->subMinutes(3),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $blankMetricsServer->id,
+        'cpu_load' => '',
+        'ram_free_percentage' => '',
+        'disk_free_percentage' => '',
+        'created_at' => now(),
+    ]);
+
+    Livewire::test(ListServers::class)
+        ->filterTable('server_attention', 'warning_usage')
+        ->assertCanSeeTableRecords([$warningServer])
+        ->assertCanNotSeeTableRecords([$healthyServer, $criticalServer, $staleWarningServer, $blankMetricsServer]);
+});
+
+test('server list filters critical usage', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $healthyServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $warningServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $criticalServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $staleCriticalServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+    $blankMetricsServer = Server::factory()->create(['created_by' => $user->id, 'cpu_cores' => 4]);
+
+    ServerInformationHistory::factory()->create([
+        'server_id' => $healthyServer->id,
+        'cpu_load' => 1,
+        'ram_free_percentage' => 60,
+        'disk_free_percentage' => 60,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $warningServer->id,
+        'cpu_load' => 3,
+        'ram_free_percentage' => 60,
+        'disk_free_percentage' => 60,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $criticalServer->id,
+        'cpu_load' => 1,
+        'ram_free_percentage' => 60,
+        'disk_free_percentage' => 10,
+        'created_at' => now(),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $staleCriticalServer->id,
+        'cpu_load' => 1,
+        'ram_free_percentage' => 60,
+        'disk_free_percentage' => 10,
+        'created_at' => now()->subMinutes(3),
+    ]);
+    ServerInformationHistory::factory()->create([
+        'server_id' => $blankMetricsServer->id,
+        'cpu_load' => '',
+        'ram_free_percentage' => '',
+        'disk_free_percentage' => '',
+        'created_at' => now(),
+    ]);
+
+    Livewire::test(ListServers::class)
+        ->filterTable('server_attention', 'critical_usage')
+        ->assertCanSeeTableRecords([$criticalServer])
+        ->assertCanNotSeeTableRecords([$healthyServer, $warningServer, $staleCriticalServer, $blankMetricsServer]);
 });
