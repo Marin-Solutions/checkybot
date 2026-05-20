@@ -20,7 +20,7 @@ DISK_FREE_PERCENTAGE=$(df --output=pcent / | awk 'NR==2{print 100-$1"%"}')
 DISK_FREE_BYTES=$(df --output=avail / | awk 'NR==2{print $1}')
 
 # Send data to API
-curl -s -X POST \
+curl -fsS -o /dev/null -X POST \
  $API_URL \
  -H 'Authorization: Bearer '$TOKEN_ID \
  -H 'Content-Type: application/json' \
