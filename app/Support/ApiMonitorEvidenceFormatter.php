@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\MonitorApiResult;
 use Illuminate\Support\HtmlString;
 
 class ApiMonitorEvidenceFormatter
@@ -57,6 +58,26 @@ class ApiMonitorEvidenceFormatter
             $httpCode >= 200 => 'success',
             default => 'gray',
         };
+    }
+
+    public static function compactLatestEvidence(?MonitorApiResult $result): ?string
+    {
+        if ($result === null) {
+            return null;
+        }
+
+        $failedAssertions = self::normalizeAssertions($result->failed_assertions);
+        $assertionCount = count($failedAssertions);
+        $firstFailingPath = $failedAssertions[0]['path'] ?? '-';
+        $transportType = filled($result->transport_error_type) ? $result->transport_error_type : 'ok';
+
+        return sprintf(
+            'HTTP %s | %s | %d failed | %s',
+            $result->http_code ?? '-',
+            $transportType,
+            $assertionCount,
+            $firstFailingPath,
+        );
     }
 
     /**

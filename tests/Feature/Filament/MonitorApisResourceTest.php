@@ -749,6 +749,57 @@ test('api monitor list average response time excludes on demand diagnostic runs'
     expect((float) $listedMonitor->avg_response_time)->toBe(200.0);
 });
 
+test('api monitor list shows compact latest result evidence', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $assertionOnlyFailure = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Assertion API',
+        'current_status' => 'danger',
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $assertionOnlyFailure->id,
+        'is_success' => false,
+        'status' => 'danger',
+        'http_code' => 200,
+        'transport_error_type' => null,
+        'failed_assertions' => [
+            [
+                'path' => 'data.status',
+                'type' => 'value_compare',
+                'message' => 'Expected active, got pending.',
+            ],
+            [
+                'path' => 'data.ready',
+                'type' => 'exists',
+                'message' => 'Expected ready flag to exist.',
+            ],
+        ],
+    ]);
+
+    $transportFailure = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'DNS API',
+        'current_status' => 'danger',
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $transportFailure->id,
+        'is_success' => false,
+        'status' => 'danger',
+        'http_code' => 0,
+        'transport_error_type' => 'dns',
+        'failed_assertions' => null,
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertCanSeeTableRecords([$assertionOnlyFailure, $transportFailure])
+        ->assertTableColumnExists('latest_failure_evidence')
+        ->assertSee('HTTP 200 | ok | 2 failed | data.status')
+        ->assertSee('HTTP 0 | dns | 0 failed | -');
+});
+
 test('api monitor list shows effective polling interval', function () {
     $this->createResourcePermissions('MonitorApis');
 
