@@ -6,6 +6,8 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreServerInformationHistoryRequest extends FormRequest
 {
+    private const MAX_CPU_LOAD = 99.99;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -17,7 +19,7 @@ class StoreServerInformationHistoryRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'cpu_load' => ['required', 'numeric', 'min:0', 'max:10000'],
+            'cpu_load' => ['required', 'numeric', 'min:0', 'max:'.self::MAX_CPU_LOAD],
             'cpu_cores' => ['sometimes', 'nullable', 'integer', 'min:1', 'max:4096'],
             's' => ['required', 'integer', 'min:1'],
             'ram_free_percentage' => ['required', 'numeric', 'min:0', 'max:100'],
@@ -42,7 +44,39 @@ class StoreServerInformationHistoryRequest extends FormRequest
     protected function prepareForValidation()
     {
         $this->merge([
+            'cpu_load' => $this->normalizeCpuLoad($this->input('cpu_load')),
             'server_id' => $this->s,
         ]);
+    }
+
+    private function normalizeCpuLoad(mixed $value): mixed
+    {
+        if (! is_string($value) && ! is_numeric($value)) {
+            return $value;
+        }
+
+        $normalized = str_replace(' ', '', trim((string) $value));
+
+        if (str_contains($normalized, ',') && ! str_contains($normalized, '.')) {
+            $normalized = str_replace(',', '.', $normalized);
+        } else {
+            $normalized = str_replace(',', '', $normalized);
+        }
+
+        if (! is_numeric($normalized)) {
+            return $value;
+        }
+
+        $cpuLoad = (float) $normalized;
+
+        if (! is_finite($cpuLoad)) {
+            return number_format(self::MAX_CPU_LOAD, 2, '.', '');
+        }
+
+        if ($cpuLoad > self::MAX_CPU_LOAD) {
+            return number_format(self::MAX_CPU_LOAD, 2, '.', '');
+        }
+
+        return number_format($cpuLoad, 2, '.', '');
     }
 }
