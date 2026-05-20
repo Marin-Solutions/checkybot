@@ -69,7 +69,11 @@ class ApiMonitorEvidenceFormatter
         $failedAssertions = self::normalizeAssertions($result->failed_assertions);
         $assertionCount = count($failedAssertions);
         $firstFailingPath = $failedAssertions[0]['path'] ?? '-';
-        $transportType = filled($result->transport_error_type) ? $result->transport_error_type : 'ok';
+        $transportType = match (true) {
+            filled($result->transport_error_type) => $result->transport_error_type,
+            $result->http_code === 0 => 'no response',
+            default => 'ok',
+        };
 
         return sprintf(
             'HTTP %s | %s | %d failed | %s',

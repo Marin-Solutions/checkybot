@@ -789,7 +789,7 @@ test('api monitor list shows compact latest result evidence', function () {
         'is_success' => false,
         'status' => 'danger',
         'http_code' => 0,
-        'transport_error_type' => 'dns',
+        'transport_error_type' => null,
         'failed_assertions' => null,
     ]);
 
@@ -797,7 +797,7 @@ test('api monitor list shows compact latest result evidence', function () {
         ->assertCanSeeTableRecords([$assertionOnlyFailure, $transportFailure])
         ->assertTableColumnExists('latest_failure_evidence')
         ->assertSee('HTTP 200 | ok | 2 failed | data.status')
-        ->assertSee('HTTP 0 | dns | 0 failed | -');
+        ->assertSee('HTTP 0 | no response | 0 failed | -');
 });
 
 test('api monitor list shows effective polling interval', function () {
