@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -78,6 +79,53 @@ class Backup extends Model
         return $this->hasOne(BackupHistory::class)->latestOfMany();
     }
 
+    public function scopeMissedRun(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->whereNotNull('stale_at')
+                ->orWhere(fn (Builder $query): Builder => static::applyScheduleMissedConstraint($query));
+        });
+    }
+
+    public function scopeNotMissedRun(Builder $query): Builder
+    {
+        return $query
+            ->whereNull('stale_at')
+            ->where(fn (Builder $query): Builder => $query
+                ->whereNull('interval_id')
+                ->orWhereNot(fn (Builder $query): Builder => static::applyScheduleMissedConstraint($query)));
+    }
+
+    public function scopeAwaitingFirstRun(Builder $query): Builder
+    {
+        return $query
+            ->notMissedRun()
+            ->whereNull('last_history_at')
+            ->doesntHave('histories');
+    }
+
+    public function scopeFresh(Builder $query): Builder
+    {
+        return $query
+            ->notMissedRun()
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNotNull('last_history_at')
+                    ->orWhereHas('histories');
+            });
+    }
+
+    public function scopeLatestZipFailed(Builder $query): Builder
+    {
+        return $query->whereHas('latestHistory', fn (Builder $query): Builder => $query->where('is_zipped', false));
+    }
+
+    public function scopeLatestUploadFailed(Builder $query): Builder
+    {
+        return $query->whereHas('latestHistory', fn (Builder $query): Builder => $query->where('is_uploaded', false));
+    }
+
     public function addExpectedInterval(CarbonInterface $date): ?CarbonInterface
     {
         $interval = $this->interval;
@@ -93,6 +141,85 @@ class Backup extends Model
             str_contains($interval->unit, 'month') => $date->copy()->addMonthsNoOverflow($interval->value),
             default => null,
         };
+    }
+
+    private static function applyScheduleMissedConstraint(Builder $query): Builder
+    {
+        $hasSchedule = false;
+        $referenceSql = static::freshnessReferenceSql();
+
+        foreach (BackupIntervalOption::query()->get(['id', 'value', 'unit']) as $interval) {
+            $unit = strtolower($interval->unit);
+
+            if (str_contains($unit, 'month')) {
+                $hasSchedule = true;
+
+                $query->orWhere(fn (Builder $query): Builder => $query
+                    ->where('interval_id', $interval->id)
+                    ->where(fn (Builder $query): Builder => static::applyMonthlyScheduleMissedConstraint($query, $referenceSql, $interval->value)));
+
+                continue;
+            }
+
+            $cutoffAt = match (true) {
+                str_contains($unit, 'hour') => now()->subHours($interval->value),
+                str_contains($unit, 'day') => now()->subDays($interval->value),
+                str_contains($unit, 'week') => now()->subWeeks($interval->value),
+                default => null,
+            };
+
+            if ($cutoffAt === null) {
+                continue;
+            }
+
+            $hasSchedule = true;
+
+            $query->orWhere(fn (Builder $query): Builder => $query
+                ->where('interval_id', $interval->id)
+                ->whereRaw("{$referenceSql} < ?", [$cutoffAt->toDateTimeString()]));
+        }
+
+        if (! $hasSchedule) {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query;
+    }
+
+    private static function applyMonthlyScheduleMissedConstraint(Builder $query, string $referenceSql, int $months): Builder
+    {
+        $now = now();
+        $boundaryMonthStart = $now->copy()->subMonthsNoOverflow($months)->startOfMonth();
+        $boundaryMonthDays = $boundaryMonthStart->daysInMonth;
+
+        $query->whereRaw("{$referenceSql} < ?", [$boundaryMonthStart->toDateTimeString()]);
+
+        for ($day = 1; $day <= $boundaryMonthDays; $day++) {
+            $dayStart = $boundaryMonthStart->copy()->day($day)->startOfDay();
+            $thresholdDayStart = $dayStart->copy()->addMonthsNoOverflow($months);
+
+            if ($thresholdDayStart->isSameDay($now)) {
+                $cutoffAt = $dayStart->copy()->setTimeFrom($now);
+            } elseif ($thresholdDayStart->lt($now->copy()->startOfDay())) {
+                $cutoffAt = $dayStart->copy()->addDay();
+            } else {
+                continue;
+            }
+
+            $query->orWhere(fn (Builder $query): Builder => $query
+                ->whereRaw("{$referenceSql} >= ?", [$dayStart->toDateTimeString()])
+                ->whereRaw("{$referenceSql} < ?", [$cutoffAt->toDateTimeString()]));
+        }
+
+        return $query;
+    }
+
+    private static function freshnessReferenceSql(): string
+    {
+        $backupTable = (new static)->getTable();
+        $historyTable = (new BackupHistory)->getTable();
+
+        return "COALESCE({$backupTable}.last_history_at, (SELECT MAX({$historyTable}.created_at) FROM {$historyTable} WHERE {$historyTable}.backup_id = {$backupTable}.id), {$backupTable}.first_run_at, {$backupTable}.created_at)";
     }
 
     public function latestHistoryReceivedAt(): ?CarbonInterface

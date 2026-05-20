@@ -163,6 +163,170 @@ test('backup list shows expected run freshness evidence', function () {
         ->assertSee('Latest Run');
 });
 
+test('backup list filters by freshness state', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup']);
+
+    $missedBackup = createBackupResourceBackupForUser($user->id);
+    createBackupResourceHistory($missedBackup, [
+        'created_at' => now()->subDays(2),
+        'updated_at' => now()->subDays(2),
+    ]);
+    $missedBackup->forceFill(['last_history_at' => now()->subDays(2)])->save();
+
+    $awaitingBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/awaiting',
+        'first_run_at' => now()->addHour(),
+    ]);
+
+    $freshBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/fresh',
+    ]);
+    createBackupResourceHistory($freshBackup, [
+        'created_at' => now()->subHour(),
+        'updated_at' => now()->subHour(),
+    ]);
+    $freshBackup->forceFill(['last_history_at' => now()->subHour()])->save();
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'missed_run')
+        ->assertCanSeeTableRecords([$missedBackup])
+        ->assertCanNotSeeTableRecords([$awaitingBackup, $freshBackup]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'awaiting_first_run')
+        ->assertCanSeeTableRecords([$awaitingBackup])
+        ->assertCanNotSeeTableRecords([$missedBackup, $freshBackup]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'fresh')
+        ->assertCanSeeTableRecords([$freshBackup])
+        ->assertCanNotSeeTableRecords([$missedBackup, $awaitingBackup]);
+});
+
+test('backup list filters by latest run zip and upload failures', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup']);
+
+    $zipFailedBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/zip-failed',
+    ]);
+    createBackupResourceHistory($zipFailedBackup, [
+        'is_zipped' => false,
+        'is_uploaded' => false,
+        'created_at' => now()->subHour(),
+        'updated_at' => now()->subHour(),
+    ]);
+
+    $uploadFailedBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/upload-failed',
+    ]);
+    createBackupResourceHistory($uploadFailedBackup, [
+        'is_zipped' => false,
+        'is_uploaded' => false,
+        'created_at' => now()->subHours(2),
+        'updated_at' => now()->subHours(2),
+    ]);
+    createBackupResourceHistory($uploadFailedBackup, [
+        'is_zipped' => true,
+        'is_uploaded' => false,
+        'created_at' => now()->subHour(),
+        'updated_at' => now()->subHour(),
+    ]);
+
+    $recoveredBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/recovered',
+    ]);
+    createBackupResourceHistory($recoveredBackup, [
+        'is_zipped' => false,
+        'is_uploaded' => false,
+        'created_at' => now()->subHours(2),
+        'updated_at' => now()->subHours(2),
+    ]);
+    createBackupResourceHistory($recoveredBackup, [
+        'is_zipped' => true,
+        'is_uploaded' => true,
+        'created_at' => now()->subHour(),
+        'updated_at' => now()->subHour(),
+    ]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('latest_run_failure', 'zip_failed')
+        ->assertCanSeeTableRecords([$zipFailedBackup])
+        ->assertCanNotSeeTableRecords([$uploadFailedBackup, $recoveredBackup]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('latest_run_failure', 'upload_failed')
+        ->assertCanSeeTableRecords([$zipFailedBackup, $uploadFailedBackup])
+        ->assertCanNotSeeTableRecords([$recoveredBackup]);
+});
+
+test('backup freshness filters keep records without intervals in non-missed states', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup']);
+
+    $awaitingBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/no-interval-awaiting',
+        'first_run_at' => now()->subMonth(),
+        'interval_id' => 999999,
+    ]);
+
+    $freshBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/no-interval-fresh',
+        'first_run_at' => now()->subMonth(),
+        'interval_id' => 999998,
+    ]);
+    createBackupResourceHistory($freshBackup, [
+        'created_at' => now()->subDays(10),
+        'updated_at' => now()->subDays(10),
+    ]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'missed_run')
+        ->assertCanNotSeeTableRecords([$awaitingBackup, $freshBackup]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'awaiting_first_run')
+        ->assertCanSeeTableRecords([$awaitingBackup])
+        ->assertCanNotSeeTableRecords([$freshBackup]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'fresh')
+        ->assertCanSeeTableRecords([$freshBackup])
+        ->assertCanNotSeeTableRecords([$awaitingBackup]);
+});
+
+test('backup freshness filters match monthly no-overflow thresholds', function () {
+    Carbon::setTestNow('2026-02-28 12:00:01');
+
+    try {
+        $user = $this->actingAsSuperAdmin();
+        $user->givePermissionTo(['View:Backup']);
+
+        $monthlyInterval = BackupIntervalOption::query()->create([
+            'value' => 1,
+            'unit' => 'monthly',
+            'expression' => '0 0 1 * *',
+        ]);
+
+        $backup = createBackupResourceBackupForUser($user->id, [
+            'dir_path' => '/var/www/monthly',
+            'interval_id' => $monthlyInterval->id,
+        ]);
+        createBackupResourceHistory($backup, [
+            'created_at' => Carbon::parse('2026-01-31 12:00:00'),
+            'updated_at' => Carbon::parse('2026-01-31 12:00:00'),
+        ]);
+        $backup->forceFill(['last_history_at' => Carbon::parse('2026-01-31 12:00:00')])->save();
+
+        Livewire::test(ListBackups::class)
+            ->filterTable('freshness_state', 'missed_run')
+            ->assertCanSeeTableRecords([$backup]);
+    } finally {
+        Carbon::setTestNow();
+    }
+});
+
 test('backup list is scoped to the authenticated owner', function () {
     $user = $this->actingAsSuperAdmin();
     $otherUser = \App\Models\User::factory()->create();
