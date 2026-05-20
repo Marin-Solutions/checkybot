@@ -47,7 +47,7 @@ test('server history intake trusts a valid token when reporter ip changes', func
         ->and($server->last_reporter_seen_at)->not->toBeNull();
 });
 
-test('server history intake stores high multi-core cpu load samples', function () {
+test('server history intake clamps high multi-core cpu load samples before storage', function () {
     $server = Server::factory()->create([
         'ip' => '192.0.2.10',
         'token' => 'server-token',
@@ -73,7 +73,7 @@ test('server history intake stores high multi-core cpu load samples', function (
 
     assertDatabaseHas('server_information_history', [
         'server_id' => $server->id,
-        'cpu_load' => '256.75',
+        'cpu_load' => '99.99',
     ]);
 
     $server->refresh();
@@ -84,7 +84,7 @@ test('server history intake stores high multi-core cpu load samples', function (
         ->and($server->last_reporter_seen_at)->not->toBeNull();
 });
 
-test('server history intake stores maximum accepted cpu load', function () {
+test('server history intake clamps oversized cpu load samples before storage', function () {
     $server = Server::factory()->create([
         'ip' => '192.0.2.10',
         'token' => 'server-token',
@@ -107,9 +107,41 @@ test('server history intake stores maximum accepted cpu load', function () {
 
     assertDatabaseHas('server_information_history', [
         'server_id' => $server->id,
-        'cpu_load' => '10000',
+        'cpu_load' => '99.99',
     ]);
 });
+
+test('server history intake normalizes cpu load samples before storage', function (string $cpuLoad, string $storedCpuLoad) {
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer server-token',
+        'Accept' => 'application/json',
+    ])
+        ->postJson('/api/v1/server-history', [
+            's' => $server->id,
+            'cpu_load' => $cpuLoad,
+            'cpu_cores' => 4,
+            'ram_free_percentage' => '70',
+            'ram_free' => '1024000',
+            'disk_free_percentage' => '55',
+            'disk_free_bytes' => '2048000',
+        ])
+        ->assertOk();
+
+    assertDatabaseHas('server_information_history', [
+        'server_id' => $server->id,
+        'cpu_load' => $storedCpuLoad,
+    ]);
+})->with([
+    'comma decimal' => ['0,25', '0.25'],
+    'spaced comma decimal' => ['0 ,25', '0.25'],
+    'us thousands separator' => ['1,000.50', '99.99'],
+    'european thousands separator' => ['1.234,56', '99.99'],
+]);
 
 test('server log intake trusts a valid token when reporter ip changes', function () {
     Storage::fake('local');
