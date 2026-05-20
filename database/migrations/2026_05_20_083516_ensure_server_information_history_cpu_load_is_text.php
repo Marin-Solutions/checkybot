@@ -41,7 +41,6 @@ return new class extends Migration
     private function cpuLoadColumnIsAlreadyText(): bool
     {
         return in_array(strtolower(Schema::getColumnType('server_information_history', 'cpu_load')), [
-            'char',
             'character varying',
             'longtext',
             'mediumtext',
