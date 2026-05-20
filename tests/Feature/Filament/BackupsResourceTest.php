@@ -261,6 +261,41 @@ test('backup list filters by latest run zip and upload failures', function () {
         ->assertCanNotSeeTableRecords([$recoveredBackup]);
 });
 
+test('backup freshness filters keep records without intervals in non-missed states', function () {
+    $user = $this->actingAsSuperAdmin();
+    $user->givePermissionTo(['View:Backup']);
+
+    $awaitingBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/no-interval-awaiting',
+        'first_run_at' => now()->subMonth(),
+        'interval_id' => 999999,
+    ]);
+
+    $freshBackup = createBackupResourceBackupForUser($user->id, [
+        'dir_path' => '/var/www/no-interval-fresh',
+        'first_run_at' => now()->subMonth(),
+        'interval_id' => 999998,
+    ]);
+    createBackupResourceHistory($freshBackup, [
+        'created_at' => now()->subDays(10),
+        'updated_at' => now()->subDays(10),
+    ]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'missed_run')
+        ->assertCanNotSeeTableRecords([$awaitingBackup, $freshBackup]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'awaiting_first_run')
+        ->assertCanSeeTableRecords([$awaitingBackup])
+        ->assertCanNotSeeTableRecords([$freshBackup]);
+
+    Livewire::test(ListBackups::class)
+        ->filterTable('freshness_state', 'fresh')
+        ->assertCanSeeTableRecords([$freshBackup])
+        ->assertCanNotSeeTableRecords([$awaitingBackup]);
+});
+
 test('backup list is scoped to the authenticated owner', function () {
     $user = $this->actingAsSuperAdmin();
     $otherUser = \App\Models\User::factory()->create();

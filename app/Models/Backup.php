@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 
 class Backup extends Model
@@ -82,22 +81,18 @@ class Backup extends Model
 
     public function scopeMissedRun(Builder $query): Builder
     {
-        [$thresholdSql, $bindings] = static::missedRunThresholdSql();
-
-        return $query->where(function (Builder $query) use ($thresholdSql, $bindings): void {
+        return $query->where(function (Builder $query): void {
             $query
                 ->whereNotNull('stale_at')
-                ->orWhereRaw($thresholdSql, $bindings);
+                ->orWhere(fn (Builder $query): Builder => static::applyScheduleMissedConstraint($query));
         });
     }
 
     public function scopeNotMissedRun(Builder $query): Builder
     {
-        [$thresholdSql, $bindings] = static::missedRunThresholdSql();
-
         return $query
             ->whereNull('stale_at')
-            ->whereRaw("not ({$thresholdSql})", $bindings);
+            ->where(fn (Builder $query): Builder => static::applyScheduleNotMissedConstraint($query));
     }
 
     public function scopeAwaitingFirstRun(Builder $query): Builder
@@ -146,35 +141,64 @@ class Backup extends Model
         };
     }
 
-    private static function missedRunThresholdSql(): array
+    private static function applyScheduleMissedConstraint(Builder $query): Builder
     {
-        $connection = DB::connection()->getDriverName();
-        $now = now()->toDateTimeString();
-        $referenceSql = 'COALESCE(backups.last_history_at, (SELECT MAX(backup_histories.created_at) FROM backup_histories WHERE backup_histories.backup_id = backups.id), backups.first_run_at, backups.created_at)';
-        $valueSql = '(SELECT backup_interval_options.value FROM backup_interval_options WHERE backup_interval_options.id = backups.interval_id LIMIT 1)';
-        $unitSql = 'LOWER((SELECT backup_interval_options.unit FROM backup_interval_options WHERE backup_interval_options.id = backups.interval_id LIMIT 1))';
+        $hasSchedule = false;
+        $referenceSql = static::freshnessReferenceSql();
 
-        if ($connection === 'sqlite') {
-            return [
-                "(
-                    ({$unitSql} LIKE '%hour%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' hours') < ?)
-                    OR ({$unitSql} LIKE '%day%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' days') < ?)
-                    OR ({$unitSql} LIKE '%week%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' weeks') < ?)
-                    OR ({$unitSql} LIKE '%month%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' months') < ?)
-                )",
-                [$now, $now, $now, $now],
-            ];
+        foreach (static::backupIntervalCutoffs() as $intervalId => $cutoffAt) {
+            $hasSchedule = true;
+
+            $query->orWhere(fn (Builder $query): Builder => $query
+                ->where('interval_id', $intervalId)
+                ->whereRaw("{$referenceSql} < ?", [$cutoffAt]));
         }
 
-        return [
-            "(
-                ({$unitSql} LIKE '%hour%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} HOUR) < ?)
-                OR ({$unitSql} LIKE '%day%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} DAY) < ?)
-                OR ({$unitSql} LIKE '%week%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} WEEK) < ?)
-                OR ({$unitSql} LIKE '%month%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} MONTH) < ?)
-            )",
-            [$now, $now, $now, $now],
-        ];
+        if (! $hasSchedule) {
+            $query->whereRaw('1 = 0');
+        }
+
+        return $query;
+    }
+
+    private static function applyScheduleNotMissedConstraint(Builder $query): Builder
+    {
+        $referenceSql = static::freshnessReferenceSql();
+
+        foreach (static::backupIntervalCutoffs() as $intervalId => $cutoffAt) {
+            $query->where(fn (Builder $query): Builder => $query
+                ->where('interval_id', '!=', $intervalId)
+                ->orWhereNull('interval_id')
+                ->orWhereRaw("{$referenceSql} >= ?", [$cutoffAt]));
+        }
+
+        return $query;
+    }
+
+    private static function backupIntervalCutoffs(): array
+    {
+        return BackupIntervalOption::query()
+            ->get(['id', 'value', 'unit'])
+            ->mapWithKeys(function (BackupIntervalOption $interval): array {
+                $cutoffAt = match (true) {
+                    str_contains($interval->unit, 'hour') => now()->subHours($interval->value),
+                    str_contains($interval->unit, 'day') => now()->subDays($interval->value),
+                    str_contains($interval->unit, 'week') => now()->subWeeks($interval->value),
+                    str_contains($interval->unit, 'month') => now()->subMonthsNoOverflow($interval->value),
+                    default => null,
+                };
+
+                return $cutoffAt ? [$interval->id => $cutoffAt->toDateTimeString()] : [];
+            })
+            ->all();
+    }
+
+    private static function freshnessReferenceSql(): string
+    {
+        $backupTable = (new static)->getTable();
+        $historyTable = (new BackupHistory)->getTable();
+
+        return "COALESCE({$backupTable}.last_history_at, (SELECT MAX({$historyTable}.created_at) FROM {$historyTable} WHERE {$historyTable}.backup_id = {$backupTable}.id), {$backupTable}.first_run_at, {$backupTable}.created_at)";
     }
 
     public function latestHistoryReceivedAt(): ?CarbonInterface
