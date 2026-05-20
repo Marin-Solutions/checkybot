@@ -296,6 +296,37 @@ test('backup freshness filters keep records without intervals in non-missed stat
         ->assertCanNotSeeTableRecords([$awaitingBackup]);
 });
 
+test('backup freshness filters match monthly no-overflow thresholds', function () {
+    Carbon::setTestNow('2026-02-28 12:00:01');
+
+    try {
+        $user = $this->actingAsSuperAdmin();
+        $user->givePermissionTo(['View:Backup']);
+
+        $monthlyInterval = BackupIntervalOption::query()->create([
+            'value' => 1,
+            'unit' => 'monthly',
+            'expression' => '0 0 1 * *',
+        ]);
+
+        $backup = createBackupResourceBackupForUser($user->id, [
+            'dir_path' => '/var/www/monthly',
+            'interval_id' => $monthlyInterval->id,
+        ]);
+        createBackupResourceHistory($backup, [
+            'created_at' => Carbon::parse('2026-01-31 12:00:00'),
+            'updated_at' => Carbon::parse('2026-01-31 12:00:00'),
+        ]);
+        $backup->forceFill(['last_history_at' => Carbon::parse('2026-01-31 12:00:00')])->save();
+
+        Livewire::test(ListBackups::class)
+            ->filterTable('freshness_state', 'missed_run')
+            ->assertCanSeeTableRecords([$backup]);
+    } finally {
+        Carbon::setTestNow();
+    }
+});
+
 test('backup list is scoped to the authenticated owner', function () {
     $user = $this->actingAsSuperAdmin();
     $otherUser = \App\Models\User::factory()->create();

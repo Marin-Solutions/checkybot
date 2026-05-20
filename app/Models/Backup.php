@@ -81,18 +81,18 @@ class Backup extends Model
 
     public function scopeMissedRun(Builder $query): Builder
     {
-        return $query->where(function (Builder $query): void {
-            $query
-                ->whereNotNull('stale_at')
-                ->orWhere(fn (Builder $query): Builder => static::applyScheduleMissedConstraint($query));
-        });
+        return $query->whereKey(static::matchingFreshnessIds(
+            $query,
+            fn (Backup $backup): bool => $backup->isMissingExpectedRun(),
+        ));
     }
 
     public function scopeNotMissedRun(Builder $query): Builder
     {
-        return $query
-            ->whereNull('stale_at')
-            ->where(fn (Builder $query): Builder => static::applyScheduleNotMissedConstraint($query));
+        return $query->whereKey(static::matchingFreshnessIds(
+            $query,
+            fn (Backup $backup): bool => ! $backup->isMissingExpectedRun(),
+        ));
     }
 
     public function scopeAwaitingFirstRun(Builder $query): Builder
@@ -141,64 +141,14 @@ class Backup extends Model
         };
     }
 
-    private static function applyScheduleMissedConstraint(Builder $query): Builder
+    private static function matchingFreshnessIds(Builder $query, callable $matches): array
     {
-        $hasSchedule = false;
-        $referenceSql = static::freshnessReferenceSql();
-
-        foreach (static::backupIntervalCutoffs() as $intervalId => $cutoffAt) {
-            $hasSchedule = true;
-
-            $query->orWhere(fn (Builder $query): Builder => $query
-                ->where('interval_id', $intervalId)
-                ->whereRaw("{$referenceSql} < ?", [$cutoffAt]));
-        }
-
-        if (! $hasSchedule) {
-            $query->whereRaw('1 = 0');
-        }
-
-        return $query;
-    }
-
-    private static function applyScheduleNotMissedConstraint(Builder $query): Builder
-    {
-        $referenceSql = static::freshnessReferenceSql();
-
-        foreach (static::backupIntervalCutoffs() as $intervalId => $cutoffAt) {
-            $query->where(fn (Builder $query): Builder => $query
-                ->where('interval_id', '!=', $intervalId)
-                ->orWhereNull('interval_id')
-                ->orWhereRaw("{$referenceSql} >= ?", [$cutoffAt]));
-        }
-
-        return $query;
-    }
-
-    private static function backupIntervalCutoffs(): array
-    {
-        return BackupIntervalOption::query()
-            ->get(['id', 'value', 'unit'])
-            ->mapWithKeys(function (BackupIntervalOption $interval): array {
-                $cutoffAt = match (true) {
-                    str_contains($interval->unit, 'hour') => now()->subHours($interval->value),
-                    str_contains($interval->unit, 'day') => now()->subDays($interval->value),
-                    str_contains($interval->unit, 'week') => now()->subWeeks($interval->value),
-                    str_contains($interval->unit, 'month') => now()->subMonthsNoOverflow($interval->value),
-                    default => null,
-                };
-
-                return $cutoffAt ? [$interval->id => $cutoffAt->toDateTimeString()] : [];
-            })
-            ->all();
-    }
-
-    private static function freshnessReferenceSql(): string
-    {
-        $backupTable = (new static)->getTable();
-        $historyTable = (new BackupHistory)->getTable();
-
-        return "COALESCE({$backupTable}.last_history_at, (SELECT MAX({$historyTable}.created_at) FROM {$historyTable} WHERE {$historyTable}.backup_id = {$backupTable}.id), {$backupTable}.first_run_at, {$backupTable}.created_at)";
+        return (clone $query)
+            ->reorder()
+            ->with(['interval', 'latestHistory'])
+            ->get()
+            ->filter(fn (Backup $backup): bool => $matches($backup))
+            ->modelKeys();
     }
 
     public function latestHistoryReceivedAt(): ?CarbonInterface
