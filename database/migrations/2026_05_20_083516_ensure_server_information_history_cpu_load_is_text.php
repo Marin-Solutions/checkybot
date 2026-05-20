@@ -18,7 +18,11 @@ return new class extends Migration
         }
 
         match (Schema::getConnection()->getDriverName()) {
-            'mysql', 'mariadb' => DB::statement('ALTER TABLE `server_information_history` MODIFY `cpu_load` TEXT NOT NULL'),
+            'mysql', 'mariadb' => DB::statement(sprintf(
+                'ALTER TABLE %s MODIFY %s TEXT NOT NULL',
+                DB::getQueryGrammar()->wrapTable('server_information_history'),
+                DB::getQueryGrammar()->wrap('cpu_load'),
+            )),
             default => Schema::table('server_information_history', function (Blueprint $table): void {
                 $table->text('cpu_load')->change();
             }),
@@ -32,9 +36,15 @@ return new class extends Migration
 
     private function cpuLoadColumnIsAlreadyText(): bool
     {
-        return in_array(Schema::getColumnType('server_information_history', 'cpu_load'), [
+        return in_array(strtolower(Schema::getColumnType('server_information_history', 'cpu_load')), [
+            'char',
+            'character varying',
+            'longtext',
+            'mediumtext',
             'string',
             'text',
+            'tinytext',
+            'varchar',
         ], true);
     }
 };
