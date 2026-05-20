@@ -13,6 +13,7 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Services\IntervalParser;
+use App\Support\ApiMonitorEvidenceFormatter;
 use App\Support\HealthStatusLabel;
 use App\Support\PackageCheckTableEvidence;
 use Filament\Forms;
@@ -364,6 +365,12 @@ class MonitorApisResource extends Resource
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                Tables\Columns\TextColumn::make('latest_failure_evidence')
+                    ->label('Latest Evidence')
+                    ->state(fn (MonitorApis $record): ?string => ApiMonitorEvidenceFormatter::compactLatestEvidence($record->latestResult))
+                    ->placeholder('No runs yet')
+                    ->color(fn (MonitorApis $record): string => ApiMonitorEvidenceFormatter::statusColor($record->latestResult?->status ?? $record->current_status))
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')
                     ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')
