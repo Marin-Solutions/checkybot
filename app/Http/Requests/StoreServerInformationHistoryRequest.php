@@ -57,11 +57,7 @@ class StoreServerInformationHistoryRequest extends FormRequest
 
         $normalized = str_replace(' ', '', trim((string) $value));
 
-        if (str_contains($normalized, ',') && ! str_contains($normalized, '.')) {
-            $normalized = str_replace(',', '.', $normalized);
-        } else {
-            $normalized = str_replace(',', '', $normalized);
-        }
+        $normalized = $this->normalizeDecimalSeparators($normalized);
 
         if (! is_numeric($normalized)) {
             return $value;
@@ -78,5 +74,25 @@ class StoreServerInformationHistoryRequest extends FormRequest
         }
 
         return number_format($cpuLoad, 2, '.', '');
+    }
+
+    private function normalizeDecimalSeparators(string $value): string
+    {
+        $lastComma = strrpos($value, ',');
+        $lastDot = strrpos($value, '.');
+
+        if ($lastComma !== false && $lastDot !== false) {
+            if ($lastComma > $lastDot) {
+                return str_replace(',', '.', str_replace('.', '', $value));
+            }
+
+            return str_replace(',', '', $value);
+        }
+
+        if ($lastComma !== false) {
+            return str_replace(',', '.', $value);
+        }
+
+        return $value;
     }
 }

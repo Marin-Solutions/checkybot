@@ -111,7 +111,7 @@ test('server history intake clamps oversized cpu load samples before storage', f
     ]);
 });
 
-test('server history intake normalizes comma decimal cpu load samples', function () {
+test('server history intake normalizes cpu load samples before storage', function (string $cpuLoad, string $storedCpuLoad) {
     $server = Server::factory()->create([
         'ip' => '192.0.2.10',
         'token' => 'server-token',
@@ -123,7 +123,7 @@ test('server history intake normalizes comma decimal cpu load samples', function
     ])
         ->postJson('/api/v1/server-history', [
             's' => $server->id,
-            'cpu_load' => '0,25',
+            'cpu_load' => $cpuLoad,
             'cpu_cores' => 4,
             'ram_free_percentage' => '70',
             'ram_free' => '1024000',
@@ -134,9 +134,14 @@ test('server history intake normalizes comma decimal cpu load samples', function
 
     assertDatabaseHas('server_information_history', [
         'server_id' => $server->id,
-        'cpu_load' => '0.25',
+        'cpu_load' => $storedCpuLoad,
     ]);
-});
+})->with([
+    'comma decimal' => ['0,25', '0.25'],
+    'spaced comma decimal' => ['0 ,25', '0.25'],
+    'us thousands separator' => ['1,000.50', '99.99'],
+    'european thousands separator' => ['1.234,56', '99.99'],
+]);
 
 test('server log intake trusts a valid token when reporter ip changes', function () {
     Storage::fake('local');
