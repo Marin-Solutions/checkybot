@@ -47,6 +47,43 @@ test('server history intake trusts a valid token when reporter ip changes', func
         ->and($server->last_reporter_seen_at)->not->toBeNull();
 });
 
+test('server history intake stores high multi-core cpu load samples', function () {
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+        'cpu_cores' => 8,
+    ]);
+
+    $this->withServerVariables(['REMOTE_ADDR' => '198.51.100.24'])
+        ->withHeaders([
+            'Authorization' => 'Bearer server-token',
+            'Accept' => 'application/json',
+            'User-Agent' => 'checkybot-reporter/1.0',
+        ])
+        ->postJson('/api/v1/server-history', [
+            's' => $server->id,
+            'cpu_load' => '256.75',
+            'cpu_cores' => 512,
+            'ram_free_percentage' => '70',
+            'ram_free' => '1024000',
+            'disk_free_percentage' => '55',
+            'disk_free_bytes' => '2048000',
+        ])
+        ->assertOk();
+
+    assertDatabaseHas('server_information_history', [
+        'server_id' => $server->id,
+        'cpu_load' => '256.75',
+    ]);
+
+    $server->refresh();
+
+    expect($server->cpu_cores)->toBe(512)
+        ->and($server->last_reporter_ip)->toBe('198.51.100.24')
+        ->and($server->last_reporter_user_agent)->toBe('checkybot-reporter/1.0')
+        ->and($server->last_reporter_seen_at)->not->toBeNull();
+});
+
 test('server history intake stores maximum accepted cpu load', function () {
     $server = Server::factory()->create([
         'ip' => '192.0.2.10',

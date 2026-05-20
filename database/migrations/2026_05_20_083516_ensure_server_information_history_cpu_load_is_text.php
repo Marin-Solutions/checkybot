@@ -27,17 +27,20 @@ return new class extends Migration
                 $table->text('cpu_load')->change();
             }),
         };
+
+        if (! $this->cpuLoadColumnIsAlreadyText()) {
+            throw new RuntimeException('Unable to widen server_information_history.cpu_load to text.');
+        }
     }
 
     public function down(): void
     {
-        //
+        // Intentionally keep cpu_load widened so production reporter samples cannot overflow.
     }
 
     private function cpuLoadColumnIsAlreadyText(): bool
     {
         return in_array(strtolower(Schema::getColumnType('server_information_history', 'cpu_load')), [
-            'char',
             'character varying',
             'longtext',
             'mediumtext',
