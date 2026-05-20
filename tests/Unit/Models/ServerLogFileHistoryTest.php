@@ -51,6 +51,8 @@ test('content shell script escapes configured log paths and names', function () 
     expect($script)->toContain('TOKEN_ID='.escapeshellarg("tok'en"));
     expect($script)->toContain('SERVER_ID='.escapeshellarg('123'));
     expect($script)->toContain('tail -c 2097152 '.escapeshellarg($logDirectory).' > '.escapeshellarg($tmpLog));
+    expect($script)->toContain('curl -4 -fsS -o /dev/null -X POST');
+    expect($script)->not->toContain('curl -4 -s -X POST');
     expect($script)->toContain(' -F '.escapeshellarg($curlLogFormValue));
     expect($script)->toContain(' -F '.escapeshellarg('li=77'));
     expect($script)->toContain('rm '.escapeshellarg($tmpLog));
