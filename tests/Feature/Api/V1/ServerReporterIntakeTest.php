@@ -47,6 +47,33 @@ test('server history intake trusts a valid token when reporter ip changes', func
         ->and($server->last_reporter_seen_at)->not->toBeNull();
 });
 
+test('server history intake stores maximum accepted cpu load', function () {
+    $server = Server::factory()->create([
+        'ip' => '192.0.2.10',
+        'token' => 'server-token',
+    ]);
+
+    $this->withHeaders([
+        'Authorization' => 'Bearer server-token',
+        'Accept' => 'application/json',
+    ])
+        ->postJson('/api/v1/server-history', [
+            's' => $server->id,
+            'cpu_load' => '10000',
+            'cpu_cores' => 4096,
+            'ram_free_percentage' => '70',
+            'ram_free' => '1024000',
+            'disk_free_percentage' => '55',
+            'disk_free_bytes' => '2048000',
+        ])
+        ->assertOk();
+
+    assertDatabaseHas('server_information_history', [
+        'server_id' => $server->id,
+        'cpu_load' => '10000',
+    ]);
+});
+
 test('server log intake trusts a valid token when reporter ip changes', function () {
     Storage::fake('local');
 
