@@ -92,7 +92,9 @@ class Backup extends Model
     {
         return $query
             ->whereNull('stale_at')
-            ->whereNot(fn (Builder $query): Builder => static::applyScheduleMissedConstraint($query));
+            ->where(fn (Builder $query): Builder => $query
+                ->whereNull('interval_id')
+                ->orWhereNot(fn (Builder $query): Builder => static::applyScheduleMissedConstraint($query)));
     }
 
     public function scopeAwaitingFirstRun(Builder $query): Builder
