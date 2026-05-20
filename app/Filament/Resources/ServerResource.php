@@ -506,18 +506,18 @@ class ServerResource extends Resource
 
     private static function diskUsageExpression(): string
     {
-        return "(100 - CAST(REPLACE(REPLACE(sih.disk_free_percentage, '%', ''), ' ', '') AS DECIMAL(10, 4)))";
+        return "(100 - CAST(NULLIF(REPLACE(REPLACE(sih.disk_free_percentage, '%', ''), ' ', ''), '') AS DECIMAL(10, 4)))";
     }
 
     private static function ramUsageExpression(): string
     {
-        return "(100 - CAST(REPLACE(REPLACE(sih.ram_free_percentage, '%', ''), ' ', '') AS DECIMAL(10, 4)))";
+        return "(100 - CAST(NULLIF(REPLACE(REPLACE(sih.ram_free_percentage, '%', ''), ' ', ''), '') AS DECIMAL(10, 4)))";
     }
 
     private static function cpuUsageExpression(): string
     {
         return "(
-            CAST(REPLACE(sih.cpu_load, ',', '.') AS DECIMAL(10, 4)) /
+            CAST(NULLIF(REPLACE(REPLACE(sih.cpu_load, ',', '.'), ' ', ''), '') AS DECIMAL(10, 4)) /
             CASE
                 WHEN servers.cpu_cores IS NULL OR servers.cpu_cores < 1 THEN 1
                 ELSE servers.cpu_cores
