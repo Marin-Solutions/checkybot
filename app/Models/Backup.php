@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 
 class Backup extends Model
@@ -78,6 +80,55 @@ class Backup extends Model
         return $this->hasOne(BackupHistory::class)->latestOfMany();
     }
 
+    public function scopeMissedRun(Builder $query): Builder
+    {
+        [$thresholdSql, $bindings] = static::missedRunThresholdSql();
+
+        return $query->where(function (Builder $query) use ($thresholdSql, $bindings): void {
+            $query
+                ->whereNotNull('stale_at')
+                ->orWhereRaw($thresholdSql, $bindings);
+        });
+    }
+
+    public function scopeNotMissedRun(Builder $query): Builder
+    {
+        [$thresholdSql, $bindings] = static::missedRunThresholdSql();
+
+        return $query
+            ->whereNull('stale_at')
+            ->whereRaw("not ({$thresholdSql})", $bindings);
+    }
+
+    public function scopeAwaitingFirstRun(Builder $query): Builder
+    {
+        return $query
+            ->notMissedRun()
+            ->whereNull('last_history_at')
+            ->doesntHave('histories');
+    }
+
+    public function scopeFresh(Builder $query): Builder
+    {
+        return $query
+            ->notMissedRun()
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNotNull('last_history_at')
+                    ->orWhereHas('histories');
+            });
+    }
+
+    public function scopeLatestZipFailed(Builder $query): Builder
+    {
+        return $query->whereHas('latestHistory', fn (Builder $query): Builder => $query->where('is_zipped', false));
+    }
+
+    public function scopeLatestUploadFailed(Builder $query): Builder
+    {
+        return $query->whereHas('latestHistory', fn (Builder $query): Builder => $query->where('is_uploaded', false));
+    }
+
     public function addExpectedInterval(CarbonInterface $date): ?CarbonInterface
     {
         $interval = $this->interval;
@@ -93,6 +144,37 @@ class Backup extends Model
             str_contains($interval->unit, 'month') => $date->copy()->addMonthsNoOverflow($interval->value),
             default => null,
         };
+    }
+
+    private static function missedRunThresholdSql(): array
+    {
+        $connection = DB::connection()->getDriverName();
+        $now = now()->toDateTimeString();
+        $referenceSql = 'COALESCE(backups.last_history_at, (SELECT MAX(backup_histories.created_at) FROM backup_histories WHERE backup_histories.backup_id = backups.id), backups.first_run_at, backups.created_at)';
+        $valueSql = '(SELECT backup_interval_options.value FROM backup_interval_options WHERE backup_interval_options.id = backups.interval_id LIMIT 1)';
+        $unitSql = 'LOWER((SELECT backup_interval_options.unit FROM backup_interval_options WHERE backup_interval_options.id = backups.interval_id LIMIT 1))';
+
+        if ($connection === 'sqlite') {
+            return [
+                "(
+                    ({$unitSql} LIKE '%hour%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' hours') < ?)
+                    OR ({$unitSql} LIKE '%day%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' days') < ?)
+                    OR ({$unitSql} LIKE '%week%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' weeks') < ?)
+                    OR ({$unitSql} LIKE '%month%' AND datetime({$referenceSql}, '+' || {$valueSql} || ' months') < ?)
+                )",
+                [$now, $now, $now, $now],
+            ];
+        }
+
+        return [
+            "(
+                ({$unitSql} LIKE '%hour%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} HOUR) < ?)
+                OR ({$unitSql} LIKE '%day%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} DAY) < ?)
+                OR ({$unitSql} LIKE '%week%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} WEEK) < ?)
+                OR ({$unitSql} LIKE '%month%' AND DATE_ADD({$referenceSql}, INTERVAL {$valueSql} MONTH) < ?)
+            )",
+            [$now, $now, $now, $now],
+        ];
     }
 
     public function latestHistoryReceivedAt(): ?CarbonInterface

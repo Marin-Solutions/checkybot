@@ -121,7 +121,34 @@ class BackupsResource extends Resource
                 Tables\Columns\TextColumn::make('first_run_at')->dateTimeInUserZone(),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('freshness_state')
+                    ->label('Freshness')
+                    ->options([
+                        'missed_run' => 'Missed runs',
+                        'awaiting_first_run' => 'Awaiting first run',
+                        'fresh' => 'Fresh backups',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'missed_run' => $query->missedRun(),
+                            'awaiting_first_run' => $query->awaitingFirstRun(),
+                            'fresh' => $query->fresh(),
+                            default => $query,
+                        };
+                    }),
+                Tables\Filters\SelectFilter::make('latest_run_failure')
+                    ->label('Latest Run Failure')
+                    ->options([
+                        'zip_failed' => 'Zip failed',
+                        'upload_failed' => 'Upload failed',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'zip_failed' => $query->latestZipFailed(),
+                            'upload_failed' => $query->latestUploadFailed(),
+                            default => $query,
+                        };
+                    }),
             ])
             ->actions([
                 \Filament\Actions\EditAction::make(),
