@@ -324,6 +324,24 @@ test('record result calculates response time', function () {
     expect($result->response_time_ms)->toBeLessThan(200);
 });
 
+test('record result persists measured response time from test result when available', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true) - 0.15;
+
+    $testResult = [
+        'code' => 200,
+        'body' => [],
+        'assertions' => [],
+        'response_time_ms' => 25,
+        'elapsed_wall_time_ms' => 150,
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->response_time_ms)->toBe(25)
+        ->and($result->elapsed_wall_time_ms)->toBe(150);
+});
+
 test('record result persists actual and expected values for failed assertions', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);

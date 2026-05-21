@@ -124,7 +124,9 @@ class MonitorApiResult extends Model
             }
         }
 
-        $responseTime = (int) ((microtime(true) - $startTime) * 1000);
+        $responseTime = array_key_exists('response_time_ms', $testResult)
+            ? (int) $testResult['response_time_ms']
+            : (int) ((microtime(true) - $startTime) * 1000);
         $elapsedWallTime = isset($testResult['elapsed_wall_time_ms'])
             ? (int) $testResult['elapsed_wall_time_ms']
             : $responseTime;
