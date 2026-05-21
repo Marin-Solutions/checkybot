@@ -661,13 +661,14 @@ describe('IncidentFeedWidget', function () {
             ]],
             'created_at' => now()->subMinutes(10),
         ]);
-        MonitorApiResult::factory()->failed()->create([
+        MonitorApiResult::factory()->successful()->create([
             'monitor_api_id' => $api->id,
             'created_at' => now()->subMinutes(4),
         ]);
 
         $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
             ->where('source', 'api')
+            ->where('source_row_id', $result->id)
             ->first();
 
         expect($incident)->not->toBeNull()
@@ -685,7 +686,7 @@ describe('IncidentFeedWidget', function () {
         expect($html)
             ->toContain('Source row #'.$result->id)
             ->toContain('Scheduled streak')
-            ->toContain('2 failures')
+            ->toContain('1 failure')
             ->toContain('May 21, 2026 11:50 AM')
             ->toContain('Failed Assertions')
             ->toContain('Expected active status.');

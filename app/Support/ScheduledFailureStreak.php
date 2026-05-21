@@ -10,6 +10,8 @@ use Illuminate\Support\Carbon;
 
 class ScheduledFailureStreak
 {
+    private const ROW_LIMIT = 100;
+
     /**
      * @return array{count: int, first_failed_at: ?Carbon}
      */
@@ -20,6 +22,7 @@ class ScheduledFailureStreak
             ->where('is_on_demand', false)
             ->orderByDesc('created_at')
             ->orderByDesc('id')
+            ->limit(self::ROW_LIMIT)
             ->get(['id', 'status', 'is_success', 'created_at']);
 
         return self::fromRows($rows, fn (MonitorApiResult $result): bool => self::apiResultFailed($result));
@@ -35,6 +38,7 @@ class ScheduledFailureStreak
             ->where('is_on_demand', false)
             ->orderByDesc('created_at')
             ->orderByDesc('id')
+            ->limit(self::ROW_LIMIT)
             ->get(['id', 'status', 'http_status_code', 'created_at']);
 
         return self::fromRows($rows, fn (WebsiteLogHistory $result): bool => self::websiteResultFailed($result));
@@ -51,7 +55,24 @@ class ScheduledFailureStreak
             return self::empty();
         }
 
-        return self::forApi($monitor);
+        $rows = MonitorApiResult::query()
+            ->where('monitor_api_id', $monitor->id)
+            ->where('is_on_demand', false)
+            ->where(function ($query) use ($result): void {
+                $query
+                    ->where('created_at', '<', $result->created_at)
+                    ->orWhere(function ($query) use ($result): void {
+                        $query
+                            ->where('created_at', $result->created_at)
+                            ->where('id', '<=', $result->id);
+                    });
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(self::ROW_LIMIT)
+            ->get(['id', 'status', 'is_success', 'created_at']);
+
+        return self::fromRows($rows, fn (MonitorApiResult $result): bool => self::apiResultFailed($result));
     }
 
     /**
@@ -65,7 +86,24 @@ class ScheduledFailureStreak
             return self::empty();
         }
 
-        return self::forWebsite($website);
+        $rows = WebsiteLogHistory::query()
+            ->where('website_id', $website->id)
+            ->where('is_on_demand', false)
+            ->where(function ($query) use ($result): void {
+                $query
+                    ->where('created_at', '<', $result->created_at)
+                    ->orWhere(function ($query) use ($result): void {
+                        $query
+                            ->where('created_at', $result->created_at)
+                            ->where('id', '<=', $result->id);
+                    });
+            })
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(self::ROW_LIMIT)
+            ->get(['id', 'status', 'http_status_code', 'created_at']);
+
+        return self::fromRows($rows, fn (WebsiteLogHistory $result): bool => self::websiteResultFailed($result));
     }
 
     /**
@@ -87,6 +125,16 @@ class ScheduledFailureStreak
     public static function labelForApi(MonitorApis $monitor): ?string
     {
         return self::label(self::forApi($monitor));
+    }
+
+    public static function displayForApi(MonitorApis $monitor): ?string
+    {
+        return self::display(self::forApi($monitor));
+    }
+
+    public static function displayForWebsite(Website $website): ?string
+    {
+        return self::display(self::forWebsite($website));
     }
 
     public static function labelForWebsite(Website $website): ?string
@@ -162,6 +210,21 @@ class ScheduledFailureStreak
         }
 
         return 'First failed '.$streak['first_failed_at']->diffForHumans();
+    }
+
+    /**
+     * @param  array{count: int, first_failed_at: ?Carbon}  $streak
+     */
+    private static function display(array $streak): ?string
+    {
+        $label = self::label($streak);
+        $description = self::description($streak);
+
+        if ($label === null) {
+            return null;
+        }
+
+        return $description === null ? $label : "{$label} · {$description}";
     }
 
     /**

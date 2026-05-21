@@ -88,11 +88,10 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->default('-'),
                 TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::labelForWebsite($record))
-                    ->description(fn (Website $record): ?string => ScheduledFailureStreak::descriptionForWebsite($record))
+                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::displayForWebsite($record))
                     ->placeholder('-')
-                    ->badge()
-                    ->color('danger'),
+                    ->color('danger')
+                    ->wrap(),
                 TextColumn::make('latestLogHistory.created_at')
                     ->label('Last Check')
                     ->state(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->toDayDateTimeString())

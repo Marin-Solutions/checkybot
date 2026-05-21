@@ -57,7 +57,7 @@
             <x-incident-feed-evidence-field label="Response time" :value="$evidence->speed !== null ? $evidence->speed . 'ms' : '-'" />
             <x-incident-feed-evidence-field label="Captured at" :value="optional($evidence->created_at)->toDayDateTimeString() ?? '-'" />
             <x-incident-feed-evidence-field label="SSL expiry" :value="optional($evidence->ssl_expiry_date)->toFormattedDateString() ?? '-'" />
-            <x-incident-feed-evidence-field label="Scheduled streak" :value="$scheduledFailureStreak['count'] > 0 ? $scheduledFailureStreak['count'] . ' failures' : '-'" />
+            <x-incident-feed-evidence-field label="Scheduled streak" :value="$scheduledFailureStreak['count'] > 0 ? $scheduledFailureStreak['count'] . ' ' . str('failure')->plural($scheduledFailureStreak['count']) : '-'" />
             <x-incident-feed-evidence-field label="First failed at" :value="optional($scheduledFailureStreak['first_failed_at'])->toDayDateTimeString() ?? '-'" />
         </div>
 
@@ -80,7 +80,7 @@
             <x-incident-feed-evidence-field label="Response time" :value="$evidence->response_time_ms !== null ? $evidence->response_time_ms . 'ms' : '-'" />
             <x-incident-feed-evidence-field label="Captured at" :value="optional($evidence->created_at)->toDayDateTimeString() ?? '-'" />
             <x-incident-feed-evidence-field label="Failed assertions" :value="count($evidence->failed_assertions ?? [])" />
-            <x-incident-feed-evidence-field label="Scheduled streak" :value="$scheduledFailureStreak['count'] > 0 ? $scheduledFailureStreak['count'] . ' failures' : '-'" />
+            <x-incident-feed-evidence-field label="Scheduled streak" :value="$scheduledFailureStreak['count'] > 0 ? $scheduledFailureStreak['count'] . ' ' . str('failure')->plural($scheduledFailureStreak['count']) : '-'" />
             <x-incident-feed-evidence-field label="First failed at" :value="optional($scheduledFailureStreak['first_failed_at'])->toDayDateTimeString() ?? '-'" />
         </div>
 

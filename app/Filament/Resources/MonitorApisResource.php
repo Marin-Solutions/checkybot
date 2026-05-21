@@ -374,11 +374,10 @@ class MonitorApisResource extends Resource
                     ->wrap(),
                 Tables\Columns\TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::labelForApi($record))
-                    ->description(fn (MonitorApis $record): ?string => ScheduledFailureStreak::descriptionForApi($record))
+                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::displayForApi($record))
                     ->placeholder('-')
-                    ->badge()
-                    ->color('danger'),
+                    ->color('danger')
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')
                     ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')

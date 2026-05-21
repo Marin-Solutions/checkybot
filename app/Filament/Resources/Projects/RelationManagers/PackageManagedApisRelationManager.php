@@ -79,11 +79,10 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->default('-'),
                 TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::labelForApi($record))
-                    ->description(fn (MonitorApis $record): ?string => ScheduledFailureStreak::descriptionForApi($record))
+                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::displayForApi($record))
                     ->placeholder('-')
-                    ->badge()
-                    ->color('danger'),
+                    ->color('danger')
+                    ->wrap(),
                 TextColumn::make('latestResult.created_at')
                     ->label('Last Scheduled Check')
                     ->state(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->toDayDateTimeString())

@@ -260,11 +260,10 @@ class WebsiteResource extends Resource
                     ->tooltip(fn (Website $record): ?string => static::latestScheduledFailure($record)?->created_at?->toDayDateTimeString()),
                 Tables\Columns\TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::labelForWebsite($record))
-                    ->description(fn (Website $record): ?string => ScheduledFailureStreak::descriptionForWebsite($record))
+                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::displayForWebsite($record))
                     ->placeholder('-')
-                    ->badge()
-                    ->color('danger'),
+                    ->color('danger')
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
