@@ -10,8 +10,6 @@ use Illuminate\Support\Carbon;
 
 class ScheduledFailureStreak
 {
-    private const ROW_LIMIT = 100;
-
     /**
      * @return array{count: int, first_failed_at: ?Carbon}
      */
@@ -20,10 +18,10 @@ class ScheduledFailureStreak
         $rows = MonitorApiResult::query()
             ->where('monitor_api_id', $monitor->id)
             ->where('is_on_demand', false)
+            ->select(['id', 'status', 'is_success', 'created_at'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(self::ROW_LIMIT)
-            ->get(['id', 'status', 'is_success', 'created_at']);
+            ->cursor();
 
         return self::fromRows($rows, fn (MonitorApiResult $result): bool => self::apiResultFailed($result));
     }
@@ -36,10 +34,10 @@ class ScheduledFailureStreak
         $rows = WebsiteLogHistory::query()
             ->where('website_id', $website->id)
             ->where('is_on_demand', false)
+            ->select(['id', 'status', 'http_status_code', 'created_at'])
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(self::ROW_LIMIT)
-            ->get(['id', 'status', 'http_status_code', 'created_at']);
+            ->cursor();
 
         return self::fromRows($rows, fn (WebsiteLogHistory $result): bool => self::websiteResultFailed($result));
     }
@@ -58,6 +56,7 @@ class ScheduledFailureStreak
         $rows = MonitorApiResult::query()
             ->where('monitor_api_id', $monitor->id)
             ->where('is_on_demand', false)
+            ->select(['id', 'status', 'is_success', 'created_at'])
             ->where(function ($query) use ($result): void {
                 $query
                     ->where('created_at', '<', $result->created_at)
@@ -69,8 +68,7 @@ class ScheduledFailureStreak
             })
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(self::ROW_LIMIT)
-            ->get(['id', 'status', 'is_success', 'created_at']);
+            ->cursor();
 
         return self::fromRows($rows, fn (MonitorApiResult $result): bool => self::apiResultFailed($result));
     }
@@ -89,6 +87,7 @@ class ScheduledFailureStreak
         $rows = WebsiteLogHistory::query()
             ->where('website_id', $website->id)
             ->where('is_on_demand', false)
+            ->select(['id', 'status', 'http_status_code', 'created_at'])
             ->where(function ($query) use ($result): void {
                 $query
                     ->where('created_at', '<', $result->created_at)
@@ -100,8 +99,7 @@ class ScheduledFailureStreak
             })
             ->orderByDesc('created_at')
             ->orderByDesc('id')
-            ->limit(self::ROW_LIMIT)
-            ->get(['id', 'status', 'http_status_code', 'created_at']);
+            ->cursor();
 
         return self::fromRows($rows, fn (WebsiteLogHistory $result): bool => self::websiteResultFailed($result));
     }
