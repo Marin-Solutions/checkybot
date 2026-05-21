@@ -74,6 +74,7 @@
                         @if (isset($repairAction['command']))
                             <button
                                 type="button"
+                                aria-label="Copy command: {{ $repairAction['command'] }}"
                                 class="inline-flex shrink-0 items-center justify-center rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-800 shadow-sm transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 dark:border-white/15 dark:bg-gray-950 dark:text-gray-100 dark:hover:bg-white/5 dark:focus:ring-offset-gray-950"
                                 x-on:click="
                                     navigator.clipboard.writeText(command).then(() => {
