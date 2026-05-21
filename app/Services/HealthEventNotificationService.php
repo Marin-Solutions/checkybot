@@ -61,6 +61,7 @@ class HealthEventNotificationService
                 WebsiteServicesEnum::WEBSITE_CHECK->value,
                 WebsiteServicesEnum::ALL_CHECK->value,
             ])
+            ->with('channel')
             ->get();
 
         return $this->deliver(
@@ -108,6 +109,7 @@ class HealthEventNotificationService
                 WebsiteServicesEnum::API_MONITOR->value,
                 WebsiteServicesEnum::ALL_CHECK->value,
             ])
+            ->with('channel')
             ->get();
 
         return $this->deliver(
