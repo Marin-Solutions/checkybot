@@ -10,8 +10,10 @@ use App\Filament\Support\HealthStatusFilter;
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Project;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use App\Services\SeoHealthCheckService;
 use App\Support\HealthStatusLabel;
+use App\Support\UptimeTransportError;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -227,6 +229,34 @@ class WebsiteResource extends Resource
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_summary')
+                    ->label('Latest Failure')
+                    ->state(fn (Website $record): ?string => static::latestScheduledFailure($record)?->summary)
+                    ->placeholder('-')
+                    ->limit(80)
+                    ->wrap()
+                    ->tooltip(fn (Website $record): ?string => static::latestScheduledFailure($record)?->summary)
+                    ->color(fn (Website $record): string => HealthStatusLabel::color(static::latestScheduledFailure($record)?->status)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_transport')
+                    ->label('Cause')
+                    ->state(fn (Website $record): ?string => static::latestScheduledFailure($record)?->transport_error_type)
+                    ->placeholder('-')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                    ->color(fn (?string $state): string => UptimeTransportError::color($state)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_http')
+                    ->label('HTTP')
+                    ->state(fn (Website $record): ?int => static::latestScheduledFailure($record)?->http_status_code)
+                    ->placeholder('-')
+                    ->badge()
+                    ->formatStateUsing(fn (?int $state): string => $state === 0 ? 'No response' : (string) ($state ?? '-'))
+                    ->color(fn (?int $state): string => static::httpCodeColor($state)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_observed_at')
+                    ->label('Observed At')
+                    ->state(fn (Website $record): ?\Illuminate\Support\Carbon => static::latestScheduledFailure($record)?->created_at)
+                    ->placeholder('-')
+                    ->sinceInUserZone()
+                    ->tooltip(fn (Website $record): ?string => static::latestScheduledFailure($record)?->created_at?->toDayDateTimeString()),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
@@ -906,5 +936,32 @@ class WebsiteResource extends Resource
             ->beforeStateUpdated(function (): void {
                 abort_unless(auth()->user()?->can('Update:Website') ?? false, 403);
             });
+    }
+
+    protected static function latestScheduledFailure(Website $record): ?WebsiteLogHistory
+    {
+        $latestScheduledLog = $record->latestScheduledLogHistory;
+
+        if (! in_array($latestScheduledLog?->status, ['warning', 'danger'], true)) {
+            return null;
+        }
+
+        return $latestScheduledLog;
+    }
+
+    protected static function httpCodeColor(?int $code): string
+    {
+        if ($code === null) {
+            return 'gray';
+        }
+
+        return match (true) {
+            $code <= 0 => 'danger',
+            $code >= 200 && $code < 300 => 'success',
+            $code >= 300 && $code < 400 => 'info',
+            $code >= 400 && $code < 500 => 'warning',
+            $code >= 500 => 'danger',
+            default => 'danger',
+        };
     }
 }
