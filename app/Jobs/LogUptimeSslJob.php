@@ -220,7 +220,7 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 
                 $this->website = $lockedWebsite;
                 $previousStatus = $lockedWebsite->current_status;
-                $previousSslExpiryDate = ! $lockedWebsite->ssl_check
+                $previousSslExpiryDate = ! $lockedWebsite->ssl_check || $sslExpiryDate === null
                     ? null
                     : $this->currentOrLatestKnownSslExpiryDate($lockedWebsite, $history);
 
@@ -381,7 +381,11 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         $latestKnownExpiryDate = $website->logHistory()
             ->when(
                 $currentHistory instanceof WebsiteLogHistory,
-                fn ($query) => $query->whereKeyNot($currentHistory->getKey()),
+                fn ($query) => $query->where(
+                    $currentHistory->getQualifiedKeyName(),
+                    '<',
+                    $currentHistory->getKey(),
+                ),
             )
             ->whereNotNull('ssl_expiry_date')
             ->latest('created_at')
