@@ -4,6 +4,7 @@ use App\Enums\WebsiteServicesEnum;
 use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use App\Models\Project;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
 use Illuminate\Mail\PendingMail;
@@ -311,4 +312,88 @@ test('notifyWebsite returns true when at least one channel delivers despite anot
 
     expect($result)->toBeTrue();
     Log::shouldHaveReceived('error')->once();
+});
+
+test('notifyWebsite sends application scoped rules for project owned websites', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+    $website = Website::factory()->create([
+        'created_by' => $project->created_by,
+        'project_id' => $project->id,
+        'silenced_until' => null,
+    ]);
+    $otherProject = Project::factory()->create([
+        'created_by' => $project->created_by,
+    ]);
+
+    NotificationSetting::factory()
+        ->projectScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'project_id' => $project->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+            'address' => 'application@example.com',
+        ]);
+
+    NotificationSetting::factory()
+        ->projectScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'project_id' => $otherProject->id,
+            'inspection' => WebsiteServicesEnum::WEBSITE_CHECK,
+            'address' => 'other-application@example.com',
+        ]);
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyWebsite($website, 'heartbeat', 'danger', 'Returned HTTP 500.');
+
+    expect($result)->toBeTrue();
+    Mail::assertSent(HealthStatusAlert::class, 1);
+    Mail::assertSent(HealthStatusAlert::class, fn (HealthStatusAlert $mail): bool => $mail->hasTo('application@example.com'));
+    Mail::assertNotSent(HealthStatusAlert::class, fn (HealthStatusAlert $mail): bool => $mail->hasTo('other-application@example.com'));
+});
+
+test('notifyApi sends application scoped rules for project owned api monitors', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $project->created_by,
+        'project_id' => $project->id,
+        'silenced_until' => null,
+    ]);
+    $otherProject = Project::factory()->create([
+        'created_by' => $project->created_by,
+    ]);
+
+    NotificationSetting::factory()
+        ->projectScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'project_id' => $project->id,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+            'address' => 'application-api@example.com',
+        ]);
+
+    NotificationSetting::factory()
+        ->projectScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'project_id' => $otherProject->id,
+            'inspection' => WebsiteServicesEnum::API_MONITOR,
+            'address' => 'other-application-api@example.com',
+        ]);
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyApi($monitor, 'heartbeat', 'danger', 'Latency exceeded threshold.');
+
+    expect($result)->toBeTrue();
+    Mail::assertSent(HealthStatusAlert::class, 1);
+    Mail::assertSent(HealthStatusAlert::class, fn (HealthStatusAlert $mail): bool => $mail->hasTo('application-api@example.com'));
+    Mail::assertNotSent(HealthStatusAlert::class, fn (HealthStatusAlert $mail): bool => $mail->hasTo('other-application-api@example.com'));
 });

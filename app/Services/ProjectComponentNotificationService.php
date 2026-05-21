@@ -60,6 +60,9 @@ class ProjectComponentNotificationService
                     $inner->projectComponentScope()
                         ->where('project_component_id', $component->id);
                 })->orWhere(function ($inner) use ($project): void {
+                    $inner->projectScope()
+                        ->where('project_id', $project->id);
+                })->orWhere(function ($inner) use ($project): void {
                     $inner->globalScope()
                         ->where('user_id', $project->created_by);
                 });

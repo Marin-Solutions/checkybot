@@ -85,6 +85,53 @@ test('project component notification service includes component scoped channels 
     Http::assertNotSent(fn ($request): bool => $request->url() === 'https://hooks.example.test/other-component');
 });
 
+test('project component notification service includes application scoped channels', function () {
+    Http::fake([
+        '*' => Http::response(['ok' => true], 200),
+    ]);
+
+    $user = User::factory()->create();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $otherProject = Project::factory()->create(['created_by' => $user->id]);
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'name' => 'scheduler',
+        'summary' => 'Scheduler heartbeat is stale.',
+    ]);
+
+    $projectChannel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://hooks.example.test/application',
+    ]);
+    $otherProjectChannel = NotificationChannels::factory()->create([
+        'created_by' => $user->id,
+        'url' => 'https://hooks.example.test/other-application',
+    ]);
+
+    NotificationSetting::factory()->projectScope()->webhook()->create([
+        'user_id' => $user->id,
+        'project_id' => $project->id,
+        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+        'notification_channel_id' => $projectChannel->id,
+    ]);
+    NotificationSetting::factory()->projectScope()->webhook()->create([
+        'user_id' => $user->id,
+        'project_id' => $otherProject->id,
+        'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+        'notification_channel_id' => $otherProjectChannel->id,
+    ]);
+
+    $delivered = app(ProjectComponentNotificationService::class)
+        ->notify($component, 'stale', 'danger');
+
+    expect($delivered)->toBeTrue();
+
+    Http::assertSentCount(1);
+    Http::assertSent(fn ($request): bool => $request->url() === 'https://hooks.example.test/application');
+    Http::assertNotSent(fn ($request): bool => $request->url() === 'https://hooks.example.test/other-application');
+});
+
 test('project component notification service fails gracefully when project relationship is missing', function () {
     Http::fake();
 

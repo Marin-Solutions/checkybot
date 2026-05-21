@@ -49,6 +49,10 @@ class HealthEventNotificationService
                     $inner->websiteScope()
                         ->where('website_id', $website->id);
                 })->orWhere(function ($inner) use ($website): void {
+                    $inner->projectScope()
+                        ->whereNotNull('project_id')
+                        ->where('project_id', $website->project_id);
+                })->orWhere(function ($inner) use ($website): void {
                     $inner->globalScope()
                         ->where('user_id', $website->created_by);
                 });
@@ -91,6 +95,10 @@ class HealthEventNotificationService
                 $query->where(function ($inner) use ($monitorApi): void {
                     $inner->apiMonitorScope()
                         ->where('monitor_api_id', $monitorApi->id);
+                })->orWhere(function ($inner) use ($monitorApi): void {
+                    $inner->projectScope()
+                        ->whereNotNull('project_id')
+                        ->where('project_id', $monitorApi->project_id);
                 })->orWhere(function ($inner) use ($monitorApi): void {
                     $inner->globalScope()
                         ->where('user_id', $monitorApi->created_by);
