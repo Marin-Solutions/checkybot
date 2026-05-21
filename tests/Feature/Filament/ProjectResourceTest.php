@@ -14,6 +14,7 @@ use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\ProjectResource;
 use App\Filament\Resources\Projects\RelationManagers\ComponentsRelationManager;
+use App\Filament\Resources\Projects\RelationManagers\NotificationSettingsRelationManager as ProjectNotificationSettingsRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
@@ -579,6 +580,61 @@ test('super admin can create component-scoped email notification from component 
         'channel_type' => NotificationChannelTypesEnum::MAIL->value,
         'address' => 'workers@example.com',
         'flag_active' => true,
+    ]);
+});
+
+test('super admin can create application-scoped email notification from project page', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    Livewire::test(ProjectNotificationSettingsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+            'address' => 'application-alerts@example.com',
+            'flag_active' => true,
+        ])
+        ->assertHasNoTableActionErrors();
+
+    $this->assertDatabaseHas('notification_settings', [
+        'user_id' => $user->id,
+        'project_id' => $project->id,
+        'website_id' => null,
+        'monitor_api_id' => null,
+        'project_component_id' => null,
+        'scope' => NotificationScopesEnum::PROJECT->value,
+        'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+        'channel_type' => NotificationChannelTypesEnum::MAIL->value,
+        'address' => 'application-alerts@example.com',
+        'flag_active' => true,
+    ]);
+});
+
+test('application-scoped webhook notification cannot reuse another users channel', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $otherChannel = NotificationChannels::factory()->create([
+        'title' => 'External Hook',
+    ]);
+
+    Livewire::test(ProjectNotificationSettingsRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableAction('create', data: [
+            'inspection' => WebsiteServicesEnum::ALL_CHECK->value,
+            'channel_type' => NotificationChannelTypesEnum::WEBHOOK->value,
+            'notification_channel_id' => $otherChannel->id,
+            'flag_active' => true,
+        ])
+        ->assertHasTableActionErrors(['notification_channel_id']);
+
+    $this->assertDatabaseMissing('notification_settings', [
+        'project_id' => $project->id,
+        'notification_channel_id' => $otherChannel->id,
     ]);
 });
 

@@ -7,6 +7,7 @@ use App\Filament\Resources\Projects\Pages\EditProject;
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\RelationManagers\ComponentsRelationManager;
+use App\Filament\Resources\Projects\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
 use App\Filament\Resources\Projects\Schemas\ProjectForm;
@@ -65,6 +66,7 @@ class ProjectResource extends Resource
             ComponentsRelationManager::class,
             PackageManagedWebsitesRelationManager::class,
             PackageManagedApisRelationManager::class,
+            NotificationSettingsRelationManager::class,
         ];
     }
 

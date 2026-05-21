@@ -8,6 +8,7 @@ use App\Enums\WebsiteServicesEnum;
 use App\Models\MonitorApis;
 use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
+use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
@@ -21,6 +22,7 @@ class NotificationSettingFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
+            'project_id' => null,
             'website_id' => null,
             'monitor_api_id' => null,
             'project_component_id' => null,
@@ -37,6 +39,18 @@ class NotificationSettingFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'scope' => NotificationScopesEnum::GLOBAL,
+            'project_id' => null,
+            'website_id' => null,
+            'monitor_api_id' => null,
+            'project_component_id' => null,
+        ]);
+    }
+
+    public function projectScope(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'scope' => NotificationScopesEnum::PROJECT,
+            'project_id' => Project::factory(),
             'website_id' => null,
             'monitor_api_id' => null,
             'project_component_id' => null,
@@ -47,6 +61,7 @@ class NotificationSettingFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'scope' => NotificationScopesEnum::WEBSITE,
+            'project_id' => null,
             'website_id' => Website::factory(),
             'monitor_api_id' => null,
             'project_component_id' => null,
@@ -57,6 +72,7 @@ class NotificationSettingFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'scope' => NotificationScopesEnum::API_MONITOR,
+            'project_id' => null,
             'website_id' => null,
             'monitor_api_id' => MonitorApis::factory(),
             'project_component_id' => null,
@@ -67,6 +83,7 @@ class NotificationSettingFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'scope' => NotificationScopesEnum::PROJECT_COMPONENT,
+            'project_id' => null,
             'website_id' => null,
             'monitor_api_id' => null,
             'project_component_id' => ProjectComponent::factory(),

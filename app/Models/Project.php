@@ -84,6 +84,16 @@ class Project extends Model
         return $this->hasMany(ProjectComponent::class);
     }
 
+    public function notificationSettings(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->projectScope();
+    }
+
+    public function notificationChannels(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->projectScope()->active();
+    }
+
     public function activeComponents(): HasMany
     {
         return $this->hasMany(ProjectComponent::class)->where('is_archived', false);
