@@ -249,6 +249,9 @@ class HealthEventNotificationService
                 $channel = $setting->channel;
 
                 if (! $channel) {
+                    $attempts++;
+                    $failures++;
+
                     $setting->recordDeliveryAttempt(
                         kind: 'send',
                         succeeded: false,
