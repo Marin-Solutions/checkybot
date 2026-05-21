@@ -6,11 +6,13 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 
 function seedScheduledApiMonitorResult(MonitorApis $monitor, \Illuminate\Support\Carbon $createdAt): MonitorApiResult
 {
@@ -107,6 +109,70 @@ test('command queues due api monitor jobs without running http checks inline', f
     );
 
     Http::assertNothingSent();
+});
+
+test('command logs dispatch failures and continues queueing due api monitors', function () {
+    Log::spy();
+
+    $failedMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/failed-dispatch-health',
+        'package_interval' => '15m',
+    ]);
+    seedScheduledApiMonitorResult($failedMonitor, now()->subMinutes(16));
+
+    $queuedMonitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/queued-after-dispatch-failure',
+        'package_interval' => '15m',
+    ]);
+    seedScheduledApiMonitorResult($queuedMonitor, now()->subMinutes(16));
+
+    $dispatcher = Mockery::mock(Dispatcher::class);
+    $dispatcher->shouldReceive('dispatch')
+        ->twice()
+        ->andReturnUsing(function (RunScheduledApiMonitorJob $job) use ($failedMonitor) {
+            if ($job->monitor->is($failedMonitor)) {
+                throw new RuntimeException('Queue backend unavailable.');
+            }
+
+            return null;
+        });
+    app()->instance(Dispatcher::class, $dispatcher);
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Queued 1 API monitor jobs.')
+        ->assertSuccessful();
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->with(
+            'Failed to queue scheduled API monitor job.',
+            Mockery::on(fn (array $context): bool => ($context['monitor_id'] ?? null) === $failedMonitor->id
+                && ($context['exception'] ?? null) === RuntimeException::class
+                && ($context['message'] ?? null) === 'Queue backend unavailable.')
+        );
+});
+
+test('command logs due query failures and exits successfully', function () {
+    Log::spy();
+
+    MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/query-failure-health',
+        'package_interval' => '15m',
+    ]);
+
+    Schema::drop('monitor_api_results');
+
+    $this->artisan('monitor:check-apis')
+        ->expectsOutput('Queued 0 API monitor jobs.')
+        ->assertSuccessful();
+
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->with(
+            'Failed to query due API monitor checks.',
+            Mockery::on(fn (array $context): bool => filled($context['exception'] ?? null)
+                && str_contains((string) ($context['message'] ?? ''), 'monitor_api_results'))
+        );
 });
 
 test('command only checks api monitors when their polling interval is due', function () {

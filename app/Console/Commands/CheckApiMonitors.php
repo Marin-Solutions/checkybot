@@ -9,6 +9,7 @@ use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Throwable;
 
 class CheckApiMonitors extends Command
 {
@@ -21,21 +22,47 @@ class CheckApiMonitors extends Command
         $this->info('Queueing due API monitor checks...');
         $count = 0;
 
-        MonitorApis::query()
-            ->where('is_enabled', true)
-            ->where(fn (Builder $query): Builder => $this->whereDue($query))
-            ->chunkById(100, function ($monitors) use (&$count): void {
-                foreach ($monitors as $monitor) {
-                    $this->warnIfInvalidPollingInterval($monitor);
+        try {
+            MonitorApis::query()
+                ->where('is_enabled', true)
+                ->where(fn (Builder $query): Builder => $this->whereDue($query))
+                ->chunkById(100, function ($monitors) use (&$count): void {
+                    foreach ($monitors as $monitor) {
+                        $this->queueMonitorCheck($monitor, $count);
+                    }
+                });
+        } catch (Throwable $exception) {
+            Log::error('Failed to query due API monitor checks.', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
 
-                    RunScheduledApiMonitorJob::dispatch($monitor->withoutRelations());
-                    $count++;
-                }
-            });
+            $this->error('Failed to query due API monitor checks; see logs for details.');
+        }
 
         $this->info("Queued {$count} API monitor jobs.");
 
         return Command::SUCCESS;
+    }
+
+    private function queueMonitorCheck(MonitorApis $monitor, int &$count): void
+    {
+        try {
+            $this->warnIfInvalidPollingInterval($monitor);
+
+            RunScheduledApiMonitorJob::dispatch($monitor->withoutRelations());
+            $count++;
+        } catch (Throwable $exception) {
+            Log::error('Failed to queue scheduled API monitor job.', [
+                'monitor_id' => $monitor->id,
+                'monitor_title' => $monitor->title,
+                'monitor_url' => $monitor->url,
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            $this->error("Failed to queue API monitor {$monitor->id}; continuing.");
+        }
     }
 
     private function whereDue(Builder $query): Builder
