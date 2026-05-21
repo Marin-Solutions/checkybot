@@ -53,6 +53,8 @@ class MonitorApiInfolist
                         TextEntry::make('latest_result_response_time')
                             ->label('Latest Response Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->response_time_ms !== null ? "{$record->latestResult->response_time_ms}ms" : null)
+                            ->badge()
+                            ->color(fn (MonitorApis $record): string => self::resultExceedsResponseTimeThreshold($record->latestResult) ? 'warning' : 'gray')
                             ->default('-'),
                         TextEntry::make('latest_result_elapsed_wall_time')
                             ->label('Latest Wall Time')
@@ -96,6 +98,12 @@ class MonitorApiInfolist
                             ->badge()
                             ->formatStateUsing(fn (bool $state): string => $state ? 'Enabled' : 'Disabled')
                             ->color(fn (bool $state): string => $state ? 'success' : 'gray'),
+                        TextEntry::make('max_response_time_ms')
+                            ->label('Response-time Warning')
+                            ->state(fn (MonitorApis $record): ?string => $record->max_response_time_ms !== null ? "{$record->max_response_time_ms}ms" : null)
+                            ->default('Not configured')
+                            ->badge()
+                            ->color(fn (MonitorApis $record): string => $record->max_response_time_ms !== null ? 'warning' : 'gray'),
                         KeyValueEntry::make('request_headers')
                             ->label('Configured Headers')
                             ->state(fn (MonitorApis $record): array => ApiMonitorEvidenceFormatter::maskHeaders($record->headers))
@@ -167,6 +175,12 @@ class MonitorApiInfolist
                             ->label('Elapsed Wall Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestResult?->elapsed_wall_time_ms !== null ? "{$record->latestResult->elapsed_wall_time_ms}ms" : null)
                             ->default('-'),
+                        TextEntry::make('latest_scheduled_max_response_time')
+                            ->label('Response-time Warning')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestResult?->max_response_time_ms !== null ? "{$record->latestResult->max_response_time_ms}ms" : null)
+                            ->default('Not configured')
+                            ->badge()
+                            ->color(fn (MonitorApis $record): string => self::resultExceedsResponseTimeThreshold($record->latestResult) ? 'warning' : 'gray'),
                         RepeatableEntry::make('latest_failed_assertions')
                             ->label('Failed Assertions')
                             ->state(fn (MonitorApis $record): array => ApiMonitorEvidenceFormatter::normalizeAssertions($record->latestResult?->failed_assertions))
@@ -253,6 +267,8 @@ class MonitorApiInfolist
                         TextEntry::make('latest_diagnostic_response_time')
                             ->label('Response Time')
                             ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->response_time_ms !== null ? "{$record->latestDiagnosticResult->response_time_ms}ms" : null)
+                            ->badge()
+                            ->color(fn (MonitorApis $record): string => self::resultExceedsResponseTimeThreshold($record->latestDiagnosticResult) ? 'warning' : 'gray')
                             ->default('-'),
                         TextEntry::make('latest_diagnostic_elapsed_wall_time')
                             ->label('Elapsed Wall Time')
@@ -262,6 +278,12 @@ class MonitorApiInfolist
                             ->label('Effective Timeout')
                             ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->effective_timeout_seconds !== null ? "{$record->latestDiagnosticResult->effective_timeout_seconds}s" : null)
                             ->default('-'),
+                        TextEntry::make('latest_diagnostic_max_response_time')
+                            ->label('Response-time Warning')
+                            ->state(fn (MonitorApis $record): ?string => $record->latestDiagnosticResult?->max_response_time_ms !== null ? "{$record->latestDiagnosticResult->max_response_time_ms}ms" : null)
+                            ->default('Not configured')
+                            ->badge()
+                            ->color(fn (MonitorApis $record): string => self::resultExceedsResponseTimeThreshold($record->latestDiagnosticResult) ? 'warning' : 'gray'),
                         TextEntry::make('latest_diagnostic_retry_count')
                             ->label('Retries')
                             ->state(fn (MonitorApis $record): ?int => $record->latestDiagnosticResult?->retry_count)
@@ -352,5 +374,12 @@ class MonitorApiInfolist
         }
 
         return 'This manual run is saved in history and updates live status.';
+    }
+
+    private static function resultExceedsResponseTimeThreshold(mixed $result): bool
+    {
+        return $result?->response_time_ms !== null
+            && $result?->max_response_time_ms !== null
+            && $result->response_time_ms > $result->max_response_time_ms;
     }
 }

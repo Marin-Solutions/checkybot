@@ -44,6 +44,7 @@ test('monitor api result tracks diagnostic run source', function () {
 test('monitor api result casts response time to integer', function () {
     $result = MonitorApiResult::factory()->create([
         'response_time_ms' => '150',
+        'max_response_time_ms' => '1000',
         'effective_timeout_seconds' => '30',
         'retry_count' => '2',
         'elapsed_wall_time_ms' => '62000',
@@ -51,6 +52,7 @@ test('monitor api result casts response time to integer', function () {
 
     expect($result->response_time_ms)->toBeInt();
     expect($result->response_time_ms)->toBe(150)
+        ->and($result->max_response_time_ms)->toBe(1000)
         ->and($result->effective_timeout_seconds)->toBe(30)
         ->and($result->retry_count)->toBe(2)
         ->and($result->elapsed_wall_time_ms)->toBe(62000);

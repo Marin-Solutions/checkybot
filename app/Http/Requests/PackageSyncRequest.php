@@ -70,6 +70,7 @@ class PackageSyncRequest extends FormRequest
             'defaults.headers' => ['nullable', 'array'],
             'defaults.headers.*' => ['nullable', 'string', 'max:2000'],
             'defaults.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'defaults.max_response_time_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
 
             'checks' => ['present', 'array', 'max:200'],
             'checks.*.last_heartbeat_at' => ['prohibited'],
@@ -98,6 +99,7 @@ class PackageSyncRequest extends FormRequest
             'checks.*.request_body' => ['exclude_unless:checks.*.type,api', 'nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'checks.*.expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'checks.*.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'checks.*.max_response_time_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
             'checks.*.save_failed_response' => ['exclude_unless:checks.*.type,api', 'nullable', 'boolean'],
             'checks.*.assertions' => ['nullable', 'array', 'max:50'],
             'checks.*.assertions.*.type' => ['required', 'string', Rule::in([

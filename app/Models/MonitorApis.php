@@ -51,6 +51,7 @@ class MonitorApis extends Model
         'request_body',
         'expected_status',
         'timeout_seconds',
+        'max_response_time_ms',
         'package_schedule',
         'is_enabled',
         'project_paused_monitoring',
@@ -72,6 +73,7 @@ class MonitorApis extends Model
         'save_failed_response' => 'boolean',
         'expected_status' => 'integer',
         'timeout_seconds' => 'integer',
+        'max_response_time_ms' => 'integer',
         'is_enabled' => 'boolean',
         'project_paused_monitoring' => 'boolean',
         'last_synced_at' => 'datetime',
@@ -252,6 +254,7 @@ class MonitorApis extends Model
             'http_method' => $this->http_method,
             'expected_status' => $this->expected_status,
             'timeout_seconds' => $this->timeout_seconds,
+            'max_response_time_ms' => $this->max_response_time_ms,
             'headers' => $this->headers,
             'request_body_type' => $this->request_body_type,
             'request_body' => $this->request_body,
@@ -294,6 +297,7 @@ class MonitorApis extends Model
         $expectedStatus = isset($data['expected_status']) ? (int) $data['expected_status'] : null;
 
         $responseData = self::initializeResponseData();
+        $responseData['max_response_time_ms'] = self::normalizeMaxResponseTime($data['max_response_time_ms'] ?? null);
         $httpConfig = self::getHttpConfiguration($data);
         $responseData['effective_timeout_seconds'] = $httpConfig['timeout'];
         $responseData['retry_count'] = $httpConfig['retries'];
@@ -411,6 +415,7 @@ class MonitorApis extends Model
             'request_headers' => [],
             'response_headers' => [],
             'response_time_ms' => 0,
+            'max_response_time_ms' => null,
             'effective_timeout_seconds' => null,
             'retry_count' => null,
             'elapsed_wall_time_ms' => 0,
@@ -418,6 +423,17 @@ class MonitorApis extends Model
             'transport_error_message' => null,
             'transport_error_code' => null,
         ];
+    }
+
+    private static function normalizeMaxResponseTime(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $threshold = (int) $value;
+
+        return $threshold > 0 ? $threshold : null;
     }
 
     private static function elapsedMilliseconds(float $startTime): int

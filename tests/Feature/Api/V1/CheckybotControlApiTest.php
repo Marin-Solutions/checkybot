@@ -291,6 +291,7 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         ],
         'expected_status' => 200,
         'timeout_seconds' => 15,
+        'max_response_time_ms' => 10000,
         'schedule' => 'every_5_minutes',
         'assertions' => [
             ['type' => 'json_path_exists', 'path' => '$.data'],
@@ -305,6 +306,7 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         ->assertJsonPath('data.check.headers.Accept', 'application/json')
         ->assertJsonPath('data.check.headers.Authorization', '[redacted]')
         ->assertJsonPath('data.check.request_body_type', 'json')
+        ->assertJsonPath('data.check.max_response_time_ms', 10000)
         ->assertJsonPath('data.check.has_request_body', true);
 
     expect(json_encode($created->json()))->not->toContain('package-secret')
@@ -315,11 +317,13 @@ test('control api upserts checks by stable key and redacts encrypted headers', f
         ->putJson('/api/v1/control/projects/scrappa/checks/google-maps-search', array_merge($payload, [
             'name' => 'Google Maps Search API',
             'timeout_seconds' => 20,
+            'max_response_time_ms' => 5000,
         ]))
         ->assertOk()
         ->assertJsonPath('data.created', false)
         ->assertJsonPath('data.check.name', 'Google Maps Search API')
-        ->assertJsonPath('data.check.timeout_seconds', 20);
+        ->assertJsonPath('data.check.timeout_seconds', 20)
+        ->assertJsonPath('data.check.max_response_time_ms', 5000);
 
     expect(DB::table('monitor_apis')->where('package_name', 'google-maps-search')->count())->toBe(1)
         ->and(json_encode($updated->json()))->not->toContain('package-secret');

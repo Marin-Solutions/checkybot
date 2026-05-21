@@ -50,6 +50,7 @@ class UpsertControlCheckRequest extends FormRequest
             'request_body' => ['nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'max_response_time_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
             'assertions' => ['nullable', 'array', 'max:50'],
             'assertions.*.type' => ['required', 'string', Rule::in([
                 'json_path_exists',

@@ -42,6 +42,7 @@ test('super admin can create api monitor with execution settings', function () {
             'http_method' => 'POST',
             'expected_status' => 204,
             'timeout_seconds' => 45,
+            'max_response_time_ms' => 5000,
             'is_enabled' => false,
             'project_id' => $project->id,
             'data_path' => 'data.status',
@@ -63,6 +64,7 @@ test('super admin can create api monitor with execution settings', function () {
         ->and($monitor->http_method)->toBe('POST')
         ->and($monitor->expected_status)->toBe(204)
         ->and($monitor->timeout_seconds)->toBe(45)
+        ->and($monitor->max_response_time_ms)->toBe(5000)
         ->and($monitor->project_id)->toBe($project->id)
         ->and($monitor->package_interval)->toBe('5m')
         ->and($monitor->is_enabled)->toBeFalse()
