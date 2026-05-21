@@ -82,6 +82,11 @@ class ProjectHealthOverviewWidget extends BaseWidget
                 ->description($pending === 0 ? 'All tracked surfaces have live status' : "{$pending} awaiting first result")
                 ->descriptionIcon('heroicon-m-clock')
                 ->color($pending === 0 ? 'success' : 'warning'),
+
+            Stat::make('Unmapped', $counts['unmapped'])
+                ->description($this->buildUnmappedDescription($counts))
+                ->descriptionIcon('heroicon-m-squares-2x2')
+                ->color($counts['unmapped'] === 0 ? 'success' : 'warning'),
         ];
     }
 
@@ -94,6 +99,9 @@ class ProjectHealthOverviewWidget extends BaseWidget
      *     failing_components: int,
      *     failing_websites: int,
      *     failing_apis: int,
+     *     unmapped: int,
+     *     unmapped_websites: int,
+     *     unmapped_apis: int,
      * }
      */
     public function collectCounts(): array
@@ -109,6 +117,9 @@ class ProjectHealthOverviewWidget extends BaseWidget
                 'failing_components' => 0,
                 'failing_websites' => 0,
                 'failing_apis' => 0,
+                'unmapped' => 0,
+                'unmapped_websites' => 0,
+                'unmapped_apis' => 0,
             ];
         }
 
@@ -125,12 +136,12 @@ class ProjectHealthOverviewWidget extends BaseWidget
                     ->where('uptime_check', true)
                     ->orWhere('ssl_check', true);
             })
-            ->get(['current_status']);
+            ->get(['current_status', 'project_component_id']);
 
         $apis = MonitorApis::query()
             ->where('project_id', $project->getKey())
             ->where('is_enabled', true)
-            ->get(['current_status']);
+            ->get(['current_status', 'project_component_id']);
 
         $componentBuckets = $components->reduce(function (array $carry, ProjectComponent $component): array {
             $carry[$this->classifyComponent($component)]++;
@@ -140,6 +151,8 @@ class ProjectHealthOverviewWidget extends BaseWidget
 
         $websiteBuckets = $this->bucketPackageChecks($websites);
         $apiBuckets = $this->bucketPackageChecks($apis);
+        $unmappedWebsites = $websites->whereNull('project_component_id')->count();
+        $unmappedApis = $apis->whereNull('project_component_id')->count();
 
         return [
             'tracked' => $components->count() + $websites->count() + $apis->count(),
@@ -149,6 +162,9 @@ class ProjectHealthOverviewWidget extends BaseWidget
             'failing_components' => $componentBuckets['failing'],
             'failing_websites' => $websiteBuckets['failing'],
             'failing_apis' => $apiBuckets['failing'],
+            'unmapped' => $unmappedWebsites + $unmappedApis,
+            'unmapped_websites' => $unmappedWebsites,
+            'unmapped_apis' => $unmappedApis,
         ];
     }
 
@@ -192,6 +208,21 @@ class ProjectHealthOverviewWidget extends BaseWidget
             $counts['failing_components'] > 0 ? "{$counts['failing_components']} components" : null,
             $counts['failing_websites'] > 0 ? "{$counts['failing_websites']} websites" : null,
             $counts['failing_apis'] > 0 ? "{$counts['failing_apis']} APIs" : null,
+        ])->filter()->implode(', ');
+    }
+
+    /**
+     * @param  array{unmapped: int, unmapped_websites: int, unmapped_apis: int}  $counts
+     */
+    private function buildUnmappedDescription(array $counts): string
+    {
+        if ($counts['unmapped'] === 0) {
+            return 'All checks are mapped to components';
+        }
+
+        return collect([
+            $counts['unmapped_websites'] > 0 ? $counts['unmapped_websites'].' '.str('website')->plural($counts['unmapped_websites']) : null,
+            $counts['unmapped_apis'] > 0 ? $counts['unmapped_apis'].' '.str('API')->plural($counts['unmapped_apis']) : null,
         ])->filter()->implode(', ');
     }
 }

@@ -28,6 +28,8 @@ class PackageManagedApisRelationManager extends RelationManager
 
     protected static ?string $title = 'Package-managed APIs';
 
+    private const UNMAPPED_COMPONENT_FILTER = '__unmapped';
+
     public function table(Table $table): Table
     {
         return $table
@@ -111,6 +113,10 @@ class PackageManagedApisRelationManager extends RelationManager
                 SelectFilter::make('project_component_id')
                     ->label('Component')
                     ->options(fn (): array => $this->componentFilterOptions())
+                    ->query(fn (Builder $query, array $data): Builder => $this->applyComponentFilter(
+                        $query,
+                        $data['value'] ?? null,
+                    ))
                     ->searchable()
                     ->preload(),
                 SelectFilter::make('manual_run_status')
@@ -396,11 +402,20 @@ class PackageManagedApisRelationManager extends RelationManager
 
     private function componentFilterOptions(): array
     {
-        return ProjectComponent::query()
+        return [self::UNMAPPED_COMPONENT_FILTER => 'Unmapped'] + ProjectComponent::query()
             ->where('project_id', $this->getOwnerRecord()->getKey())
             ->orderBy('name')
             ->pluck('name', 'id')
             ->all();
+    }
+
+    private function applyComponentFilter(Builder $query, ?string $componentId): Builder
+    {
+        return match ($componentId) {
+            self::UNMAPPED_COMPONENT_FILTER => $query->whereNull('project_component_id'),
+            null, '' => $query,
+            default => $query->where('project_component_id', $componentId),
+        };
     }
 
     private function applyManualRunStatusFilter(Builder $query, ?string $state): Builder
