@@ -71,11 +71,6 @@ class ScheduledFailureStreak
         return self::payload(self::forWebsite($website));
     }
 
-    public static function labelForApi(MonitorApis $monitor): ?string
-    {
-        return self::label(self::forApi($monitor));
-    }
-
     public static function displayForApi(MonitorApis $monitor): ?string
     {
         return self::display(self::forApi($monitor));
@@ -84,21 +79,6 @@ class ScheduledFailureStreak
     public static function displayForWebsite(Website $website): ?string
     {
         return self::display(self::forWebsite($website));
-    }
-
-    public static function labelForWebsite(Website $website): ?string
-    {
-        return self::label(self::forWebsite($website));
-    }
-
-    public static function descriptionForApi(MonitorApis $monitor): ?string
-    {
-        return self::description(self::forApi($monitor));
-    }
-
-    public static function descriptionForWebsite(Website $website): ?string
-    {
-        return self::description(self::forWebsite($website));
     }
 
     private static function apiScheduledRows(MonitorApis $monitor): Builder
