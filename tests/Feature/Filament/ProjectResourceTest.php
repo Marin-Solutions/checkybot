@@ -749,7 +749,17 @@ test('application list shows and filters setup verification status', function ()
         ->assertSee('Waiting for registration')
         ->assertSee('Waiting for first sync')
         ->assertSee('Sync stale')
-        ->assertSee('Synced');
+        ->assertSee('Synced')
+        ->assertSee('Create or copy an API key, install the package, then run the first sync.')
+        ->assertSee('Run the package sync command once, then confirm the scheduler is active.')
+        ->assertSee('Run the sync command now, then verify the scheduler and Laravel logs.')
+        ->assertTableActionVisible('setup_runbook', $waitingForRegistration)
+        ->assertTableActionHasLabel('setup_runbook', 'Finish registration', $waitingForRegistration)
+        ->assertTableActionVisible('setup_runbook', $waitingForFirstSync)
+        ->assertTableActionHasLabel('setup_runbook', 'Run first sync', $waitingForFirstSync)
+        ->assertTableActionVisible('setup_runbook', $syncStale)
+        ->assertTableActionHasLabel('setup_runbook', 'Run sync repair', $syncStale)
+        ->assertTableActionHidden('setup_runbook', $synced);
 
     Livewire::test(ListProjects::class)
         ->filterTable('setup_verification_state', 'waiting_for_registration')

@@ -325,6 +325,95 @@ class Project extends Model
         };
     }
 
+    public function setupRepairActionLabel(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'sync_stale' => 'Run sync repair',
+            'waiting_for_first_sync' => 'Run first sync',
+            'synced' => 'Review monitors',
+            default => 'Finish registration',
+        };
+    }
+
+    public function setupRepairTableSummary(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'sync_stale' => 'Run the sync command now, then verify the scheduler and Laravel logs.',
+            'waiting_for_first_sync' => 'Run the package sync command once, then confirm the scheduler is active.',
+            'synced' => 'Open the application if package-managed monitors are missing.',
+            default => 'Create or copy an API key, install the package, then run the first sync.',
+        };
+    }
+
+    /**
+     * @return array<int, array{title: string, detail: string, command?: string}>
+     */
+    public function setupRepairRunbook(): array
+    {
+        return match ($this->setupVerificationState()) {
+            'sync_stale' => [
+                [
+                    'title' => 'Run a package sync now',
+                    'detail' => 'Run this from the Laravel application root. A successful run should update Last Synced on this page within a minute.',
+                    'command' => 'php artisan checkybot:sync',
+                ],
+                [
+                    'title' => 'Confirm the scheduled sync is registered',
+                    'detail' => 'The package should run every minute so Checkybot can trust the application status.',
+                    'command' => "php artisan schedule:list | grep 'checkybot:sync'",
+                ],
+                [
+                    'title' => 'Check the application log if the sync fails',
+                    'detail' => 'Look for API key, network, validation, or route publishing errors from the package.',
+                    'command' => "tail -n 100 storage/logs/laravel.log | grep -i 'checkybot'",
+                ],
+            ],
+            'waiting_for_first_sync' => [
+                [
+                    'title' => 'Preview the payload',
+                    'detail' => 'The dry run confirms the package can discover checks, components, and metadata before sending anything.',
+                    'command' => 'php artisan checkybot:sync --dry-run',
+                ],
+                [
+                    'title' => 'Send the first package sync',
+                    'detail' => 'A successful run should move setup from Waiting for first sync to Synced.',
+                    'command' => 'php artisan checkybot:sync',
+                ],
+                [
+                    'title' => 'Confirm recurring syncs',
+                    'detail' => 'Keep the scheduler entry active so the application does not become stale again.',
+                    'command' => "php artisan schedule:list | grep 'checkybot:sync'",
+                ],
+            ],
+            'synced' => [
+                [
+                    'title' => 'Review package-managed monitors',
+                    'detail' => 'Use the checks and components tables on this application to confirm the expected monitors were created.',
+                ],
+                [
+                    'title' => 'Run diagnostics if status still looks wrong',
+                    'detail' => 'The Run diagnostics action queues enabled package-managed checks and refreshes the live status evidence.',
+                ],
+            ],
+            default => [
+                [
+                    'title' => 'Create or copy an API key',
+                    'detail' => 'Use Guided Laravel Setup on this page, then copy the install snippet into the Laravel application.',
+                ],
+                [
+                    'title' => 'Publish the package routes and config',
+                    'detail' => 'The guided snippet includes both publish commands and the required CHECKYBOT environment values.',
+                    'command' => 'php artisan vendor:publish --tag="checkybot-routes" && php artisan vendor:publish --tag="checkybot-laravel-config"',
+                ],
+                [
+                    'title' => 'Trigger registration and first sync',
+                    'detail' => 'Run this once after the environment values are present.',
+                    'command' => 'php artisan checkybot:sync',
+                ],
+            ],
+        };
+    }
+
     /**
      * @return array<int, array{title: string, status: string, description: string}>
      */
