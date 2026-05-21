@@ -637,6 +637,63 @@ test('scheduled job clears stale website ssl expiry date when certificate cannot
         ->and($website->status_summary)->toBe('SSL certificate check failed before an expiry date could be read.');
 });
 
+test('scheduled job skips latest ssl history lookup when current ssl expiry is unavailable', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andThrow(new RuntimeException('certificate unavailable'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'ssl_expiry_date' => Carbon::parse('2026-05-01 09:00:00'),
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $queries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = strtolower($query->sql);
+    });
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $latestSslLookupCount = collect($queries)
+        ->filter(fn (string $query): bool => str_contains($query, 'select')
+            && str_contains($query, 'ssl_expiry_date')
+            && str_contains($query, 'website_log_history')
+            && str_contains($query, 'order by'))
+        ->count();
+
+    expect($latestSslLookupCount)->toBe(0);
+});
+
 test('scheduled job preserves ssl reminder throttle when unknown expiry recovers to same date', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
@@ -685,6 +742,65 @@ test('scheduled job preserves ssl reminder throttle when unknown expiry recovers
 
     expect(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-05-01'))->toBeTrue()
         ->and($website->ssl_expiry_reminder_sent_at?->equalTo($reminderSentAt))->toBeTrue();
+});
+
+test('scheduled job bounds previous ssl expiry lookup to history before the current row', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andReturn(Carbon::parse('2026-05-01 09:00:00'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'ssl_expiry_date' => Carbon::parse('2026-05-01 09:00:00'),
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $queries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = strtolower($query->sql);
+    });
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $latestSslLookup = collect($queries)->first(
+        fn (string $query): bool => str_contains($query, 'select')
+            && str_contains($query, 'ssl_expiry_date')
+            && str_contains($query, 'website_log_history')
+            && str_contains($query, 'order by')
+    );
+
+    expect($latestSslLookup)->toBeString()
+        ->and($latestSslLookup)->toContain('"id" < ?')
+        ->and($latestSslLookup)->not->toContain('"id" != ?');
 });
 
 test('scheduled job resets ssl reminder using the current website expiry instead of stale queued state', function () {
