@@ -13,6 +13,7 @@ use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\SeoHealthCheckService;
 use App\Support\HealthStatusLabel;
+use App\Support\ScheduledFailureStreak;
 use App\Support\UptimeTransportError;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
@@ -257,6 +258,12 @@ class WebsiteResource extends Resource
                     ->placeholder('-')
                     ->sinceInUserZone()
                     ->tooltip(fn (Website $record): ?string => static::latestScheduledFailure($record)?->created_at?->toDayDateTimeString()),
+                Tables\Columns\TextColumn::make('scheduled_failure_streak')
+                    ->label('Failure Streak')
+                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::displayForWebsite($record))
+                    ->placeholder('-')
+                    ->color('danger')
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()

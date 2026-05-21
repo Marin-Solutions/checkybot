@@ -3200,6 +3200,95 @@ test('control api current issues flags manual scheduled drift for api and websit
         ]);
 });
 
+test('control api current issues include scheduled failure streak evidence', function () {
+    $this->travelTo('2026-05-21 10:00:00');
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'billing-health',
+        'title' => 'Billing health',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'updated_at' => now(),
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now()->subMinutes(20),
+    ]);
+    $apiFirstFailed = MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now()->subMinutes(10),
+    ]);
+    MonitorApiResult::factory()->failed()->onDemand()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now()->subMinutes(8),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'marketing-site',
+        'name' => 'Marketing site',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+        'updated_at' => now()->subMinute(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'created_at' => now()->subMinutes(30),
+    ]);
+    $websiteFirstFailed = WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'created_at' => now()->subMinutes(12),
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinutes(7),
+    ]);
+    WebsiteLogHistory::factory()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'created_at' => now()->subMinutes(3),
+    ]);
+
+    $issues = collect($this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->json('data'))
+        ->keyBy('check.key');
+
+    expect($issues['billing-health']['scheduled_failure_streak'])
+        ->toMatchArray([
+            'count' => 2,
+            'first_failed_at' => $apiFirstFailed->created_at->toISOString(),
+        ])
+        ->and($issues['billing-health']['check']['scheduled_failure_streak'])
+        ->toMatchArray([
+            'count' => 2,
+            'first_failed_at' => $apiFirstFailed->created_at->toISOString(),
+        ])
+        ->and($issues['marketing-site']['scheduled_failure_streak'])
+        ->toMatchArray([
+            'count' => 2,
+            'first_failed_at' => $websiteFirstFailed->created_at->toISOString(),
+        ])
+        ->and($issues['marketing-site']['check']['scheduled_failure_streak'])
+        ->toMatchArray([
+            'count' => 2,
+            'first_failed_at' => $websiteFirstFailed->created_at->toISOString(),
+        ]);
+});
+
 test('control api exposes stale package setup as a project current issue', function () {
     $this->travelTo('2026-05-14 12:00:00');
     config()->set('monitor.package_sync_stale_minutes', 15);

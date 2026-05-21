@@ -8,6 +8,7 @@ use App\Jobs\RunApiMonitorDiagnosticJob;
 use App\Models\MonitorApis;
 use App\Models\ProjectComponent;
 use App\Support\HealthStatusLabel;
+use App\Support\ScheduledFailureStreak;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -78,6 +79,12 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->wrap()
                     ->limit(90)
                     ->default('-'),
+                TextColumn::make('scheduled_failure_streak')
+                    ->label('Failure Streak')
+                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::displayForApi($record))
+                    ->placeholder('-')
+                    ->color('danger')
+                    ->wrap(),
                 TextColumn::make('latestResult.created_at')
                     ->label('Last Scheduled Check')
                     ->state(fn (MonitorApis $record): ?string => $record->latestResult?->created_at?->toDayDateTimeString())
@@ -279,7 +286,7 @@ class PackageManagedApisRelationManager extends RelationManager
                 ]),
             ])
             ->modifyQueryUsing(fn (Builder $query) => $query
-                ->with(['latestResult', 'latestDiagnosticResult'])
+                ->with(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult'])
                 ->withoutGlobalScopes([
                     SoftDeletingScope::class,
                 ]))

@@ -16,6 +16,7 @@ use App\Services\IntervalParser;
 use App\Support\ApiMonitorEvidenceFormatter;
 use App\Support\HealthStatusLabel;
 use App\Support\PackageCheckTableEvidence;
+use App\Support\ScheduledFailureStreak;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -376,6 +377,12 @@ class MonitorApisResource extends Resource
                     ->state(fn (MonitorApis $record): ?string => ApiMonitorEvidenceFormatter::compactLatestEvidence($record->latestResult))
                     ->placeholder('No runs yet')
                     ->color(fn (MonitorApis $record): string => ApiMonitorEvidenceFormatter::statusColor($record->latestResult?->status ?? $record->current_status))
+                    ->wrap(),
+                Tables\Columns\TextColumn::make('scheduled_failure_streak')
+                    ->label('Failure Streak')
+                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::displayForApi($record))
+                    ->placeholder('-')
+                    ->color('danger')
                     ->wrap(),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')

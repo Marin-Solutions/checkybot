@@ -802,6 +802,42 @@ test('api monitor list shows compact latest result evidence', function () {
         ->assertSee('HTTP 0 | no response | 0 failed | -');
 });
 
+test('api monitor list shows scheduled failure streak evidence', function () {
+    Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Streak API',
+        'current_status' => 'danger',
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => now()->subMinutes(30),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => now()->subMinutes(15),
+    ]);
+    MonitorApiResult::factory()->failed()->onDemand()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => now()->subMinutes(12),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertCanSeeTableRecords([$monitor])
+        ->assertTableColumnExists('scheduled_failure_streak')
+        ->assertSee('2 scheduled failures')
+        ->assertSee('First failed 15 minutes ago');
+});
+
 test('api monitor list shows effective polling interval', function () {
     $this->createResourcePermissions('MonitorApis');
 

@@ -635,11 +635,17 @@ describe('IncidentFeedWidget', function () {
     });
 
     it('opens the exact API result evidence row from an incident', function () {
+        $this->travelTo('2026-05-21 12:00:00');
+
         $api = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
             'title' => 'Evidence API',
         ]);
 
+        MonitorApiResult::factory()->successful()->create([
+            'monitor_api_id' => $api->id,
+            'created_at' => now()->subMinutes(20),
+        ]);
         $result = MonitorApiResult::factory()->failed()->create([
             'monitor_api_id' => $api->id,
             'status' => 'danger',
@@ -653,11 +659,16 @@ describe('IncidentFeedWidget', function () {
                 'actual' => 'pending',
                 'expected' => 'active',
             ]],
+            'created_at' => now()->subMinutes(10),
+        ]);
+        MonitorApiResult::factory()->successful()->create([
+            'monitor_api_id' => $api->id,
             'created_at' => now()->subMinutes(4),
         ]);
 
         $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
             ->where('source', 'api')
+            ->where('source_row_id', $result->id)
             ->first();
 
         expect($incident)->not->toBeNull()
@@ -674,6 +685,9 @@ describe('IncidentFeedWidget', function () {
 
         expect($html)
             ->toContain('Source row #'.$result->id)
+            ->toContain('Scheduled streak')
+            ->toContain('1 failure')
+            ->toContain('May 21, 2026 11:50 AM')
             ->toContain('Failed Assertions')
             ->toContain('Expected active status.');
     });

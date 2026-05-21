@@ -77,6 +77,41 @@ test('website list shows latest scheduled failure evidence for triage', function
         ->assertSee('12 minutes ago');
 });
 
+test('website list shows scheduled failure streak evidence for triage', function () {
+    Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinutes(40),
+    ]);
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'created_at' => now()->subMinutes(25),
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'created_at' => now()->subMinutes(20),
+    ]);
+    WebsiteLogHistory::factory()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'created_at' => now()->subMinutes(10),
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertSuccessful()
+        ->assertTableColumnExists('scheduled_failure_streak')
+        ->assertSee('2 scheduled failures')
+        ->assertSee('First failed 25 minutes ago');
+});
+
 test('website list failure evidence ignores newer manual runs and clears after scheduled recovery', function () {
     Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
 
