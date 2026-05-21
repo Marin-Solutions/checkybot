@@ -53,6 +53,8 @@ class ProjectInfolist
                                 'tone' => $record->setupVerificationTone(),
                                 'summary' => $record->setupVerificationSummary(),
                                 'action' => $record->setupVerificationAction(),
+                                'repairLabel' => $record->setupRepairActionLabel(),
+                                'repairActions' => $record->setupRepairRunbook(),
                                 'steps' => $record->setupVerificationSteps(),
                             ])
                             ->columnSpanFull(),

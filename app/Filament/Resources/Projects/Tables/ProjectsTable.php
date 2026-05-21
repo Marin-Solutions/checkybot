@@ -7,6 +7,7 @@ use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Support\HealthStatusLabel;
+use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
@@ -40,6 +41,7 @@ class ProjectsTable
                     ->badge()
                     ->formatStateUsing(fn (string $state, Project $record): string => $record->setupVerificationLabel())
                     ->color(fn (string $state, Project $record): string => $record->setupVerificationTone())
+                    ->description(fn (Project $record): string => $record->setupRepairTableSummary())
                     ->tooltip(fn (Project $record): string => $record->setupVerificationSummary()),
                 TextColumn::make('environment')
                     ->badge()
@@ -115,6 +117,19 @@ class ProjectsTable
                     }),
             ])
             ->recordActions([
+                Action::make('setup_runbook')
+                    ->label(fn (Project $record): string => $record->setupRepairActionLabel())
+                    ->icon('heroicon-o-wrench-screwdriver')
+                    ->color(fn (Project $record): string => $record->setupVerificationTone())
+                    ->visible(fn (Project $record): bool => $record->setupVerificationState() !== 'synced')
+                    ->modalHeading(fn (Project $record): string => $record->setupRepairActionLabel())
+                    ->modalDescription(fn (Project $record): string => $record->setupVerificationSummary())
+                    ->modalContent(fn (Project $record) => view('filament.resources.projects.setup-runbook-modal', [
+                        'record' => $record,
+                        'repairActions' => $record->setupRepairRunbook(),
+                    ]))
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close'),
                 ViewAction::make(),
                 EditAction::make(),
             ])

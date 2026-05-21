@@ -88,6 +88,10 @@ test('application view does not treat selected Laravel technology as package reg
         ->assertSuccessful()
         ->assertSee('Waiting for registration')
         ->assertSee('Checkybot has not received a Laravel package registration for this application yet.')
+        ->assertSee('Finish registration')
+        ->assertSee('Create or copy an API key')
+        ->assertSee('php artisan vendor:publish --tag=&quot;checkybot-routes&quot;', false)
+        ->assertSee('php artisan checkybot:sync')
         ->assertSee('Waiting for the package to register this application with Checkybot.')
         ->assertDontSee('Waiting for first sync')
         ->assertDontSee('Registration received.');
@@ -114,6 +118,9 @@ test('application view shows waiting for first sync after registration arrives',
         ->assertSee('Waiting for first sync')
         ->assertSee('Registration received from https://checkout.example.com.')
         ->assertSee('Waiting for the package to send checks, components, and package metadata.')
+        ->assertSee('Run first sync')
+        ->assertSee('php artisan checkybot:sync --dry-run')
+        ->assertSee('php artisan schedule:list | grep &#039;checkybot:sync&#039;', false)
         ->assertSee('Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.');
 });
 
@@ -167,6 +174,8 @@ test('application view warns when package sync is stale', function () {
         ->assertSee('Checkybot has received package sync payloads before, but the latest sync is more than 15 minutes old.')
         ->assertSee('The Laravel scheduler or package integration may have stopped.')
         ->assertSee('Last sync received 16 minutes ago, which is outside the 15 minute freshness window.')
+        ->assertSee('Run sync repair')
+        ->assertSee('tail -n 100 storage/logs/laravel.log | grep -i &#039;checkybot&#039;', false)
         ->assertSee('Run `php artisan checkybot:sync` in the Laravel app')
         ->assertSee('Stale');
 });
