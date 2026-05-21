@@ -6,6 +6,7 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 class ScheduledFailureStreak
@@ -15,15 +16,7 @@ class ScheduledFailureStreak
      */
     public static function forApi(MonitorApis $monitor): array
     {
-        $rows = MonitorApiResult::query()
-            ->where('monitor_api_id', $monitor->id)
-            ->where('is_on_demand', false)
-            ->select(['id', 'status', 'is_success', 'created_at'])
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->cursor();
-
-        return self::fromRows($rows, fn (MonitorApiResult $result): bool => self::apiResultFailed($result));
+        return self::apiStreakFromQuery(self::apiScheduledRows($monitor));
     }
 
     /**
@@ -31,15 +24,7 @@ class ScheduledFailureStreak
      */
     public static function forWebsite(Website $website): array
     {
-        $rows = WebsiteLogHistory::query()
-            ->where('website_id', $website->id)
-            ->where('is_on_demand', false)
-            ->select(['id', 'status', 'http_status_code', 'created_at'])
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->cursor();
-
-        return self::fromRows($rows, fn (WebsiteLogHistory $result): bool => self::websiteResultFailed($result));
+        return self::websiteStreakFromQuery(self::websiteScheduledRows($website));
     }
 
     /**
@@ -53,24 +38,7 @@ class ScheduledFailureStreak
             return self::empty();
         }
 
-        $rows = MonitorApiResult::query()
-            ->where('monitor_api_id', $monitor->id)
-            ->where('is_on_demand', false)
-            ->select(['id', 'status', 'is_success', 'created_at'])
-            ->where(function ($query) use ($result): void {
-                $query
-                    ->where('created_at', '<', $result->created_at)
-                    ->orWhere(function ($query) use ($result): void {
-                        $query
-                            ->where('created_at', $result->created_at)
-                            ->where('id', '<=', $result->id);
-                    });
-            })
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->cursor();
-
-        return self::fromRows($rows, fn (MonitorApiResult $result): bool => self::apiResultFailed($result));
+        return self::apiStreakFromQuery(self::limitToResult(self::apiScheduledRows($monitor), $result));
     }
 
     /**
@@ -84,24 +52,7 @@ class ScheduledFailureStreak
             return self::empty();
         }
 
-        $rows = WebsiteLogHistory::query()
-            ->where('website_id', $website->id)
-            ->where('is_on_demand', false)
-            ->select(['id', 'status', 'http_status_code', 'created_at'])
-            ->where(function ($query) use ($result): void {
-                $query
-                    ->where('created_at', '<', $result->created_at)
-                    ->orWhere(function ($query) use ($result): void {
-                        $query
-                            ->where('created_at', $result->created_at)
-                            ->where('id', '<=', $result->id);
-                    });
-            })
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
-            ->cursor();
-
-        return self::fromRows($rows, fn (WebsiteLogHistory $result): bool => self::websiteResultFailed($result));
+        return self::websiteStreakFromQuery(self::limitToResult(self::websiteScheduledRows($website), $result));
     }
 
     /**
@@ -150,28 +101,130 @@ class ScheduledFailureStreak
         return self::description(self::forWebsite($website));
     }
 
+    private static function apiScheduledRows(MonitorApis $monitor): Builder
+    {
+        return MonitorApiResult::query()
+            ->where('monitor_api_id', $monitor->id)
+            ->where('is_on_demand', false);
+    }
+
+    private static function websiteScheduledRows(Website $website): Builder
+    {
+        return WebsiteLogHistory::query()
+            ->where('website_id', $website->id)
+            ->where('is_on_demand', false);
+    }
+
+    private static function limitToResult(Builder $query, MonitorApiResult|WebsiteLogHistory $result): Builder
+    {
+        return $query->where(function (Builder $query) use ($result): void {
+            $query
+                ->where('created_at', '<', $result->created_at)
+                ->orWhere(function (Builder $query) use ($result): void {
+                    $query
+                        ->where('created_at', $result->created_at)
+                        ->where('id', '<=', $result->id);
+                });
+        });
+    }
+
     /**
-     * @param  iterable<object>  $rows
      * @return array{count: int, first_failed_at: ?Carbon}
      */
-    private static function fromRows(iterable $rows, callable $failed): array
+    private static function apiStreakFromQuery(Builder $query): array
     {
-        $count = 0;
-        $firstFailedAt = null;
+        $boundary = self::latestBoundary(
+            $query,
+            fn (Builder $query): Builder => self::whereApiNonFailure($query),
+        );
 
-        foreach ($rows as $row) {
-            if (! $failed($row)) {
-                break;
-            }
+        return self::aggregateAfterBoundary($query, $boundary);
+    }
 
-            $count++;
-            $firstFailedAt = $row->created_at;
+    /**
+     * @return array{count: int, first_failed_at: ?Carbon}
+     */
+    private static function websiteStreakFromQuery(Builder $query): array
+    {
+        $boundary = self::latestBoundary(
+            $query,
+            fn (Builder $query): Builder => self::whereWebsiteNonFailure($query),
+        );
+
+        return self::aggregateAfterBoundary($query, $boundary);
+    }
+
+    private static function latestBoundary(Builder $query, callable $nonFailure): MonitorApiResult|WebsiteLogHistory|null
+    {
+        return $nonFailure(clone $query)
+            ->select(['id', 'created_at'])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * @return array{count: int, first_failed_at: ?Carbon}
+     */
+    private static function aggregateAfterBoundary(Builder $query, MonitorApiResult|WebsiteLogHistory|null $boundary): array
+    {
+        if ($boundary instanceof MonitorApiResult || $boundary instanceof WebsiteLogHistory) {
+            $query->where(function (Builder $query) use ($boundary): void {
+                $query
+                    ->where('created_at', '>', $boundary->created_at)
+                    ->orWhere(function (Builder $query) use ($boundary): void {
+                        $query
+                            ->where('created_at', $boundary->created_at)
+                            ->where('id', '>', $boundary->id);
+                    });
+            });
         }
 
+        $aggregate = $query
+            ->selectRaw('COUNT(*) as streak_count')
+            ->selectRaw('MIN(created_at) as first_failed_at')
+            ->first();
+
         return [
-            'count' => $count,
-            'first_failed_at' => $firstFailedAt,
+            'count' => (int) ($aggregate?->streak_count ?? 0),
+            'first_failed_at' => filled($aggregate?->first_failed_at)
+                ? Carbon::parse($aggregate->first_failed_at)
+                : null,
         ];
+    }
+
+    private static function whereApiNonFailure(Builder $query): Builder
+    {
+        return $query
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('status')
+                    ->orWhereNotIn('status', ['warning', 'danger']);
+            })
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('is_success')
+                    ->orWhere('is_success', '!=', false);
+            });
+    }
+
+    private static function whereWebsiteNonFailure(Builder $query): Builder
+    {
+        return $query
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('status')
+                    ->orWhereNotIn('status', ['warning', 'danger']);
+            })
+            ->where(function (Builder $query): void {
+                $query
+                    ->whereNull('http_status_code')
+                    ->orWhere(function (Builder $query): void {
+                        $query
+                            ->where('http_status_code', '!=', 0)
+                            ->where('http_status_code', '<', 400);
+                    });
+            });
     }
 
     /**
