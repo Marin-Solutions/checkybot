@@ -2780,6 +2780,17 @@ test('package-managed child relation managers filter by component', function () 
         'current_status' => 'danger',
         'created_by' => $user->id,
     ]);
+    $unmappedWebsite = Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => null,
+        'name' => 'unmapped-homepage',
+        'source' => 'package',
+        'package_name' => 'unmapped-homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
 
     $checkoutApi = MonitorApis::factory()->create([
         'project_id' => $project->id,
@@ -2801,6 +2812,16 @@ test('package-managed child relation managers filter by component', function () 
         'current_status' => 'danger',
         'created_by' => $user->id,
     ]);
+    $unmappedApi = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => null,
+        'title' => 'unmapped-api',
+        'source' => 'package',
+        'package_name' => 'unmapped-api',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'created_by' => $user->id,
+    ]);
 
     Livewire::test(PackageManagedWebsitesRelationManager::class, [
         'ownerRecord' => $project,
@@ -2810,7 +2831,17 @@ test('package-managed child relation managers filter by component', function () 
         ->assertSee('Component')
         ->filterTable('project_component_id', $checkout->id)
         ->assertCanSeeTableRecords([$checkoutWebsite])
-        ->assertCanNotSeeTableRecords([$billingWebsite]);
+        ->assertCanNotSeeTableRecords([$billingWebsite, $unmappedWebsite]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Unmapped')
+        ->filterTable('project_component_id', '__unmapped')
+        ->assertCanSeeTableRecords([$unmappedWebsite])
+        ->assertCanNotSeeTableRecords([$checkoutWebsite, $billingWebsite]);
 
     Livewire::test(PackageManagedApisRelationManager::class, [
         'ownerRecord' => $project,
@@ -2820,7 +2851,17 @@ test('package-managed child relation managers filter by component', function () 
         ->assertSee('Component')
         ->filterTable('project_component_id', $checkout->id)
         ->assertCanSeeTableRecords([$checkoutApi])
-        ->assertCanNotSeeTableRecords([$billingApi]);
+        ->assertCanNotSeeTableRecords([$billingApi, $unmappedApi]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertSuccessful()
+        ->assertSee('Unmapped')
+        ->filterTable('project_component_id', '__unmapped')
+        ->assertCanSeeTableRecords([$unmappedApi])
+        ->assertCanNotSeeTableRecords([$checkoutApi, $billingApi]);
 });
 
 test('super admin can filter application components to only failing', function () {

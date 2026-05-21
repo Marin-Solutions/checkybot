@@ -122,7 +122,78 @@ describe('ProjectHealthOverviewWidget', function () {
             'failing_components' => 2,
             'failing_websites' => 1,
             'failing_apis' => 1,
+            'unmapped' => 4,
+            'unmapped_websites' => 2,
+            'unmapped_apis' => 2,
         ]);
+    });
+
+    it('counts active package checks that are not mapped to components', function () {
+        $component = ProjectComponent::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+        ]);
+
+        $mappedWebsite = Website::factory()->create([
+            'project_id' => $this->project->id,
+            'project_component_id' => $component->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => true,
+            'ssl_check' => false,
+            'current_status' => 'healthy',
+        ]);
+        MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'project_component_id' => $component->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'is_enabled' => true,
+            'current_status' => 'healthy',
+        ]);
+
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => true,
+            'ssl_check' => false,
+            'current_status' => 'warning',
+        ]);
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => false,
+            'ssl_check' => false,
+            'current_status' => 'danger',
+        ]);
+        MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'is_enabled' => true,
+            'current_status' => 'danger',
+        ]);
+        MonitorApis::factory()->disabled()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'current_status' => 'danger',
+        ]);
+
+        $widget = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->assertSuccessful()
+            ->assertSee('Unmapped')
+            ->assertSee('1 website, 1 API');
+
+        $counts = $widget->instance()->collectCounts();
+
+        expect($counts)->toMatchArray([
+            'unmapped' => 2,
+            'unmapped_websites' => 1,
+            'unmapped_apis' => 1,
+        ])->and($mappedWebsite->project_component_id)->toBe($component->id);
     });
 
     it('ignores archived components and other projects', function () {
