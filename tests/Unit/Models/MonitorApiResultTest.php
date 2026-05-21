@@ -44,6 +44,7 @@ test('monitor api result tracks diagnostic run source', function () {
 test('monitor api result casts response time to integer', function () {
     $result = MonitorApiResult::factory()->create([
         'response_time_ms' => '150',
+        'max_response_time_ms' => '1000',
         'effective_timeout_seconds' => '30',
         'retry_count' => '2',
         'elapsed_wall_time_ms' => '62000',
@@ -51,6 +52,7 @@ test('monitor api result casts response time to integer', function () {
 
     expect($result->response_time_ms)->toBeInt();
     expect($result->response_time_ms)->toBe(150)
+        ->and($result->max_response_time_ms)->toBe(1000)
         ->and($result->effective_timeout_seconds)->toBe(30)
         ->and($result->retry_count)->toBe(2)
         ->and($result->elapsed_wall_time_ms)->toBe(62000);
@@ -320,6 +322,24 @@ test('record result calculates response time', function () {
 
     expect($result->response_time_ms)->toBeGreaterThan(100);
     expect($result->response_time_ms)->toBeLessThan(200);
+});
+
+test('record result persists measured response time from test result when available', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true) - 0.15;
+
+    $testResult = [
+        'code' => 200,
+        'body' => [],
+        'assertions' => [],
+        'response_time_ms' => 25,
+        'elapsed_wall_time_ms' => 150,
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->response_time_ms)->toBe(25)
+        ->and($result->elapsed_wall_time_ms)->toBe(150);
 });
 
 test('record result persists actual and expected values for failed assertions', function () {

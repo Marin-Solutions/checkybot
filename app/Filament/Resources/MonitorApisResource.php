@@ -147,6 +147,12 @@ class MonitorApisResource extends Resource
                             ->maxValue(120)
                             ->placeholder((string) config('monitor.api_timeout', 10))
                             ->helperText('Optional override for slow endpoints. Leave blank to use the default timeout.'),
+                        Forms\Components\TextInput::make('max_response_time_ms')
+                            ->label('Response-time warning (ms)')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(120000)
+                            ->helperText('Optional threshold that marks a successful API check as warning when it responds too slowly.'),
                         Forms\Components\TextInput::make('data_path')
                             ->helperText('Optional legacy single JSON path check. Use response assertions below for richer API checks.')
                             ->maxLength(255)

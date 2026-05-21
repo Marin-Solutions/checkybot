@@ -581,6 +581,7 @@ test('package sync resets api live health when request configuration changes', f
                     'request_body_type' => 'raw',
                     'request_body' => 'probe=1',
                     'timeout_seconds' => 30,
+                    'max_response_time_ms' => 25000,
                 ],
             ],
         ]))
@@ -594,6 +595,7 @@ test('package sync resets api live health when request configuration changes', f
         'expected_status' => 200,
         'request_body_type' => 'raw',
         'timeout_seconds' => 30,
+        'max_response_time_ms' => 25000,
         'current_status' => 'pending',
         'status_summary' => null,
         'diagnostic_queued_at' => null,

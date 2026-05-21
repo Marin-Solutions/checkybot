@@ -37,6 +37,7 @@ class ApiMonitorExecutionService
                 'title' => $monitor->title,
                 'expected_status' => $monitor->expected_status,
                 'timeout_seconds' => $monitor->timeout_seconds,
+                'max_response_time_ms' => $monitor->max_response_time_ms,
                 MonitorApis::SCHEDULED_RUN_KEY => $scheduled,
             ]);
         } catch (Throwable $exception) {

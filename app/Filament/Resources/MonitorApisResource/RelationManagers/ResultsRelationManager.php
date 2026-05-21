@@ -70,6 +70,14 @@ class ResultsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('response_time_ms')
                     ->label('Response Time')
                     ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                    ->badge()
+                    ->color(fn (MonitorApiResult $record): string => static::exceedsResponseTimeThreshold($record) ? 'warning' : 'gray')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('max_response_time_ms')
+                    ->label('Warning Threshold')
+                    ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                    ->toggleable(isToggledHiddenByDefault: true)
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('elapsed_wall_time_ms')
@@ -114,6 +122,11 @@ class ResultsRelationManager extends RelationManager
                 Tables\Filters\Filter::make('high_response_time')
                     ->label('High Response Time')
                     ->query(fn ($query) => $query->where('response_time_ms', '>', 1000)),
+                Tables\Filters\Filter::make('response_time_warning')
+                    ->label('Exceeded response-time warning')
+                    ->query(fn ($query) => $query
+                        ->whereNotNull('max_response_time_ms')
+                        ->whereColumn('response_time_ms', '>', 'max_response_time_ms')),
                 Tables\Filters\SelectFilter::make('run_source')
                     ->label('Run')
                     ->options(RunSource::options()),
@@ -183,7 +196,14 @@ class ResultsRelationManager extends RelationManager
                             ->visible(fn (MonitorApiResult $record): bool => filled($record->transport_error_type)),
                         TextEntry::make('response_time_ms')
                             ->label('Response Time')
-                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                            ->badge()
+                            ->color(fn (MonitorApiResult $record): string => static::exceedsResponseTimeThreshold($record) ? 'warning' : 'gray'),
+                        TextEntry::make('max_response_time_ms')
+                            ->label('Response-time Warning')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : 'Not configured')
+                            ->badge()
+                            ->color(fn (MonitorApiResult $record): string => static::exceedsResponseTimeThreshold($record) ? 'warning' : 'gray'),
                         TextEntry::make('elapsed_wall_time_ms')
                             ->label('Elapsed Wall Time')
                             ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
@@ -278,6 +298,13 @@ class ResultsRelationManager extends RelationManager
                 $type->value => UptimeTransportError::label($type),
             ])
             ->all();
+    }
+
+    private static function exceedsResponseTimeThreshold(MonitorApiResult $record): bool
+    {
+        return $record->response_time_ms !== null
+            && $record->max_response_time_ms !== null
+            && $record->response_time_ms > $record->max_response_time_ms;
     }
 
     private static function filterByFailedAssertionPath(Builder $query, array $data): Builder

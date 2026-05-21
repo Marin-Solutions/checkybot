@@ -311,6 +311,7 @@ class CheckybotControlService
                 'request_body' => $payload['request_body'] ?? null,
                 'expected_status' => $payload['expected_status'] ?? 200,
                 'timeout_seconds' => $payload['timeout_seconds'] ?? null,
+                'max_response_time_ms' => $payload['max_response_time_ms'] ?? null,
                 'package_schedule' => $schedule,
                 // Stale detection reads package_interval, so persist the compact normalized form there.
                 'package_interval' => $normalizedSchedule,
@@ -1803,6 +1804,7 @@ class CheckybotControlService
             'request_path' => $check->request_path,
             'expected_status' => $check->expected_status,
             'timeout_seconds' => $check->timeout_seconds,
+            'max_response_time_ms' => $check->max_response_time_ms,
             'schedule' => $check->package_schedule,
             'enabled' => $check->is_enabled,
             'supports_run' => true,
@@ -1853,6 +1855,7 @@ class CheckybotControlService
             'request_path' => $website->url,
             'expected_status' => null,
             'timeout_seconds' => null,
+            'max_response_time_ms' => null,
             'schedule' => $website->package_interval,
             'enabled' => (bool) $website->uptime_check || (bool) $website->ssl_check,
             'supports_run' => true,
@@ -1889,6 +1892,7 @@ class CheckybotControlService
             'request_path' => null,
             'expected_status' => null,
             'timeout_seconds' => null,
+            'max_response_time_ms' => null,
             'schedule' => $component->declared_interval,
             'declared_interval' => $component->declared_interval,
             'interval_minutes' => $component->interval_minutes,
@@ -1969,6 +1973,7 @@ class CheckybotControlService
             'is_on_demand' => (bool) $result->is_on_demand,
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
+            'max_response_time_ms' => $result->max_response_time_ms,
             'effective_timeout_seconds' => $result->effective_timeout_seconds,
             'retry_count' => $result->retry_count,
             'elapsed_wall_time_ms' => $result->elapsed_wall_time_ms,
@@ -2341,6 +2346,7 @@ class CheckybotControlService
             || $check->request_body_type != $data['request_body_type']
             || $this->normalizeRequestBodyForComparison($check->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
             || $check->timeout_seconds != $data['timeout_seconds']
+            || $check->max_response_time_ms != $data['max_response_time_ms']
             || $assertionsChanged;
     }
 

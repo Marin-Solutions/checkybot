@@ -149,6 +149,7 @@ Example API upsert request:
   },
   "expected_status": 200,
   "timeout_seconds": 15,
+  "max_response_time_ms": 10000,
   "schedule": "every_5_minutes",
   "enabled": true,
   "assertions": [
@@ -190,6 +191,7 @@ Example API upsert response:
       "request_path": "/api/google-maps/search",
       "expected_status": 200,
       "timeout_seconds": 15,
+      "max_response_time_ms": 10000,
       "schedule": "every_5_minutes",
       "enabled": true,
       "supports_run": true,

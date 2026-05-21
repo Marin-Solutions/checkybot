@@ -44,6 +44,20 @@ test('api status treats non-matching expected 201 as warning', function () {
         ->and($service->summaryForApi($result, 201))->toBe('API check is degraded with HTTP status 200.');
 });
 
+test('api status treats slow successful response as warning', function () {
+    $service = app(PackageHealthStatusService::class);
+
+    $result = [
+        'code' => 200,
+        'response_time_ms' => 30500,
+        'max_response_time_ms' => 30000,
+        'assertions' => [],
+    ];
+
+    expect($service->apiStatusFromResult($result, 200))->toBe('warning')
+        ->and($service->summaryForApi($result, 200))->toBe('API check exceeded the 30000ms response-time warning threshold (30500ms).');
+});
+
 test('stale detection waits until after the exact interval boundary', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 

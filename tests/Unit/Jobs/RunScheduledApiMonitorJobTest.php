@@ -82,6 +82,38 @@ test('run scheduled api monitor job records live status and sends transition not
     Mail::assertSent(HealthStatusAlert::class, 1);
 });
 
+test('run scheduled api monitor job marks successful slow responses as warning', function () {
+    Http::fake(function () {
+        usleep(2000);
+
+        return Http::response(['data' => ['status' => 'ok']], 200);
+    });
+
+    $monitor = MonitorApis::factory()->create([
+        'title' => 'slow-package-health',
+        'url' => 'https://api.example.com/slow-health',
+        'source' => 'package',
+        'package_name' => 'slow-package-health',
+        'expected_status' => 200,
+        'max_response_time_ms' => 1,
+        'current_status' => 'healthy',
+    ]);
+
+    (new RunScheduledApiMonitorJob($monitor))->handle(
+        app(ApiMonitorExecutionService::class),
+        app(HealthEventNotificationService::class),
+    );
+
+    $monitor->refresh();
+    $result = $monitor->latestResult()->firstOrFail();
+
+    expect($monitor->current_status)->toBe('warning')
+        ->and($monitor->status_summary)->toContain('response-time warning threshold')
+        ->and($result->status)->toBe('warning')
+        ->and($result->max_response_time_ms)->toBe(1)
+        ->and($result->response_time_ms)->toBeGreaterThan(1);
+});
+
 test('run scheduled api monitor job skips monitors disabled after dispatch', function () {
     Http::fake([
         '*' => Http::response(['data' => ['status' => 'ok']], 200),

@@ -128,6 +128,7 @@ class SyncProjectChecksRequest extends FormRequest
             'api_checks.*.request_body' => ['nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'api_checks.*.expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'api_checks.*.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'api_checks.*.max_response_time_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
             'api_checks.*.save_failed_response' => ['nullable', 'boolean'],
             'api_checks.*.enabled' => ['boolean'],
             'api_checks.*.component' => ['nullable', 'string', 'max:255'],

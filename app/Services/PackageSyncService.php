@@ -166,6 +166,7 @@ class PackageSyncService
                 'request_body' => $check['request_body'] ?? null,
                 'expected_status' => $check['expected_status'] ?? 200,
                 'timeout_seconds' => $check['timeout_seconds'] ?? ($defaults['timeout_seconds'] ?? null),
+                'max_response_time_ms' => $check['max_response_time_ms'] ?? ($defaults['max_response_time_ms'] ?? null),
                 'save_failed_response' => $check['save_failed_response'] ?? true,
                 'package_schedule' => $schedule,
                 // Stale detection still reads package_interval, so persist the compact normalized form there.
@@ -564,6 +565,7 @@ class PackageSyncService
             || $monitorApi->request_body_type != $data['request_body_type']
             || $this->normalizeRequestBodyForComparison($monitorApi->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
             || $monitorApi->timeout_seconds != $data['timeout_seconds']
+            || $monitorApi->max_response_time_ms != $data['max_response_time_ms']
             || $assertionsChanged;
     }
 

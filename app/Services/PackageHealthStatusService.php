@@ -28,6 +28,11 @@ class PackageHealthStatusService
     public function apiStatusFromResult(array $result, ?int $expectedStatus = null): string
     {
         $code = $result['code'] ?? null;
+        $responseTime = $this->positiveInteger($result['response_time_ms'] ?? null);
+        $maxResponseTime = $this->positiveInteger($result['max_response_time_ms'] ?? null);
+        $exceedsResponseTimeThreshold = $maxResponseTime !== null
+            && $responseTime !== null
+            && $responseTime > $maxResponseTime;
         $hasFailedAssertions = collect($result['assertions'] ?? [])
             ->contains(fn (array $assertion): bool => ! ($assertion['passed'] ?? false));
 
@@ -36,7 +41,7 @@ class PackageHealthStatusService
         }
 
         if ($expectedStatus !== null && $code === $expectedStatus) {
-            return $hasFailedAssertions ? 'warning' : 'healthy';
+            return $hasFailedAssertions || $exceedsResponseTimeThreshold ? 'warning' : 'healthy';
         }
 
         if ($expectedStatus !== null && $code !== null) {
@@ -50,6 +55,7 @@ class PackageHealthStatusService
             ($code ?? 200) >= 500 => 'danger',
             ($code ?? 200) >= 400 => 'warning',
             $hasFailedAssertions => 'warning',
+            $exceedsResponseTimeThreshold => 'warning',
             default => 'healthy',
         };
     }
@@ -151,10 +157,28 @@ class PackageHealthStatusService
         }
 
         if ($status === 'warning') {
+            $responseTime = $this->positiveInteger($result['response_time_ms'] ?? null);
+            $maxResponseTime = $this->positiveInteger($result['max_response_time_ms'] ?? null);
+
+            if ($responseTime !== null && $maxResponseTime !== null && $responseTime > $maxResponseTime) {
+                return "API check exceeded the {$maxResponseTime}ms response-time warning threshold ({$responseTime}ms).";
+            }
+
             return "API check is degraded with HTTP status {$code}.";
         }
 
         return "API check succeeded with HTTP status {$code}.";
+    }
+
+    private function positiveInteger(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $integer = (int) $value;
+
+        return $integer > 0 ? $integer : null;
     }
 
     public function staleSummary(string $interval): string
