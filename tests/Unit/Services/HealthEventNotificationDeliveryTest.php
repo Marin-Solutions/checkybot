@@ -105,6 +105,39 @@ test('notifyWebsite treats non-2xx webhook responses as failed delivery attempts
             && ($context['response_code'] ?? null) === 401);
 });
 
+test('notifyWebsite treats orphaned webhook settings as failed delivery attempts', function () {
+    Log::spy();
+    Http::fake();
+
+    $website = Website::factory()->create([
+        'silenced_until' => null,
+    ]);
+
+    $setting = NotificationSetting::factory()
+        ->websiteScope()
+        ->webhook()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $setting->channel()->delete();
+
+    $result = app(HealthEventNotificationService::class)
+        ->notifyWebsite($website, 'heartbeat', 'danger', 'Returned HTTP 500.');
+
+    expect($result)->toBeFalse()
+        ->and($setting->refresh()->last_delivery_succeeded)->toBeFalse()
+        ->and($setting->last_delivery_summary)->toBe('Webhook channel is missing.');
+
+    Http::assertNothingSent();
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(fn (string $message, array $context): bool => str_contains($message, 'No channel found for health notification setting')
+            && ($context['setting_id'] ?? null) === $setting->id);
+});
+
 test('notifyWebsite returns true when one webhook succeeds and another returns non-2xx', function () {
     Log::spy();
 
