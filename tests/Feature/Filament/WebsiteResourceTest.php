@@ -51,6 +51,70 @@ test('super admin can see websites in table', function () {
         ->assertCanSeeTableRecords($websites);
 });
 
+test('website list shows latest scheduled failure evidence for triage', function () {
+    Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'danger',
+    ]);
+
+    WebsiteLogHistory::factory()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'summary' => 'Website heartbeat failed before an HTTP response: DNS lookup failed.',
+        'transport_error_message' => 'cURL error 6: Could not resolve host: missing.example',
+        'transport_error_code' => 6,
+        'created_at' => now()->subMinutes(12),
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertSuccessful()
+        ->assertSee('Latest Failure')
+        ->assertSee('Website heartbeat failed before an HTTP response: DNS lookup failed.')
+        ->assertSee('DNS failure')
+        ->assertSee('No response')
+        ->assertSee('12 minutes ago');
+});
+
+test('website list failure evidence ignores newer manual runs and clears after scheduled recovery', function () {
+    Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
+
+    $user = $this->actingAsSuperAdmin();
+    $website = Website::factory()->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Earlier scheduled heartbeat timed out.',
+        'created_at' => now()->subMinutes(30),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'http_status_code' => 200,
+        'summary' => 'Scheduled heartbeat recovered.',
+        'created_at' => now()->subMinutes(20),
+    ]);
+
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'status' => 'danger',
+        'http_status_code' => 503,
+        'summary' => 'Manual diagnostic failed after recovery.',
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    Livewire::test(ListWebsites::class)
+        ->assertSuccessful()
+        ->assertDontSee('Earlier scheduled heartbeat timed out.')
+        ->assertDontSee('Manual diagnostic failed after recovery.')
+        ->assertDontSee('Scheduled heartbeat recovered.');
+});
+
 test('website list hides non-server freshness evidence', function () {
     Carbon::setTestNow(Carbon::parse('2026-05-09 12:00:00'));
 
