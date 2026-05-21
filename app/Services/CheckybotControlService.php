@@ -965,7 +965,7 @@ class CheckybotControlService
     private function currentApiIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = MonitorApis::query()
-            ->with(['project', 'assertions', 'latestResult', 'latestDiagnosticResult'])
+            ->with(['project', 'assertions', 'latestResult', 'latestScheduledResult', 'latestDiagnosticResult'])
             ->where('created_by', $user->id)
             ->where('is_enabled', true)
             ->whereIn('current_status', $statuses);
@@ -979,11 +979,21 @@ class CheckybotControlService
             ->latest('updated_at')
             ->when($limit !== null, fn (Builder $query): Builder => $query->limit($limit))
             ->get()
-            ->map(fn (MonitorApis $check): array => $this->currentIssuePayload(
-                $check->project,
-                $this->checkPayload($check),
-                $this->currentApiIssueCause($check),
-            ))
+            ->map(function (MonitorApis $check): array {
+                $scheduledResult = $check->relationLoaded('latestScheduledResult')
+                    ? $check->latestScheduledResult
+                    : $check->latestScheduledResult()->first();
+                $diagnosticResult = $check->relationLoaded('latestDiagnosticResult')
+                    ? $check->latestDiagnosticResult
+                    : $check->latestDiagnosticResult()->first();
+
+                return $this->currentIssuePayload(
+                    $check->project,
+                    $this->checkPayload($check),
+                    $this->currentApiIssueCause($check),
+                    $this->apiManualScheduledDriftPayload($scheduledResult, $diagnosticResult),
+                );
+            })
             ->all();
     }
 
@@ -994,7 +1004,7 @@ class CheckybotControlService
     private function currentWebsiteIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = Website::query()
-            ->with(['project', 'latestLogHistory', 'latestDiagnosticLogHistory'])
+            ->with(['project', 'latestLogHistory', 'latestScheduledLogHistory', 'latestDiagnosticLogHistory'])
             ->where('created_by', $user->id)
             ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
             ->whereIn('current_status', $statuses);
@@ -1008,11 +1018,21 @@ class CheckybotControlService
             ->latest('updated_at')
             ->when($limit !== null, fn (Builder $query): Builder => $query->limit($limit))
             ->get()
-            ->map(fn (Website $website): array => $this->currentIssuePayload(
-                $website->project,
-                $this->websiteCheckPayload($website),
-                $this->currentWebsiteIssueCause($website),
-            ))
+            ->map(function (Website $website): array {
+                $scheduledResult = $website->relationLoaded('latestScheduledLogHistory')
+                    ? $website->latestScheduledLogHistory
+                    : $website->latestScheduledLogHistory()->first();
+                $diagnosticResult = $website->relationLoaded('latestDiagnosticLogHistory')
+                    ? $website->latestDiagnosticLogHistory
+                    : $website->latestDiagnosticLogHistory()->first();
+
+                return $this->currentIssuePayload(
+                    $website->project,
+                    $this->websiteCheckPayload($website),
+                    $this->currentWebsiteIssueCause($website),
+                    $this->websiteManualScheduledDriftPayload($scheduledResult, $diagnosticResult),
+                );
+            })
             ->all();
     }
 
@@ -1049,9 +1069,9 @@ class CheckybotControlService
      * @param  array<string, mixed>  $check
      * @return array<string, mixed>
      */
-    private function currentIssuePayload(?Project $project, array $check, ?string $cause): array
+    private function currentIssuePayload(?Project $project, array $check, ?string $cause, ?array $manualScheduledDrift = null): array
     {
-        return [
+        $payload = [
             'project' => $project instanceof Project ? $this->projectIdentity($project) + [
                 'name' => $project->name,
                 'environment' => $project->environment,
@@ -1062,6 +1082,94 @@ class CheckybotControlService
             'cause' => $cause,
             'last_checked_at' => $check['last_checked_at'] ?? null,
             'updated_at' => $check['updated_at'] ?? null,
+        ];
+
+        if ($manualScheduledDrift !== null) {
+            $payload['manual_scheduled_drift'] = $manualScheduledDrift;
+        }
+
+        return $payload;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function apiManualScheduledDriftPayload(?MonitorApiResult $scheduledResult, ?MonitorApiResult $diagnosticResult): array
+    {
+        return $this->manualScheduledDriftPayload(
+            $this->apiResultDriftPoint($scheduledResult),
+            $this->apiResultDriftPoint($diagnosticResult),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function websiteManualScheduledDriftPayload(?WebsiteLogHistory $scheduledResult, ?WebsiteLogHistory $diagnosticResult): array
+    {
+        return $this->manualScheduledDriftPayload(
+            $this->websiteResultDriftPoint($scheduledResult),
+            $this->websiteResultDriftPoint($diagnosticResult),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $scheduled
+     * @param  array<string, mixed>|null  $manual
+     * @return array<string, mixed>
+     */
+    private function manualScheduledDriftPayload(?array $scheduled, ?array $manual): array
+    {
+        $detected = $scheduled !== null
+            && $manual !== null
+            && $scheduled['status'] !== $manual['status'];
+
+        return [
+            'detected' => $detected,
+            'scheduled' => $scheduled,
+            'manual' => $manual,
+            'summary' => $detected
+                ? "Latest manual diagnostic status ({$manual['status']}) differs from latest scheduled status ({$scheduled['status']}). Prefer the current issue status until a scheduled run recovers."
+                : null,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function apiResultDriftPoint(?MonitorApiResult $result): ?array
+    {
+        if (! $result instanceof MonitorApiResult) {
+            return null;
+        }
+
+        return [
+            'id' => $result->id,
+            'status' => $result->status ?? ($result->is_success ? 'healthy' : 'danger'),
+            'success' => (bool) $result->is_success,
+            'summary' => $result->summary,
+            'checked_at' => $result->created_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function websiteResultDriftPoint(?WebsiteLogHistory $result): ?array
+    {
+        if (! $result instanceof WebsiteLogHistory) {
+            return null;
+        }
+
+        $status = $result->status ?? (((int) ($result->http_status_code ?? 200)) < 400 ? 'healthy' : 'danger');
+
+        return [
+            'id' => $result->id,
+            'status' => $status,
+            'success' => in_array($status, ['healthy', null], true)
+                && ((int) ($result->http_status_code ?? 200)) < 400,
+            'summary' => $result->summary,
+            'checked_at' => $result->created_at?->toISOString(),
         ];
     }
 

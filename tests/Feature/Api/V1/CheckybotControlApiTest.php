@@ -3098,6 +3098,104 @@ test('control api and mcp list current unhealthy issues with filters', function 
         ->assertJsonPath('result.structuredContent.0.check.key', 'billing-health');
 });
 
+test('control api current issues flags manual scheduled drift for api and website checks', function () {
+    $this->travelTo('2026-05-21 10:00:00');
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'billing-health',
+        'title' => 'Billing health',
+        'url' => 'https://api.scrappa.test/billing/health',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Billing health scheduled check is failing.',
+        'updated_at' => now(),
+    ]);
+
+    $apiScheduled = MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'status' => 'danger',
+        'summary' => 'Scheduled API failure.',
+        'created_at' => now()->subMinutes(5),
+    ]);
+    $apiManual = MonitorApiResult::factory()->successful()->onDemand()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Manual API diagnostic passed.',
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'marketing-site',
+        'name' => 'Marketing site',
+        'url' => 'https://scrappa.test',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Marketing site scheduled check is failing.',
+        'updated_at' => now()->subMinute(),
+    ]);
+
+    $websiteScheduled = WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Scheduled website failure.',
+        'created_at' => now()->subMinutes(4),
+    ]);
+    $websiteManual = WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'summary' => 'Manual website diagnostic passed.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $issues = collect($this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->json('data'))
+        ->keyBy('check.key');
+
+    expect($issues['billing-health']['manual_scheduled_drift'])
+        ->detected->toBeTrue()
+        ->and($issues['billing-health']['manual_scheduled_drift']['scheduled'])
+        ->toMatchArray([
+            'id' => $apiScheduled->id,
+            'status' => 'danger',
+            'success' => false,
+            'summary' => 'Scheduled API failure.',
+            'checked_at' => now()->subMinutes(5)->toISOString(),
+        ])
+        ->and($issues['billing-health']['manual_scheduled_drift']['manual'])
+        ->toMatchArray([
+            'id' => $apiManual->id,
+            'status' => 'healthy',
+            'success' => true,
+            'summary' => 'Manual API diagnostic passed.',
+            'checked_at' => now()->subMinute()->toISOString(),
+        ]);
+
+    expect($issues['marketing-site']['manual_scheduled_drift'])
+        ->detected->toBeTrue()
+        ->and($issues['marketing-site']['manual_scheduled_drift']['scheduled'])
+        ->toMatchArray([
+            'id' => $websiteScheduled->id,
+            'status' => 'danger',
+            'success' => false,
+            'summary' => 'Scheduled website failure.',
+            'checked_at' => now()->subMinutes(4)->toISOString(),
+        ])
+        ->and($issues['marketing-site']['manual_scheduled_drift']['manual'])
+        ->toMatchArray([
+            'id' => $websiteManual->id,
+            'status' => 'healthy',
+            'success' => true,
+            'summary' => 'Manual website diagnostic passed.',
+            'checked_at' => now()->subMinutes(2)->toISOString(),
+        ]);
+});
+
 test('control api exposes stale package setup as a project current issue', function () {
     $this->travelTo('2026-05-14 12:00:00');
     config()->set('monitor.package_sync_stale_minutes', 15);
