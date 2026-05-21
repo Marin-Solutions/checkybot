@@ -5,6 +5,7 @@
     use App\Models\WebsiteLogHistory;
     use App\Support\ApiMonitorEvidenceFormatter;
     use App\Support\MetricsPayloadFormatter;
+    use App\Support\ScheduledFailureStreak;
     use App\Support\UptimeTransportError;
 
     $statusColor = match ($incident->status) {
@@ -48,6 +49,7 @@
             The source row for this incident is no longer available or is outside your access scope.
         </div>
     @elseif ($evidence instanceof WebsiteLogHistory)
+        @php($scheduledFailureStreak = ScheduledFailureStreak::forWebsiteResult($evidence))
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <x-incident-feed-evidence-field label="Status" :value="ucfirst($evidence->status ?? 'unknown')" />
             <x-incident-feed-evidence-field label="Run" :value="RunSource::coerce($evidence->run_source)->label()" />
@@ -55,6 +57,8 @@
             <x-incident-feed-evidence-field label="Response time" :value="$evidence->speed !== null ? $evidence->speed . 'ms' : '-'" />
             <x-incident-feed-evidence-field label="Captured at" :value="optional($evidence->created_at)->toDayDateTimeString() ?? '-'" />
             <x-incident-feed-evidence-field label="SSL expiry" :value="optional($evidence->ssl_expiry_date)->toFormattedDateString() ?? '-'" />
+            <x-incident-feed-evidence-field label="Scheduled streak" :value="$scheduledFailureStreak['count'] > 0 ? $scheduledFailureStreak['count'] . ' failures' : '-'" />
+            <x-incident-feed-evidence-field label="First failed at" :value="optional($scheduledFailureStreak['first_failed_at'])->toDayDateTimeString() ?? '-'" />
         </div>
 
         @if (filled($evidence->transport_error_type))
@@ -68,6 +72,7 @@
             </div>
         @endif
     @elseif ($evidence instanceof MonitorApiResult)
+        @php($scheduledFailureStreak = ScheduledFailureStreak::forApiResult($evidence))
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <x-incident-feed-evidence-field label="Status" :value="ucfirst($evidence->status ?? ($evidence->is_success ? 'healthy' : 'danger'))" />
             <x-incident-feed-evidence-field label="Run" :value="RunSource::coerce($evidence->run_source)->label()" />
@@ -75,6 +80,8 @@
             <x-incident-feed-evidence-field label="Response time" :value="$evidence->response_time_ms !== null ? $evidence->response_time_ms . 'ms' : '-'" />
             <x-incident-feed-evidence-field label="Captured at" :value="optional($evidence->created_at)->toDayDateTimeString() ?? '-'" />
             <x-incident-feed-evidence-field label="Failed assertions" :value="count($evidence->failed_assertions ?? [])" />
+            <x-incident-feed-evidence-field label="Scheduled streak" :value="$scheduledFailureStreak['count'] > 0 ? $scheduledFailureStreak['count'] . ' failures' : '-'" />
+            <x-incident-feed-evidence-field label="First failed at" :value="optional($scheduledFailureStreak['first_failed_at'])->toDayDateTimeString() ?? '-'" />
         </div>
 
         @if (filled($evidence->transport_error_type))

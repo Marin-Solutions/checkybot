@@ -8,6 +8,7 @@ use App\Jobs\LogUptimeSslJob;
 use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Support\HealthStatusLabel;
+use App\Support\ScheduledFailureStreak;
 use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
@@ -85,6 +86,13 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->wrap()
                     ->limit(90)
                     ->default('-'),
+                TextColumn::make('scheduled_failure_streak')
+                    ->label('Failure Streak')
+                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::labelForWebsite($record))
+                    ->description(fn (Website $record): ?string => ScheduledFailureStreak::descriptionForWebsite($record))
+                    ->placeholder('-')
+                    ->badge()
+                    ->color('danger'),
                 TextColumn::make('latestLogHistory.created_at')
                     ->label('Last Check')
                     ->state(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->toDayDateTimeString())
@@ -282,7 +290,7 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                 ]),
             ])
             ->modifyQueryUsing(fn (Builder $query) => $query
-                ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
+                ->with(['latestLogHistory', 'latestScheduledLogHistory', 'latestDiagnosticLogHistory'])
                 ->withoutGlobalScopes([
                     SoftDeletingScope::class,
                 ]))

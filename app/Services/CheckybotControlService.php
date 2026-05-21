@@ -20,6 +20,7 @@ use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Support\ApiMonitorEvidenceRedactor;
 use App\Support\ProjectComponentDeliveryState;
+use App\Support\ScheduledFailureStreak;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
@@ -1088,6 +1089,13 @@ class CheckybotControlService
             $payload['manual_scheduled_drift'] = $manualScheduledDrift;
         }
 
+        if (in_array($check['type'] ?? null, ['api', 'website'], true)) {
+            $payload['scheduled_failure_streak'] = $check['scheduled_failure_streak'] ?? [
+                'count' => 0,
+                'first_failed_at' => null,
+            ];
+        }
+
         return $payload;
     }
 
@@ -1810,6 +1818,7 @@ class CheckybotControlService
             'diagnostic_queued_at' => $check->diagnostic_queued_at?->toISOString(),
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
+            'scheduled_failure_streak' => ScheduledFailureStreak::apiPayload($check),
             'last_synced_at' => $check->last_synced_at?->toISOString(),
             'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'headers' => ApiMonitorEvidenceRedactor::redactHeaders($check->headers),
@@ -1860,6 +1869,7 @@ class CheckybotControlService
             'diagnostic_queued_at' => $website->diagnostic_queued_at?->toISOString(),
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
+            'scheduled_failure_streak' => ScheduledFailureStreak::websitePayload($website),
             'last_synced_at' => $website->last_synced_at?->toISOString(),
             'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'headers' => [],
