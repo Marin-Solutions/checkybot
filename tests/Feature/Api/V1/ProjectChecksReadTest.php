@@ -701,6 +701,9 @@ test('project check read endpoints redact saved api response body evidence', fun
             'error' => 'upstream unavailable',
             'trace_id' => 'trace-123',
             'details' => $longValue,
+            'active_cookies' => 3,
+            'blocked_cookie_count' => 1,
+            'cookie_header' => 'session=body-cookie-secret',
             MonitorApiResult::RAW_BODY_KEY => 'Token expired. Your token was: raw-body-secret',
             MonitorApiResult::ERROR_METADATA_KEY => 'cURL error included error-metadata-secret',
             MonitorApis::LEGACY_RAW_BODY_KEY => 'Token expired. Your token was: legacy-raw-secret',
@@ -717,6 +720,9 @@ test('project check read endpoints redact saved api response body evidence', fun
         ->assertOk()
         ->assertJsonPath('data.latest_result.response_body.error', 'upstream unavailable')
         ->assertJsonPath('data.latest_result.response_body.trace_id', 'trace-123')
+        ->assertJsonPath('data.latest_result.response_body.active_cookies', 3)
+        ->assertJsonPath('data.latest_result.response_body.blocked_cookie_count', 1)
+        ->assertJsonPath('data.latest_result.response_body.cookie_header', '[redacted]')
         ->assertJsonPath('data.latest_result.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
         ->assertJsonPath('data.latest_result.response_body.'.MonitorApiResult::ERROR_METADATA_KEY, '[redacted]')
         ->assertJsonPath('data.latest_result.response_body.'.MonitorApis::LEGACY_RAW_BODY_KEY, '[redacted]')
@@ -731,6 +737,9 @@ test('project check read endpoints redact saved api response body evidence', fun
         ->getJson("/api/v1/projects/{$this->project->id}/checks/api-health/results")
         ->assertOk()
         ->assertJsonPath('data.0.response_body.error', 'upstream unavailable')
+        ->assertJsonPath('data.0.response_body.active_cookies', 3)
+        ->assertJsonPath('data.0.response_body.blocked_cookie_count', 1)
+        ->assertJsonPath('data.0.response_body.cookie_header', '[redacted]')
         ->assertJsonPath('data.0.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
         ->assertJsonPath('data.0.response_body.access_token', '[redacted]')
         ->assertJsonPath('data.0.response_body.nested.password', '[redacted]');
@@ -738,9 +747,11 @@ test('project check read endpoints redact saved api response body evidence', fun
     expect(json_encode($showResponse->json()))->not->toContain('raw-body-secret')
         ->and(json_encode($showResponse->json()))->not->toContain('error-metadata-secret')
         ->and(json_encode($showResponse->json()))->not->toContain('legacy-raw-secret')
+        ->and(json_encode($showResponse->json()))->not->toContain('body-cookie-secret')
         ->and(json_encode($showResponse->json()))->not->toContain('body-token-secret')
         ->and(json_encode($showResponse->json()))->not->toContain('body-password-secret')
         ->and(json_encode($resultsResponse->json()))->not->toContain('raw-body-secret')
+        ->and(json_encode($resultsResponse->json()))->not->toContain('body-cookie-secret')
         ->and(json_encode($resultsResponse->json()))->not->toContain('body-token-secret')
         ->and(json_encode($resultsResponse->json()))->not->toContain('body-password-secret');
 });

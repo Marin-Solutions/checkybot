@@ -1635,6 +1635,9 @@ test('control api result payloads include safe api failure evidence', function (
             'trace_id' => 'trace-123',
             'author' => 'Scrappa worker',
             'authenticated_at' => '2026-04-29T06:00:00Z',
+            'active_cookies' => 3,
+            'blocked_cookie_count' => 1,
+            'cookie_header' => 'session=body-cookie-secret',
             MonitorApiResult::RAW_BODY_KEY => 'Token expired. Your token was: raw-body-secret',
             MonitorApiResult::ERROR_METADATA_KEY => 'cURL error included error-metadata-secret',
             'raw_body' => 'Token expired. Your token was: legacy-raw-secret',
@@ -1664,6 +1667,9 @@ test('control api result payloads include safe api failure evidence', function (
         ->assertJsonPath('data.0.response_body.trace_id', 'trace-123')
         ->assertJsonPath('data.0.response_body.author', 'Scrappa worker')
         ->assertJsonPath('data.0.response_body.authenticated_at', '2026-04-29T06:00:00Z')
+        ->assertJsonPath('data.0.response_body.active_cookies', 3)
+        ->assertJsonPath('data.0.response_body.blocked_cookie_count', 1)
+        ->assertJsonPath('data.0.response_body.cookie_header', '[redacted]')
         ->assertJsonPath('data.0.response_body.'.MonitorApiResult::RAW_BODY_KEY, '[redacted]')
         ->assertJsonPath('data.0.response_body.'.MonitorApiResult::ERROR_METADATA_KEY, '[redacted]')
         ->assertJsonPath('data.0.response_body.raw_body', '[redacted]')
@@ -1681,6 +1687,7 @@ test('control api result payloads include safe api failure evidence', function (
         ->and(json_encode($response->json()))->not->toContain('raw-body-secret')
         ->and(json_encode($response->json()))->not->toContain('error-metadata-secret')
         ->and(json_encode($response->json()))->not->toContain('legacy-raw-secret')
+        ->and(json_encode($response->json()))->not->toContain('body-cookie-secret')
         ->and(json_encode($response->json()))->not->toContain('body-token-secret')
         ->and(json_encode($response->json()))->not->toContain('body-password-secret');
 });
