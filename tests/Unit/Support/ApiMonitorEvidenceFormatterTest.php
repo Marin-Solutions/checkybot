@@ -197,3 +197,20 @@ test('replay template redacts form body tokens and omits raw bodies', function (
         ->not->toContain('--data-raw')
         ->not->toContain('secret-token');
 });
+
+test('replay template preserves url userinfo shape with placeholders', function () {
+    $monitor = MonitorApis::factory()->create([
+        'http_method' => 'GET',
+        'url' => 'https://monitor-user:monitor-password@api.example.test/private',
+    ]);
+
+    $result = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'request_headers' => ['Accept' => 'application/json'],
+    ]);
+
+    expect(ApiMonitorEvidenceFormatter::replayTemplate($result))
+        ->toContain('https://<REPLACE_URL_USER>:<REPLACE_URL_PASSWORD>@api.example.test/private')
+        ->not->toContain('monitor-user')
+        ->not->toContain('monitor-password');
+});

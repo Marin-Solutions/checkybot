@@ -311,7 +311,7 @@ class ApiMonitorEvidenceFormatter
         }
 
         $scheme = $parts['scheme'] ?? 'https';
-        $authority = $parts['host'];
+        $authority = self::sanitizeReplayUserInfo($parts).$parts['host'];
 
         if (isset($parts['port'])) {
             $authority .= ':'.$parts['port'];
@@ -322,6 +322,22 @@ class ApiMonitorEvidenceFormatter
         $fragment = isset($parts['fragment']) ? '#'.$parts['fragment'] : '';
 
         return "{$scheme}://{$authority}{$path}{$query}{$fragment}";
+    }
+
+    /**
+     * @param  array<string, mixed>  $parts
+     */
+    private static function sanitizeReplayUserInfo(array $parts): string
+    {
+        if (! isset($parts['user'])) {
+            return '';
+        }
+
+        if (isset($parts['pass'])) {
+            return '<REPLACE_URL_USER>:<REPLACE_URL_PASSWORD>@';
+        }
+
+        return '<REPLACE_URL_USER>@';
     }
 
     private static function sanitizeReplayQuery(?string $query): string
