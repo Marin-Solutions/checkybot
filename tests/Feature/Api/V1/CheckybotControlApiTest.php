@@ -3185,6 +3185,9 @@ test('control api current issues flags manual scheduled drift for api and websit
             'success' => true,
             'summary' => 'Manual API diagnostic passed.',
             'checked_at' => now()->subMinute()->toISOString(),
+            'age_seconds' => 60,
+            'age_label' => '1 minute',
+            'stale' => false,
         ]);
 
     expect($issues['marketing-site']['manual_scheduled_drift'])
@@ -3204,7 +3207,163 @@ test('control api current issues flags manual scheduled drift for api and websit
             'success' => true,
             'summary' => 'Manual website diagnostic passed.',
             'checked_at' => now()->subMinutes(2)->toISOString(),
+            'age_seconds' => 120,
+            'age_label' => '2 minutes',
+            'stale' => false,
         ]);
+});
+
+test('control api current issues marks older manual diagnostic drift as stale for api and website checks', function () {
+    $this->travelTo('2026-05-22 12:00:00');
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'booking-search-paris',
+        'title' => 'Booking search Paris',
+        'url' => 'https://api.scrappa.test/bookings/search',
+        'package_interval' => '5m',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Booking search scheduled check is failing.',
+        'updated_at' => now(),
+    ]);
+
+    MonitorApiResult::factory()->successful()->onDemand()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Manual API diagnostic passed.',
+        'created_at' => now()->subDays(3),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'status' => 'danger',
+        'summary' => 'Scheduled API failure.',
+        'created_at' => now(),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'accountless-active-cookies',
+        'name' => 'Accountless active cookies',
+        'url' => 'https://google-cookie-harvester.test',
+        'uptime_check' => true,
+        'uptime_interval' => 5,
+        'package_interval' => '5m',
+        'current_status' => 'warning',
+        'status_summary' => 'Cookie harvester scheduled check is warning.',
+        'updated_at' => now(),
+    ]);
+
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+        'summary' => 'Manual website diagnostic passed.',
+        'created_at' => now()->subDays(7),
+    ]);
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'status' => 'warning',
+        'summary' => 'Scheduled website warning.',
+        'created_at' => now(),
+    ]);
+
+    $issues = collect($this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->json('data'))
+        ->keyBy('check.key');
+
+    expect($issues['booking-search-paris']['manual_scheduled_drift']['manual'])
+        ->toMatchArray([
+            'status' => 'healthy',
+            'age_seconds' => 259200,
+            'age_label' => '3 days',
+            'stale' => true,
+        ])
+        ->and($issues['booking-search-paris']['manual_scheduled_drift']['summary'])
+        ->toBe('Latest manual diagnostic is healthy but is 3 days older than the scheduled danger; prefer the scheduled status until a new diagnostic is queued.');
+
+    expect($issues['accountless-active-cookies']['manual_scheduled_drift']['manual'])
+        ->toMatchArray([
+            'status' => 'healthy',
+            'age_seconds' => 604800,
+            'age_label' => '7 days',
+            'stale' => true,
+        ])
+        ->and($issues['accountless-active-cookies']['manual_scheduled_drift']['summary'])
+        ->toBe('Latest manual diagnostic is healthy but is 7 days older than the scheduled warning; prefer the scheduled status until a new diagnostic is queued.');
+
+    $mcpIssues = collect($this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 42,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+                'arguments' => [
+                    'project' => 'scrappa',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->json('result.structuredContent'))
+        ->keyBy('check.key');
+
+    expect($mcpIssues['booking-search-paris']['manual_scheduled_drift']['manual'])
+        ->toMatchArray([
+            'age_seconds' => 259200,
+            'age_label' => '3 days',
+            'stale' => true,
+        ]);
+});
+
+test('control api current issues keeps manual drift point null when no manual diagnostic exists', function () {
+    $this->travelTo('2026-05-22 12:00:00');
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'billing-health',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'updated_at' => now(),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now(),
+    ]);
+
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'marketing-site',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+        'updated_at' => now(),
+    ]);
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'created_at' => now(),
+    ]);
+
+    $issues = collect($this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->json('data'))
+        ->keyBy('check.key');
+
+    expect($issues['billing-health']['manual_scheduled_drift']['scheduled'])->not->toBeNull()
+        ->and($issues['billing-health']['manual_scheduled_drift']['manual'])->toBeNull()
+        ->and($issues['billing-health']['manual_scheduled_drift']['summary'])->toBeNull()
+        ->and($issues['marketing-site']['manual_scheduled_drift']['scheduled'])->not->toBeNull()
+        ->and($issues['marketing-site']['manual_scheduled_drift']['manual'])->toBeNull()
+        ->and($issues['marketing-site']['manual_scheduled_drift']['summary'])->toBeNull();
 });
 
 test('control api current issues include scheduled failure streak evidence', function () {

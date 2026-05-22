@@ -4,6 +4,7 @@ namespace App\Filament\Resources\MonitorApis\Schemas;
 
 use App\Enums\RunSource;
 use App\Models\MonitorApis;
+use App\Services\IntervalParser;
 use App\Support\ApiMonitorEvidenceFormatter;
 use App\Support\HealthStatusLabel;
 use App\Support\PackageCheckTableEvidence;
@@ -257,6 +258,13 @@ class MonitorApiInfolist
                             ->label('Live Status Impact')
                             ->state(fn (MonitorApis $record): string => self::diagnosticLiveStatusNote($record))
                             ->columnSpanFull(),
+                        TextEntry::make('latest_diagnostic_freshness_note')
+                            ->label('Freshness')
+                            ->state(fn (MonitorApis $record): ?string => self::diagnosticFreshnessNote($record))
+                            ->hidden(fn (MonitorApis $record): bool => self::diagnosticFreshnessNote($record) === null)
+                            ->badge()
+                            ->color('warning')
+                            ->columnSpanFull(),
                         TextEntry::make('latest_diagnostic_http_code')
                             ->label('HTTP Code')
                             ->state(fn (MonitorApis $record): ?int => $record->latestDiagnosticResult?->http_code)
@@ -374,6 +382,38 @@ class MonitorApiInfolist
         }
 
         return 'This manual run is saved in history and updates live status.';
+    }
+
+    private static function diagnosticFreshnessNote(MonitorApis $record): ?string
+    {
+        $diagnosticAt = $record->latestDiagnosticResult?->created_at;
+
+        if ($diagnosticAt === null) {
+            return null;
+        }
+
+        $scheduledAt = $record->latestScheduledResult?->created_at;
+
+        if ($scheduledAt !== null && $diagnosticAt->lt($scheduledAt)) {
+            return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans($scheduledAt, true).' older than the latest scheduled run.';
+        }
+
+        $ageSeconds = max(0, $diagnosticAt->diffInSeconds(now()));
+
+        if ($ageSeconds > self::freshnessWindowSeconds($record->package_interval ?? $record->package_schedule ?? null)) {
+            return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans(null, true).' old.';
+        }
+
+        return null;
+    }
+
+    private static function freshnessWindowSeconds(?string $interval): int
+    {
+        if (is_string($interval) && filled($interval) && IntervalParser::isValid($interval)) {
+            return max(IntervalParser::toMinutes($interval) * 60, 60 * 60);
+        }
+
+        return 60 * 60;
     }
 
     private static function resultExceedsResponseTimeThreshold(mixed $result): bool

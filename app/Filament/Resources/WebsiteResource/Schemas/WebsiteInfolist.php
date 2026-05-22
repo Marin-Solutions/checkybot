@@ -5,6 +5,7 @@ namespace App\Filament\Resources\WebsiteResource\Schemas;
 use App\Enums\RunSource;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Services\IntervalParser;
 use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
 use Filament\Infolists\Components\IconEntry;
@@ -162,6 +163,13 @@ class WebsiteInfolist
                             ->badge()
                             ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                             ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                        TextEntry::make('latest_diagnostic_freshness_note')
+                            ->label('Freshness')
+                            ->state(fn (Website $record): ?string => static::diagnosticFreshnessNote($record))
+                            ->hidden(fn (Website $record): bool => static::diagnosticFreshnessNote($record) === null)
+                            ->badge()
+                            ->color('warning')
+                            ->columnSpanFull(),
                         TextEntry::make('latest_diagnostic_http_code')
                             ->label('HTTP Code')
                             ->state(fn (Website $record): ?int => $record->latestDiagnosticLogHistory?->http_status_code)
@@ -332,6 +340,42 @@ class WebsiteInfolist
         $message = filled($log->transport_error_message) ? ': '.$log->transport_error_message : '';
 
         return "{$label}{$code}{$message}";
+    }
+
+    private static function diagnosticFreshnessNote(Website $record): ?string
+    {
+        $diagnosticAt = $record->latestDiagnosticLogHistory?->created_at;
+
+        if ($diagnosticAt === null) {
+            return null;
+        }
+
+        $scheduledAt = $record->latestScheduledLogHistory?->created_at;
+
+        if ($scheduledAt !== null && $diagnosticAt->lt($scheduledAt)) {
+            return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans($scheduledAt, true).' older than the latest scheduled run.';
+        }
+
+        $ageSeconds = max(0, $diagnosticAt->diffInSeconds(now()));
+
+        if ($ageSeconds > static::freshnessWindowSeconds($record->package_interval, $record->uptime_interval)) {
+            return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans(null, true).' old.';
+        }
+
+        return null;
+    }
+
+    private static function freshnessWindowSeconds(?string $interval, ?int $fallbackMinutes): int
+    {
+        if (is_string($interval) && filled($interval) && IntervalParser::isValid($interval)) {
+            return max(IntervalParser::toMinutes($interval) * 60, 60 * 60);
+        }
+
+        if ($fallbackMinutes !== null && $fallbackMinutes > 0) {
+            return max($fallbackMinutes * 60, 60 * 60);
+        }
+
+        return 60 * 60;
     }
 
     /**
