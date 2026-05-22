@@ -306,4 +306,55 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertSee('Mine homepage')
             ->assertDontSee('Other project homepage');
     });
+
+    it('sanitizes unnamed evidence modal actions before resolving project feed actions', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Project cached modal homepage',
+        ]);
+
+        $log = WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Project cached modal homepage returned HTTP 503',
+            'http_status_code' => 503,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $incident = ProjectIncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7), $this->project->id)
+            ->where('source', 'website')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($log->id);
+
+        $component = Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->assertSuccessful();
+
+        $cacheMountedActions = new ReflectionMethod(ProjectIncidentFeedWidget::class, 'cacheMountedActions');
+        $resolvedActions = $cacheMountedActions->invoke($component->instance(), [
+            [
+                'name' => 'viewEvidence',
+                'arguments' => [],
+                'context' => [
+                    'table' => true,
+                    'recordKey' => $incident->getKey(),
+                ],
+                'data' => [],
+            ],
+            [
+                'name' => '',
+                'arguments' => [],
+                'context' => [],
+                'data' => [],
+            ],
+        ]);
+
+        expect($resolvedActions)->toHaveCount(1);
+        expect($component->instance()->mountedActions)
+            ->toHaveCount(1)
+            ->and($component->instance()->mountedActions[0]['name'])
+            ->toBe('viewEvidence');
+    });
 });

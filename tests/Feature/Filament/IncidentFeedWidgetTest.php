@@ -360,6 +360,56 @@ describe('IncidentFeedWidget', function () {
             ->toContain('Close');
     });
 
+    it('sanitizes unnamed modal actions before Filament resolves mounted actions', function () {
+        $website = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Cached modal homepage',
+        ]);
+
+        $log = WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'danger',
+            'summary' => 'Cached modal homepage returned HTTP 503',
+            'http_status_code' => 503,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'website')
+            ->first();
+
+        expect($incident)->not->toBeNull()
+            ->and($incident->source_row_id)->toBe($log->id);
+
+        $component = Livewire::test(IncidentFeedWidget::class)
+            ->assertSuccessful();
+
+        $cacheMountedActions = new ReflectionMethod(IncidentFeedWidget::class, 'cacheMountedActions');
+        $resolvedActions = $cacheMountedActions->invoke($component->instance(), [
+            [
+                'name' => 'viewEvidence',
+                'arguments' => [],
+                'context' => [
+                    'table' => true,
+                    'recordKey' => $incident->getKey(),
+                ],
+                'data' => [],
+            ],
+            [
+                'name' => null,
+                'arguments' => [],
+                'context' => [],
+                'data' => [],
+            ],
+        ]);
+
+        expect($resolvedActions)->toHaveCount(1);
+        expect($component->instance()->mountedActions)
+            ->toHaveCount(1)
+            ->and($component->instance()->mountedActions[0]['name'])
+            ->toBe('viewEvidence');
+    });
+
     it('hydrates the evidence modal when Livewire updates a nested mounted action name', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
