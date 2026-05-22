@@ -152,6 +152,72 @@ describe('ProjectIncidentFeedWidget', function () {
             ->assertDontSee('Other homepage recovered');
     });
 
+    it('filters project incidents by active and resolved current state', function () {
+        $activeWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Active project homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $activeWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Project checkout is still down',
+            'created_at' => now()->subMinutes(6),
+        ]);
+
+        $resolvedWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->project->id,
+            'name' => 'Resolved project homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $resolvedWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Project billing outage started',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $resolvedWebsite->id,
+            'status' => 'healthy',
+            'summary' => 'Project billing recovered',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $otherProjectWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'project_id' => $this->otherProject->id,
+            'name' => 'Other active homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $otherProjectWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Other project is still down',
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->assertSee('Project checkout is still down')
+            ->assertSee('Project billing outage started')
+            ->assertSee('Project billing recovered')
+            ->assertDontSee('Other project is still down')
+            ->filterTable('state', 'active')
+            ->assertSee('Project checkout is still down')
+            ->assertDontSee('Project billing outage started')
+            ->assertDontSee('Project billing recovered')
+            ->assertDontSee('Other project is still down');
+
+        Livewire::test(ProjectIncidentFeedWidget::class, ['record' => $this->project])
+            ->filterTable('state', 'resolved')
+            ->assertDontSee('Project checkout is still down')
+            ->assertSee('Project billing outage started')
+            ->assertSee('Project billing recovered')
+            ->assertDontSee('Other project is still down');
+    });
+
     it('includes project-scoped API monitor failures and hides others', function () {
         $myApi = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
