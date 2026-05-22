@@ -47,24 +47,35 @@ class IncidentFeedWidget extends BaseWidget
 
     public function hydrateMountedActions(array $mountedActions): void
     {
-        $this->mountedActions = $this->filterNamedMountedActions($mountedActions);
+        $this->mountedActions = $this->sanitizeMountedActions($mountedActions);
     }
 
     public function updatedMountedActions(mixed $value = null, ?string $key = null): void
     {
-        $this->mountedActions = $this->filterNamedMountedActions($this->mountedActions ?? []);
+        $this->mountedActions = $this->sanitizeMountedActions($this->mountedActions ?? []);
     }
 
     /**
      * @param  array<mixed>  $mountedActions
      * @return array<int, array<string, mixed>>
      */
-    protected function filterNamedMountedActions(array $mountedActions): array
+    protected function sanitizeMountedActions(array $mountedActions): array
     {
         return array_values(array_filter(
             $mountedActions,
             fn (mixed $action): bool => is_array($action) && filled($action['name'] ?? null),
         ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $mountedActions
+     * @return array<Action>
+     */
+    protected function cacheMountedActions(array $mountedActions): array
+    {
+        $this->mountedActions = $this->sanitizeMountedActions($mountedActions);
+
+        return parent::cacheMountedActions($this->mountedActions);
     }
 
     public function table(Table $table): Table
