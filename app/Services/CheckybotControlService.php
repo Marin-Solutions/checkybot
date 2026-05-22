@@ -36,6 +36,7 @@ class CheckybotControlService
     private const CURRENT_ISSUE_CAUSES = [
         'timeout',
         'dns',
+        'rate_limit',
         'http_4xx',
         'http_5xx',
         'assertion',
@@ -1148,6 +1149,7 @@ class CheckybotControlService
         return match ($cause) {
             'dns' => 'Check DNS records and nameserver propagation for this hostname, then rerun the check.',
             'timeout' => 'Confirm the endpoint responds from outside the app network, then raise the timeout or investigate slow upstream work.',
+            'rate_limit' => 'Check provider quota, Retry-After or reset headers, and adjust the monitor schedule or backoff before rerunning.',
             'http_4xx' => $type === 'api'
                 ? 'Verify the URL, route, and required auth or headers; Checkybot is receiving a client error.'
                 : 'Verify the page URL, redirects, and access rules; Checkybot is receiving a client error.',
@@ -1295,6 +1297,7 @@ class CheckybotControlService
     private function httpCause(?int $code): ?string
     {
         return match (true) {
+            $code === 429 => 'rate_limit',
             $code !== null && $code >= 400 && $code <= 499 => 'http_4xx',
             $code !== null && $code >= 500 && $code <= 599 => 'http_5xx',
             default => null,

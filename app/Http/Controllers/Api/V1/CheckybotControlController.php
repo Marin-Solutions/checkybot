@@ -161,7 +161,7 @@ class CheckybotControlController extends Controller
             'type' => ['nullable', 'in:all,project,api,website,component'],
             'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
             'statuses.*' => ['required', 'string', 'in:warning,danger,pending,unknown'],
-            'cause' => ['nullable', 'string', 'in:timeout,dns,http_4xx,http_5xx,assertion,stale_setup'],
+            'cause' => ['nullable', 'string', 'in:timeout,dns,rate_limit,http_4xx,http_5xx,assertion,stale_setup'],
             'min_streak' => ['nullable', 'integer', 'min:1', 'max:1000'],
             'first_failed_before' => ['nullable', 'date'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
