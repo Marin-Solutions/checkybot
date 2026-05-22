@@ -475,6 +475,7 @@ class IncidentFeedWidget extends BaseWidget
         return [
             'timeout' => 'Timeout',
             'dns' => 'DNS failure',
+            'rate_limit' => 'Rate limit',
             'http' => 'HTTP error',
             'ssl' => 'SSL failure',
             'assertion' => 'Assertion failure',
@@ -497,6 +498,7 @@ class IncidentFeedWidget extends BaseWidget
         return match ($cause) {
             'timeout' => 'Timeout',
             'dns' => 'DNS',
+            'rate_limit' => 'Rate limit',
             'http' => 'HTTP',
             'ssl' => 'SSL',
             'assertion' => 'Assertion',
@@ -534,6 +536,7 @@ class IncidentFeedWidget extends BaseWidget
                 WHEN monitor_api_results.transport_error_type = 'dns' THEN 'dns'
                 WHEN monitor_api_results.transport_error_type = 'timeout' THEN 'timeout'
                 WHEN monitor_api_results.transport_error_type = 'tls' THEN 'ssl'
+                WHEN monitor_api_results.http_code = 429 THEN 'rate_limit'
                 WHEN ".self::failedAssertionsPresentSql('monitor_api_results.failed_assertions')." THEN 'assertion'
                 WHEN monitor_api_results.http_code BETWEEN 400 AND 599 THEN 'http'
                 ELSE 'other'

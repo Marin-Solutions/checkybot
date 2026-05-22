@@ -3511,6 +3511,25 @@ test('control api and mcp filter current issues by failure cause', function () {
         'summary' => 'API check failed with HTTP status 429.',
     ]);
 
+    $clientErrorApi = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'missing-api-route',
+        'title' => 'Missing API route',
+        'url' => 'https://api.scrappa.test/missing',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'API check failed with HTTP status 404.',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $clientErrorApi->id,
+        'http_code' => 404,
+        'failed_assertions' => [],
+        'summary' => 'API check failed with HTTP status 404.',
+    ]);
+
     $assertionFailure = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -3590,6 +3609,25 @@ test('control api and mcp filter current issues by failure cause', function () {
         'summary' => 'Website check failed with HTTP status 404.',
     ]);
 
+    $rateLimitedWebsite = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'rate-limited-site',
+        'name' => 'Rate limited site',
+        'url' => 'https://scrappa.test/rate-limited',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Website check failed with HTTP status 429.',
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $rateLimitedWebsite->id,
+        'http_status_code' => 429,
+        'status' => 'danger',
+        'summary' => 'Website check failed with HTTP status 429.',
+    ]);
+
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -3599,10 +3637,18 @@ test('control api and mcp filter current issues by failure cause', function () {
     ]);
 
     $this->withToken($this->apiKey->key)
-        ->getJson('/api/v1/control/issues?project=scrappa&type=api&cause=http_4xx')
+        ->getJson('/api/v1/control/issues?project=scrappa&type=api&cause=rate_limit')
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.check.key', 'rate-limited-api')
+        ->assertJsonPath('data.0.cause', 'rate_limit')
+        ->assertJsonPath('data.0.action', 'Check provider quota, Retry-After or reset headers, and adjust the monitor schedule or backoff before rerunning.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=api&cause=http_4xx')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.key', 'missing-api-route')
         ->assertJsonPath('data.0.cause', 'http_4xx')
         ->assertJsonPath('data.0.action', 'Verify the URL, route, and required auth or headers; Checkybot is receiving a client error.');
 
@@ -3625,10 +3671,15 @@ test('control api and mcp filter current issues by failure cause', function () {
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?project=scrappa&type=website&cause=http_4xx')
         ->assertOk()
-        ->assertJsonCount(1, 'data')
+        ->assertJsonCount(2, 'data')
         ->assertJsonPath('data.0.check.key', 'client-error-site')
         ->assertJsonPath('data.0.cause', 'http_4xx')
         ->assertJsonPath('data.0.action', 'Verify the page URL, redirects, and access rules; Checkybot is receiving a client error.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=website&cause=rate_limit')
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?project=scrappa&type=component&statuses[]=pending&cause=stale_setup')
@@ -3659,9 +3710,45 @@ test('control api and mcp filter current issues by failure cause', function () {
         ->assertJsonPath('result.structuredContent.0.action', 'Compare the latest response body with the saved assertions and update the API or assertion rule.');
 
     $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 43,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'type' => 'api',
+                    'cause' => 'rate_limit',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonCount(1, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'rate-limited-api')
+        ->assertJsonPath('result.structuredContent.0.cause', 'rate_limit')
+        ->assertJsonPath('result.structuredContent.0.action', 'Check provider quota, Retry-After or reset headers, and adjust the monitor schedule or backoff before rerunning.');
+
+    $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?cause=http')
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['cause']);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 44,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+                'arguments' => [
+                    'cause' => 'http',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('error.code', -32602)
+        ->assertJsonPath('error.data.errors.cause.0', 'The selected cause is invalid.');
 });
 
 test('control api cause filter searches beyond the unfiltered source cap', function () {

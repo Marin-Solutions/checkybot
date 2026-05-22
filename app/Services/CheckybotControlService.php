@@ -36,6 +36,7 @@ class CheckybotControlService
     private const CURRENT_ISSUE_CAUSES = [
         'timeout',
         'dns',
+        'rate_limit',
         'http_4xx',
         'http_5xx',
         'assertion',
@@ -1148,6 +1149,7 @@ class CheckybotControlService
         return match ($cause) {
             'dns' => 'Check DNS records and nameserver propagation for this hostname, then rerun the check.',
             'timeout' => 'Confirm the endpoint responds from outside the app network, then raise the timeout or investigate slow upstream work.',
+            'rate_limit' => 'Check provider quota, Retry-After or reset headers, and adjust the monitor schedule or backoff before rerunning.',
             'http_4xx' => $type === 'api'
                 ? 'Verify the URL, route, and required auth or headers; Checkybot is receiving a client error.'
                 : 'Verify the page URL, redirects, and access rules; Checkybot is receiving a client error.',
@@ -1252,7 +1254,7 @@ class CheckybotControlService
                 return $result->transport_error_type;
             }
 
-            $httpCause = $this->httpCause($result->http_code);
+            $httpCause = $this->httpCause($result->http_code, classifyRateLimit: true);
 
             if ($httpCause !== null) {
                 return $httpCause;
@@ -1260,10 +1262,10 @@ class CheckybotControlService
 
             return $this->hasFailedAssertions($result->failed_assertions)
                 ? 'assertion'
-                : $this->summaryCause($result->summary);
+                : $this->summaryCause($result->summary, classifyRateLimit: true);
         }
 
-        return $this->summaryCause($check->status_summary);
+        return $this->summaryCause($check->status_summary, classifyRateLimit: true);
     }
 
     private function currentWebsiteIssueCause(Website $website): ?string
@@ -1292,9 +1294,10 @@ class CheckybotControlService
             : $this->summaryCause($component->derivedStatusSummary());
     }
 
-    private function httpCause(?int $code): ?string
+    private function httpCause(?int $code, bool $classifyRateLimit = false): ?string
     {
         return match (true) {
+            $classifyRateLimit && $code === 429 => 'rate_limit',
             $code !== null && $code >= 400 && $code <= 499 => 'http_4xx',
             $code !== null && $code >= 500 && $code <= 599 => 'http_5xx',
             default => null,
@@ -1311,7 +1314,7 @@ class CheckybotControlService
         return filled($staleAt) || $this->summaryCause($summary) === 'stale_setup';
     }
 
-    private function summaryCause(?string $summary): ?string
+    private function summaryCause(?string $summary, bool $classifyRateLimit = false): ?string
     {
         $summary = Str::lower((string) $summary);
 
@@ -1336,7 +1339,7 @@ class CheckybotControlService
         }
 
         if (preg_match('/http\s+([45]\d{2})/', $summary, $matches) === 1) {
-            return $this->httpCause((int) $matches[1]);
+            return $this->httpCause((int) $matches[1], $classifyRateLimit);
         }
 
         return null;

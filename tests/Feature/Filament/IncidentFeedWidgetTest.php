@@ -201,6 +201,58 @@ describe('IncidentFeedWidget', function () {
             ->assertDontSee('API request timed out');
     });
 
+    it('shows and filters API rate limit incidents separately from generic HTTP errors', function () {
+        $rateLimitedApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'RapidAPI smoke check',
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $rateLimitedApi->id,
+            'summary' => 'API check failed with HTTP status 429.',
+            'http_code' => 429,
+            'failed_assertions' => [[
+                'path' => 'data.ok',
+                'type' => 'value_compare',
+                'message' => 'Expected true.',
+            ]],
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $clientErrorApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Missing route API',
+        ]);
+
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $clientErrorApi->id,
+            'summary' => 'API check failed with HTTP status 404.',
+            'http_code' => 404,
+            'failed_assertions' => [],
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        $rateLimitIncident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('subject', 'RapidAPI smoke check')
+            ->first();
+
+        $clientErrorIncident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('subject', 'Missing route API')
+            ->first();
+
+        expect($rateLimitIncident)->not->toBeNull()
+            ->and($rateLimitIncident->cause_key)->toBe('rate_limit')
+            ->and($clientErrorIncident)->not->toBeNull()
+            ->and($clientErrorIncident->cause_key)->toBe('http');
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('Rate limit')
+            ->assertSee('HTTP')
+            ->filterTable('cause_key', 'rate_limit')
+            ->assertSee('API check failed with HTTP status 429.')
+            ->assertDontSee('API check failed with HTTP status 404.');
+    });
+
     it('derives ssl cause for ssl-only expiry incidents', function () {
         $website = Website::factory()->create([
             'created_by' => $this->user->id,
