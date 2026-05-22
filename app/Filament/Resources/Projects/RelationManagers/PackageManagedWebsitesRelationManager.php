@@ -13,6 +13,8 @@ use Filament\Actions\Action;
 use Filament\Actions\BulkAction;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables\Columns\TextColumn;
@@ -278,6 +280,19 @@ class PackageManagedWebsitesRelationManager extends RelationManager
             ])
             ->bulkActions([
                 BulkActionGroup::make([
+                    BulkAction::make('assign_component')
+                        ->label('Assign component')
+                        ->icon('heroicon-o-squares-plus')
+                        ->color('gray')
+                        ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                        ->modalHeading('Assign selected websites to a component')
+                        ->modalDescription('Move selected package-managed website checks under an existing application component, or create a new component and assign them in one step.')
+                        ->modalSubmitActionLabel('Assign component')
+                        ->schema($this->componentAssignmentSchema())
+                        ->action(function (Collection $records, array $data): void {
+                            $this->assignSelectedComponent($records, $data);
+                        })
+                        ->deselectRecordsAfterCompletion(),
                     BulkAction::make('run_selected_diagnostics')
                         ->label('Run selected diagnostics')
                         ->icon('heroicon-o-bolt')
@@ -358,6 +373,124 @@ class PackageManagedWebsitesRelationManager extends RelationManager
         }
 
         $this->sendBulkDiagnosticsNotification($queued, $skipped, $failed);
+    }
+
+    private function componentAssignmentSchema(): array
+    {
+        return [
+            Select::make('project_component_id')
+                ->label('Existing component')
+                ->options(fn (): array => $this->existingComponentOptions())
+                ->searchable()
+                ->preload()
+                ->placeholder('Choose a component'),
+            TextInput::make('component_name')
+                ->label('New component')
+                ->placeholder('checkout')
+                ->maxLength(255)
+                ->helperText('Leave this blank to use the selected existing component. If the name already exists, Checkybot will use that component.'),
+        ];
+    }
+
+    private function existingComponentOptions(): array
+    {
+        return ProjectComponent::query()
+            ->where('project_id', $this->getOwnerRecord()->getKey())
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    private function assignSelectedComponent(Collection $records, array $data): void
+    {
+        $component = $this->resolveAssignmentComponent($data);
+
+        if ($component === null) {
+            return;
+        }
+
+        $count = Website::withTrashed()
+            ->where('project_id', $this->getOwnerRecord()->getKey())
+            ->where('source', 'package')
+            ->whereIn('id', $records->pluck('id'))
+            ->where(fn (Builder $query): Builder => $query
+                ->whereNull('project_component_id')
+                ->orWhere('project_component_id', '!=', $component->id))
+            ->update(['project_component_id' => $component->id]);
+
+        Notification::make()
+            ->title($count === 0 ? 'No websites changed' : ($count === 1 ? '1 website assigned' : "{$count} websites assigned"))
+            ->body($count === 0
+                ? "Every selected website already belonged to {$component->name}."
+                : "Selected website checks now belong to {$component->name}.")
+            ->success()
+            ->send();
+    }
+
+    private function resolveAssignmentComponent(array $data): ?ProjectComponent
+    {
+        $name = trim((string) ($data['component_name'] ?? ''));
+        $componentId = $data['project_component_id'] ?? null;
+
+        if ($name !== '' && $componentId !== null && $componentId !== '') {
+            Notification::make()
+                ->title('Choose one component option')
+                ->body('Select an existing component or enter a new component name, not both.')
+                ->danger()
+                ->send();
+
+            return null;
+        }
+
+        if ($name !== '') {
+            $existing = ProjectComponent::query()
+                ->where('project_id', $this->getOwnerRecord()->getKey())
+                ->where('name', $name)
+                ->first();
+
+            if ($existing !== null) {
+                return $existing;
+            }
+
+            if (! (auth()->user()?->can('Create:ProjectComponent') ?? false)) {
+                Notification::make()
+                    ->title('Component could not be created')
+                    ->body('You can assign existing components, but you do not have permission to create a new one.')
+                    ->danger()
+                    ->send();
+
+                return null;
+            }
+
+            return ProjectComponent::query()->create([
+                'project_id' => $this->getOwnerRecord()->getKey(),
+                'name' => $name,
+                'source' => 'manual',
+                'declared_interval' => '5m',
+                'interval_minutes' => 5,
+                'current_status' => 'unknown',
+                'last_reported_status' => 'unknown',
+                'summary' => 'Awaiting active child check results',
+                'metrics' => [],
+                'is_archived' => false,
+                'created_by' => auth()->id(),
+            ]);
+        }
+
+        if ($componentId !== null && $componentId !== '') {
+            return ProjectComponent::query()
+                ->where('project_id', $this->getOwnerRecord()->getKey())
+                ->whereKey($componentId)
+                ->first();
+        }
+
+        Notification::make()
+            ->title('Choose a component')
+            ->body('Select an existing component or enter a new component name before assigning checks.')
+            ->danger()
+            ->send();
+
+        return null;
     }
 
     private function sendBulkDiagnosticsNotification(int $queued, int $skipped, int $failed): void
