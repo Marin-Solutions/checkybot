@@ -2974,11 +2974,34 @@ test('package-managed website checks can be bulk assigned to an existing or new 
 
     $statusComponent = ProjectComponent::query()->where('project_id', $project->id)->where('name', 'status-page')->sole();
 
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('assign_component', collect([$homepage]), data: [
+            'project_component_id' => $checkout->id,
+            'component_name' => null,
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('No websites changed');
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('assign_component', collect([$homepage]), data: [
+            'project_component_id' => $checkout->id,
+            'component_name' => 'ambiguous',
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('Choose one component option');
+
     expect($homepage->refresh()->project_component_id)->toBe($checkout->id)
         ->and($status->refresh()->project_component_id)->toBe($statusComponent->id)
         ->and($statusComponent->source)->toBe('manual')
         ->and($statusComponent->current_status)->toBe('unknown')
-        ->and($statusComponent->summary)->toBe('Awaiting active child check results');
+        ->and($statusComponent->summary)->toBe('Awaiting active child check results')
+        ->and(ProjectComponent::query()->where('project_id', $project->id)->where('name', 'ambiguous')->exists())->toBeFalse();
 });
 
 test('package-managed api checks can be bulk assigned to an existing or new component', function () {
@@ -3033,11 +3056,34 @@ test('package-managed api checks can be bulk assigned to an existing or new comp
 
     $ordersComponent = ProjectComponent::query()->where('project_id', $project->id)->where('name', 'orders-api')->sole();
 
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('assign_component', collect([$health]), data: [
+            'project_component_id' => $checkout->id,
+            'component_name' => null,
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('No APIs changed');
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('assign_component', collect([$health]), data: [
+            'project_component_id' => $checkout->id,
+            'component_name' => 'ambiguous',
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('Choose one component option');
+
     expect($health->refresh()->project_component_id)->toBe($checkout->id)
         ->and($orders->refresh()->project_component_id)->toBe($ordersComponent->id)
         ->and($ordersComponent->source)->toBe('manual')
         ->and($ordersComponent->current_status)->toBe('unknown')
-        ->and($ordersComponent->summary)->toBe('Awaiting active child check results');
+        ->and($ordersComponent->summary)->toBe('Awaiting active child check results')
+        ->and(ProjectComponent::query()->where('project_id', $project->id)->where('name', 'ambiguous')->exists())->toBeFalse();
 });
 
 test('super admin can filter application components to only failing', function () {

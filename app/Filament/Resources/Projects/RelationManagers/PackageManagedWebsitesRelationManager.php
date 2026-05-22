@@ -413,11 +413,16 @@ class PackageManagedWebsitesRelationManager extends RelationManager
             ->where('project_id', $this->getOwnerRecord()->getKey())
             ->where('source', 'package')
             ->whereIn('id', $records->pluck('id'))
+            ->where(fn (Builder $query): Builder => $query
+                ->whereNull('project_component_id')
+                ->orWhere('project_component_id', '!=', $component->id))
             ->update(['project_component_id' => $component->id]);
 
         Notification::make()
-            ->title($count === 1 ? '1 website assigned' : "{$count} websites assigned")
-            ->body("Selected website checks now belong to {$component->name}.")
+            ->title($count === 0 ? 'No websites changed' : ($count === 1 ? '1 website assigned' : "{$count} websites assigned"))
+            ->body($count === 0
+                ? "Every selected website already belonged to {$component->name}."
+                : "Selected website checks now belong to {$component->name}.")
             ->success()
             ->send();
     }
@@ -425,6 +430,17 @@ class PackageManagedWebsitesRelationManager extends RelationManager
     private function resolveAssignmentComponent(array $data): ?ProjectComponent
     {
         $name = trim((string) ($data['component_name'] ?? ''));
+        $componentId = $data['project_component_id'] ?? null;
+
+        if ($name !== '' && $componentId !== null && $componentId !== '') {
+            Notification::make()
+                ->title('Choose one component option')
+                ->body('Select an existing component or enter a new component name, not both.')
+                ->danger()
+                ->send();
+
+            return null;
+        }
 
         if ($name !== '') {
             $existing = ProjectComponent::query()
@@ -460,8 +476,6 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                 'created_by' => auth()->id(),
             ]);
         }
-
-        $componentId = $data['project_component_id'] ?? null;
 
         if ($componentId !== null && $componentId !== '') {
             return ProjectComponent::query()
