@@ -3609,6 +3609,25 @@ test('control api and mcp filter current issues by failure cause', function () {
         'summary' => 'Website check failed with HTTP status 404.',
     ]);
 
+    $rateLimitedWebsite = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'rate-limited-site',
+        'name' => 'Rate limited site',
+        'url' => 'https://scrappa.test/rate-limited',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Website check failed with HTTP status 429.',
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $rateLimitedWebsite->id,
+        'http_status_code' => 429,
+        'status' => 'danger',
+        'summary' => 'Website check failed with HTTP status 429.',
+    ]);
+
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -3652,10 +3671,15 @@ test('control api and mcp filter current issues by failure cause', function () {
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?project=scrappa&type=website&cause=http_4xx')
         ->assertOk()
-        ->assertJsonCount(1, 'data')
+        ->assertJsonCount(2, 'data')
         ->assertJsonPath('data.0.check.key', 'client-error-site')
         ->assertJsonPath('data.0.cause', 'http_4xx')
         ->assertJsonPath('data.0.action', 'Verify the page URL, redirects, and access rules; Checkybot is receiving a client error.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=website&cause=rate_limit')
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?project=scrappa&type=component&statuses[]=pending&cause=stale_setup')
