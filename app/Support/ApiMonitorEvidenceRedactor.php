@@ -22,7 +22,7 @@ class ApiMonitorEvidenceRedactor
     {
         return collect($headers)
             ->mapWithKeys(fn (mixed $value, string $name): array => [
-                $name => self::redactValue($value, $name),
+                $name => self::redactValue($value, $name, preserveNumericCookieMetrics: false),
             ])
             ->all();
     }
@@ -72,9 +72,13 @@ class ApiMonitorEvidenceRedactor
         return Str::limit(self::sanitizeString($message), self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
     }
 
-    private static function redactValue(mixed $value, ?string $key = null): mixed
+    private static function redactValue(mixed $value, ?string $key = null, bool $preserveNumericCookieMetrics = true): mixed
     {
         if ($key !== null && self::isSensitiveKey($key)) {
+            if ($preserveNumericCookieMetrics && self::isNumericCookieMetric($key, $value)) {
+                return $value;
+            }
+
             return '[redacted]';
         }
 
@@ -84,6 +88,7 @@ class ApiMonitorEvidenceRedactor
                     $itemKey => self::redactValue(
                         $item,
                         is_string($itemKey) ? $itemKey : null,
+                        $preserveNumericCookieMetrics,
                     ),
                 ])
                 ->all();
@@ -114,6 +119,20 @@ class ApiMonitorEvidenceRedactor
             || str_contains($compact, 'signature')
             || str_contains($compact, 'cookie')
             || str_contains($compact, 'password');
+    }
+
+    private static function isNumericCookieMetric(string $name, mixed $value): bool
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            return false;
+        }
+
+        $compact = str_replace(['-', '_', ' '], '', strtolower($name));
+
+        return $compact !== 'cookie'
+            && $compact !== 'cookies'
+            && $compact !== 'setcookie'
+            && str_contains($compact, 'cookie');
     }
 
     private static function sanitizeString(string $value): string
