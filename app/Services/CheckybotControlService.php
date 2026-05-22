@@ -1216,21 +1216,21 @@ class CheckybotControlService
         $scheduledCheckedAt = filled($scheduled['checked_at'] ?? null) ? Carbon::parse((string) $scheduled['checked_at']) : null;
 
         if ($manualCheckedAt === null) {
-            return $manual + [
+            return array_merge($manual, [
                 'age_seconds' => null,
                 'age_label' => null,
                 'stale' => false,
-            ];
+            ]);
         }
 
-        $ageSeconds = max(0, $manualCheckedAt->diffInSeconds(now()));
+        $ageSeconds = max(0, $manualCheckedAt->diffInSeconds(now(), false));
         $olderThanScheduled = $scheduledCheckedAt !== null && $manualCheckedAt->lt($scheduledCheckedAt);
 
-        return $manual + [
+        return array_merge($manual, [
             'age_seconds' => $ageSeconds,
             'age_label' => $this->durationLabel($ageSeconds),
             'stale' => $olderThanScheduled || $ageSeconds > $freshnessWindowSeconds,
-        ];
+        ]);
     }
 
     /**

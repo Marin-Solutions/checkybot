@@ -398,7 +398,7 @@ class MonitorApiInfolist
             return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans($scheduledAt, true).' older than the latest scheduled run.';
         }
 
-        $ageSeconds = max(0, $diagnosticAt->diffInSeconds(now()));
+        $ageSeconds = max(0, $diagnosticAt->diffInSeconds(now(), false));
 
         if ($ageSeconds > self::freshnessWindowSeconds($record->package_interval ?? $record->package_schedule ?? null)) {
             return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans(null, true).' old.';

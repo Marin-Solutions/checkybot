@@ -3366,6 +3366,43 @@ test('control api current issues keeps manual drift point null when no manual di
         ->and($issues['marketing-site']['manual_scheduled_drift']['summary'])->toBeNull();
 });
 
+test('control api current issues does not mark future manual diagnostics stale from clock skew', function () {
+    $this->travelTo('2026-05-22 12:00:00');
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'future-manual-api',
+        'package_interval' => '5m',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'updated_at' => now(),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now(),
+    ]);
+    MonitorApiResult::factory()->successful()->onDemand()->create([
+        'monitor_api_id' => $api->id,
+        'created_at' => now()->addMinutes(10),
+    ]);
+
+    $issues = collect($this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=api')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->json('data'))
+        ->keyBy('check.key');
+
+    expect($issues['future-manual-api']['manual_scheduled_drift']['manual'])
+        ->toMatchArray([
+            'age_seconds' => 0,
+            'age_label' => '0 seconds',
+            'stale' => false,
+        ]);
+});
+
 test('control api current issues include scheduled failure streak evidence', function () {
     $this->travelTo('2026-05-21 10:00:00');
 
