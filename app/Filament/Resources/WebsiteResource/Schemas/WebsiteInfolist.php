@@ -356,7 +356,7 @@ class WebsiteInfolist
             return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans($scheduledAt, true).' older than the latest scheduled run.';
         }
 
-        $ageSeconds = max(0, $diagnosticAt->diffInSeconds(now(), false));
+        $ageSeconds = static::elapsedSecondsSince($diagnosticAt);
 
         if ($ageSeconds > static::freshnessWindowSeconds($record->package_interval, $record->uptime_interval)) {
             return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans(null, true).' old.';
@@ -376,6 +376,15 @@ class WebsiteInfolist
         }
 
         return 60 * 60;
+    }
+
+    private static function elapsedSecondsSince(mixed $checkedAt): int
+    {
+        if ($checkedAt->isFuture()) {
+            return 0;
+        }
+
+        return $checkedAt->diffInSeconds(now());
     }
 
     /**

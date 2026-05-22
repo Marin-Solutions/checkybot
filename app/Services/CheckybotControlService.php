@@ -1223,7 +1223,7 @@ class CheckybotControlService
             ]);
         }
 
-        $ageSeconds = max(0, $manualCheckedAt->diffInSeconds(now(), false));
+        $ageSeconds = $this->elapsedSecondsSince($manualCheckedAt);
         $olderThanScheduled = $scheduledCheckedAt !== null && $manualCheckedAt->lt($scheduledCheckedAt);
 
         return array_merge($manual, [
@@ -1274,6 +1274,15 @@ class CheckybotControlService
         }
 
         return 60 * 60;
+    }
+
+    private function elapsedSecondsSince(Carbon $checkedAt): int
+    {
+        if ($checkedAt->isFuture()) {
+            return 0;
+        }
+
+        return $checkedAt->diffInSeconds(now());
     }
 
     private function durationLabel(int $seconds): string
