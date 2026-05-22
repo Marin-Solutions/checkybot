@@ -221,6 +221,8 @@ class CheckybotMcpController extends Controller
             'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
             'statuses.*' => ['required', 'string', Rule::in(['warning', 'danger', 'pending', 'unknown'])],
             'cause' => ['nullable', 'string', Rule::in(['timeout', 'dns', 'http_4xx', 'http_5xx', 'assertion', 'stale_setup'])],
+            'min_streak' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'first_failed_before' => ['nullable', 'date'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'exclude' => ['nullable', 'array', 'max:25'],
             'exclude.*' => ['required', 'string', 'max:255'],
@@ -234,6 +236,8 @@ class CheckybotMcpController extends Controller
             $data['limit'] ?? 25,
             $data['exclude'] ?? [],
             $data['cause'] ?? null,
+            $data['min_streak'] ?? null,
+            $data['first_failed_before'] ?? null,
         );
     }
 
@@ -505,11 +509,13 @@ class CheckybotMcpController extends Controller
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
             ]),
-            $this->tool('current_issues', 'List currently unhealthy or pending checks and project setup problems from the dashboard status surface. Use type=api to see unhealthy API monitors only, type=project to see stale or incomplete package setup, and exclude to omit known work-in-progress checks.', [
+            $this->tool('current_issues', 'List currently unhealthy or pending checks and project setup problems from the dashboard status surface. Use type=api to see unhealthy API monitors only, type=project to see stale or incomplete package setup, min_streak or first_failed_before to find persistent scheduled failures, and exclude to omit known work-in-progress checks.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'type' => ['type' => 'string', 'enum' => ['all', 'project', 'api', 'website', 'component'], 'default' => 'all'],
                 'statuses' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['warning', 'danger', 'pending', 'unknown']], 'default' => ['warning', 'danger']],
                 'cause' => ['type' => 'string', 'enum' => ['timeout', 'dns', 'http_4xx', 'http_5xx', 'assertion', 'stale_setup'], 'description' => 'Optional failure class filter.'],
+                'min_streak' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 1000, 'description' => 'Only return API and website issues with at least this many consecutive scheduled failures.'],
+                'first_failed_before' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Only return API and website issues whose current scheduled failure streak started before this time.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
                 'exclude' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Case-insensitive substrings matched against check key, name, URL, or summary.'],
             ]),

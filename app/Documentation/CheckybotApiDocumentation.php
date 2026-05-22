@@ -586,13 +586,15 @@ class CheckybotApiDocumentation
      *     operationId="listControlCurrentIssues",
      *     tags={"control"},
      *     summary="List current dashboard status issues",
-     *     description="Returns currently unhealthy or pending API monitors, website checks, and components. Use type=api to list API monitor issues only. Use cause to triage by failure class.",
+     *     description="Returns currently unhealthy or pending API monitors, website checks, and components. Use type=api to list API monitor issues only. Use cause to triage by failure class. Use min_streak and first_failed_before to separate fresh regressions from persistent scheduled failures.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="query", required=false, @OA\Schema(type="string")),
-     *     @OA\Parameter(name="type", in="query", required=false, @OA\Schema(type="string", enum={"all", "api", "website", "component"})),
+     *     @OA\Parameter(name="type", in="query", required=false, @OA\Schema(type="string", enum={"all", "project", "api", "website", "component"})),
      *     @OA\Parameter(name="statuses[]", in="query", required=false, @OA\Schema(type="array", @OA\Items(type="string", enum={"warning", "danger", "pending", "unknown"}))),
      *     @OA\Parameter(name="cause", in="query", required=false, @OA\Schema(type="string", enum={"timeout", "dns", "http_4xx", "http_5xx", "assertion", "stale_setup"})),
+     *     @OA\Parameter(name="min_streak", in="query", required=false, @OA\Schema(type="integer", minimum=1, maximum=1000)),
+     *     @OA\Parameter(name="first_failed_before", in="query", required=false, @OA\Schema(type="string", format="date-time")),
      *     @OA\Parameter(name="exclude[]", in="query", required=false, @OA\Schema(type="array", @OA\Items(type="string"))),
      *     @OA\Parameter(name="limit", in="query", required=false, @OA\Schema(type="integer", minimum=1, maximum=100)),
      *

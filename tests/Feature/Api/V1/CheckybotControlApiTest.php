@@ -3296,6 +3296,136 @@ test('control api current issues include scheduled failure streak evidence', fun
         ]);
 });
 
+test('control api and mcp filter current issues by scheduled failure streak', function () {
+    $this->travelTo('2026-05-21 10:00:00');
+
+    $persistentApi = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'billing-health',
+        'title' => 'Billing health',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'updated_at' => now()->subMinutes(4),
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $persistentApi->id,
+        'created_at' => now()->subMinutes(50),
+    ]);
+    $persistentApiFirstFailed = MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $persistentApi->id,
+        'created_at' => now()->subMinutes(40),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $persistentApi->id,
+        'created_at' => now()->subMinutes(30),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $persistentApi->id,
+        'created_at' => now()->subMinutes(20),
+    ]);
+
+    $freshApi = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'checkout-health',
+        'title' => 'Checkout health',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'updated_at' => now(),
+    ]);
+
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $freshApi->id,
+        'created_at' => now()->subMinutes(5),
+    ]);
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $freshApi->id,
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $persistentWebsite = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'marketing-site',
+        'name' => 'Marketing site',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+        'updated_at' => now()->subMinutes(2),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $persistentWebsite->id,
+        'created_at' => now()->subMinutes(35),
+    ]);
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $persistentWebsite->id,
+        'created_at' => now()->subMinutes(25),
+    ]);
+    WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $persistentWebsite->id,
+        'created_at' => now()->subMinutes(15),
+    ]);
+
+    $minStreakIssues = collect($this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&min_streak=2')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->json('data'))
+        ->pluck('check.key')
+        ->sort()
+        ->values()
+        ->all();
+
+    expect($minStreakIssues)->toBe(['billing-health', 'marketing-site']);
+
+    $olderThanWebsite = now()->subMinutes(26)->toISOString();
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?'.http_build_query([
+            'project' => 'scrappa',
+            'min_streak' => 2,
+            'first_failed_before' => $olderThanWebsite,
+        ]))
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.key', 'billing-health')
+        ->assertJsonPath('data.0.scheduled_failure_streak.count', 3)
+        ->assertJsonPath('data.0.scheduled_failure_streak.first_failed_at', $persistentApiFirstFailed->created_at->toISOString());
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?'.http_build_query([
+            'project' => 'scrappa',
+            'min_streak' => 2,
+            'first_failed_before' => $persistentApiFirstFailed->created_at->toISOString(),
+        ]))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 42,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'checkybot_current_issues',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'min_streak' => 2,
+                    'first_failed_before' => $olderThanWebsite,
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonCount(1, 'result.structuredContent')
+        ->assertJsonPath('result.structuredContent.0.check.key', 'billing-health')
+        ->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.count', 3);
+});
+
 test('control api exposes stale package setup as a project current issue', function () {
     $this->travelTo('2026-05-14 12:00:00');
     config()->set('monitor.package_sync_stale_minutes', 15);

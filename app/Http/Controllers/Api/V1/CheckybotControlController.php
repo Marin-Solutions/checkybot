@@ -162,6 +162,8 @@ class CheckybotControlController extends Controller
             'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
             'statuses.*' => ['required', 'string', 'in:warning,danger,pending,unknown'],
             'cause' => ['nullable', 'string', 'in:timeout,dns,http_4xx,http_5xx,assertion,stale_setup'],
+            'min_streak' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'first_failed_before' => ['nullable', 'date'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'exclude' => ['nullable', 'array', 'max:25'],
             'exclude.*' => ['required', 'string', 'max:255'],
@@ -176,6 +178,8 @@ class CheckybotControlController extends Controller
                 $data['limit'] ?? 25,
                 $data['exclude'] ?? [],
                 $data['cause'] ?? null,
+                $data['min_streak'] ?? null,
+                $data['first_failed_before'] ?? null,
             ),
         ]);
     }
