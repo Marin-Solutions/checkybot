@@ -1946,6 +1946,50 @@ test('api monitor evidence infolist mounts cleanly for failed assertions with ac
         ->and($normalized[0]['expected'])->toBe('= active');
 });
 
+test('api monitor evidence infolist shows copyable redacted replay template', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'http_method' => 'POST',
+        'url' => 'https://api.example.test/private?token=url-secret',
+        'request_body_type' => 'json',
+        'request_body' => '{"password":"body-secret","status":"active"}',
+    ]);
+
+    $result = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'status' => 'danger',
+        'summary' => 'API check failed.',
+        'request_headers' => [
+            'Authorization' => '[redacted]',
+            'X-Api-Key' => '[redacted]',
+            'Cookie' => '[redacted]',
+            'Accept' => 'application/json',
+        ],
+    ]);
+
+    $component = Livewire::test(ResultsRelationManager::class, [
+        'ownerRecord' => $monitor,
+        'pageClass' => ViewMonitorApis::class,
+    ])
+        ->mountTableAction('view', $result)
+        ->assertHasNoTableActionErrors();
+
+    $html = $component->getMountedActionModalHtml();
+
+    expect($html)
+        ->toContain('Replay Template')
+        ->toContain('REPLACE_AUTHORIZATION')
+        ->toContain('REPLACE_X_API_KEY')
+        ->toContain('REPLACE_COOKIE')
+        ->toContain('[redacted]')
+        ->not->toContain('body-secret')
+        ->not->toContain('url-secret');
+});
+
 test('api assertion preview action shows actual versus expected from saved response', function () {
     $this->createResourcePermissions('MonitorApis');
 

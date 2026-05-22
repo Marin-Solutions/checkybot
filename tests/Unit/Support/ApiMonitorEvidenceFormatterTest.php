@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\MonitorApiResult;
+use App\Models\MonitorApis;
 use App\Support\ApiMonitorEvidenceFormatter;
 
 test('mask headers redacts token and cookie headers', function () {
@@ -129,4 +131,69 @@ test('format as pre html escapes raw html content', function () {
 
     expect($html)->toContain('&lt;script&gt;alert(1)&lt;/script&gt;')
         ->not->toContain('<script>alert(1)</script>');
+});
+
+test('replay template uses redacted header placeholders and current monitor config', function () {
+    $monitor = MonitorApis::factory()->create([
+        'http_method' => 'POST',
+        'url' => 'https://api.example.test/orders?api_key=secret&status=open',
+        'request_body_type' => 'json',
+        'request_body' => '{"email":"monitor@example.com","password":"secret"}',
+    ]);
+
+    $result = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'request_headers' => [
+            'Authorization' => '[redacted]',
+            'X-API-Key' => '[redacted]',
+            'Cookie' => '[redacted]',
+            'Accept' => 'application/json',
+        ],
+    ]);
+
+    $command = ApiMonitorEvidenceFormatter::replayTemplate($result);
+
+    expect($command)
+        ->toContain("curl --request 'POST'")
+        ->toContain("--url 'https://api.example.test/orders?api_key=%3CREPLACE_API_KEY%3E&status=open'")
+        ->toContain("--header 'Authorization: <REPLACE_AUTHORIZATION>'")
+        ->toContain("--header 'X-API-Key: <REPLACE_X_API_KEY>'")
+        ->toContain("--header 'Cookie: <REPLACE_COOKIE>'")
+        ->toContain("--header 'Accept: application/json'")
+        ->toContain('"password":"[redacted]"')
+        ->not->toContain('Bearer secret')
+        ->not->toContain('"password":"secret"')
+        ->not->toContain('api_key=secret');
+});
+
+test('replay template redacts form body tokens and omits raw bodies', function () {
+    $formMonitor = MonitorApis::factory()->create([
+        'http_method' => 'PATCH',
+        'url' => 'https://api.example.test/token',
+        'request_body_type' => 'form',
+        'request_body' => '{"grant_type":"client_credentials","access_token":"secret-token"}',
+    ]);
+    $formResult = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $formMonitor->id,
+        'request_headers' => ['Accept' => 'application/json'],
+    ]);
+
+    $rawMonitor = MonitorApis::factory()->create([
+        'http_method' => 'POST',
+        'url' => 'https://api.example.test/raw',
+        'request_body_type' => 'raw',
+        'request_body' => 'token=secret-token',
+    ]);
+    $rawResult = MonitorApiResult::factory()->create([
+        'monitor_api_id' => $rawMonitor->id,
+        'request_headers' => ['Accept' => 'application/json'],
+    ]);
+
+    expect(ApiMonitorEvidenceFormatter::replayTemplate($formResult))
+        ->toContain('access_token=%5Bredacted%5D')
+        ->not->toContain('secret-token');
+
+    expect(ApiMonitorEvidenceFormatter::replayTemplate($rawResult))
+        ->not->toContain('--data-raw')
+        ->not->toContain('secret-token');
 });

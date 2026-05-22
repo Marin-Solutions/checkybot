@@ -73,6 +73,7 @@
         @endif
     @elseif ($evidence instanceof MonitorApiResult)
         @php($scheduledFailureStreak = ScheduledFailureStreak::forApiResult($evidence))
+        @php($replayTemplate = ApiMonitorEvidenceFormatter::replayTemplate($evidence))
         <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <x-incident-feed-evidence-field label="Status" :value="ucfirst($evidence->status ?? ($evidence->is_success ? 'healthy' : 'danger'))" />
             <x-incident-feed-evidence-field label="Run" :value="RunSource::coerce($evidence->run_source)->label()" />
@@ -112,6 +113,31 @@
                             </dl>
                         </div>
                     @endforeach
+                </div>
+            </div>
+        @endif
+
+        @if (filled($replayTemplate))
+            <div class="rounded-lg border border-gray-200 p-4 dark:border-white/10">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                        <h4 class="text-sm font-semibold text-gray-950 dark:text-white">Replay Template</h4>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Uses the current monitor method, URL, and safe request body. Replace redacted placeholders locally before running.
+                        </p>
+                    </div>
+                    <x-filament::button
+                        color="gray"
+                        size="sm"
+                        icon="heroicon-o-clipboard-document"
+                        x-data
+                        x-on:click="navigator.clipboard.writeText(@js($replayTemplate))"
+                    >
+                        Copy
+                    </x-filament::button>
+                </div>
+                <div class="mt-3 max-h-96 overflow-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100">
+                    {!! ApiMonitorEvidenceFormatter::formatAsPreHtml($replayTemplate) !!}
                 </div>
             </div>
         @endif

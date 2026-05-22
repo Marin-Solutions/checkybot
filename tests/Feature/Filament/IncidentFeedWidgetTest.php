@@ -690,6 +690,10 @@ describe('IncidentFeedWidget', function () {
         $api = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
             'title' => 'Evidence API',
+            'http_method' => 'POST',
+            'url' => 'https://api.example.test/evidence?api_key=url-secret',
+            'request_body_type' => 'json',
+            'request_body' => '{"password":"body-secret","status":"active"}',
         ]);
 
         MonitorApiResult::factory()->successful()->create([
@@ -709,6 +713,11 @@ describe('IncidentFeedWidget', function () {
                 'actual' => 'pending',
                 'expected' => 'active',
             ]],
+            'request_headers' => [
+                'Authorization' => '[redacted]',
+                'Cookie' => '[redacted]',
+                'Accept' => 'application/json',
+            ],
             'created_at' => now()->subMinutes(10),
         ]);
         MonitorApiResult::factory()->successful()->create([
@@ -739,7 +748,13 @@ describe('IncidentFeedWidget', function () {
             ->toContain('1 failure')
             ->toContain('May 21, 2026 11:50 AM')
             ->toContain('Failed Assertions')
-            ->toContain('Expected active status.');
+            ->toContain('Expected active status.')
+            ->toContain('Replay Template')
+            ->toContain('REPLACE_AUTHORIZATION')
+            ->toContain('REPLACE_COOKIE')
+            ->toContain('[redacted]')
+            ->not->toContain('body-secret')
+            ->not->toContain('url-secret');
     });
 
     it('does not create a new api incident row for repeated failed runs without a status change', function () {

@@ -278,6 +278,20 @@ class ResultsRelationManager extends RelationManager
                             ->hidden(fn (MonitorApiResult $record): bool => blank($record->response_headers)),
                     ])
                     ->columns(2),
+                Section::make('Replay Template')
+                    ->schema([
+                        TextEntry::make('replay_template')
+                            ->label('cURL command')
+                            ->helperText('Uses the current monitor method, URL, and safe request body. Replace redacted placeholders locally before running.')
+                            ->state(fn (MonitorApiResult $record): ?string => ApiMonitorEvidenceFormatter::replayTemplate($record))
+                            ->placeholder('Replay template unavailable.')
+                            ->copyable(fn (MonitorApiResult $record): bool => filled(ApiMonitorEvidenceFormatter::replayTemplate($record)))
+                            ->copyableState(fn (MonitorApiResult $record): ?string => ApiMonitorEvidenceFormatter::replayTemplate($record))
+                            ->copyMessage('Replay template copied')
+                            ->html()
+                            ->formatStateUsing(fn (?string $state) => filled($state) ? ApiMonitorEvidenceFormatter::formatAsPreHtml($state) : null)
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Saved Failure Payload')
                     ->hidden(fn (MonitorApiResult $record): bool => blank($record->response_body))
                     ->schema([
