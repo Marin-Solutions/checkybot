@@ -2118,6 +2118,7 @@ test('admin without monitor update permissions cannot snooze package-managed che
     ])
         ->assertTableActionHidden('snooze')
         ->assertTableActionHidden('unsnooze', $website)
+        ->assertTableBulkActionHidden('assign_component')
         ->assertTableBulkActionHidden('run_selected_diagnostics');
 
     Livewire::test(PackageManagedApisRelationManager::class, [
@@ -2126,6 +2127,7 @@ test('admin without monitor update permissions cannot snooze package-managed che
     ])
         ->assertTableActionHidden('snooze')
         ->assertTableActionHidden('unsnooze', $apiMonitor)
+        ->assertTableBulkActionHidden('assign_component')
         ->assertTableBulkActionHidden('run_selected_diagnostics');
 });
 
@@ -2918,6 +2920,124 @@ test('package-managed child relation managers filter by component', function () 
         ->filterTable('project_component_id', '__unmapped')
         ->assertCanSeeTableRecords([$unmappedApi])
         ->assertCanNotSeeTableRecords([$checkoutApi, $billingApi]);
+});
+
+test('package-managed website checks can be bulk assigned to an existing or new component', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $checkout = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'checkout',
+        'created_by' => $user->id,
+    ]);
+
+    $homepage = Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => null,
+        'name' => 'homepage',
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'created_by' => $user->id,
+    ]);
+    $status = Website::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => null,
+        'name' => 'status',
+        'source' => 'package',
+        'package_name' => 'status',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableBulkActionExists('assign_component')
+        ->assertTableBulkActionHasLabel('assign_component', 'Assign component')
+        ->callTableBulkAction('assign_component', collect([$homepage]), data: [
+            'project_component_id' => $checkout->id,
+            'component_name' => null,
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('1 website assigned');
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('assign_component', collect([$status]), data: [
+            'project_component_id' => null,
+            'component_name' => 'status-page',
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('1 website assigned');
+
+    $statusComponent = ProjectComponent::query()->where('project_id', $project->id)->where('name', 'status-page')->sole();
+
+    expect($homepage->refresh()->project_component_id)->toBe($checkout->id)
+        ->and($status->refresh()->project_component_id)->toBe($statusComponent->id)
+        ->and($statusComponent->source)->toBe('manual')
+        ->and($statusComponent->current_status)->toBe('unknown')
+        ->and($statusComponent->summary)->toBe('Awaiting active child check results');
+});
+
+test('package-managed api checks can be bulk assigned to an existing or new component', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+    $checkout = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'checkout',
+        'created_by' => $user->id,
+    ]);
+
+    $health = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => null,
+        'title' => 'health',
+        'source' => 'package',
+        'package_name' => 'health',
+        'created_by' => $user->id,
+    ]);
+    $orders = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'project_component_id' => null,
+        'title' => 'orders',
+        'source' => 'package',
+        'package_name' => 'orders',
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->assertTableBulkActionExists('assign_component')
+        ->assertTableBulkActionHasLabel('assign_component', 'Assign component')
+        ->callTableBulkAction('assign_component', collect([$health]), data: [
+            'project_component_id' => $checkout->id,
+            'component_name' => null,
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('1 API assigned');
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])
+        ->callTableBulkAction('assign_component', collect([$orders]), data: [
+            'project_component_id' => null,
+            'component_name' => 'orders-api',
+        ])
+        ->assertHasNoTableBulkActionErrors()
+        ->assertNotified('1 API assigned');
+
+    $ordersComponent = ProjectComponent::query()->where('project_id', $project->id)->where('name', 'orders-api')->sole();
+
+    expect($health->refresh()->project_component_id)->toBe($checkout->id)
+        ->and($orders->refresh()->project_component_id)->toBe($ordersComponent->id)
+        ->and($ordersComponent->source)->toBe('manual')
+        ->and($ordersComponent->current_status)->toBe('unknown')
+        ->and($ordersComponent->summary)->toBe('Awaiting active child check results');
 });
 
 test('super admin can filter application components to only failing', function () {
