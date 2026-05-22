@@ -590,7 +590,7 @@ class CheckybotApiDocumentation
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="query", required=false, @OA\Schema(type="string")),
-     *     @OA\Parameter(name="type", in="query", required=false, @OA\Schema(type="string", enum={"all", "api", "website", "component"})),
+     *     @OA\Parameter(name="type", in="query", required=false, @OA\Schema(type="string", enum={"all", "project", "api", "website", "component"})),
      *     @OA\Parameter(name="statuses[]", in="query", required=false, @OA\Schema(type="array", @OA\Items(type="string", enum={"warning", "danger", "pending", "unknown"}))),
      *     @OA\Parameter(name="cause", in="query", required=false, @OA\Schema(type="string", enum={"timeout", "dns", "http_4xx", "http_5xx", "assertion", "stale_setup"})),
      *     @OA\Parameter(name="min_streak", in="query", required=false, @OA\Schema(type="integer", minimum=1, maximum=1000)),
