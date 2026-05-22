@@ -24,6 +24,7 @@ use App\Support\ScheduledFailureStreak;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -683,11 +684,15 @@ class CheckybotControlService
         int $limit = 25,
         array $exclude = [],
         ?string $cause = null,
+        ?int $minStreak = null,
+        ?string $firstFailedBefore = null,
     ): array {
         $limit = min(max($limit, 1), 100);
         $statuses = array_values(array_intersect($statuses, ['warning', 'danger', 'pending', 'unknown']));
         $cause = in_array($cause, self::CURRENT_ISSUE_CAUSES, true) ? $cause : null;
-        $queryLimit = $cause === null ? $limit : null;
+        $minStreak = $minStreak !== null ? min(max($minStreak, 1), 1000) : null;
+        $firstFailedBefore = filled($firstFailedBefore) ? Carbon::parse($firstFailedBefore) : null;
+        $queryLimit = $cause === null && $minStreak === null && $firstFailedBefore === null ? $limit : null;
 
         if ($statuses === []) {
             $statuses = ['warning', 'danger'];
@@ -717,6 +722,7 @@ class CheckybotControlService
         return $issues
             ->reject(fn (array $issue): bool => $this->matchesCurrentIssueExclude($issue, $exclude))
             ->when($cause !== null, fn ($issues) => $issues->where('cause', $cause))
+            ->filter(fn (array $issue): bool => $this->matchesCurrentIssueStreakFilters($issue, $minStreak, $firstFailedBefore))
             ->sort(function (array $a, array $b): int {
                 $statusComparison = $this->statusSortRank($a['status'] ?? null) <=> $this->statusSortRank($b['status'] ?? null);
 
@@ -732,6 +738,33 @@ class CheckybotControlService
             ->values()
             ->take($limit)
             ->all();
+    }
+
+    private function matchesCurrentIssueStreakFilters(array $issue, ?int $minStreak, ?Carbon $firstFailedBefore): bool
+    {
+        if ($minStreak === null && $firstFailedBefore === null) {
+            return true;
+        }
+
+        $streak = $issue['scheduled_failure_streak'] ?? null;
+
+        if (! is_array($streak)) {
+            return false;
+        }
+
+        if ($minStreak !== null && (int) ($streak['count'] ?? 0) < $minStreak) {
+            return false;
+        }
+
+        if ($firstFailedBefore === null) {
+            return true;
+        }
+
+        if (blank($streak['first_failed_at'] ?? null)) {
+            return false;
+        }
+
+        return Carbon::parse($streak['first_failed_at'])->lte($firstFailedBefore);
     }
 
     /**
