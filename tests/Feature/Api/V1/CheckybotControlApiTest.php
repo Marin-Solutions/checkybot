@@ -3397,6 +3397,27 @@ test('control api and mcp filter current issues by failure cause', function () {
         'summary' => 'Response assertion failed.',
     ]);
 
+    $timeoutApi = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'slow-api',
+        'title' => 'Slow API',
+        'url' => 'https://api.scrappa.test/slow',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'API check timed out.',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $timeoutApi->id,
+        'http_code' => 0,
+        'failed_assertions' => [],
+        'transport_error_type' => 'timeout',
+        'transport_error_message' => 'Operation timed out.',
+        'summary' => 'API check timed out.',
+    ]);
+
     $dnsWebsite = Website::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -3413,6 +3434,25 @@ test('control api and mcp filter current issues by failure cause', function () {
         'website_id' => $dnsWebsite->id,
     ]);
 
+    $clientErrorWebsite = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'client-error-site',
+        'name' => 'Client error site',
+        'url' => 'https://scrappa.test/private',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Website check failed with HTTP status 404.',
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $clientErrorWebsite->id,
+        'http_status_code' => 404,
+        'status' => 'danger',
+        'summary' => 'Website check failed with HTTP status 404.',
+    ]);
+
     ProjectComponent::factory()->create([
         'project_id' => $this->project->id,
         'created_by' => $this->user->id,
@@ -3426,21 +3466,40 @@ test('control api and mcp filter current issues by failure cause', function () {
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.check.key', 'rate-limited-api')
-        ->assertJsonPath('data.0.cause', 'http_4xx');
+        ->assertJsonPath('data.0.cause', 'http_4xx')
+        ->assertJsonPath('data.0.action', 'Verify the URL, route, and required auth or headers; Checkybot is receiving a client error.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=api&cause=timeout')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.key', 'slow-api')
+        ->assertJsonPath('data.0.cause', 'timeout')
+        ->assertJsonPath('data.0.action', 'Confirm the endpoint responds from outside the app network, then raise the timeout or investigate slow upstream work.');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?project=scrappa&type=website&cause=dns')
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.check.key', 'dns-site')
-        ->assertJsonPath('data.0.cause', 'dns');
+        ->assertJsonPath('data.0.cause', 'dns')
+        ->assertJsonPath('data.0.action', 'Check DNS records and nameserver propagation for this hostname, then rerun the check.');
+
+    $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?project=scrappa&type=website&cause=http_4xx')
+        ->assertOk()
+        ->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.check.key', 'client-error-site')
+        ->assertJsonPath('data.0.cause', 'http_4xx')
+        ->assertJsonPath('data.0.action', 'Verify the page URL, redirects, and access rules; Checkybot is receiving a client error.');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?project=scrappa&type=component&statuses[]=pending&cause=stale_setup')
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.check.key', 'awaiting-child-checks')
-        ->assertJsonPath('data.0.cause', 'stale_setup');
+        ->assertJsonPath('data.0.cause', 'stale_setup')
+        ->assertJsonMissingPath('data.0.action');
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -3459,7 +3518,8 @@ test('control api and mcp filter current issues by failure cause', function () {
         ->assertOk()
         ->assertJsonCount(1, 'result.structuredContent')
         ->assertJsonPath('result.structuredContent.0.check.key', 'healthy-http-bad-payload')
-        ->assertJsonPath('result.structuredContent.0.cause', 'assertion');
+        ->assertJsonPath('result.structuredContent.0.cause', 'assertion')
+        ->assertJsonPath('result.structuredContent.0.action', 'Compare the latest response body with the saved assertions and update the API or assertion rule.');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?cause=http')
@@ -3521,7 +3581,8 @@ test('control api cause filter searches beyond the unfiltered source cap', funct
         ->assertOk()
         ->assertJsonCount(1, 'data')
         ->assertJsonPath('data.0.check.key', 'older-server-error')
-        ->assertJsonPath('data.0.cause', 'http_5xx');
+        ->assertJsonPath('data.0.cause', 'http_5xx')
+        ->assertJsonPath('data.0.action', 'Inspect the app/server logs for this endpoint and rerun after fixing the server error.');
 });
 
 test('mcp manages notification channels and global notification settings', function () {

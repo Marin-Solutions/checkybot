@@ -1086,6 +1086,12 @@ class CheckybotControlService
             'updated_at' => $check['updated_at'] ?? null,
         ];
 
+        $action = $this->currentIssueAction($check['type'] ?? null, $cause);
+
+        if ($action !== null) {
+            $payload['action'] = $action;
+        }
+
         if ($manualScheduledDrift !== null) {
             $payload['manual_scheduled_drift'] = $manualScheduledDrift;
         }
@@ -1098,6 +1104,24 @@ class CheckybotControlService
         }
 
         return $payload;
+    }
+
+    private function currentIssueAction(?string $type, ?string $cause): ?string
+    {
+        if (! in_array($type, ['api', 'website'], true)) {
+            return null;
+        }
+
+        return match ($cause) {
+            'dns' => 'Check DNS records and nameserver propagation for this hostname, then rerun the check.',
+            'timeout' => 'Confirm the endpoint responds from outside the app network, then raise the timeout or investigate slow upstream work.',
+            'http_4xx' => $type === 'api'
+                ? 'Verify the URL, route, and required auth or headers; Checkybot is receiving a client error.'
+                : 'Verify the page URL, redirects, and access rules; Checkybot is receiving a client error.',
+            'http_5xx' => 'Inspect the app/server logs for this endpoint and rerun after fixing the server error.',
+            'assertion' => 'Compare the latest response body with the saved assertions and update the API or assertion rule.',
+            default => null,
+        };
     }
 
     /**
