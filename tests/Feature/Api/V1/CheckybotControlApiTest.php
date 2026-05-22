@@ -3391,6 +3391,15 @@ test('control api and mcp filter current issues by scheduled failure streak', fu
         ->assertJsonPath('data.0.scheduled_failure_streak.first_failed_at', $persistentApiFirstFailed->created_at->toISOString());
 
     $this->withToken($this->apiKey->key)
+        ->getJson('/api/v1/control/issues?'.http_build_query([
+            'project' => 'scrappa',
+            'min_streak' => 2,
+            'first_failed_before' => $persistentApiFirstFailed->created_at->toISOString(),
+        ]))
+        ->assertOk()
+        ->assertJsonCount(0, 'data');
+
+    $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
             'jsonrpc' => '2.0',
             'id' => 42,

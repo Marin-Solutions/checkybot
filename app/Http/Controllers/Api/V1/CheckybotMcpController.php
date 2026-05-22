@@ -509,7 +509,7 @@ class CheckybotMcpController extends Controller
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
             ]),
-            $this->tool('current_issues', 'List currently unhealthy or pending checks and project setup problems from the dashboard status surface. Use type=api to see unhealthy API monitors only, type=project to see stale or incomplete package setup, and exclude to omit known work-in-progress checks.', [
+            $this->tool('current_issues', 'List currently unhealthy or pending checks and project setup problems from the dashboard status surface. Use type=api to see unhealthy API monitors only, type=project to see stale or incomplete package setup, min_streak or first_failed_before to find persistent scheduled failures, and exclude to omit known work-in-progress checks.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'type' => ['type' => 'string', 'enum' => ['all', 'project', 'api', 'website', 'component'], 'default' => 'all'],
                 'statuses' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['warning', 'danger', 'pending', 'unknown']], 'default' => ['warning', 'danger']],

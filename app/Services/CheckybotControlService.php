@@ -764,7 +764,7 @@ class CheckybotControlService
             return false;
         }
 
-        return Carbon::parse($streak['first_failed_at'])->lte($firstFailedBefore);
+        return Carbon::parse($streak['first_failed_at'])->lt($firstFailedBefore);
     }
 
     /**
