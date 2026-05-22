@@ -78,6 +78,18 @@
             <x-incident-feed-evidence-field label="Run" :value="RunSource::coerce($evidence->run_source)->label()" />
             <x-incident-feed-evidence-field label="HTTP" :value="$evidence->http_code === 0 ? 'No response' : ($evidence->http_code ?? '-')" />
             <x-incident-feed-evidence-field label="Response time" :value="$evidence->response_time_ms !== null ? $evidence->response_time_ms . 'ms' : '-'" />
+            @if ($evidence->elapsed_wall_time_ms !== null)
+                <x-incident-feed-evidence-field label="Elapsed wall time" :value="$evidence->elapsed_wall_time_ms . 'ms'" />
+            @endif
+            @if ($evidence->effective_timeout_seconds !== null)
+                <x-incident-feed-evidence-field label="Effective timeout" :value="$evidence->effective_timeout_seconds . 's'" />
+            @endif
+            @if ($evidence->retry_count !== null)
+                <x-incident-feed-evidence-field label="Retries" :value="$evidence->retry_count" />
+            @endif
+            @if ($evidence->max_response_time_ms !== null)
+                <x-incident-feed-evidence-field label="Response-time warning" :value="$evidence->max_response_time_ms . 'ms'" />
+            @endif
             <x-incident-feed-evidence-field label="Captured at" :value="optional($evidence->created_at)->toDayDateTimeString() ?? '-'" />
             <x-incident-feed-evidence-field label="Failed assertions" :value="count($evidence->failed_assertions ?? [])" />
             <x-incident-feed-evidence-field label="Scheduled streak" :value="$scheduledFailureStreak['count'] > 0 ? $scheduledFailureStreak['count'] . ' ' . str('failure')->plural($scheduledFailureStreak['count']) : '-'" />
