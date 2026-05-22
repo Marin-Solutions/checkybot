@@ -181,6 +181,20 @@ class IncidentFeedWidget extends BaseWidget
                         return $query->where('status', $data['value']);
                     })
                     ->placeholder('All transitions'),
+                SelectFilter::make('state')
+                    ->label('Current state')
+                    ->options([
+                        'active' => 'Active',
+                        'resolved' => 'Resolved',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->whereRaw(self::incidentStateSql().' = ?', [$data['value']]);
+                    })
+                    ->placeholder('All states'),
                 SelectFilter::make('source')
                     ->label('Source')
                     ->options([
@@ -424,12 +438,7 @@ class IncidentFeedWidget extends BaseWidget
                     });
             })
             ->select('incidents.*')
-            ->selectRaw("
-                CASE
-                    WHEN current_monitoring_enabled = 1 AND current_status IN ('warning', 'danger') THEN 'active'
-                    ELSE 'resolved'
-                END as state
-            ");
+            ->selectRaw(self::incidentStateSql().' as state');
     }
 
     /**
@@ -471,6 +480,16 @@ class IncidentFeedWidget extends BaseWidget
             'assertion' => 'Assertion failure',
             'other' => 'Other failure',
         ];
+    }
+
+    protected static function incidentStateSql(): string
+    {
+        return "
+            CASE
+                WHEN current_monitoring_enabled = 1 AND current_status IN ('warning', 'danger') THEN 'active'
+                ELSE 'resolved'
+            END
+        ";
     }
 
     protected static function formatCauseLabel(?string $cause): string

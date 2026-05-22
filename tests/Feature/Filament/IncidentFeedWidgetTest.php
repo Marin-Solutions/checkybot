@@ -530,8 +530,55 @@ describe('IncidentFeedWidget', function () {
 
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('Current outage')
-            ->assertSee('Active')
-            ->assertDontSee('Resolved');
+            ->assertSee('Active');
+    });
+
+    it('filters incidents by active and resolved current state', function () {
+        $activeWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Active checkout homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $activeWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Checkout is still down',
+            'created_at' => now()->subMinutes(6),
+        ]);
+
+        $resolvedWebsite = Website::factory()->create([
+            'created_by' => $this->user->id,
+            'name' => 'Resolved billing homepage',
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $resolvedWebsite->id,
+            'status' => 'danger',
+            'summary' => 'Billing outage started',
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $resolvedWebsite->id,
+            'status' => 'healthy',
+            'summary' => 'Billing recovered',
+            'created_at' => now()->subMinutes(4),
+        ]);
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->assertSee('Checkout is still down')
+            ->assertSee('Billing outage started')
+            ->assertSee('Billing recovered')
+            ->filterTable('state', 'active')
+            ->assertSee('Checkout is still down')
+            ->assertDontSee('Billing outage started')
+            ->assertDontSee('Billing recovered');
+
+        Livewire::test(IncidentFeedWidget::class)
+            ->filterTable('state', 'resolved')
+            ->assertDontSee('Checkout is still down')
+            ->assertSee('Billing outage started')
+            ->assertSee('Billing recovered');
     });
 
     it('resolves website incidents when website checks are disabled', function () {
