@@ -1027,7 +1027,7 @@ class CheckybotControlService
                     $check->project,
                     $this->checkPayload($check),
                     $this->currentApiIssueCause($check),
-                    $this->apiManualScheduledDriftPayload($scheduledResult, $diagnosticResult),
+                    $this->apiManualScheduledDriftPayload($check, $scheduledResult, $diagnosticResult),
                 );
             })
             ->all();
@@ -1066,7 +1066,7 @@ class CheckybotControlService
                     $website->project,
                     $this->websiteCheckPayload($website),
                     $this->currentWebsiteIssueCause($website),
-                    $this->websiteManualScheduledDriftPayload($scheduledResult, $diagnosticResult),
+                    $this->websiteManualScheduledDriftPayload($website, $scheduledResult, $diagnosticResult),
                 );
             })
             ->all();
@@ -1162,22 +1162,24 @@ class CheckybotControlService
     /**
      * @return array<string, mixed>
      */
-    private function apiManualScheduledDriftPayload(?MonitorApiResult $scheduledResult, ?MonitorApiResult $diagnosticResult): array
+    private function apiManualScheduledDriftPayload(MonitorApis $check, ?MonitorApiResult $scheduledResult, ?MonitorApiResult $diagnosticResult): array
     {
         return $this->manualScheduledDriftPayload(
             $this->apiResultDriftPoint($scheduledResult),
             $this->apiResultDriftPoint($diagnosticResult),
+            $this->freshnessWindowSeconds($check->package_interval ?? $check->package_schedule ?? null),
         );
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function websiteManualScheduledDriftPayload(?WebsiteLogHistory $scheduledResult, ?WebsiteLogHistory $diagnosticResult): array
+    private function websiteManualScheduledDriftPayload(Website $website, ?WebsiteLogHistory $scheduledResult, ?WebsiteLogHistory $diagnosticResult): array
     {
         return $this->manualScheduledDriftPayload(
             $this->websiteResultDriftPoint($scheduledResult),
             $this->websiteResultDriftPoint($diagnosticResult),
+            $this->freshnessWindowSeconds($website->package_interval ?? null, $website->uptime_interval),
         );
     }
 
@@ -1186,8 +1188,9 @@ class CheckybotControlService
      * @param  array<string, mixed>|null  $manual
      * @return array<string, mixed>
      */
-    private function manualScheduledDriftPayload(?array $scheduled, ?array $manual): array
+    private function manualScheduledDriftPayload(?array $scheduled, ?array $manual, int $freshnessWindowSeconds): array
     {
+        $manual = $this->markManualDriftFreshness($manual, $scheduled, $freshnessWindowSeconds);
         $detected = $scheduled !== null
             && $manual !== null
             && $scheduled['status'] !== $manual['status'];
@@ -1196,10 +1199,122 @@ class CheckybotControlService
             'detected' => $detected,
             'scheduled' => $scheduled,
             'manual' => $manual,
-            'summary' => $detected
-                ? "Latest manual diagnostic status ({$manual['status']}) differs from latest scheduled status ({$scheduled['status']}). Prefer the current issue status until a scheduled run recovers."
-                : null,
+            'summary' => $this->manualScheduledDriftSummary($scheduled, $manual, $detected),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $manual
+     * @param  array<string, mixed>|null  $scheduled
+     * @return array<string, mixed>|null
+     */
+    private function markManualDriftFreshness(?array $manual, ?array $scheduled, int $freshnessWindowSeconds): ?array
+    {
+        if ($manual === null) {
+            return null;
+        }
+
+        $manualCheckedAt = filled($manual['checked_at'] ?? null) ? Carbon::parse((string) $manual['checked_at']) : null;
+        $scheduledCheckedAt = filled($scheduled['checked_at'] ?? null) ? Carbon::parse((string) $scheduled['checked_at']) : null;
+
+        if ($manualCheckedAt === null) {
+            return array_merge($manual, [
+                'age_seconds' => null,
+                'age_label' => null,
+                'stale' => false,
+            ]);
+        }
+
+        $ageSeconds = $this->elapsedSecondsSince($manualCheckedAt);
+        $olderThanScheduled = $this->isPastScheduledComparison($manualCheckedAt, $scheduledCheckedAt);
+
+        return array_merge($manual, [
+            'age_seconds' => $ageSeconds,
+            'age_label' => $this->durationLabel($ageSeconds),
+            'stale' => $olderThanScheduled || $ageSeconds > $freshnessWindowSeconds,
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $scheduled
+     * @param  array<string, mixed>|null  $manual
+     */
+    private function manualScheduledDriftSummary(?array $scheduled, ?array $manual, bool $detected): ?string
+    {
+        if ($manual === null || $scheduled === null) {
+            return null;
+        }
+
+        if (($manual['stale'] ?? false) === true) {
+            $manualCheckedAt = filled($manual['checked_at'] ?? null) ? Carbon::parse((string) $manual['checked_at']) : null;
+            $scheduledCheckedAt = filled($scheduled['checked_at'] ?? null) ? Carbon::parse((string) $scheduled['checked_at']) : null;
+
+            if ($manualCheckedAt !== null && $this->isPastScheduledComparison($manualCheckedAt, $scheduledCheckedAt)) {
+                $difference = $this->durationLabel($manualCheckedAt->diffInSeconds($scheduledCheckedAt));
+
+                return "Latest manual diagnostic is {$manual['status']} but is {$difference} older than the scheduled {$scheduled['status']}; prefer the scheduled status until a new diagnostic is queued.";
+            }
+
+            if (filled($manual['age_label'] ?? null)) {
+                return "Latest manual diagnostic is {$manual['status']} but is {$manual['age_label']} old; prefer the scheduled status until a new diagnostic is queued.";
+            }
+        }
+
+        return $detected
+            ? "Latest manual diagnostic status ({$manual['status']}) differs from latest scheduled status ({$scheduled['status']}). Prefer the current issue status until a scheduled run recovers."
+            : null;
+    }
+
+    private function freshnessWindowSeconds(?string $interval, ?int $fallbackMinutes = null): int
+    {
+        if (is_string($interval) && filled($interval) && IntervalParser::isValid($interval)) {
+            return max(IntervalParser::toMinutes($interval) * 60, 60 * 60);
+        }
+
+        if ($fallbackMinutes !== null && $fallbackMinutes > 0) {
+            return max($fallbackMinutes * 60, 60 * 60);
+        }
+
+        return 60 * 60;
+    }
+
+    private function elapsedSecondsSince(Carbon $checkedAt): int
+    {
+        if ($checkedAt->isFuture()) {
+            return 0;
+        }
+
+        return $checkedAt->diffInSeconds(now());
+    }
+
+    private function isPastScheduledComparison(Carbon $manualCheckedAt, ?Carbon $scheduledCheckedAt): bool
+    {
+        return $scheduledCheckedAt !== null
+            && ! $scheduledCheckedAt->isFuture()
+            && $manualCheckedAt->lt($scheduledCheckedAt);
+    }
+
+    private function durationLabel(int $seconds): string
+    {
+        if ($seconds < 60) {
+            return $seconds === 1 ? '1 second' : "{$seconds} seconds";
+        }
+
+        $minutes = intdiv($seconds, 60);
+
+        if ($minutes < 60) {
+            return $minutes === 1 ? '1 minute' : "{$minutes} minutes";
+        }
+
+        $hours = intdiv($minutes, 60);
+
+        if ($hours < 24) {
+            return $hours === 1 ? '1 hour' : "{$hours} hours";
+        }
+
+        $days = intdiv($hours, 24);
+
+        return $days === 1 ? '1 day' : "{$days} days";
     }
 
     /**
