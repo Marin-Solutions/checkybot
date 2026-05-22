@@ -742,6 +742,81 @@ describe('IncidentFeedWidget', function () {
             ->toContain('Expected active status.');
     });
 
+    it('shows retry and wall-time metadata in API incident evidence only when present', function () {
+        $api = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Slow failing API',
+        ]);
+
+        $result = MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $api->id,
+            'summary' => 'Slow failing API returned HTTP 503 after retries.',
+            'http_code' => 503,
+            'response_time_ms' => 69525,
+            'elapsed_wall_time_ms' => 69536,
+            'effective_timeout_seconds' => 30,
+            'retry_count' => 3,
+            'max_response_time_ms' => 5000,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $incident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'api')
+            ->where('source_row_id', $result->id)
+            ->first();
+
+        expect($incident)->not->toBeNull();
+
+        $html = view('filament.widgets.incident-feed-evidence-modal', [
+            'incident' => $incident,
+            'evidence' => $result,
+            'targetUrl' => null,
+        ])->render();
+
+        expect($html)
+            ->toContain('Elapsed wall time')
+            ->toContain('69536ms')
+            ->toContain('Effective timeout')
+            ->toContain('30s')
+            ->toContain('Retries')
+            ->toContain('3')
+            ->toContain('Response-time warning')
+            ->toContain('5000ms');
+
+        $quietApi = MonitorApis::factory()->create([
+            'created_by' => $this->user->id,
+            'title' => 'Quiet failing API',
+        ]);
+
+        $quietResult = MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $quietApi->id,
+            'elapsed_wall_time_ms' => null,
+            'effective_timeout_seconds' => null,
+            'retry_count' => null,
+            'max_response_time_ms' => null,
+            'created_at' => now()->subMinutes(3),
+        ]);
+
+        $quietIncident = IncidentFeedWidget::buildIncidentsQueryFor($this->user->id, now()->subDays(7))
+            ->where('source', 'api')
+            ->where('source_row_id', $quietResult->id)
+            ->first();
+
+        expect($quietIncident)->not->toBeNull();
+
+        $quietHtml = view('filament.widgets.incident-feed-evidence-modal', [
+            'incident' => $quietIncident,
+            'evidence' => $quietResult,
+            'targetUrl' => null,
+        ])->render();
+
+        expect($quietHtml)
+            ->not->toContain('Elapsed wall time')
+            ->not->toContain('Effective timeout')
+            ->not->toContain('Retries')
+            ->not->toContain('Response-time warning');
+    });
+
     it('does not create a new api incident row for repeated failed runs without a status change', function () {
         $api = MonitorApis::factory()->create([
             'created_by' => $this->user->id,

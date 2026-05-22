@@ -1814,6 +1814,37 @@ test('api monitor results list exposes drill down action with evidence summary',
         ->assertSee('1');
 });
 
+test('api monitor table latest evidence calls out retry-heavy timeout failures', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitor = MonitorApis::factory()->create([
+        'created_by' => $user->id,
+        'title' => 'Booking Search API',
+        'current_status' => 'danger',
+    ]);
+
+    MonitorApiResult::factory()->failed()->create([
+        'monitor_api_id' => $monitor->id,
+        'is_success' => false,
+        'status' => 'danger',
+        'http_code' => 503,
+        'failed_assertions' => null,
+        'transport_error_type' => null,
+        'retry_count' => 3,
+        'elapsed_wall_time_ms' => 69536,
+        'effective_timeout_seconds' => 30,
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertSee('Booking Search API')
+        ->assertSee('3 retries')
+        ->assertSee('wall 69.5s')
+        ->assertSee('timeout 30s');
+});
+
 test('api monitor results list can filter repeated failure causes', function () {
     $this->createResourcePermissions('MonitorApis');
 

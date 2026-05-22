@@ -75,13 +75,57 @@ class ApiMonitorEvidenceFormatter
             default => 'ok',
         };
 
-        return sprintf(
-            'HTTP %s | %s | %d failed | %s',
-            $result->http_code ?? '-',
-            $transportType,
-            $assertionCount,
-            $firstFailingPath,
-        );
+        $segments = [
+            sprintf(
+                'HTTP %s | %s | %d failed | %s',
+                $result->http_code ?? '-',
+                $transportType,
+                $assertionCount,
+                $firstFailingPath,
+            ),
+        ];
+
+        if (self::shouldShowRetryEvidence($result)) {
+            $segments[] = "{$result->retry_count} retries";
+        }
+
+        if (self::exceededEffectiveTimeoutWindow($result)) {
+            $segments[] = sprintf(
+                'wall %s > timeout %s',
+                self::formatDurationMs($result->elapsed_wall_time_ms),
+                self::formatDurationMs($result->effective_timeout_seconds * 1000),
+            );
+        }
+
+        return implode(' | ', $segments);
+    }
+
+    private static function shouldShowRetryEvidence(MonitorApiResult $result): bool
+    {
+        return $result->is_success === false
+            && $result->retry_count !== null
+            && $result->retry_count > 1;
+    }
+
+    private static function exceededEffectiveTimeoutWindow(MonitorApiResult $result): bool
+    {
+        return $result->is_success === false
+            && $result->elapsed_wall_time_ms !== null
+            && $result->effective_timeout_seconds !== null
+            && $result->elapsed_wall_time_ms > ($result->effective_timeout_seconds * 1000);
+    }
+
+    private static function formatDurationMs(int $milliseconds): string
+    {
+        if ($milliseconds >= 1000 && $milliseconds % 1000 === 0) {
+            return ($milliseconds / 1000).'s';
+        }
+
+        if ($milliseconds >= 1000) {
+            return round($milliseconds / 1000, 1).'s';
+        }
+
+        return "{$milliseconds}ms";
     }
 
     /**
