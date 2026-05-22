@@ -394,7 +394,7 @@ class MonitorApiInfolist
 
         $scheduledAt = $record->latestScheduledResult?->created_at;
 
-        if ($scheduledAt !== null && $diagnosticAt->lt($scheduledAt)) {
+        if (self::isPastScheduledComparison($diagnosticAt, $scheduledAt)) {
             return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans($scheduledAt, true).' older than the latest scheduled run.';
         }
 
@@ -423,6 +423,13 @@ class MonitorApiInfolist
         }
 
         return $checkedAt->diffInSeconds(now());
+    }
+
+    private static function isPastScheduledComparison(mixed $diagnosticAt, mixed $scheduledAt): bool
+    {
+        return $scheduledAt !== null
+            && ! $scheduledAt->isFuture()
+            && $diagnosticAt->lt($scheduledAt);
     }
 
     private static function resultExceedsResponseTimeThreshold(mixed $result): bool

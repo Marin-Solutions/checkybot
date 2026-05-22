@@ -1224,7 +1224,7 @@ class CheckybotControlService
         }
 
         $ageSeconds = $this->elapsedSecondsSince($manualCheckedAt);
-        $olderThanScheduled = $scheduledCheckedAt !== null && $manualCheckedAt->lt($scheduledCheckedAt);
+        $olderThanScheduled = $this->isPastScheduledComparison($manualCheckedAt, $scheduledCheckedAt);
 
         return array_merge($manual, [
             'age_seconds' => $ageSeconds,
@@ -1247,7 +1247,7 @@ class CheckybotControlService
             $manualCheckedAt = filled($manual['checked_at'] ?? null) ? Carbon::parse((string) $manual['checked_at']) : null;
             $scheduledCheckedAt = filled($scheduled['checked_at'] ?? null) ? Carbon::parse((string) $scheduled['checked_at']) : null;
 
-            if ($manualCheckedAt !== null && $scheduledCheckedAt !== null && $manualCheckedAt->lt($scheduledCheckedAt)) {
+            if ($manualCheckedAt !== null && $this->isPastScheduledComparison($manualCheckedAt, $scheduledCheckedAt)) {
                 $difference = $this->durationLabel($manualCheckedAt->diffInSeconds($scheduledCheckedAt));
 
                 return "Latest manual diagnostic is {$manual['status']} but is {$difference} older than the scheduled {$scheduled['status']}; prefer the scheduled status until a new diagnostic is queued.";
@@ -1283,6 +1283,13 @@ class CheckybotControlService
         }
 
         return $checkedAt->diffInSeconds(now());
+    }
+
+    private function isPastScheduledComparison(Carbon $manualCheckedAt, ?Carbon $scheduledCheckedAt): bool
+    {
+        return $scheduledCheckedAt !== null
+            && ! $scheduledCheckedAt->isFuture()
+            && $manualCheckedAt->lt($scheduledCheckedAt);
     }
 
     private function durationLabel(int $seconds): string
