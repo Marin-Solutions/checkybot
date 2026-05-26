@@ -148,6 +148,49 @@ test('job returns early when ssl host cannot be determined', function () {
     expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isSameDay(now()->addDays(10)))->toBeTrue();
 });
 
+test('job logs ssl certificate retrieval failures as monitor warnings', function () {
+    Log::spy();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://maillocals.com')
+            ->andReturn('maillocals.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://maillocals.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('maillocals.com', 443)
+            ->andThrow(new Exception('The host named `maillocals.com` does not exist.'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://maillocals.com',
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->addDays(10),
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    Log::shouldNotHaveReceived('error');
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->with('Could not retrieve SSL certificate for website https://maillocals.com: The host named `maillocals.com` does not exist.', [
+            'website_id' => $website->id,
+            'url' => 'https://maillocals.com',
+            'host' => 'maillocals.com',
+            'port' => 443,
+            'monitor' => 'ssl_expiry',
+        ]);
+
+    expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isSameDay(now()->addDays(10)))->toBeTrue();
+});
+
 test('job preserves custom tls ports during ssl expiry lookup', function () {
     $this->mock(SslCertificateService::class, function (MockInterface $mock) {
         $mock->shouldReceive('extractHost')

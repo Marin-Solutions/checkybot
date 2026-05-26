@@ -56,7 +56,13 @@ class CheckSslExpiryDateJob implements ShouldQueue
         try {
             $newExpiryDate = $sslCertificateService->getExpirationDateForHost($host, $port);
         } catch (\Exception $e) {
-            Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage());
+            Log::warning('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage(), [
+                'website_id' => $this->website->id,
+                'url' => $this->website->url,
+                'host' => $host,
+                'port' => $port,
+                'monitor' => 'ssl_expiry',
+            ]);
             $this->recordSslOnlyHealth(null, $statusService, $notificationService);
 
             return;
