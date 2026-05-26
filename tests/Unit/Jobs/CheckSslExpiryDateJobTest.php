@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Mockery\MockInterface;
+use Spatie\SslCertificate\Exceptions\CouldNotDownloadCertificate\HostDoesNotExist;
 
 test('job checks ssl expiry for website', function () {
     $website = Website::factory()->create([
@@ -144,6 +145,92 @@ test('job returns early when ssl host cannot be determined', function () {
     Log::shouldHaveReceived('error')
         ->once()
         ->with('Could not determine SSL host for website bad host/path');
+
+    expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isSameDay(now()->addDays(10)))->toBeTrue();
+});
+
+test('job logs ssl certificate retrieval failures as monitor warnings', function () {
+    Log::spy();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://maillocals.com')
+            ->andReturn('maillocals.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://maillocals.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('maillocals.com', 443)
+            ->andThrow(new HostDoesNotExist('maillocals.com'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://maillocals.com',
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->addDays(10),
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    Log::shouldNotHaveReceived('error');
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->with('Could not retrieve SSL certificate for website https://maillocals.com: The host named `maillocals.com` does not exist.', [
+            'website_id' => $website->id,
+            'url' => 'https://maillocals.com',
+            'host' => 'maillocals.com',
+            'port' => 443,
+            'monitor' => 'ssl_expiry',
+        ]);
+
+    expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isSameDay(now()->addDays(10)))->toBeTrue();
+});
+
+test('job preserves error logs for unexpected ssl certificate retrieval exceptions', function () {
+    Log::spy();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andThrow(new RuntimeException('certificate parser misconfigured'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'ssl_check' => true,
+        'ssl_expiry_date' => now()->addDays(10),
+    ]);
+
+    $job = new CheckSslExpiryDateJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    Log::shouldNotHaveReceived('warning');
+    Log::shouldHaveReceived('error')
+        ->once()
+        ->with('Could not retrieve SSL certificate for website https://example.com: certificate parser misconfigured', [
+            'website_id' => $website->id,
+            'url' => 'https://example.com',
+            'host' => 'example.com',
+            'port' => 443,
+            'monitor' => 'ssl_expiry',
+        ]);
 
     expect(Carbon::parse($website->fresh()->ssl_expiry_date)->isSameDay(now()->addDays(10)))->toBeTrue();
 });

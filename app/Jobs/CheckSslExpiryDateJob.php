@@ -19,6 +19,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Spatie\SslCertificate\Exceptions\CouldNotDownloadCertificate;
 
 class CheckSslExpiryDateJob implements ShouldQueue
 {
@@ -56,7 +57,20 @@ class CheckSslExpiryDateJob implements ShouldQueue
         try {
             $newExpiryDate = $sslCertificateService->getExpirationDateForHost($host, $port);
         } catch (\Exception $e) {
-            Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage());
+            $context = [
+                'website_id' => $this->website->id,
+                'url' => $this->website->url,
+                'host' => $host,
+                'port' => $port,
+                'monitor' => 'ssl_expiry',
+            ];
+
+            if ($e instanceof CouldNotDownloadCertificate) {
+                Log::warning('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage(), $context);
+            } else {
+                Log::error('Could not retrieve SSL certificate for website '.$this->website->url.': '.$e->getMessage(), $context);
+            }
+
             $this->recordSslOnlyHealth(null, $statusService, $notificationService);
 
             return;
