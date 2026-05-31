@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('ssl:check')->everyMinute();
 Schedule::command('website:log-uptime-ssl')->everyMinute();
 Schedule::command('website:scan-outbound-check')->daily();
+Schedule::command('queue:prune-failed --hours=168')->daily();
 if (config('telescope.enabled')) {
     Schedule::command('telescope:prune --hours=24')->hourly();
 }
