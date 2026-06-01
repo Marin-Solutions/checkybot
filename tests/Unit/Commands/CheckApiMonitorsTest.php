@@ -99,9 +99,11 @@ test('command queues due api monitor jobs without running http checks inline', f
         ->assertSuccessful();
 
     Queue::assertPushed(RunScheduledApiMonitorJob::class, 1);
+    Queue::assertPushedOn(RunScheduledApiMonitorJob::QUEUE, RunScheduledApiMonitorJob::class);
     Queue::assertPushed(
         RunScheduledApiMonitorJob::class,
         fn (RunScheduledApiMonitorJob $job): bool => $job->monitor->is($dueMonitor)
+            && $job->queue === RunScheduledApiMonitorJob::QUEUE
     );
     Queue::assertNotPushed(
         RunScheduledApiMonitorJob::class,

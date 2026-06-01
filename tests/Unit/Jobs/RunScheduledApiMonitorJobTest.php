@@ -24,14 +24,20 @@ test('run scheduled api monitor job is unique and queued with enough time for co
         ->and($job->timeout)->toBe(420)
         ->and($job->failOnTimeout)->toBeTrue()
         ->and($job->uniqueFor)->toBe(480)
+        ->and($job->queue)->toBe(RunScheduledApiMonitorJob::QUEUE)
         ->and($job->uniqueId())->toBe("api-monitor:{$monitor->id}:scheduled");
 });
 
-test('redis queue lease is longer than scheduled api monitor timeout', function () {
+test('horizon api monitor supervisor timeout sits between job timeout and redis retry lease', function () {
     $monitor = MonitorApis::factory()->create();
     $job = new RunScheduledApiMonitorJob($monitor);
+    $supervisor = config('horizon.defaults.supervisor-3');
 
-    expect(config('queue.connections.redis.retry_after'))->toBeGreaterThan($job->timeout);
+    expect($supervisor['queue'])->toBe([RunScheduledApiMonitorJob::QUEUE])
+        ->and(config('horizon.defaults.supervisor-1.queue'))->not->toContain(RunScheduledApiMonitorJob::QUEUE)
+        ->and($supervisor['maxProcesses'])->toBe(1)
+        ->and($supervisor['timeout'])->toBeGreaterThan($job->timeout)
+        ->and(config('queue.connections.redis.retry_after'))->toBeGreaterThan($supervisor['timeout']);
 });
 
 test('run scheduled api monitor job records live status and sends transition notifications', function () {

@@ -17,6 +17,8 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
+    public const QUEUE = 'api-monitor';
+
     public int $tries = 1;
 
     public int $timeout = 420;
@@ -30,6 +32,7 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
     public function __construct(
         public MonitorApis $monitor,
     ) {
+        $this->onQueue(self::QUEUE);
         $this->dispatchedAt = now()->toISOString();
     }
 
