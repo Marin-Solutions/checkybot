@@ -35,12 +35,15 @@ class ApiHealthStatsWidget extends BaseWidget
             ];
         }
 
+        $activeMonitorsQuery = $this->monitorScope()
+            ->where('is_enabled', true);
+
         $healthyApis = $counts['healthy'];
         $failingApis = $counts['failing'];
         $pendingApis = $counts['pending'];
-        $avgResponseTime = $this->averageHealthyResponseTime();
+        $avgResponseTime = $this->averageHealthyResponseTime(clone $activeMonitorsQuery);
 
-        $uptimeAggregates = $this->activeScheduledResults()
+        $uptimeAggregates = $this->activeScheduledResults(clone $activeMonitorsQuery)
             ->where('monitor_api_results.created_at', '>=', now()->subDay())
             ->selectRaw('COUNT(*) as total_results')
             ->selectRaw('SUM(CASE WHEN monitor_api_results.is_success = 1 THEN 1 ELSE 0 END) as success_results')
@@ -86,16 +89,17 @@ class ApiHealthStatsWidget extends BaseWidget
      */
     public function collectCounts(): array
     {
-        $scheduledResults = MonitorApiResult::query()
-            ->scheduled()
-            ->whereIn('monitor_api_id', $this->monitorScope()->select('id'))
-            ->select('monitor_api_id')
-            ->groupBy('monitor_api_id');
+        $driver = \Illuminate\Support\Facades\DB::connection()->getDriverName();
+        $scheduledVal = $driver === 'pgsql' ? 'false' : '0';
+
+        $hasScheduledSql = "exists (
+            select 1
+            from monitor_api_results
+            where monitor_api_results.monitor_api_id = monitor_apis.id
+                and monitor_api_results.is_on_demand = {$scheduledVal}
+        )";
 
         $aggregates = $this->monitorScope()
-            ->leftJoinSub($scheduledResults, 'scheduled_results', function ($join): void {
-                $join->on('scheduled_results.monitor_api_id', '=', 'monitor_apis.id');
-            })
             ->selectRaw('COUNT(*) as total')
             ->selectRaw('SUM(CASE WHEN monitor_apis.is_enabled = 1 THEN 1 ELSE 0 END) as enabled')
             ->selectRaw('SUM(CASE WHEN monitor_apis.is_enabled = 0 THEN 1 ELSE 0 END) as disabled')
@@ -103,7 +107,7 @@ class ApiHealthStatsWidget extends BaseWidget
                 SUM(CASE
                     WHEN monitor_apis.is_enabled = 1
                         AND (
-                            scheduled_results.monitor_api_id IS NULL
+                            not {$hasScheduledSql}
                             OR monitor_apis.current_status IS NULL
                             OR monitor_apis.current_status NOT IN ('healthy', 'warning', 'danger')
                         )
@@ -113,7 +117,7 @@ class ApiHealthStatsWidget extends BaseWidget
             ->selectRaw("
                 SUM(CASE
                     WHEN monitor_apis.is_enabled = 1
-                        AND scheduled_results.monitor_api_id IS NOT NULL
+                        AND {$hasScheduledSql}
                         AND monitor_apis.current_status = 'healthy'
                     THEN 1 ELSE 0
                 END) as healthy
@@ -121,7 +125,7 @@ class ApiHealthStatsWidget extends BaseWidget
             ->selectRaw("
                 SUM(CASE
                     WHEN monitor_apis.is_enabled = 1
-                        AND scheduled_results.monitor_api_id IS NOT NULL
+                        AND {$hasScheduledSql}
                         AND monitor_apis.current_status IN ('warning', 'danger')
                     THEN 1 ELSE 0
                 END) as failing
@@ -138,29 +142,35 @@ class ApiHealthStatsWidget extends BaseWidget
         ];
     }
 
-    private function averageHealthyResponseTime(): ?float
+    /**
+     * @param  Builder<MonitorApis>  $activeMonitorsQuery
+     */
+    private function averageHealthyResponseTime(Builder $activeMonitorsQuery): ?float
     {
         $average = MonitorApiResult::query()
-            ->whereIn('monitor_api_results.id', $this->latestActiveScheduledResultIds())
+            ->whereIn('monitor_api_results.id', $this->latestActiveScheduledResultIds($activeMonitorsQuery))
             ->where('monitor_api_results.is_success', true)
             ->average('monitor_api_results.response_time_ms');
 
         return $average === null ? null : (float) $average;
     }
 
-    private function activeScheduledResults(): Builder
+    /**
+     * @param  Builder<MonitorApis>  $activeMonitorsQuery
+     */
+    private function activeScheduledResults(Builder $activeMonitorsQuery): Builder
     {
         return MonitorApiResult::query()
-            ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
-            ->where('monitor_apis.created_by', auth()->id())
-            ->where('monitor_apis.is_enabled', true)
-            ->whereNull('monitor_apis.deleted_at')
+            ->whereIn('monitor_api_results.monitor_api_id', $activeMonitorsQuery->select('id'))
             ->where('monitor_api_results.is_on_demand', false);
     }
 
-    private function latestActiveScheduledResultIds(): Builder
+    /**
+     * @param  Builder<MonitorApis>  $activeMonitorsQuery
+     */
+    private function latestActiveScheduledResultIds(Builder $activeMonitorsQuery): Builder
     {
-        return $this->activeScheduledResults()
+        return $this->activeScheduledResults($activeMonitorsQuery)
             ->selectRaw('MAX(monitor_api_results.id)')
             ->groupBy('monitor_api_results.monitor_api_id');
     }
