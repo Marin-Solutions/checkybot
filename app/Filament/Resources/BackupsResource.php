@@ -13,6 +13,7 @@ use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class BackupsResource extends Resource
@@ -181,20 +182,52 @@ class BackupsResource extends Resource
 
     public static function ownsSelectedReferences(array $data): bool
     {
+        return static::selectedReferenceErrors($data) === [];
+    }
+
+    public static function validateSelectedReferences(array $data): void
+    {
+        $errors = static::selectedReferenceErrors($data);
+
+        if ($errors === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages($errors);
+    }
+
+    protected static function selectedReferenceErrors(array $data): array
+    {
         $userId = auth()->id();
 
         if (! $userId) {
-            return false;
+            return [
+                'server_id' => 'Choose one of your own servers.',
+                'remote_storage_id' => 'Choose one of your own remote storage configs.',
+            ];
         }
 
-        return Server::query()
+        $serverOwned = Server::query()
             ->whereKey($data['server_id'] ?? null)
             ->where('created_by', $userId)
-            ->exists()
-            && BackupRemoteStorageConfig::query()
-                ->whereKey($data['remote_storage_id'] ?? null)
-                ->where('created_by', $userId)
-                ->exists();
+            ->exists();
+
+        $storageOwned = BackupRemoteStorageConfig::query()
+            ->whereKey($data['remote_storage_id'] ?? null)
+            ->where('created_by', $userId)
+            ->exists();
+
+        $errors = [];
+
+        if (! $serverOwned) {
+            $errors['server_id'] = 'Choose one of your own servers.';
+        }
+
+        if (! $storageOwned) {
+            $errors['remote_storage_id'] = 'Choose one of your own remote storage configs.';
+        }
+
+        return $errors;
     }
 
     public static function getPages(): array

@@ -9,10 +9,6 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('backup_remote_storage_config', function (Blueprint $table) {
-            $table->unsignedInteger('created_by')->nullable()->index();
-        });
-
         Schema::table('backups', function (Blueprint $table) {
             $table->unsignedInteger('created_by')->nullable()->index();
         });
@@ -63,9 +59,5 @@ return new class extends Migration
             $table->dropColumn('created_by');
         });
 
-        Schema::table('backup_remote_storage_config', function (Blueprint $table) {
-            $table->dropIndex(['created_by']);
-            $table->dropColumn('created_by');
-        });
     }
 };

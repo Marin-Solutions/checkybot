@@ -56,7 +56,8 @@ class Backup extends Model
     {
         return $query
             ->where('created_by', $userId)
-            ->whereHas('server', fn ($serverQuery) => $serverQuery->where('created_by', $userId));
+            ->whereHas('server', fn ($serverQuery) => $serverQuery->where('created_by', $userId))
+            ->whereHas('remoteStorage', fn ($storageQuery) => $storageQuery->where('created_by', $userId));
     }
 
     public function remoteStorage(): \Illuminate\Database\Eloquent\Relations\BelongsTo
@@ -312,6 +313,10 @@ class Backup extends Model
             return '';
         }
 
+        if (! $backup->isOwnedBy((int) $user)) {
+            return '';
+        }
+
         $backupId = $backup->id;
         $backupInterval = $backup->interval?->expression ?? '* * * * *';
         $scriptFileName = 'backup_folder.sh';
@@ -352,7 +357,11 @@ class Backup extends Model
     {
         $backup = Backup::query()->where('id', $backup_id)->first();
 
-        if ($backup && $backup->server_id == $server_id && $backup->server?->created_by == $user) {
+        if (
+            $backup
+            && (int) $backup->server_id === $server_id
+            && $backup->isOwnedBy($user)
+        ) {
             $content = $backup->backupScript($init);
             $status = 200;
         } else {
@@ -365,6 +374,13 @@ class Backup extends Model
         $response->header('Content-Disposition', 'attachment; filename="backup_folder.sh"');
 
         return $response;
+    }
+
+    public function isOwnedBy(int $userId): bool
+    {
+        return (int) ($this->created_by ?? 0) === $userId
+            && (int) ($this->server?->created_by ?? 0) === $userId
+            && (int) ($this->remoteStorage?->created_by ?? 0) === $userId;
     }
 
     public function backupScript($init = 0): string

@@ -17,17 +17,6 @@ class CreateBackups extends CreateRecord
 
     protected function beforeCreate(): void
     {
-        if (! BackupsResource::ownsSelectedReferences($this->data)) {
-            Notification::make()
-                ->title('Backup destination is not available')
-                ->body('Choose one of your servers and remote storage configs.')
-                ->danger()
-                ->persistent()
-                ->send();
-
-            $this->halt();
-        }
-
         if (($this->data['password'] ?? null) !== ($this->data['confirm_password'] ?? null)) {
             Notification::make()
                 ->title('Passwords do not match')
@@ -44,6 +33,8 @@ class CreateBackups extends CreateRecord
     {
         unset($data['confirm_password']);
         $data['created_by'] = auth()->id();
+
+        BackupsResource::validateSelectedReferences($data);
 
         return $data;
     }

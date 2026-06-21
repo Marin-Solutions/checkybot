@@ -13,9 +13,9 @@ class BackupRemoteStorageConfig extends Model
     protected $table = 'backup_remote_storage_config';
 
     protected $fillable = [
-        'created_by',
         'backup_remote_storage_type_id',
         'label',
+        'created_by',
         'host',
         'port',
         'username',

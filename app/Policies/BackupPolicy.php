@@ -70,6 +70,7 @@ class BackupPolicy
     private function ownsBackup(AuthUser $authUser, Backup $backup): bool
     {
         return (int) $backup->created_by === (int) $authUser->id
-            && (int) $backup->server?->created_by === (int) $authUser->id;
+            && (int) $backup->server?->created_by === (int) $authUser->id
+            && (int) $backup->remoteStorage?->created_by === (int) $authUser->id;
     }
 }

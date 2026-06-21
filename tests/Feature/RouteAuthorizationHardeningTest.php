@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Backup;
+use App\Models\BackupRemoteStorageConfig;
+use App\Models\BackupRemoteStorageType;
 use App\Models\SeoCheck;
 use App\Models\Server;
 use App\Models\ServerLogCategory;
@@ -24,10 +26,27 @@ test('shell script download routes require valid signatures and allow owner-sign
         'should_collect' => true,
     ]);
 
+    $storageType = BackupRemoteStorageType::query()->forceCreate([
+        'name' => 'FTP',
+        'driver' => 'ftp',
+        'flag_active' => true,
+    ]);
+    $storage = BackupRemoteStorageConfig::query()->create([
+        'backup_remote_storage_type_id' => $storageType->id,
+        'label' => 'Backup storage',
+        'created_by' => $owner->id,
+        'host' => 'backup.example.com',
+        'port' => 21,
+        'username' => 'deployer',
+        'password' => 'secret',
+        'directory' => '/',
+    ]);
+
     $backup = Backup::query()->create([
         'server_id' => $server->id,
+        'created_by' => $owner->id,
         'dir_path' => '/var/www/html',
-        'remote_storage_id' => 1,
+        'remote_storage_id' => $storage->id,
         'remote_storage_path' => '/',
         'interval_id' => 'daily',
         'max_amount_backups' => 1,
