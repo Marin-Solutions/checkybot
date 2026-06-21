@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Policies\BackupPolicy;
 use App\Policies\BackupRemoteStorageConfigPolicy;
 use Filament\Forms\Components\Select;
+use Illuminate\Support\Facades\URL;
 use Livewire\Livewire;
 
 function createBackupManagerStorageType(): BackupRemoteStorageType
@@ -310,4 +311,24 @@ test('copy backup script command is blank for backups outside the current users 
     expect(Backup::copyCommand($ownBackup))->toContain('backup-folder')
         ->and(Backup::copyCommand($otherBackup))->toBe('')
         ->and(Backup::copyCommand($mixedBackup))->toBe('');
+});
+
+test('signed backup script download rejects backups outside the current users ownership boundary', function () {
+    $user = User::factory()->create();
+    $otherUser = User::factory()->create();
+
+    $mixedBackup = createBackupManagerBackup($user, [
+        'storage' => createBackupManagerStorage($otherUser),
+    ]);
+
+    $downloadUrl = URL::temporarySignedRoute('backup.script.download', now()->addMinutes(10), [
+        'backup_id' => $mixedBackup->id,
+        'server_id' => $mixedBackup->server_id,
+        'user' => $user->id,
+        'init' => 0,
+    ]);
+
+    $this->get($downloadUrl)
+        ->assertNotFound()
+        ->assertSee('Server owner mismatch');
 });

@@ -21,18 +21,16 @@ return new class extends Migration
             });
         }
 
-        DB::table('backups')
-            ->join('servers', 'servers.id', '=', 'backups.server_id')
-            ->selectRaw('backups.remote_storage_id, MIN(servers.created_by) as owner_id')
-            ->groupBy('backups.remote_storage_id')
-            ->havingRaw('COUNT(DISTINCT servers.created_by) = 1')
-            ->orderBy('backups.remote_storage_id')
-            ->lazy()
-            ->each(function (object $storage): void {
+        DB::table('backup_remote_storage_config')
+            ->orderBy('id')
+            ->pluck('id')
+            ->chunk(100)
+            ->each(function ($storageIds): void {
                 DB::table('backup_remote_storage_config')
-                    ->where('id', $storage->remote_storage_id)
-                    ->whereNull('created_by')
-                    ->update(['created_by' => $storage->owner_id]);
+                    ->whereIn('id', $storageIds)
+                    ->orderBy('id')
+                    ->get()
+                    ->each(fn (object $storage) => $this->scopeStorageToBackupOwners($storage));
             });
     }
 
@@ -52,5 +50,59 @@ return new class extends Migration
             $table->dropIndex(['created_by']);
             $table->dropColumn('created_by');
         });
+    }
+
+    private function scopeStorageToBackupOwners(object $storage): void
+    {
+        $ownerIds = DB::table('backups')
+            ->join('servers', 'servers.id', '=', 'backups.server_id')
+            ->where('backups.remote_storage_id', $storage->id)
+            ->whereNotNull('servers.created_by')
+            ->distinct()
+            ->orderBy('servers.created_by')
+            ->pluck('servers.created_by')
+            ->map(fn ($ownerId): int => (int) $ownerId)
+            ->values();
+
+        if ($ownerIds->isEmpty()) {
+            return;
+        }
+
+        $existingOwnerId = $storage->created_by ? (int) $storage->created_by : null;
+        $primaryOwnerId = $existingOwnerId && ! $ownerIds->contains($existingOwnerId)
+            ? null
+            : ($existingOwnerId ?: (int) $ownerIds->first());
+
+        if ($primaryOwnerId !== null) {
+            DB::table('backup_remote_storage_config')
+                ->where('id', $storage->id)
+                ->whereNull('created_by')
+                ->update(['created_by' => $primaryOwnerId]);
+        }
+
+        $ownerIds
+            ->reject(fn (int $ownerId): bool => $ownerId === $primaryOwnerId)
+            ->each(function (int $ownerId) use ($storage): void {
+                $storageCopyId = $this->copyStorageForOwner($storage, $ownerId);
+                $this->moveOwnerBackupsToStorage((int) $storage->id, $storageCopyId, $ownerId);
+            });
+    }
+
+    private function copyStorageForOwner(object $storage, int $ownerId): int
+    {
+        $attributes = (array) $storage;
+        unset($attributes['id']);
+
+        $attributes['created_by'] = $ownerId;
+
+        return DB::table('backup_remote_storage_config')->insertGetId($attributes);
+    }
+
+    private function moveOwnerBackupsToStorage(int $fromStorageId, int $toStorageId, int $ownerId): void
+    {
+        DB::table('backups')
+            ->where('remote_storage_id', $fromStorageId)
+            ->whereIn('server_id', DB::table('servers')->select('id')->where('created_by', $ownerId))
+            ->update(['remote_storage_id' => $toStorageId]);
     }
 };

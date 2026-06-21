@@ -313,10 +313,7 @@ class Backup extends Model
             return '';
         }
 
-        if (
-            (int) ($backup->server?->created_by ?? 0) !== (int) $user
-            || (int) ($backup->remoteStorage?->created_by ?? 0) !== (int) $user
-        ) {
+        if (! $backup->isOwnedBy((int) $user)) {
             return '';
         }
 
@@ -360,7 +357,11 @@ class Backup extends Model
     {
         $backup = Backup::query()->where('id', $backup_id)->first();
 
-        if ($backup && $backup->server_id == $server_id && $backup->server?->created_by == $user) {
+        if (
+            $backup
+            && (int) $backup->server_id === $server_id
+            && $backup->isOwnedBy($user)
+        ) {
             $content = $backup->backupScript($init);
             $status = 200;
         } else {
@@ -373,6 +374,13 @@ class Backup extends Model
         $response->header('Content-Disposition', 'attachment; filename="backup_folder.sh"');
 
         return $response;
+    }
+
+    public function isOwnedBy(int $userId): bool
+    {
+        return (int) ($this->created_by ?? 0) === $userId
+            && (int) ($this->server?->created_by ?? 0) === $userId
+            && (int) ($this->remoteStorage?->created_by ?? 0) === $userId;
     }
 
     public function backupScript($init = 0): string
