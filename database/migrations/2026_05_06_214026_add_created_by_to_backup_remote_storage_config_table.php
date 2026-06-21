@@ -23,14 +23,8 @@ return new class extends Migration
 
         DB::table('backup_remote_storage_config')
             ->orderBy('id')
-            ->pluck('id')
-            ->chunk(100)
-            ->each(function ($storageIds): void {
-                DB::table('backup_remote_storage_config')
-                    ->whereIn('id', $storageIds)
-                    ->orderBy('id')
-                    ->get()
-                    ->each(fn (object $storage) => $this->scopeStorageToBackupOwners($storage));
+            ->chunkById(100, function ($storages): void {
+                $storages->each(fn (object $storage) => $this->scopeStorageToBackupOwners($storage));
             });
     }
 
@@ -56,6 +50,7 @@ return new class extends Migration
     {
         $ownerIds = DB::table('backups')
             ->join('servers', 'servers.id', '=', 'backups.server_id')
+            ->join('users', 'users.id', '=', 'servers.created_by')
             ->where('backups.remote_storage_id', $storage->id)
             ->whereNotNull('servers.created_by')
             ->distinct()
