@@ -6,7 +6,6 @@ use App\Models\MonitorApis;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\Website;
-use App\Support\PackageCheckTableEvidence;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Collection;
@@ -14,21 +13,25 @@ use Illuminate\Support\Collection;
 /**
  * Header strip on the project view that summarises how many of this
  * application's tracked surfaces (active components, actively-monitored
- * websites, enabled monitor APIs) are failing, healthy, stale or still
- * waiting on data.
+ * websites, enabled monitor APIs) are failing, healthy, or pending.
  *
  * Websites with uptime or SSL checks enabled are included. Fully paused
  * websites, disabled monitor APIs (is_enabled = false) and archived
  * components are excluded so the counts only reflect surfaces the user has
  * actually opted in to.
  *
- * "Failing" means current_status of warning/danger but excludes stale
- * rows; stale is reported separately and "no data" rolls up everything
- * that has not reported yet so users can spot misconfigured checks
- * immediately.
+ * "Failing" means current_status of warning or danger. Pending rolls up
+ * everything that has not produced a live check result yet.
  */
 class ProjectHealthOverviewWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?int $sort = 1;
 
     protected ?string $pollingInterval = '30s';
@@ -40,8 +43,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
     private const EMPTY_BUCKETS = [
         'failing' => 0,
         'healthy' => 0,
-        'stale' => 0,
-        'no_data' => 0,
+        'pending' => 0,
     ];
 
     /**
@@ -63,8 +65,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
 
         $failing = $counts['failing'];
         $healthy = $counts['healthy'];
-        $stale = $counts['stale'];
-        $noData = $counts['no_data'];
+        $pending = $counts['pending'];
 
         return [
             Stat::make('Failing', $failing)
@@ -77,10 +78,15 @@ class ProjectHealthOverviewWidget extends BaseWidget
                 ->descriptionIcon('heroicon-m-check-circle')
                 ->color($healthy > 0 ? 'success' : 'gray'),
 
-            Stat::make('Stale / No data', $stale + $noData)
-                ->description($this->buildStaleDescription($stale, $noData))
+            Stat::make('Pending', $pending)
+                ->description($pending === 0 ? 'All tracked surfaces have live status' : "{$pending} awaiting first result")
                 ->descriptionIcon('heroicon-m-clock')
-                ->color(($stale + $noData) === 0 ? 'success' : 'warning'),
+                ->color($pending === 0 ? 'success' : 'warning'),
+
+            Stat::make('Unmapped', $counts['unmapped'])
+                ->description($this->buildUnmappedDescription($counts))
+                ->descriptionIcon('heroicon-m-squares-2x2')
+                ->color($counts['unmapped'] === 0 ? 'success' : 'warning'),
         ];
     }
 
@@ -89,11 +95,13 @@ class ProjectHealthOverviewWidget extends BaseWidget
      *     tracked: int,
      *     failing: int,
      *     healthy: int,
-     *     stale: int,
-     *     no_data: int,
+     *     pending: int,
      *     failing_components: int,
      *     failing_websites: int,
      *     failing_apis: int,
+     *     unmapped: int,
+     *     unmapped_websites: int,
+     *     unmapped_apis: int,
      * }
      */
     public function collectCounts(): array
@@ -105,18 +113,21 @@ class ProjectHealthOverviewWidget extends BaseWidget
                 'tracked' => 0,
                 'failing' => 0,
                 'healthy' => 0,
-                'stale' => 0,
-                'no_data' => 0,
+                'pending' => 0,
                 'failing_components' => 0,
                 'failing_websites' => 0,
                 'failing_apis' => 0,
+                'unmapped' => 0,
+                'unmapped_websites' => 0,
+                'unmapped_apis' => 0,
             ];
         }
 
         $components = ProjectComponent::query()
             ->where('project_id', $project->getKey())
             ->where('is_archived', false)
-            ->get(['current_status', 'is_stale', 'last_heartbeat_at']);
+            ->with(['activeMonitorApis', 'activeWebsites'])
+            ->get(['id', 'current_status', 'is_archived', 'source']);
 
         $websites = Website::query()
             ->where('project_id', $project->getKey())
@@ -125,12 +136,12 @@ class ProjectHealthOverviewWidget extends BaseWidget
                     ->where('uptime_check', true)
                     ->orWhere('ssl_check', true);
             })
-            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at']);
+            ->get(['current_status', 'project_component_id']);
 
         $apis = MonitorApis::query()
             ->where('project_id', $project->getKey())
             ->where('is_enabled', true)
-            ->get(['current_status', 'last_heartbeat_at', 'package_interval', 'stale_at']);
+            ->get(['current_status', 'project_component_id']);
 
         $componentBuckets = $components->reduce(function (array $carry, ProjectComponent $component): array {
             $carry[$this->classifyComponent($component)]++;
@@ -140,50 +151,43 @@ class ProjectHealthOverviewWidget extends BaseWidget
 
         $websiteBuckets = $this->bucketPackageChecks($websites);
         $apiBuckets = $this->bucketPackageChecks($apis);
+        $unmappedWebsites = $websites->whereNull('project_component_id')->count();
+        $unmappedApis = $apis->whereNull('project_component_id')->count();
 
         return [
             'tracked' => $components->count() + $websites->count() + $apis->count(),
             'failing' => $componentBuckets['failing'] + $websiteBuckets['failing'] + $apiBuckets['failing'],
             'healthy' => $componentBuckets['healthy'] + $websiteBuckets['healthy'] + $apiBuckets['healthy'],
-            'stale' => $componentBuckets['stale'] + $websiteBuckets['stale'] + $apiBuckets['stale'],
-            'no_data' => $componentBuckets['no_data'] + $websiteBuckets['no_data'] + $apiBuckets['no_data'],
+            'pending' => $componentBuckets['pending'] + $websiteBuckets['pending'] + $apiBuckets['pending'],
             'failing_components' => $componentBuckets['failing'],
             'failing_websites' => $websiteBuckets['failing'],
             'failing_apis' => $apiBuckets['failing'],
+            'unmapped' => $unmappedWebsites + $unmappedApis,
+            'unmapped_websites' => $unmappedWebsites,
+            'unmapped_apis' => $unmappedApis,
         ];
     }
 
     private function classifyComponent(ProjectComponent $component): string
     {
-        return match (true) {
-            (bool) $component->is_stale => 'stale',
-            $component->current_status === 'healthy' => 'healthy',
-            in_array($component->current_status, ['warning', 'danger'], true) => 'failing',
-            $component->last_heartbeat_at === null => 'no_data',
-            $component->current_status === 'unknown' => 'no_data',
-            default => 'no_data',
+        return match ($component->derivedCurrentStatus()) {
+            'healthy' => 'healthy',
+            'warning', 'danger' => 'failing',
+            default => 'pending',
         };
     }
 
     /**
-     * Bucket Website / MonitorApis records by the same freshness rules shown
-     * in package-managed tables. There, stale_at is the stale detection time,
-     * not a future freshness threshold, so any populated stale_at keeps the
-     * row stale until a later heartbeat clears it.
-     *
      * @param  Collection<int, Website|MonitorApis>  $items
-     * @return array{failing: int, healthy: int, stale: int, no_data: int}
+     * @return array{failing: int, healthy: int, pending: int}
      */
     private function bucketPackageChecks(Collection $items): array
     {
         return $items->reduce(function (array $carry, $item): array {
-            $isStale = PackageCheckTableEvidence::freshnessState($item) === PackageCheckTableEvidence::STATE_STALE;
-
             $bucket = match (true) {
-                $isStale => 'stale',
                 $item->current_status === 'healthy' => 'healthy',
                 in_array($item->current_status, ['warning', 'danger'], true) => 'failing',
-                default => 'no_data',
+                default => 'pending',
             };
             $carry[$bucket]++;
 
@@ -197,7 +201,7 @@ class ProjectHealthOverviewWidget extends BaseWidget
     private function buildFailingDescription(array $counts): string
     {
         if ($counts['failing'] === 0) {
-            return 'No warning or danger surfaces';
+            return 'No warning or failing surfaces';
         }
 
         return collect([
@@ -207,22 +211,18 @@ class ProjectHealthOverviewWidget extends BaseWidget
         ])->filter()->implode(', ');
     }
 
-    private function buildStaleDescription(int $stale, int $noData): string
+    /**
+     * @param  array{unmapped: int, unmapped_websites: int, unmapped_apis: int}  $counts
+     */
+    private function buildUnmappedDescription(array $counts): string
     {
-        if ($stale === 0 && $noData === 0) {
-            return 'Heartbeats are fresh';
+        if ($counts['unmapped'] === 0) {
+            return 'All checks are mapped to components';
         }
 
-        $parts = [];
-
-        if ($stale > 0) {
-            $parts[] = "{$stale} stale";
-        }
-
-        if ($noData > 0) {
-            $parts[] = "{$noData} awaiting first heartbeat";
-        }
-
-        return implode(' • ', $parts);
+        return collect([
+            $counts['unmapped_websites'] > 0 ? $counts['unmapped_websites'].' '.str('website')->plural($counts['unmapped_websites']) : null,
+            $counts['unmapped_apis'] > 0 ? $counts['unmapped_apis'].' '.str('API')->plural($counts['unmapped_apis']) : null,
+        ])->filter()->implode(', ');
     }
 }

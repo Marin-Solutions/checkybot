@@ -5,11 +5,20 @@ namespace App\Enums;
 enum NotificationScopesEnum: string
 {
     case GLOBAL = 'GLOBAL';
+    case PROJECT = 'PROJECT';
     case WEBSITE = 'WEBSITE';
+    case API_MONITOR = 'API_MONITOR';
+    case PROJECT_COMPONENT = 'PROJECT_COMPONENT';
 
     public function label(): string
     {
-        return ucfirst(strtolower($this->value));
+        return match ($this) {
+            self::GLOBAL => 'Global',
+            self::PROJECT => 'Application',
+            self::WEBSITE => 'Website',
+            self::API_MONITOR => 'API Monitor',
+            self::PROJECT_COMPONENT => 'Project Component',
+        };
     }
 
     public static function keys(): array

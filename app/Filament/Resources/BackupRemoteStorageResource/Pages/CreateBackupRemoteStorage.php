@@ -4,6 +4,7 @@ namespace App\Filament\Resources\BackupRemoteStorageResource\Pages;
 
 use App\Filament\Resources\BackupRemoteStorageResource;
 use App\Models\BackupRemoteStorageConfig;
+use App\Models\BackupRemoteStorageType;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
 
@@ -13,19 +14,19 @@ class CreateBackupRemoteStorage extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
+        $typeId = $data['backup_remote_storage_type_id'] ?? null;
         $data['created_by'] = auth()->id();
 
-        switch ($data['backup_remote_storage_type_id']) {
-            case '1':
-            case '2':
-                unset($data['access_key'], $data['secret_key'], $data['bucket'], $data['region'], $data['endpoint']);
-                break;
-            case '3':
-                unset($data['host'], $data['port'], $data['username'], $data['password'], $data['directory'], $data['endpoint']);
-                break;
-            case '4':
-                unset($data['host'], $data['port'], $data['username'], $data['password'], $data['directory']);
-                break;
+        if (BackupRemoteStorageType::usesFileTransferFieldsForId($typeId)) {
+            unset($data['access_key'], $data['secret_key'], $data['bucket'], $data['region'], $data['endpoint']);
+        }
+
+        if (BackupRemoteStorageType::usesS3FieldsForId($typeId)) {
+            unset($data['host'], $data['port'], $data['username'], $data['password'], $data['directory']);
+        }
+
+        if (! BackupRemoteStorageType::requiresEndpointForId($typeId)) {
+            unset($data['endpoint']);
         }
 
         return $data;

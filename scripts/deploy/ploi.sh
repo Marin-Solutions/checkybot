@@ -10,8 +10,22 @@ cleanup_stale_node_modules() {
     find "${ROOT_DIR}" -maxdepth 1 -type d -name 'node_modules.*.stale' -exec rm -rf {} + 2>/dev/null || true
 }
 
+APP_IN_MAINTENANCE=false
+
+bring_application_up() {
+    if [ "${APP_IN_MAINTENANCE}" = true ]; then
+        php artisan up
+        APP_IN_MAINTENANCE=false
+    fi
+}
+
+finish_deploy() {
+    bring_application_up || true
+    cleanup_stale_node_modules
+}
+
 cleanup_stale_node_modules
-trap cleanup_stale_node_modules EXIT
+trap finish_deploy EXIT
 
 git reset --hard
 git pull origin master
@@ -31,9 +45,14 @@ fi
 npm install --include=dev --legacy-peer-deps
 npm run build
 
+php artisan down --retry=60
+APP_IN_MAINTENANCE=true
 php artisan optimize:clear
 php artisan config:cache
 php artisan route:cache
+php artisan view:cache
+php artisan event:cache
+bring_application_up
 php artisan migrate --force
 sudo service php8.3-fpm reload
 php artisan queue:restart

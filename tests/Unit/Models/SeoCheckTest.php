@@ -83,6 +83,43 @@ test('failed seo check factory includes failure details', function () {
     ]);
 });
 
+test('failure reason filters only include matching failed seo checks', function () {
+    $contextTimeout = SeoCheck::factory()->failed()->create([
+        'failure_summary' => 'SEO crawler failed before the crawl could complete.',
+        'failure_context' => [
+            'exception_class' => 'RuntimeException',
+            'exception_message' => 'Operation Timeout while crawling.',
+        ],
+    ]);
+    $summaryTimeout = SeoCheck::factory()->failed()->create([
+        'failure_summary' => 'SEO crawler timed out before the crawl could complete.',
+        'failure_context' => [
+            'exception_class' => 'RuntimeException',
+        ],
+    ]);
+    $otherFailure = SeoCheck::factory()->failed()->create([
+        'failure_summary' => 'SEO crawler failed before the crawl could complete.',
+        'failure_context' => [
+            'exception_class' => 'UnexpectedValueException',
+            'exception_message' => 'Crawler returned invalid metadata.',
+        ],
+    ]);
+    $completedWithOldFailureText = SeoCheck::factory()->completed()->create([
+        'failure_summary' => 'SEO crawler timed out before a previous retry recovered.',
+        'failure_context' => [
+            'exception_message' => 'Previous timeout recovered.',
+        ],
+    ]);
+
+    expect(SeoCheck::applyFailureReasonFilter(SeoCheck::query(), SeoCheck::FAILURE_REASON_TIMEOUT)->pluck('id')->all())
+        ->toContain($contextTimeout->id, $summaryTimeout->id)
+        ->not->toContain($otherFailure->id, $completedWithOldFailureText->id);
+
+    expect(SeoCheck::applyFailureReasonFilter(SeoCheck::query(), SeoCheck::FAILURE_REASON_OTHER)->pluck('id')->all())
+        ->toContain($otherFailure->id)
+        ->not->toContain($contextTimeout->id, $summaryTimeout->id, $completedWithOldFailureText->id);
+});
+
 test('seo check is pending status method', function () {
     $check = SeoCheck::factory()->create(['status' => 'pending']);
 

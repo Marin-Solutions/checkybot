@@ -19,6 +19,13 @@ class ServerLogCategory extends Model
         'last_collected_at',
     ];
 
+    protected function casts(): array
+    {
+        return [
+            'last_collected_at' => 'datetime',
+        ];
+    }
+
     public function server(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Server::class);
@@ -27,5 +34,10 @@ class ServerLogCategory extends Model
     public function files(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(ServerLogFileHistory::class);
+    }
+
+    public function latestFile(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ServerLogFileHistory::class)->latestOfMany('created_at');
     }
 }

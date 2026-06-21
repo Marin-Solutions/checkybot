@@ -7,6 +7,7 @@ use App\Filament\Resources\Projects\Pages\EditProject;
 use App\Filament\Resources\Projects\Pages\ListProjects;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Filament\Resources\Projects\RelationManagers\ComponentsRelationManager;
+use App\Filament\Resources\Projects\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedApisRelationManager;
 use App\Filament\Resources\Projects\RelationManagers\PackageManagedWebsitesRelationManager;
 use App\Filament\Resources\Projects\Schemas\ProjectForm;
@@ -36,7 +37,9 @@ class ProjectResource extends Resource
             ->where('created_by', auth()->id())
             ->withCount('components')
             ->with([
-                'activeComponents:id,project_id,current_status',
+                'activeComponents:id,project_id,current_status,is_archived,source',
+                'activeComponents.activeMonitorApis',
+                'activeComponents.activeWebsites',
                 'monitoredWebsites:id,project_id,current_status',
                 'enabledMonitorApis:id,project_id,current_status',
             ]);
@@ -63,6 +66,7 @@ class ProjectResource extends Resource
             ComponentsRelationManager::class,
             PackageManagedWebsitesRelationManager::class,
             PackageManagedApisRelationManager::class,
+            NotificationSettingsRelationManager::class,
         ];
     }
 

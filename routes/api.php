@@ -33,15 +33,18 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
     Route::middleware('api.key')->prefix('control')->group(function () {
         Route::get('/me', [CheckybotControlController::class, 'me']);
         Route::get('/projects', [CheckybotControlController::class, 'projects']);
+        Route::post('/projects', [CheckybotControlController::class, 'createProject']);
         Route::get('/projects/{project}', [CheckybotControlController::class, 'project']);
         Route::get('/projects/{project}/checks', [CheckybotControlController::class, 'checks']);
         Route::put('/projects/{project}/checks/{check}', [CheckybotControlController::class, 'upsertCheck'])->where('check', '[A-Za-z0-9_-]+');
         Route::patch('/projects/{project}/checks/{check}/disable', [CheckybotControlController::class, 'disableCheck'])->where('check', '[A-Za-z0-9_-]+');
         Route::post('/projects/{project}/runs', [CheckybotControlController::class, 'triggerProjectRun']);
+        Route::get('/projects/{project}/runs/{batch}', [CheckybotControlController::class, 'projectRunBatch'])->where('batch', '[^/]+');
         Route::post('/projects/{project}/checks/{check}/runs', [CheckybotControlController::class, 'triggerCheckRun'])->where('check', '[A-Za-z0-9_-]+');
         Route::get('/runs', [CheckybotControlController::class, 'runs']);
         Route::get('/projects/{project}/runs', [CheckybotControlController::class, 'projectRuns']);
         Route::get('/failures', [CheckybotControlController::class, 'failures']);
+        Route::get('/issues', [CheckybotControlController::class, 'issues']);
         Route::get('/projects/{project}/failures', [CheckybotControlController::class, 'projectFailures']);
     });
 

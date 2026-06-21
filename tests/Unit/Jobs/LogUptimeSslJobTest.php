@@ -8,7 +8,11 @@ use App\Models\WebsiteLogHistory;
 use App\Services\SslCertificateService;
 use Carbon\Carbon;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
+use Illuminate\Database\Events\QueryExecuted;
+use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -24,15 +28,19 @@ test('scheduled uptime jobs are unique per website', function () {
         ->and($job->uniqueId())->toBe("website-uptime-ssl:{$website->id}:scheduled");
 });
 
-test('on-demand uptime jobs use a separate unique key', function () {
+test('on-demand uptime jobs use a per-dispatch unique key', function () {
     $website = Website::factory()->create();
 
     $scheduledJob = new LogUptimeSslJob($website);
-    $onDemandJob = new LogUptimeSslJob($website, onDemand: true);
+    $firstOnDemandJob = new LogUptimeSslJob($website, onDemand: true, diagnosticRunId: 'first-run');
+    $secondOnDemandJob = new LogUptimeSslJob($website, onDemand: true, diagnosticRunId: 'second-run');
 
-    expect($onDemandJob->uniqueId())
-        ->toBe("website-uptime-ssl:{$website->id}:".RunSource::OnDemand->value)
-        ->not->toBe($scheduledJob->uniqueId());
+    expect($firstOnDemandJob->uniqueId())
+        ->toBe("website-uptime-ssl:{$website->id}:".RunSource::OnDemand->value.':first-run')
+        ->not->toBe($scheduledJob->uniqueId())
+        ->and($secondOnDemandJob->uniqueId())
+        ->toBe("website-uptime-ssl:{$website->id}:".RunSource::OnDemand->value.':second-run')
+        ->not->toBe($firstOnDemandJob->uniqueId());
 });
 
 test('uptime job unique locks extend beyond the website interval', function () {
@@ -55,6 +63,96 @@ test('on-demand uptime jobs use a short diagnostic unique lock', function () {
     expect($job->uniqueFor())->toBe(60);
 });
 
+test('job skips diagnostics and clears queued state when batch is cancelled', function () {
+    Http::preventStrayRequests();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    [$job] = (new LogUptimeSslJob($website, onDemand: true))
+        ->withFakeBatch(cancelledAt: now()->toImmutable());
+
+    $job->handle(app(SslCertificateService::class));
+
+    expect($website->fresh()->diagnostic_queued_at)->toBeNull()
+        ->and($website->logHistory()->count())->toBe(0);
+});
+
+test('on-demand job skips websites disabled after dispatch and clears queued state', function () {
+    Http::preventStrayRequests();
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldNotReceive('extractHost');
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    $job = new LogUptimeSslJob($website, onDemand: true);
+
+    $website->update([
+        'uptime_check' => false,
+        'ssl_check' => false,
+    ]);
+
+    $job->handle(app(SslCertificateService::class));
+
+    expect($website->fresh()->diagnostic_queued_at)->toBeNull()
+        ->and($website->logHistory()->count())->toBe(0);
+});
+
+test('job skips live update when website is deleted after the outbound request', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+    ]);
+
+    Http::fake(function () use ($website) {
+        $website->delete();
+
+        return Http::response('', 200);
+    });
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    expect(Website::query()->find($website->id))->toBeNull()
+        ->and(WebsiteLogHistory::query()->where('website_id', $website->id)->count())->toBe(0);
+});
+
+test('job skips cleanly when website is deleted before heartbeat history is inserted', function () {
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+    ]);
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    WebsiteLogHistory::creating(function () use ($website): void {
+        $website->forceDelete();
+    });
+
+    try {
+        $job = new LogUptimeSslJob($website);
+
+        expect(fn () => $job->handle(app(SslCertificateService::class)))->not->toThrow(\Throwable::class);
+    } finally {
+        WebsiteLogHistory::flushEventListeners();
+    }
+
+    expect(Website::withTrashed()->find($website->id))->toBeNull()
+        ->and(WebsiteLogHistory::query()->where('website_id', $website->id)->count())->toBe(0);
+});
+
 test('job creates log history for successful check', function () {
     Http::fake([
         '*' => Http::response('', 200),
@@ -72,6 +170,50 @@ test('job creates log history for successful check', function () {
         'website_id' => $website->id,
         'http_status_code' => 200,
     ]);
+});
+
+test('scheduled job writes heartbeat history before the locked live status transaction', function () {
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'current_status' => 'danger',
+    ]);
+
+    $operations = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$operations): void {
+        $operations[] = strtolower($query->sql);
+    });
+
+    Event::listen(function (TransactionBeginning $event) use (&$operations): void {
+        $operations[] = 'begin transaction';
+    });
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $historyInsertIndex = collect($operations)->search(
+        fn (string $query): bool => str_contains($query, 'insert into')
+            && str_contains($query, 'website_log_history')
+    );
+    $transactionBeginIndex = collect($operations)->search(
+        fn (string $query): bool => str_contains($query, 'begin transaction')
+    );
+    $liveStatusUpdateIndex = collect($operations)->search(
+        fn (string $query): bool => str_contains($query, 'update')
+            && str_contains($query, 'websites')
+            && str_contains($query, 'current_status')
+    );
+
+    expect($historyInsertIndex)->not->toBeFalse()
+        ->and($transactionBeginIndex)->not->toBeFalse()
+        ->and($liveStatusUpdateIndex)->not->toBeFalse()
+        ->and($historyInsertIndex)->toBeLessThan($transactionBeginIndex)
+        ->and($transactionBeginIndex)->toBeLessThan($liveStatusUpdateIndex);
 });
 
 test('job records response time', function () {
@@ -188,7 +330,6 @@ test('job records danger status history and sends notifications for failed packa
     $history = WebsiteLogHistory::where('website_id', $website->id)->latest()->first();
 
     expect($website->current_status)->toBe('danger');
-    expect($website->last_heartbeat_at)->not->toBeNull();
     expect($history?->status)->toBe('danger');
 
     Mail::assertSent(\App\Mail\HealthStatusAlert::class);
@@ -269,7 +410,7 @@ test('job sends recovery notifications when a warning website returns to healthy
     });
 });
 
-test('on-demand runs do not notify and leave the live status fields untouched', function () {
+test('on-demand runs update live status and notify on transitions', function () {
     Http::fake([
         '*' => Http::response('', 500),
     ]);
@@ -302,11 +443,10 @@ test('on-demand runs do not notify and leave the live status fields untouched', 
     expect($log?->status)->toBe('danger')
         ->and($log?->run_source)->toBe(RunSource::OnDemand)
         ->and($log?->is_on_demand)->toBeTrue()
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at)->toBeNull()
-        ->and($website->status_summary)->toBeNull();
+        ->and($website->current_status)->toBe('danger')
+        ->and($website->status_summary)->toBe('Website heartbeat failed with HTTP status 500.');
 
-    Mail::assertNothingSent();
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class);
 });
 
 test('job sends notifications for failed manual website heartbeats', function () {
@@ -497,6 +637,63 @@ test('scheduled job clears stale website ssl expiry date when certificate cannot
         ->and($website->status_summary)->toBe('SSL certificate check failed before an expiry date could be read.');
 });
 
+test('scheduled job skips latest ssl history lookup when current ssl expiry is unavailable', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andThrow(new RuntimeException('certificate unavailable'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'ssl_expiry_date' => Carbon::parse('2026-05-01 09:00:00'),
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $queries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = strtolower($query->sql);
+    });
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $latestSslLookupCount = collect($queries)
+        ->filter(fn (string $query): bool => str_contains($query, 'select')
+            && str_contains($query, 'ssl_expiry_date')
+            && str_contains($query, 'website_log_history')
+            && str_contains($query, 'order by'))
+        ->count();
+
+    expect($latestSslLookupCount)->toBe(0);
+});
+
 test('scheduled job preserves ssl reminder throttle when unknown expiry recovers to same date', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
@@ -545,6 +742,111 @@ test('scheduled job preserves ssl reminder throttle when unknown expiry recovers
 
     expect(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-05-01'))->toBeTrue()
         ->and($website->ssl_expiry_reminder_sent_at?->equalTo($reminderSentAt))->toBeTrue();
+});
+
+test('scheduled job bounds previous ssl expiry lookup to history before the current row', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andReturn(Carbon::parse('2026-05-01 09:00:00'));
+    });
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => now()->subHour(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'ssl_expiry_date' => Carbon::parse('2026-05-01 09:00:00'),
+        'created_at' => now()->subMinutes(5),
+    ]);
+
+    $queries = [];
+
+    DB::listen(function (QueryExecuted $query) use (&$queries): void {
+        $queries[] = strtolower($query->sql);
+    });
+
+    $job = new LogUptimeSslJob($website);
+    $job->handle(app(SslCertificateService::class));
+
+    $latestSslLookup = collect($queries)->first(
+        fn (string $query): bool => str_contains($query, 'select')
+            && str_contains($query, 'ssl_expiry_date')
+            && str_contains($query, 'website_log_history')
+            && str_contains($query, 'order by')
+    );
+
+    expect($latestSslLookup)->toBeString()
+        ->and($latestSslLookup)->toContain('"id" < ?')
+        ->and($latestSslLookup)->not->toContain('"id" != ?');
+});
+
+test('scheduled job resets ssl reminder using the current website expiry instead of stale queued state', function () {
+    Carbon::setTestNow('2026-04-24 12:00:00');
+
+    Http::fake([
+        '*' => Http::response('', 200),
+    ]);
+
+    $this->mock(SslCertificateService::class, function (MockInterface $mock) {
+        $mock->shouldReceive('extractHost')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn('example.com');
+
+        $mock->shouldReceive('extractPort')
+            ->once()
+            ->with('https://example.com')
+            ->andReturn(443);
+
+        $mock->shouldReceive('getExpirationDateForHost')
+            ->once()
+            ->with('example.com', 443)
+            ->andReturn(Carbon::parse('2026-05-01 09:00:00'));
+    });
+
+    $reminderSentAt = now()->subHour();
+
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'ssl_check' => true,
+        'ssl_expiry_date' => null,
+        'ssl_expiry_reminder_sent_at' => $reminderSentAt,
+    ]);
+    $queuedWebsite = Website::findOrFail($website->id);
+
+    $queuedWebsite->ssl_expiry_date = Carbon::parse('2026-05-01 09:00:00');
+
+    $job = new LogUptimeSslJob($queuedWebsite);
+    $job->handle(app(SslCertificateService::class));
+
+    $website->refresh();
+
+    expect(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-05-01'))->toBeTrue()
+        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull();
 });
 
 test('scheduled job does not overwrite a fresher ssl expiry snapshot when certificate cannot be read', function () {
@@ -640,7 +942,7 @@ test('scheduled job does not overwrite a fresher ssl reminder timestamp when exp
         ->and($website->ssl_expiry_reminder_sent_at?->equalTo($reminderSentAt))->toBeTrue();
 });
 
-test('on-demand job does not sync ssl expiry date to website', function () {
+test('on-demand job syncs ssl expiry date to website', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
     Http::fake([
@@ -679,8 +981,8 @@ test('on-demand job does not sync ssl expiry date to website', function () {
     $website->refresh();
 
     expect($history?->ssl_expiry_date?->isSameDay('2026-06-01'))->toBeTrue()
-        ->and(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-05-01'))->toBeTrue()
-        ->and($website->ssl_expiry_reminder_sent_at)->not->toBeNull();
+        ->and(Carbon::parse($website->ssl_expiry_date)->isSameDay('2026-06-01'))->toBeTrue()
+        ->and($website->ssl_expiry_reminder_sent_at)->toBeNull();
 });
 
 test('job includes ssl context when http and ssl are both dangerous', function () {
@@ -791,7 +1093,7 @@ test('job leaves uptime-only status based on http when ssl check is disabled', f
         ->and($website->status_summary)->toBe('Website heartbeat succeeded with HTTP status 200.');
 });
 
-test('on-demand job records combined ssl risk without changing live status', function () {
+test('on-demand job records combined ssl risk and updates live status', function () {
     Carbon::setTestNow('2026-04-24 12:00:00');
 
     Http::fake([
@@ -825,6 +1127,14 @@ test('on-demand job records combined ssl risk without changing live status', fun
         'status_summary' => 'Scheduler says the site is healthy.',
     ]);
 
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
     $job = new LogUptimeSslJob($website, onDemand: true);
     $job->handle(app(SslCertificateService::class));
 
@@ -833,10 +1143,10 @@ test('on-demand job records combined ssl risk without changing live status', fun
 
     expect($history?->status)->toBe('warning')
         ->and($history?->summary)->toBe('SSL certificate expires in 6 day(s).')
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->status_summary)->toBe('Scheduler says the site is healthy.');
+        ->and($website->current_status)->toBe('warning')
+        ->and($website->status_summary)->toBe('SSL certificate expires in 6 day(s).');
 
-    Mail::assertNothingSent();
+    Mail::assertSent(\App\Mail\HealthStatusAlert::class);
 });
 
 test('job sends recovery notifications when a manual website returns to healthy', function () {
@@ -997,8 +1307,6 @@ test('on-demand job records ssl-only evidence when uptime check is disabled', fu
         'status_summary' => 'Scheduler-owned status.',
     ]);
 
-    $heartbeatBefore = $website->last_heartbeat_at;
-
     $job = new LogUptimeSslJob($website, onDemand: true);
     $job->handle(app(SslCertificateService::class));
 
@@ -1012,9 +1320,8 @@ test('on-demand job records ssl-only evidence when uptime check is disabled', fu
         ->and($history?->speed)->toBeNull()
         ->and($history?->run_source)->toBe(RunSource::OnDemand)
         ->and($history?->is_on_demand)->toBeTrue()
-        ->and($website->current_status)->toBe('healthy')
-        ->and($website->last_heartbeat_at?->equalTo($heartbeatBefore))->toBeTrue()
-        ->and($website->status_summary)->toBe('Scheduler-owned status.');
+        ->and($website->current_status)->toBe('warning')
+        ->and($website->status_summary)->toBe('SSL certificate expires in 14 day(s).');
 });
 
 test('job resolves the host before looking up the ssl certificate', function () {

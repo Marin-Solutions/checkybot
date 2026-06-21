@@ -2,8 +2,10 @@
 
 use App\Models\ApiKey;
 use App\Models\MonitorApiAssertion;
+use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
@@ -114,16 +116,124 @@ test('package sync creates a project and api check definitions', function () {
     ]);
 
     $monitor = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+    $project = Project::query()->findOrFail($projectId);
 
-    expect($monitor->headers)->toBe([
-        'Accept' => 'application/json',
-        'Authorization' => 'Bearer default-secret',
-        'X-Api-Key' => 'secret-package-token',
-    ])->and($monitor->assertions)->toHaveCount(1)
+    expect($monitor->current_status)->toBe('pending')
+        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+        ->and($monitor->headers)->toBe([
+            'Accept' => 'application/json',
+            'Authorization' => 'Bearer default-secret',
+            'X-Api-Key' => 'secret-package-token',
+        ])->and($monitor->assertions)->toHaveCount(1)
         ->and($monitor->request_body_type)->toBe('json')
         ->and($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret"}')
         ->and($monitor->assertions->first()->assertion_type)->toBe('exists')
-        ->and($monitor->assertions->first()->data_path)->toBe('data');
+        ->and($monitor->assertions->first()->data_path)->toBe('data')
+        ->and($project->latest_package_sync_summary)->toMatchArray([
+            'created' => 1,
+            'updated' => 0,
+            'disabled_missing' => 0,
+            'api_checks' => [
+                'created' => 1,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+            'uptime_checks' => [
+                'created' => 0,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+            'ssl_checks' => [
+                'created' => 0,
+                'updated' => 0,
+                'disabled_missing' => 0,
+            ],
+        ]);
+});
+
+test('package read payloads include snooze queue state and latest diagnostic evidence for api and website checks', function () {
+    $this->travelTo(now()->setTime(14, 15, 0));
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'GET',
+                    'url' => '/api/google-maps/search',
+                    'expected_status' => 200,
+                    'schedule' => 'every_5_minutes',
+                    'enabled' => true,
+                ],
+                [
+                    'key' => 'homepage',
+                    'type' => 'uptime',
+                    'name' => 'Homepage',
+                    'url' => '/',
+                    'schedule' => '5m',
+                    'enabled' => true,
+                ],
+            ],
+        ]));
+
+    $response->assertCreated();
+
+    $projectId = $response->json('data.project.id');
+    $api = MonitorApis::query()->where('package_name', 'google-maps-search')->sole();
+    $website = Website::query()->where('package_name', 'homepage')->sole();
+
+    $api->update([
+        'diagnostic_queued_at' => now(),
+        'silenced_until' => now()->addHour(),
+    ]);
+    $website->update([
+        'diagnostic_queued_at' => now()->subMinutes(5),
+        'silenced_until' => now()->addHours(2),
+    ]);
+
+    MonitorApiResult::factory()->onDemand()->failed()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Diagnostic API run failed.',
+        'created_at' => now()->subMinute(),
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+        'summary' => 'Scheduled API run is healthy.',
+        'created_at' => now(),
+    ]);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'summary' => 'Scheduled website run is healthy.',
+        'created_at' => now()->subMinutes(10),
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'summary' => 'Diagnostic website run timed out.',
+        'created_at' => now(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$projectId}/checks/google-maps-search")
+        ->assertOk()
+        ->assertJsonPath('data.diagnostic_queued', true)
+        ->assertJsonPath('data.diagnostic_queued_at', now()->toISOString())
+        ->assertJsonPath('data.silenced_until', now()->addHour()->toISOString())
+        ->assertJsonPath('data.latest_result.summary', 'Scheduled API run is healthy.')
+        ->assertJsonPath('data.latest_diagnostic_result.summary', 'Diagnostic API run failed.')
+        ->assertJsonPath('data.latest_diagnostic_result.is_on_demand', true);
+
+    $this->withToken($this->apiKey->key)
+        ->getJson("/api/v1/projects/{$projectId}/checks/homepage")
+        ->assertOk()
+        ->assertJsonPath('data.diagnostic_queued', false)
+        ->assertJsonPath('data.diagnostic_queued_at', now()->subMinutes(5)->toISOString())
+        ->assertJsonPath('data.silenced_until', now()->addHours(2)->toISOString())
+        ->assertJsonPath('data.latest_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.latest_diagnostic_result.summary', 'Diagnostic website run timed out.')
+        ->assertJsonPath('data.latest_diagnostic_result.transport_error_type', 'timeout');
 });
 
 test('package sync rejects invalid regex assertion patterns', function () {
@@ -152,6 +262,71 @@ test('package sync rejects invalid regex assertion patterns', function () {
 
     $this->assertDatabaseMissing('monitor_apis', [
         'package_name' => 'regex-health',
+    ]);
+});
+
+test('package sync rejects non server runtime health fields', function () {
+    $payload = packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'runtime-health',
+                'type' => 'api',
+                'name' => 'Runtime health',
+                'method' => 'GET',
+                'url' => '/health',
+                'schedule' => '5m',
+                'status' => 'danger',
+                'metrics' => ['latency_ms' => 123],
+                'observed_at' => now()->toISOString(),
+                'last_heartbeat_at' => now()->toISOString(),
+                'stale_at' => now()->addMinutes(5)->toISOString(),
+            ],
+        ],
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.status',
+            'checks.0.metrics',
+            'checks.0.observed_at',
+            'checks.0.last_heartbeat_at',
+            'checks.0.stale_at',
+        ]);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'runtime-health',
+    ]);
+});
+
+test('package sync rejects array expected values for comparison assertions', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'array-expected-value',
+                    'type' => 'api',
+                    'name' => 'Array expected value',
+                    'method' => 'GET',
+                    'url' => '/health',
+                    'assertions' => [
+                        [
+                            'type' => 'value_compare',
+                            'path' => '$.status',
+                            'comparison_operator' => '=',
+                            'expected_value' => ['ok'],
+                        ],
+                    ],
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['checks.0.assertions.0.expected_value']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'array-expected-value',
     ]);
 });
 
@@ -227,6 +402,254 @@ test('package sync is idempotent and updates by stable keys', function () {
     ]);
 });
 
+test('package sync does not count unchanged existing checks as updated', function () {
+    $payload = packageSyncPayload([
+        'checks' => [
+            [
+                'key' => 'google-maps-search',
+                'type' => 'api',
+                'name' => 'Google Maps search API',
+                'method' => 'GET',
+                'url' => '/api/google-maps/search',
+                'headers' => [
+                    'X-Api-Key' => 'secret-package-token',
+                ],
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'email' => 'monitor@example.com',
+                    'password' => 'secret',
+                ],
+                'expected_status' => 200,
+                'timeout_seconds' => 15,
+                'assertions' => [
+                    ['type' => 'json_path_exists', 'path' => '$.data'],
+                    ['type' => 'json_path_equals', 'path' => '$.status', 'expected_value' => 'ok'],
+                ],
+                'schedule' => 'every_5_minutes',
+                'enabled' => true,
+            ],
+            [
+                'key' => 'homepage-up',
+                'type' => 'uptime',
+                'name' => 'Homepage uptime',
+                'url' => '/',
+                'schedule' => '5m',
+                'enabled' => true,
+            ],
+            [
+                'key' => 'homepage-ssl',
+                'type' => 'ssl',
+                'name' => 'Homepage SSL',
+                'url' => '/',
+                'schedule' => '1h',
+                'enabled' => true,
+            ],
+        ],
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertCreated()
+        ->assertJsonPath('data.summary.created', 3)
+        ->assertJsonPath('data.summary.updated', 0);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload);
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.updated', 0)
+        ->assertJsonPath('data.summary.disabled_missing', 0)
+        ->assertJsonPath('data.summary.api_checks.updated', 0)
+        ->assertJsonPath('data.summary.uptime_checks.updated', 0)
+        ->assertJsonPath('data.summary.ssl_checks.updated', 0);
+
+    $project = Project::query()->where('package_key', 'scrappa')->sole();
+
+    expect($project->latest_package_sync_summary)->toMatchArray([
+        'created' => 0,
+        'updated' => 0,
+        'disabled_missing' => 0,
+        'api_checks' => ['created' => 0, 'updated' => 0, 'disabled_missing' => 0],
+        'uptime_checks' => ['created' => 0, 'updated' => 0, 'disabled_missing' => 0],
+        'ssl_checks' => ['created' => 0, 'updated' => 0, 'disabled_missing' => 0],
+    ]);
+});
+
+test('package sync counts changed assertions as an api update', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.data'],
+                    ],
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.items'],
+                    ],
+                ],
+            ],
+        ]))
+        ->assertOk()
+        ->assertJsonPath('data.summary.created', 0)
+        ->assertJsonPath('data.summary.updated', 1)
+        ->assertJsonPath('data.summary.api_checks.updated', 1);
+});
+
+test('package sync resets api live health to pending when target-defining settings change', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous target was healthy.',
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'google-maps-search',
+                    'type' => 'api',
+                    'name' => 'Google Maps search API',
+                    'method' => 'POST',
+                    'url' => '/api/google-maps/v2/search',
+                    'expected_status' => 201,
+                    'assertions' => [
+                        ['type' => 'json_path_exists', 'path' => '$.data.ready'],
+                    ],
+                    'schedule' => 'every_5_minutes',
+                ],
+            ],
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.updated', 1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $monitor->id,
+        'url' => 'https://api.scrappa.co/api/google-maps/v2/search',
+        'http_method' => 'POST',
+        'expected_status' => 201,
+        'current_status' => 'pending',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+
+    expect($monitor->fresh()->awaiting_heartbeat_since)->toBeNull();
+});
+
+test('package sync resets api live health when request configuration changes', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload())
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous request configuration was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'headers' => [
+                        'X-Api-Key' => 'rotated-package-token',
+                    ],
+                    'request_body_type' => 'raw',
+                    'request_body' => 'probe=1',
+                    'timeout_seconds' => 30,
+                    'max_response_time_ms' => 25000,
+                ],
+            ],
+        ]))
+        ->assertOk()
+        ->assertJsonPath('data.summary.updated', 1);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $monitor->id,
+        'url' => 'https://api.scrappa.co/api/google-maps/search',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'request_body_type' => 'raw',
+        'timeout_seconds' => 30,
+        'max_response_time_ms' => 25000,
+        'current_status' => 'pending',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+
+    expect($monitor->fresh()->awaiting_heartbeat_since)->toBeNull();
+});
+
+test('package sync preserves api live health when nested empty object request body is unchanged', function () {
+    $payload = packageSyncPayload([
+        'checks' => [
+            [
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'filters' => [],
+                    'ids' => [1, 2],
+                ],
+            ],
+        ],
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertCreated();
+
+    $monitor = MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->sole();
+
+    $monitor->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Current request configuration is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(2),
+        'awaiting_heartbeat_since' => null,
+        'stale_at' => now()->addMinutes(8),
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', $payload)
+        ->assertOk()
+        ->assertJsonPath('data.summary.updated', 0);
+
+    $monitor->refresh();
+
+    expect($monitor->request_body)->toBe('{"email":"monitor@example.com","password":"secret","filters":{},"ids":[1,2]}')
+        ->and($monitor->current_status)->toBe('healthy')
+        ->and($monitor->status_summary)->toBe('Current request configuration is healthy.')
+        ->and($monitor->last_heartbeat_at)->toBeNull()
+        ->and($monitor->awaiting_heartbeat_since)->toBeNull()
+        ->and($monitor->stale_at)->toBeNull()
+        ->and($monitor->diagnostic_queued_at)->not->toBeNull();
+});
+
 test('package sync persists api failed response body preference', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
@@ -278,10 +701,16 @@ test('package sync encrypts header values and does not return them', function ()
         ->and($rawProjectDefaults)->not->toContain('default-secret');
 });
 
-test('package sync disables missing package api checks without deleting them', function () {
+test('package sync archives missing package api checks and preserves history', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload())
         ->assertCreated();
+
+    MonitorApis::query()
+        ->where('package_name', 'google-maps-search')
+        ->update([
+            'diagnostic_queued_at' => now(),
+        ]);
 
     $payload = packageSyncPayload();
     $payload['checks'] = [];
@@ -292,11 +721,11 @@ test('package sync disables missing package api checks without deleting them', f
     $response->assertOk()
         ->assertJsonPath('data.summary.disabled_missing', 1);
 
-    $this->assertDatabaseHas('monitor_apis', [
-        'package_name' => 'google-maps-search',
-        'is_enabled' => false,
-        'deleted_at' => null,
-    ]);
+    $monitor = MonitorApis::withTrashed()->where('package_name', 'google-maps-search')->sole();
+
+    expect($monitor->trashed())->toBeTrue()
+        ->and($monitor->is_enabled)->toBeFalse()
+        ->and($monitor->diagnostic_queued_at)->toBeNull();
 });
 
 test('package sync returns validation errors for malformed payloads', function () {
@@ -323,6 +752,35 @@ test('package sync returns validation errors for malformed payloads', function (
             'checks.0.expected_status',
         ]);
 });
+
+test('package sync rejects malformed and unsupported check urls before storing definitions', function (string $url) {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'bad-url',
+                    'type' => 'api',
+                    'name' => 'Bad URL',
+                    'method' => 'GET',
+                    'url' => $url,
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['checks.0.url']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'bad-url',
+    ]);
+})->with([
+    'unsupported scheme' => ['ftp://api.scrappa.test/health'],
+    'javascript scheme' => ['javascript:alert(1)'],
+    'protocol relative url' => ['//api.scrappa.test/health'],
+    'missing scheme separator' => ['https//api.scrappa.test/health'],
+    'space in path' => ['/api/health check'],
+    'fragment only' => ['#health'],
+]);
 
 test('package sync rejects invalid schedules', function () {
     $response = $this->withToken($this->apiKey->key)
@@ -771,7 +1229,7 @@ test('package website key migration ignores soft deleted duplicates when merging
         ->and($keptWebsite->package_interval)->toBe('1d');
 });
 
-test('package sync updates and disables missing website checks by stable package keys', function () {
+test('package sync updates and archives missing website checks by stable package keys', function () {
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/package/sync', packageSyncPayload([
             'checks' => [
@@ -796,8 +1254,7 @@ test('package sync updates and disables missing website checks by stable package
     Website::query()
         ->where('package_name', 'certificate')
         ->update([
-            'last_heartbeat_at' => now()->subHour(),
-            'stale_at' => now()->subMinutes(5),
+            'diagnostic_queued_at' => now(),
         ]);
 
     $response = $this->withToken($this->apiKey->key)
@@ -832,14 +1289,64 @@ test('package sync updates and disables missing website checks by stable package
         'package_interval' => '10m',
     ]);
 
+    $certificate = Website::withTrashed()->where('package_name', 'certificate')->sole();
+
+    expect($certificate->trashed())->toBeTrue()
+        ->and($certificate->ssl_check)->toBeFalse()
+        ->and($certificate->package_interval)->toBeNull()
+        ->and($certificate->diagnostic_queued_at)->toBeNull();
+});
+
+test('package sync resets website live health to pending when url changes', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]))
+        ->assertCreated();
+
+    $website = Website::query()
+        ->where('package_name', 'homepage-uptime')
+        ->sole();
+
+    $website->forceFill([
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous URL was healthy.',
+        'diagnostic_queued_at' => now(),
+    ])->save();
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'homepage-uptime',
+                    'type' => 'uptime',
+                    'name' => 'Homepage uptime',
+                    'url' => '/status',
+                    'schedule' => '5m',
+                ],
+            ],
+        ]));
+
+    $response->assertOk()
+        ->assertJsonPath('data.summary.uptime_checks.updated', 1);
+
     $this->assertDatabaseHas('websites', [
-        'package_name' => 'certificate',
-        'ssl_check' => false,
-        'package_interval' => null,
-        'last_heartbeat_at' => null,
-        'stale_at' => null,
-        'deleted_at' => null,
+        'id' => $website->id,
+        'url' => 'https://api.scrappa.co/status',
+        'current_status' => 'pending',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
     ]);
+
+    expect($website->fresh()->awaiting_heartbeat_since)->toBeNull();
 });
 
 test('package sync restores soft deleted website checks when re-added', function () {
@@ -1139,6 +1646,52 @@ test('package sync rejects shared keys outside the uptime ssl pair', function ()
         ]);
 });
 
+test('package sync rejects checks that reference undeclared project components', function () {
+    $project = Project::factory()->create([
+        'created_by' => $this->user->id,
+        'package_key' => 'scrappa',
+        'environment' => 'production',
+        'identity_endpoint' => 'https://api.scrappa.co',
+        'base_url' => 'https://api.scrappa.co',
+    ]);
+
+    ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/package/sync', packageSyncPayload([
+            'checks' => [
+                [
+                    'key' => 'health',
+                    'type' => 'api',
+                    'name' => 'Health API',
+                    'method' => 'GET',
+                    'url' => '/health',
+                    'component' => 'databse',
+                ],
+            ],
+        ]));
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'checks.0.component',
+        ]);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'project_id' => $project->id,
+        'package_name' => 'health',
+    ]);
+});
+
 test('package sync service preserves website flags when uptime and ssl share a key', function () {
     app(PackageSyncService::class)->sync($this->user, packageSyncPayload([
         'checks' => [
@@ -1317,8 +1870,8 @@ test('package sync keeps status while a shared-key website check remains active'
 
     expect($website->uptime_check)->toBeFalse()
         ->and($website->ssl_check)->toBeTrue()
-        ->and($website->current_status)->toBe('success')
-        ->and($website->status_summary)->toBe('Certificate healthy.');
+        ->and($website->current_status)->toBe('pending')
+        ->and($website->status_summary)->toBeNull();
 });
 
 test('package sync rejects check types that are not implemented by the package sync API', function () {

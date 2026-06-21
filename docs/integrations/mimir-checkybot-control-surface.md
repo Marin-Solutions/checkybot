@@ -44,9 +44,24 @@ Example response:
 ### Projects
 
 - `GET /control/projects`
+- `POST /control/projects`
 - `GET /control/projects/{project}`
 
 `{project}` accepts either the numeric project id or the stable `package_key`.
+
+`POST /control/projects` creates or updates a project by stable `key` and `environment`, scoped to the API key owner. `identity_endpoint` defaults to `base_url` when omitted, so later package sync payloads attach to the same project.
+
+Example project creation request:
+
+```json
+{
+  "key": "convertr",
+  "name": "Convertr",
+  "environment": "production",
+  "base_url": "https://api.convertr.example",
+  "repository": "Marin-Solutions/convertr"
+}
+```
 
 Example project detail response:
 
@@ -83,7 +98,7 @@ Example project detail response:
       },
       "success": false,
       "status": "warning",
-      "summary": "API heartbeat is degraded with HTTP status 404.",
+      "summary": "API check is degraded with HTTP status 404.",
       "http_code": 404,
       "response_time_ms": 142,
       "transport_error_type": null,
@@ -117,7 +132,11 @@ Example project detail response:
 
 `{check}` is the stable package-managed check key. Disabling never deletes the definition or result history.
 
-Example upsert request:
+`GET /control/projects/{project}/checks` returns package-managed API checks, website checks, and project component declarations in one list. Component rows use `"type": "component"` and include delivery state plus declared interval. Component health is derived from linked active API and website checks; packages do not send component heartbeat, stale, status, or metric observations. Check rows also include `supports_run`, `diagnostic_queued`, `diagnostic_queued_at`, and `latest_diagnostic_result`; API and website rows can be triggered through diagnostic run endpoints, while component rows are not directly runnable from the control API.
+
+API checks are the default upsert type. Pass `"type": "website"` to create or update a package-managed website check. Website upserts accept `check_types` with `"uptime"`, `"ssl"`, or both; when omitted, Checkybot preserves the existing enabled website check types or defaults new website rows to uptime monitoring.
+
+Example API upsert request:
 
 ```json
 {
@@ -130,6 +149,7 @@ Example upsert request:
   },
   "expected_status": 200,
   "timeout_seconds": 15,
+  "max_response_time_ms": 10000,
   "schedule": "every_5_minutes",
   "enabled": true,
   "assertions": [
@@ -141,7 +161,20 @@ Example upsert request:
 }
 ```
 
-Example upsert response:
+Example website upsert request:
+
+```json
+{
+  "type": "website",
+  "check_types": ["uptime", "ssl"],
+  "name": "Marketing site",
+  "url": "/status",
+  "schedule": "10m",
+  "enabled": true
+}
+```
+
+Example API upsert response:
 
 ```json
 {
@@ -158,13 +191,15 @@ Example upsert response:
       "request_path": "/api/google-maps/search",
       "expected_status": 200,
       "timeout_seconds": 15,
+      "max_response_time_ms": 10000,
       "schedule": "every_5_minutes",
       "enabled": true,
+      "supports_run": true,
+      "diagnostic_queued": false,
+      "diagnostic_queued_at": null,
       "status": "unknown",
       "status_summary": null,
       "last_synced_at": "2026-04-21T11:59:00Z",
-      "last_heartbeat_at": null,
-      "stale_at": null,
       "headers": {
         "Accept": "application/json",
         "Authorization": "[redacted]"
@@ -182,6 +217,7 @@ Example upsert response:
         }
       ],
       "latest_result": null,
+      "latest_diagnostic_result": null,
       "updated_at": "2026-04-21T11:59:00Z"
     }
   }
@@ -193,7 +229,9 @@ Example upsert response:
 - `POST /control/projects/{project}/runs`
 - `POST /control/projects/{project}/checks/{check}/runs`
 
-These endpoints execute synchronously and return the fresh result payload immediately. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are diagnostic: they are appended to run history, but they do not move live status, alert subscribers, or appear in latest failure feeds.
+These endpoints execute API checks synchronously and queue website checks. Stored check configuration is respected for HTTP method, timeout, expected status, and assertions. Triggered runs are appended to run history, update live status, and use `run_source=on_demand`. Components are declarations and show `supports_run: false` in `list_checks`.
+
+Single-check run triggers accept optional `type=api` or `type=website` in the query string or JSON body. The type is required when an API check and website check share the same package key so the control API cannot trigger the wrong surface.
 
 ### Recent results and latest failures
 
@@ -201,8 +239,11 @@ These endpoints execute synchronously and return the fresh result payload immedi
 - `GET /control/projects/{project}/runs?limit={1..100}`
 - `GET /control/failures?project={project}&limit={1..100}`
 - `GET /control/projects/{project}/failures?limit={1..100}`
+- `GET /control/issues?project={project}&type={all|api|website|component}&limit={1..100}`
 
-`/runs` returns recent check run results. `/failures` returns recent warning or danger results only.
+`/runs` returns recent API and website check run results. `/failures` returns recent warning or danger API and website results only.
+
+`/issues` returns current dashboard status issues across API monitors, website checks, and components. It accepts `statuses[]=warning|danger|pending|unknown` and `exclude[]` query parameters. For example, `/control/issues?project=scrappa&type=api&exclude[]=google%20search` lists unhealthy API monitors while omitting a known work-in-progress check.
 
 ## MCP Endpoint
 
@@ -214,21 +255,39 @@ These endpoints execute synchronously and return the fresh result payload immedi
 
 - `me`
 - `list_projects`
+- `create_project`
 - `get_project`
 - `list_checks`
 - `upsert_check`
 - `disable_check`
 - `trigger_run`
+- `get_run_batch`
+- `recent_runs`
 - `latest_failures`
+- `current_issues`
+- `list_notification_channels`
+- `upsert_notification_channel`
+- `delete_notification_channel`
+- `test_notification_channel`
+- `list_notification_settings`
+- `upsert_notification_setting`
+- `delete_notification_setting`
+- `test_notification_setting`
 
 Arguments:
 
 - `get_project`: `{ "project": "scrappa" }`
 - `list_checks`: `{ "project": "scrappa" }`
+- `create_project`: `{ "key": "convertr", "name": "Convertr", "environment": "production", "base_url": "https://api.convertr.example", "repository": "Marin-Solutions/convertr" }`
 - `upsert_check`: `{ "project": "scrappa", "key": "maps-search", "name": "Maps search", "url": "/api/google-maps/search", ... }`
+- `upsert_check` website: `{ "project": "scrappa", "key": "marketing-site", "type": "website", "check_types": ["uptime", "ssl"], "name": "Marketing site", "url": "/status", "schedule": "10m" }`
 - `disable_check`: `{ "project": "scrappa", "check": "maps-search" }`
-- `trigger_run`: `{ "project": "scrappa" }` or `{ "project": "scrappa", "check": "maps-search" }`
+- `trigger_run`: `{ "project": "scrappa" }` or `{ "project": "scrappa", "check": "maps-search", "type": "api" }`
+- `recent_runs`: `{ "project": "scrappa", "limit": 10 }`
 - `latest_failures`: `{ "project": "scrappa", "limit": 10 }`
+- `current_issues`: `{ "project": "scrappa", "type": "api", "exclude": ["google search"] }`
+- `upsert_notification_channel`: `{ "title": "Ops webhook", "method": "POST", "url": "https://hooks.example.test/...", "request_body": { "message": "{message}", "description": "{description}" } }`
+- `upsert_notification_setting`: `{ "inspection": "API_MONITOR", "channel_type": "WEBHOOK", "notification_channel_id": 12, "active": true }`
 
 Example `tools/call` request:
 
@@ -276,7 +335,7 @@ curl https://checkybot.example.com/api/v1/control/projects/scrappa/checks \
 
 ## Known Limitations Left Intentionally for Later
 
-- The control surface only manages package-managed API checks. Website, server, and component workflows are outside this integration scope.
+- The control surface manages package-managed API checks, website checks, and component visibility. Component definitions are package-driven, but component health is derived from active child checks that Checkybot executes.
 - Run triggers are synchronous HTTP calls. There is no async job dispatch or run queue surface yet.
 - The MCP endpoint is a focused tool surface, not a full general-purpose Checkybot admin API.
 - Result listing is limit-based only. Cursor pagination can be added later if Mimir needs deeper history windows.

@@ -3,8 +3,10 @@
 namespace App\Console\Commands;
 
 use App\Models\MonitorApis;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
+use App\Services\ProjectComponentNotificationService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -12,14 +14,15 @@ use Throwable;
 /**
  * Reconciles monitors whose snooze window has just expired.
  *
- * The status-change check runners (`CheckApiMonitors`, `LogUptimeSslJob`)
- * only call the notification service on a status transition. While a monitor
- * is silenced, those transition alerts are dropped on purpose — that is the
- * point of snoozing. The hazard is the case where a monitor flips to
- * warning/danger *during* the snooze: the transition is dropped, and once
- * `silenced_until` passes the monitor is still in the same failed state, so
- * no further transition fires. Without this command an outage that outlasts
- * a maintenance window would remain unalerted indefinitely.
+ * The status-change check runners (`CheckApiMonitors`, `LogUptimeSslJob`,
+ * project component stale detection) only call the notification service on a
+ * status transition. While a monitor is silenced, those transition alerts are
+ * dropped on purpose — that is the point of snoozing. The hazard is the case
+ * where a monitor flips to warning/danger *during* the snooze: the transition
+ * is dropped, and once `silenced_until` passes the monitor is still in the
+ * same failed state, so no further transition fires. Without this command an
+ * outage that outlasts a maintenance window would remain unalerted
+ * indefinitely.
  *
  * The reconciliation pass runs every minute. For each monitor whose
  * `silenced_until` has just passed:
@@ -42,13 +45,13 @@ use Throwable;
  * - Disabled monitors are skipped: API monitors with `is_enabled = false`,
  *   and websites whose `current_status` is no longer maintained by any
  *   pipeline. Status is updated by `LogUptimeSslJob` when `uptime_check`
- *   is on, and by `MarkStalePackageChecks` for `source = 'package'` rows
- *   with a `package_interval` (this matters because package SSL checks
- *   are created with `uptime_check = false` but still receive status
- *   updates). Standard websites with only SSL/outbound on don't qualify —
- *   their stored status is frozen from before the toggle change. The
- *   snooze marker is still cleared so the UI doesn't keep showing an
- *   expired window.
+ *   is on, and by `CheckSslExpiryDateJob` for scheduled SSL-only rows
+ *   that still have an interval. Package-managed SSL checks are created
+ *   with `uptime_check = false`, but still receive status updates through
+ *   the SSL runner while `package_interval` is set. Standard websites with
+ *   only outbound on don't qualify — their stored status is frozen from
+ *   before the toggle change. The snooze marker is still cleared so the UI
+ *   doesn't keep showing an expired window.
  * - Healthy monitors get their snooze cleared with no alert.
  */
 class ProcessExpiredSnoozes extends Command
@@ -57,10 +60,13 @@ class ProcessExpiredSnoozes extends Command
 
     protected $description = 'Clear expired snoozes and re-fire alerts for monitors that are still unhealthy.';
 
-    public function handle(HealthEventNotificationService $notificationService): int
-    {
+    public function handle(
+        HealthEventNotificationService $notificationService,
+        ProjectComponentNotificationService $componentNotificationService,
+    ): int {
         $this->processWebsites($notificationService);
         $this->processApiMonitors($notificationService);
+        $this->processProjectComponents($componentNotificationService);
 
         return self::SUCCESS;
     }
@@ -137,6 +143,41 @@ class ProcessExpiredSnoozes extends Command
             });
     }
 
+    private function processProjectComponents(ProjectComponentNotificationService $notificationService): void
+    {
+        ProjectComponent::query()
+            ->whereNotNull('silenced_until')
+            ->where('silenced_until', '<=', now())
+            ->get()
+            ->each(function (ProjectComponent $component) use ($notificationService): void {
+                $fresh = $component->fresh();
+
+                if (! $this->isStillExpired($fresh)) {
+                    return;
+                }
+
+                if ($this->shouldAlert($fresh->current_status, ! $fresh->is_archived)) {
+                    $delivered = $this->deliverIfStillAlertable(
+                        ProjectComponent::class,
+                        $fresh->id,
+                        fn (ProjectComponent $latest): bool => ! $latest->is_archived,
+                        fn (ProjectComponent $latest) => $notificationService->notify(
+                            $latest,
+                            'snooze_expired',
+                            $latest->current_status,
+                        ),
+                        ['project_component_id' => $fresh->id],
+                    );
+
+                    if ($delivered === false) {
+                        return;
+                    }
+                }
+
+                $this->clearIfStillExpired(ProjectComponent::class, $fresh->id);
+            });
+    }
+
     /**
      * Re-read the full row right before delivery and re-evaluate every
      * condition the alert depends on — current status, the active-
@@ -152,7 +193,7 @@ class ProcessExpiredSnoozes extends Command
      * - null  → not alertable on the latest read (recovered, paused, or
      *           gone); caller proceeds to clear silenced_until
      *
-     * @param  class-string<Website|MonitorApis>  $modelClass
+     * @param  class-string<Website|MonitorApis|ProjectComponent>  $modelClass
      * @param  array<string, mixed>  $logContext
      */
     private function deliverIfStillAlertable(string $modelClass, int $id, \Closure $isStillActive, \Closure $delivery, array $logContext): ?bool
@@ -184,7 +225,7 @@ class ProcessExpiredSnoozes extends Command
      * back into the future, in which case we bail out without delivering or
      * clearing.
      */
-    private function isStillExpired(Website|MonitorApis|null $monitor): bool
+    private function isStillExpired(Website|MonitorApis|ProjectComponent|null $monitor): bool
     {
         if ($monitor === null || $monitor->silenced_until === null) {
             return false;
@@ -201,7 +242,7 @@ class ProcessExpiredSnoozes extends Command
      * if the operator pushed the timestamp back into the future, this UPDATE
      * matches zero rows and the fresh snooze is preserved.
      *
-     * @param  class-string<Website|MonitorApis>  $modelClass
+     * @param  class-string<Website|MonitorApis|ProjectComponent>  $modelClass
      */
     private function clearIfStillExpired(string $modelClass, int $id): void
     {
@@ -222,16 +263,17 @@ class ProcessExpiredSnoozes extends Command
      *
      * 1. `LogUptimeSslJob` — gated on `uptime_check`; short-circuits at
      *    line 39 when the toggle is off.
-     * 2. `MarkStalePackageChecks` — runs for every `source = 'package'`
-     *    row that has a `package_interval`, regardless of `uptime_check`.
-     *    Package-managed SSL checks are created with `uptime_check = false`
-     *    by `CheckSyncService::syncSslChecks()`, but they still get their
-     *    `current_status` flipped to `danger` when stale.
+     * 2. `CheckSslExpiryDateJob` — writes scheduled health for SSL-only rows
+     *    that have an interval: `package_interval` for package rows,
+     *    `uptime_interval` for manual rows.
+     * Package-managed SSL checks are created with `uptime_check = false`
+     * by `CheckSyncService::syncSslChecks()`, but their SSL schedule still
+     * keeps `current_status` fresh while `package_interval` is set.
      *
      * A monitor is "actively monitored" — i.e. its stored status is fresh
-     * enough to alert on — when *any* of those two pipelines applies. SSL-
-     * cert and outbound-link checks on standard websites do not write to
-     * `current_status` and therefore do not qualify.
+     * enough to alert on — when *any* of those pipelines applies. Outbound-
+     * link checks on standard websites do not write to `current_status` and
+     * therefore do not qualify on their own.
      */
     private function isWebsiteActivelyMonitored(Website $website): bool
     {
@@ -239,7 +281,11 @@ class ProcessExpiredSnoozes extends Command
             return true;
         }
 
-        return $website->source === 'package' && $website->package_interval !== null;
+        if ($website->source === 'package') {
+            return $website->package_interval !== null;
+        }
+
+        return $website->ssl_check && $website->uptime_interval !== null;
     }
 
     /**

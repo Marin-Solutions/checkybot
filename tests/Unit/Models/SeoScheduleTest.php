@@ -150,6 +150,13 @@ test('seo schedule calculates same day weekly run when selected time is still ah
     expect($nextRun->toDateTimeString())->toBe('2026-04-29 14:30:00');
 });
 
+test('seo schedule normalizes schedule time values for storage', function () {
+    expect(SeoSchedule::normalizeScheduleTime('02:00'))->toBe('02:00:00')
+        ->and(SeoSchedule::normalizeScheduleTime('02:00:00'))->toBe('02:00:00')
+        ->and(SeoSchedule::normalizeScheduleTime('02:00:00:00'))->toBe('02:00:00')
+        ->and(SeoSchedule::normalizeScheduleTime(null))->toBe('02:00:00');
+});
+
 test('seo schedule calculates next week weekly run when selected time already passed today', function () {
     Carbon::setTestNow(Carbon::parse('2026-04-29 10:00:00'));
 

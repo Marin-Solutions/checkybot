@@ -9,10 +9,11 @@ class PackageIntervalDueExpression
     /**
      * @return array{0: string, 1: array<int, string>}
      */
-    public static function build(ConnectionInterface $connection, string $operator = '<='): array
+    public static function build(ConnectionInterface $connection, string $operator = '<=', string $anchorColumn = 'created_at'): array
     {
         $now = now()->toDateTimeString();
-        $operator = in_array($operator, ['<', '<='], true) ? $operator : '<=';
+        $operator = in_array($operator, ['<', '<=', '>', '>='], true) ? $operator : '<=';
+        $anchorColumn = trim($anchorColumn) !== '' ? $anchorColumn : 'created_at';
 
         // Mirrors IntervalParser formats so legacy package intervals continue to schedule.
         // Seconds are rounded up to full minutes to match IntervalParser::toMinutes().
@@ -25,7 +26,7 @@ class PackageIntervalDueExpression
                     ." AND substr(package_interval, 1, length(package_interval) - 1) NOT GLOB '*[^0-9]*'"
                     ." AND substr(package_interval, 1, length(package_interval) - 1) GLOB '*[1-9]*'"
                     .' AND length(substr(package_interval, 1, length(package_interval) - 1)) <= 6'
-                    ." AND datetime(last_heartbeat_at, '+' || (CASE substr(package_interval, -1)"
+                    ." AND datetime({$anchorColumn}, '+' || (CASE substr(package_interval, -1)"
                     ." WHEN 's' THEN CAST((CAST(substr(package_interval, 1, length(package_interval) - 1) AS INTEGER) + 59) / 60 AS INTEGER)"
                     ." WHEN 'm' THEN CAST(substr(package_interval, 1, length(package_interval) - 1) AS INTEGER)"
                     ." WHEN 'h' THEN CAST(substr(package_interval, 1, length(package_interval) - 1) AS INTEGER) * 60"
@@ -37,7 +38,7 @@ class PackageIntervalDueExpression
                     ." AND substr(package_interval, 7, instr(substr(package_interval, 7), '_') - 1) GLOB '*[1-9]*'"
                     .' AND length(substr(package_interval, 7, instr(substr(package_interval, 7), \'_\') - 1)) <= 6'
                     ." AND substr(package_interval, 7 + instr(substr(package_interval, 7), '_')) IN ('second', 'seconds', 'minute', 'minutes', 'hour', 'hours', 'day', 'days')"
-                    ." AND datetime(last_heartbeat_at, '+' || (CASE substr(package_interval, 7 + instr(substr(package_interval, 7), '_'))"
+                    ." AND datetime({$anchorColumn}, '+' || (CASE substr(package_interval, 7 + instr(substr(package_interval, 7), '_'))"
                     ." WHEN 'second' THEN CAST((CAST(substr(package_interval, 7, instr(substr(package_interval, 7), '_') - 1) AS INTEGER) + 59) / 60 AS INTEGER)"
                     ." WHEN 'seconds' THEN CAST((CAST(substr(package_interval, 7, instr(substr(package_interval, 7), '_') - 1) AS INTEGER) + 59) / 60 AS INTEGER)"
                     ." WHEN 'minute' THEN CAST(substr(package_interval, 7, instr(substr(package_interval, 7), '_') - 1) AS INTEGER)"
@@ -54,7 +55,7 @@ class PackageIntervalDueExpression
                 '('
                     ."package_interval ~ '^[0-9]*[1-9][0-9]*[smhd]$'"
                     .' AND char_length(package_interval) - 1 <= 6'
-                    ." AND date_trunc('second', last_heartbeat_at) + ((CASE right(package_interval, 1)"
+                    ." AND date_trunc('second', {$anchorColumn}) + ((CASE right(package_interval, 1)"
                     ." WHEN 's' THEN ((substring(package_interval from 1 for char_length(package_interval) - 1)::integer + 59) / 60)"
                     ." WHEN 'm' THEN substring(package_interval from 1 for char_length(package_interval) - 1)::integer"
                     ." WHEN 'h' THEN substring(package_interval from 1 for char_length(package_interval) - 1)::integer * 60"
@@ -63,7 +64,7 @@ class PackageIntervalDueExpression
                     .') OR ('
                     ."package_interval ~ '^every_[0-9]*[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'"
                     ." AND char_length(substring(package_interval from '^every_([0-9]+)_')) <= 6"
-                    ." AND date_trunc('second', last_heartbeat_at) + ((CASE substring(package_interval from '^every_[0-9]+_(.*)$')"
+                    ." AND date_trunc('second', {$anchorColumn}) + ((CASE substring(package_interval from '^every_[0-9]+_(.*)$')"
                     ." WHEN 'second' THEN ((substring(package_interval from '^every_([0-9]+)_')::integer + 59) / 60)"
                     ." WHEN 'seconds' THEN ((substring(package_interval from '^every_([0-9]+)_')::integer + 59) / 60)"
                     ." WHEN 'minute' THEN substring(package_interval from '^every_([0-9]+)_')::integer"
@@ -87,7 +88,7 @@ class PackageIntervalDueExpression
                     ." WHEN 'm' THEN CAST(LEFT(package_interval, LEN(package_interval) - 1) AS int)"
                     ." WHEN 'h' THEN CAST(LEFT(package_interval, LEN(package_interval) - 1) AS int) * 60"
                     ." WHEN 'd' THEN CAST(LEFT(package_interval, LEN(package_interval) - 1) AS int) * 1440"
-                    ." END, last_heartbeat_at) {$operator} ?"
+                    ." END, {$anchorColumn}) {$operator} ?"
                     .') OR ('
                     ."package_interval LIKE 'every[_][0-9]%[_]%'"
                     ." AND CHARINDEX('_', package_interval, 7) > 0"
@@ -104,7 +105,7 @@ class PackageIntervalDueExpression
                     ." WHEN 'hours' THEN CAST(SUBSTRING(package_interval, 7, CHARINDEX('_', package_interval, 7) - 7) AS int) * 60"
                     ." WHEN 'day' THEN CAST(SUBSTRING(package_interval, 7, CHARINDEX('_', package_interval, 7) - 7) AS int) * 1440"
                     ." WHEN 'days' THEN CAST(SUBSTRING(package_interval, 7, CHARINDEX('_', package_interval, 7) - 7) AS int) * 1440"
-                    ." END, last_heartbeat_at) {$operator} ?"
+                    ." END, {$anchorColumn}) {$operator} ?"
                     .')',
                 [$now, $now],
             ],
@@ -117,7 +118,7 @@ class PackageIntervalDueExpression
                     ." WHEN 'm' THEN CAST(SUBSTRING(package_interval, 1, CHAR_LENGTH(package_interval) - 1) AS UNSIGNED)"
                     ." WHEN 'h' THEN CAST(SUBSTRING(package_interval, 1, CHAR_LENGTH(package_interval) - 1) AS UNSIGNED) * 60"
                     ." WHEN 'd' THEN CAST(SUBSTRING(package_interval, 1, CHAR_LENGTH(package_interval) - 1) AS UNSIGNED) * 1440"
-                    ." END, last_heartbeat_at) {$operator} ?"
+                    ." END, {$anchorColumn}) {$operator} ?"
                     .') OR ('
                     ."package_interval REGEXP '^every_[0-9]*[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'"
                     ." AND CHAR_LENGTH(SUBSTRING_INDEX(SUBSTRING(package_interval, 7), '_', 1)) <= 6"
@@ -130,7 +131,7 @@ class PackageIntervalDueExpression
                     ." WHEN 'hours' THEN CAST(SUBSTRING_INDEX(SUBSTRING(package_interval, 7), '_', 1) AS UNSIGNED) * 60"
                     ." WHEN 'day' THEN CAST(SUBSTRING_INDEX(SUBSTRING(package_interval, 7), '_', 1) AS UNSIGNED) * 1440"
                     ." WHEN 'days' THEN CAST(SUBSTRING_INDEX(SUBSTRING(package_interval, 7), '_', 1) AS UNSIGNED) * 1440"
-                    ." END, last_heartbeat_at) {$operator} ?"
+                    ." END, {$anchorColumn}) {$operator} ?"
                     .')',
                 [$now, $now],
             ],

@@ -70,12 +70,12 @@ class SitesRelationManager extends RelationManager
                         } else {
                             try {
                                 $service = new \App\Services\PloiSiteImportService($this->getOwnerRecord());
-                                $imported = $service->import();
+                                $summary = $service->importWithSummary();
 
                                 \Filament\Notifications\Notification::make()
-                                    ->title('Import complete')
-                                    ->body("Imported/updated {$imported} sites.")
-                                    ->success()
+                                    ->title($summary['failed_servers'] > 0 ? 'Import completed with failures' : 'Import complete')
+                                    ->body(\App\Services\PloiSiteImportService::formatImportSummary($summary))
+                                    ->status($summary['failed_servers'] > 0 ? 'warning' : 'success')
                                     ->persistent()
                                     ->send();
                             } catch (\Exception $e) {

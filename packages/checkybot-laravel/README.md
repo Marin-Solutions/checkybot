@@ -4,7 +4,7 @@
 [![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/Marin-Solutions/checkybot-laravel/run-tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/Marin-Solutions/checkybot-laravel/actions?query=workflow%3Arun-tests+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/marin-solutions/checkybot-laravel.svg?style=flat-square)](https://packagist.org/packages/marin-solutions/checkybot-laravel)
 
-A Laravel package for defining and syncing monitoring checks to your Checkybot instance. Define uptime, SSL certificate, and API endpoint monitors using a beautiful fluent API inspired by Pest, and sync them with a single command.
+A Laravel package for defining and syncing monitoring checks to your Checkybot instance. Define uptime, SSL certificate, API endpoint monitors, and component declarations using a fluent API, then sync that configuration with a single command. Checkybot executes the external checks and owns live status/history.
 
 ## Quick Start
 
@@ -104,12 +104,20 @@ Checkybot::ssl('main-certificate')
 // API Checks with Assertions (Pest-style!)
 Checkybot::api('health-check')
     ->url(config('app.url') . '/api/health')
+    ->component('database')
     ->everyFiveMinutes()
     ->withToken(config('services.monitoring.token'))
     ->expect('status')->toEqual('healthy')
     ->expect('database.connected')->toBeTrue()
     ->expect('queue.size')->toBeLessThan(1000);
+
+// Component declarations group related checks in Checkybot.
+// Component health is derived from linked active API, uptime, and SSL checks.
+Checkybot::component('database')
+    ->everyFiveMinutes();
 ```
+
+Attach checks to declared components with `->component('database')` so Checkybot can derive component health from the linked API, uptime, and SSL checks.
 
 ## Uptime Checks
 

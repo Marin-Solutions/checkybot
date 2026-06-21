@@ -3,10 +3,19 @@
 namespace App\Filament\Widgets;
 
 use App\Models\SeoCheck;
+use App\Models\Website;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\Auth;
 
 class SeoHealthScoreTrendWidget extends ChartWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'SEO Health Score Trend';
 
     protected static ?int $sort = 4;
@@ -20,6 +29,23 @@ class SeoHealthScoreTrendWidget extends ChartWidget
     public ?int $recordId = null;
 
     public ?int $websiteId = null;
+
+    public static function canView(): bool
+    {
+        $route = request()->route();
+
+        if (! $route || ! request()->routeIs('filament.admin.resources.seo-checks.view')) {
+            return false;
+        }
+
+        $record = $route->parameter('record');
+        $seoCheck = $record instanceof SeoCheck
+            ? $record
+            : (is_numeric($record) ? SeoCheck::find($record) : null);
+
+        return $seoCheck !== null
+            && (Auth::user()?->can('view', $seoCheck) ?? false);
+    }
 
     protected function getFilters(): ?array
     {
@@ -59,6 +85,7 @@ class SeoHealthScoreTrendWidget extends ChartWidget
         };
 
         $data = SeoCheck::where('website_id', $websiteId)
+            ->whereHas('website', fn ($query) => $query->where('created_by', Auth::id()))
             ->whereIn('status', ['completed', 'failed'])
             ->where('finished_at', '>=', now()->subDays($days))
             ->orderBy('finished_at')
@@ -67,6 +94,7 @@ class SeoHealthScoreTrendWidget extends ChartWidget
         // If no data found, try without date filter to see if there's any data at all
         if ($data->isEmpty()) {
             $data = SeoCheck::where('website_id', $websiteId)
+                ->whereHas('website', fn ($query) => $query->where('created_by', Auth::id()))
                 ->whereIn('status', ['completed', 'failed'])
                 ->orderBy('finished_at')
                 ->get(['finished_at', 'computed_health_score', 'status']);
@@ -178,41 +206,63 @@ class SeoHealthScoreTrendWidget extends ChartWidget
     {
         // First try to use the explicitly passed website ID
         if ($this->websiteId) {
-            return $this->websiteId;
+            return $this->authorizedWebsiteId($this->websiteId);
+        }
+
+        if ($this->recordId) {
+            return $this->websiteIdFromSeoCheck($this->recordId);
         }
 
         // Try to get website ID from route parameter
         $route = request()->route();
         if ($route && $route->hasParameter('record')) {
             $record = $route->parameter('record');
+
+            if ($record instanceof SeoCheck) {
+                return $this->authorizedWebsiteId($record->website_id);
+            }
+
             if (is_numeric($record)) {
-                $seoCheck = SeoCheck::find($record);
-                if ($seoCheck) {
-                    return $seoCheck->website_id;
-                }
+                return $this->websiteIdFromSeoCheck((int) $record);
             }
         }
 
         // Try to get from parent component
         if (method_exists($this, 'getRecord') && $this->getRecord()) {
-            return $this->getRecord()->website_id;
+            return $this->authorizedWebsiteId($this->getRecord()->website_id);
         }
 
         // Try to get from URL path
         $urlPath = request()->path();
         if (preg_match('/\/seo-checks\/(\d+)/', $urlPath, $matches)) {
-            $seoCheckId = $matches[1];
-            $seoCheck = SeoCheck::find($seoCheckId);
-            if ($seoCheck) {
-                return $seoCheck->website_id;
-            }
+            return $this->websiteIdFromSeoCheck((int) $matches[1]);
         }
 
-        // Fallback: get the most recent completed SEO check's website ID
-        $latestSeoCheck = SeoCheck::where('status', 'completed')
-            ->orderBy('finished_at', 'desc')
-            ->first();
+        return null;
+    }
 
-        return $latestSeoCheck ? $latestSeoCheck->website_id : null;
+    protected function websiteIdFromSeoCheck(int $seoCheckId): ?int
+    {
+        $seoCheck = SeoCheck::find($seoCheckId);
+
+        return $seoCheck
+            ? $this->authorizedWebsiteId($seoCheck->website_id)
+            : null;
+    }
+
+    protected function authorizedWebsiteId(int $websiteId): ?int
+    {
+        $authUserId = Auth::id();
+
+        if (! $authUserId) {
+            return null;
+        }
+
+        $isAuthorized = Website::query()
+            ->whereKey($websiteId)
+            ->where('created_by', $authUserId)
+            ->exists();
+
+        return $isAuthorized ? $websiteId : null;
     }
 }

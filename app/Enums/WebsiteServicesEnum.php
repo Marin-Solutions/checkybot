@@ -7,6 +7,7 @@ enum WebsiteServicesEnum: string
     case WEBSITE_CHECK = 'WEBSITE_CHECK';
     case API_MONITOR = 'API_MONITOR';
     case APPLICATION_HEALTH = 'APPLICATION_HEALTH';
+    case BACKUP_MONITOR = 'BACKUP_MONITOR';
     case ALL_CHECK = 'ALL_CHECK';
 
     public function label(): string
@@ -15,6 +16,7 @@ enum WebsiteServicesEnum: string
             self::WEBSITE_CHECK => 'Website Check',
             self::API_MONITOR => 'API Monitor',
             self::APPLICATION_HEALTH => 'Application Health',
+            self::BACKUP_MONITOR => 'Backup Monitor',
             self::ALL_CHECK => 'All Check',
         };
     }

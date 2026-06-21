@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Checkybot;
 
+use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
@@ -23,6 +24,11 @@ class UpsertControlCheckRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $schedule = $this->input('schedule');
+        $url = $this->input('url');
+
+        if (is_string($url)) {
+            $this->merge(['url' => trim($url)]);
+        }
 
         if ($this->has('schedule') && ($schedule === null || (is_string($schedule) && blank($schedule)))) {
             $this->merge(['schedule' => IntervalParser::DEFAULT_API_INTERVAL]);
@@ -32,16 +38,19 @@ class UpsertControlCheckRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'type' => ['nullable', Rule::in(['api'])],
+            'type' => ['nullable', Rule::in(['api', 'website'])],
+            'check_types' => ['nullable', 'array', 'min:1', 'max:2'],
+            'check_types.*' => ['required', 'string', Rule::in(['uptime', 'ssl'])],
             'name' => ['required', 'string', 'max:255'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'url' => ['required', 'string', 'max:1000'],
+            'url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'headers' => ['nullable', 'array'],
             'headers.*' => ['nullable', 'string', 'max:2000'],
             'request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
             'request_body' => ['nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'max_response_time_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
             'assertions' => ['nullable', 'array', 'max:50'],
             'assertions.*.type' => ['required', 'string', Rule::in([
                 'json_path_exists',
@@ -78,6 +87,12 @@ class UpsertControlCheckRequest extends FormRequest
             if (! is_array($assertions)) {
                 return;
             }
+
+            $this->addExpectedValueShapeValidationErrors(
+                $validator,
+                $assertions,
+                'assertions'
+            );
 
             $this->addRegexAssertionValidationErrors($validator, $assertions, 'assertions');
         });

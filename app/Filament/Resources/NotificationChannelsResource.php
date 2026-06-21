@@ -9,9 +9,11 @@ use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\HtmlString;
@@ -52,7 +54,9 @@ class NotificationChannelsResource extends Resource
                     ->reactive()
                     ->afterStateUpdated(function ($state, callable $set, callable $get) {
                         if ($state === WebhookHttpMethod::POST->value) {
-                            if (count($get('request_body'))) {
+                            $requestBody = $get('request_body');
+
+                            if (is_array($requestBody) && count($requestBody)) {
                                 $set('request_body', []);
                             }
                         }
@@ -66,6 +70,11 @@ class NotificationChannelsResource extends Resource
                     ->reactive()
                     ->rules([
                         fn (\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
+                            if (! self::hasValidWebhookUrl($value)) {
+                                $fail('The webhook URL must be a valid HTTP or HTTPS URL.');
+
+                                return;
+                            }
 
                             if ($get('method') === WebhookHttpMethod::GET->value) {
                                 if (! preg_match(self::$urlPattern, $value)) {
@@ -89,13 +98,15 @@ class NotificationChannelsResource extends Resource
                         fn (\Filament\Schemas\Components\Utilities\Get $get): \Closure => function (string $attribute, $value, \Closure $fail) use ($get) {
 
                             if ($get('is_post_method')) {
+                                $requestBodyValues = array_values(is_array($value) ? $value : []);
+                                $url = (string) $get('url');
 
                                 // Check if "message" placeholder is set is URL or in the request body
-                                if (! str_contains($get('url'), '{message}') && ! in_array('{message}', array_values($value))) {
+                                if (! str_contains($url, '{message}') && ! in_array('{message}', $requestBodyValues, true)) {
                                     $fail('The request body must contain key for {message} value or you can set the placeholder for it in the URL.');
                                 }
                                 // Check if "description" placeholder is set is URL or in the request body
-                                if (! str_contains($get('url'), '{description}') && ! in_array('{description}', array_values($value))) {
+                                if (! str_contains($url, '{description}') && ! in_array('{description}', $requestBodyValues, true)) {
                                     $fail('The request body must contain key for {description} value or you can set the placeholder for it in the URL.');
                                 }
                             }
@@ -107,20 +118,142 @@ class NotificationChannelsResource extends Resource
             ]);
     }
 
+    private static function hasValidWebhookUrl(mixed $value): bool
+    {
+        if (! is_string($value) || $value === '') {
+            return false;
+        }
+
+        if (filter_var($value, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $parts = parse_url($value);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+
+        return in_array($scheme, ['http', 'https'], true)
+            && filled($parts['host'] ?? null);
+    }
+
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
                 TextColumn::make('title'),
                 TextColumn::make('method'),
-                TextColumn::make('url')->label('Webhook URL'),
-                TextColumn::make('request_body'),
+                TextColumn::make('url')
+                    ->label('Webhook URL')
+                    ->state(fn (NotificationChannels $record): string => $record->maskedWebhookUrlForDisplay())
+                    ->copyable()
+                    ->copyableState(fn (NotificationChannels $record): ?string => $record->url),
+                TextColumn::make('request_body')
+                    ->state(fn (NotificationChannels $record): ?string => $record->maskedRequestBodyForDisplay())
+                    ->copyable(fn (NotificationChannels $record): bool => $record->requestBodyForCopy() !== null)
+                    ->copyableState(fn (NotificationChannels $record): ?string => $record->requestBodyForCopy()),
                 TextColumn::make('description'),
+                TextColumn::make('last_delivery_succeeded')
+                    ->label('Last Delivery')
+                    ->badge()
+                    ->placeholder('No delivery evidence')
+                    ->state(fn (NotificationChannels $record): ?string => $record->last_delivery_attempted_at
+                        ? (($record->last_delivery_succeeded ? 'Success' : 'Failed').' '.($record->last_delivery_kind ?? 'send'))
+                        : null)
+                    ->color(fn (NotificationChannels $record): string => match ($record->last_delivery_succeeded) {
+                        true => 'success',
+                        false => 'danger',
+                        default => 'gray',
+                    }),
+                TextColumn::make('last_delivery_response_code')
+                    ->label('Response')
+                    ->placeholder('No response code')
+                    ->state(fn (NotificationChannels $record): ?string => $record->last_delivery_response_code
+                        ? (string) $record->last_delivery_response_code
+                        : null),
+                TextColumn::make('last_delivery_summary')
+                    ->label('Delivery Evidence')
+                    ->placeholder('No test or send recorded yet')
+                    ->wrap()
+                    ->limit(100),
+                TextColumn::make('last_delivery_attempted_at')
+                    ->label('Attempted')
+                    ->placeholder('Never')
+                    ->dateTime(),
             ])
             ->filters([
-                //
+                SelectFilter::make('delivery_evidence')
+                    ->label('Delivery Evidence')
+                    ->options([
+                        'failed' => 'Failed delivery',
+                        'no_evidence' => 'No delivery evidence',
+                        'successful' => 'Successful delivery',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'failed' => $query
+                                ->whereNotNull('last_delivery_attempted_at')
+                                ->where('last_delivery_succeeded', false),
+                            'no_evidence' => $query->whereNull('last_delivery_attempted_at'),
+                            'successful' => $query
+                                ->whereNotNull('last_delivery_attempted_at')
+                                ->where('last_delivery_succeeded', true),
+                            default => $query,
+                        };
+                    }),
+                SelectFilter::make('method')
+                    ->label('Method')
+                    ->options([
+                        WebhookHttpMethod::GET->value => 'GET',
+                        WebhookHttpMethod::POST->value => 'POST',
+                    ]),
+                SelectFilter::make('response_code')
+                    ->label('Response Code')
+                    ->options(fn (): array => [
+                        'none' => 'No response code',
+                        ...NotificationChannels::query()
+                            ->where('created_by', auth()->id())
+                            ->whereNotNull('last_delivery_response_code')
+                            ->distinct()
+                            ->orderBy('last_delivery_response_code')
+                            ->pluck('last_delivery_response_code', 'last_delivery_response_code')
+                            ->mapWithKeys(fn (int|string $code): array => [(string) $code => (string) $code])
+                            ->all(),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        $value = $data['value'] ?? null;
+
+                        return match ($value) {
+                            'none' => $query->whereNull('last_delivery_response_code'),
+                            null, '' => $query,
+                            default => $query->where('last_delivery_response_code', (int) $value),
+                        };
+                    }),
             ])
             ->actions([
+                \Filament\Actions\Action::make('sendTest')
+                    ->label('Send Test')
+                    ->icon('heroicon-o-paper-airplane')
+                    ->color('warning')
+                    ->authorize(fn (NotificationChannels $record): bool => auth()->user()?->can('update', $record) ?? false)
+                    ->requiresConfirmation()
+                    ->modalHeading('Send a test webhook?')
+                    ->modalDescription(fn (NotificationChannels $record): string => 'A sample Checkybot payload will be sent to "'.$record->title.'". The result will be saved as this channel\'s latest delivery evidence.')
+                    ->modalSubmitActionLabel('Send test')
+                    ->action(function (NotificationChannels $record): void {
+                        $response = $record->sendWebhookNotification([
+                            'message' => 'Checkybot webhook channel test',
+                            'description' => 'This test confirms the saved webhook channel can receive Checkybot notifications.',
+                        ], 'test');
+
+                        $code = (int) ($response['code'] ?? 0);
+                        $successful = $code >= 200 && $code < 300;
+                        $summary = NotificationChannels::summarizeDeliveryResponse($response);
+
+                        $notification = Notification::make()
+                            ->title($successful ? 'Test webhook delivered' : 'Test webhook failed')
+                            ->body($summary);
+
+                        ($successful ? $notification->success() : $notification->danger())->send();
+                    }),
                 \Filament\Actions\EditAction::make(),
             ])
             ->bulkActions([

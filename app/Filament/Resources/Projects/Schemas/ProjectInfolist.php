@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Projects\Schemas;
 use App\Filament\Resources\ApiKeyResource;
 use App\Filament\Resources\Projects\Pages\ViewProject;
 use App\Models\Project;
+use App\Support\HealthStatusLabel;
 use Filament\Actions\Action;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Notifications\Notification;
@@ -25,12 +26,8 @@ class ProjectInfolist
                         TextEntry::make('application_status')
                             ->label('Current Status')
                             ->badge()
-                            ->color(fn (?string $state): string => match ($state) {
-                                'healthy' => 'success',
-                                'warning' => 'warning',
-                                'danger' => 'danger',
-                                default => 'gray',
-                            }),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('environment')
                             ->default('Unknown'),
                         TextEntry::make('technology')
@@ -56,19 +53,28 @@ class ProjectInfolist
                                 'tone' => $record->setupVerificationTone(),
                                 'summary' => $record->setupVerificationSummary(),
                                 'action' => $record->setupVerificationAction(),
+                                'repairLabel' => $record->setupRepairActionLabel(),
+                                'repairActions' => $record->setupRepairRunbook(),
                                 'steps' => $record->setupVerificationSteps(),
                             ])
                             ->columnSpanFull(),
                     ]),
                 Section::make('Package Sync Status')
-                    ->description('Latest package sync metadata for diagnosing stale or incomplete application integrations.')
-                    ->visible(fn (Project $record): bool => filled($record->package_key) || filled($record->package_version))
+                    ->description('Latest package and component sync metadata for diagnosing stale or incomplete application integrations.')
+                    ->visible(fn (Project $record): bool => filled($record->package_key)
+                        || filled($record->package_version)
+                        || $record->last_component_synced_at !== null)
                     ->schema([
                         TextEntry::make('last_synced_at')
                             ->label('Last Synced')
                             ->state(fn (Project $record): ?string => $record->last_synced_at?->toDayDateTimeString())
                             ->default('Never')
                             ->hint(fn (Project $record): ?string => $record->last_synced_at?->diffForHumans()),
+                        TextEntry::make('last_component_synced_at')
+                            ->label('Last Component Sync')
+                            ->state(fn (Project $record): ?string => $record->last_component_synced_at?->toDayDateTimeString())
+                            ->default('Never')
+                            ->hint(fn (Project $record): ?string => $record->last_component_synced_at?->diffForHumans()),
                         TextEntry::make('package_version')
                             ->label('SDK Version')
                             ->default('-')
@@ -90,7 +96,37 @@ class ProjectInfolist
                         TextEntry::make('synced_components_count')
                             ->label('Synced Components')
                             ->state(fn (Project $record): int => static::syncedComponentsCount($record)),
+                        TextEntry::make('latest_package_sync_summary_overview')
+                            ->label('Last Sync Changes')
+                            ->state(fn (Project $record): string => static::latestSyncSummaryOverview($record))
+                            ->default('No summary recorded yet'),
+                        TextEntry::make('latest_package_sync_summary_detail')
+                            ->label('Last Sync Breakdown')
+                            ->state(fn (Project $record): string => static::latestSyncSummaryDetail($record))
+                            ->default('No summary recorded yet')
+                            ->columnSpanFull(),
+                        TextEntry::make('latest_component_sync_summary_overview')
+                            ->label('Last Component Sync Changes')
+                            ->state(fn (Project $record): string => static::latestComponentSyncSummaryOverview($record))
+                            ->default('No summary recorded yet'),
+                        TextEntry::make('latest_component_sync_summary_detail')
+                            ->label('Last Component Sync Breakdown')
+                            ->state(fn (Project $record): string => static::latestComponentSyncSummaryDetail($record))
+                            ->default('No summary recorded yet'),
                     ])->columns(2),
+                Section::make('Application Diagnostics')
+                    ->description('Latest application-wide diagnostic batch queued from the Run diagnostics action.')
+                    ->visible(fn (Project $record): bool => filled($record->latest_diagnostic_run_batch_id))
+                    ->schema([
+                        View::make('filament.resources.projects.diagnostic-run-batch-panel')
+                            ->key('diagnostic_run_batch_panel')
+                            ->viewData(fn (Project $record, ViewProject $livewire): array => [
+                                'batch' => $livewire->latestDiagnosticRunBatch(),
+                                'batchId' => $record->latest_diagnostic_run_batch_id,
+                                'queuedAt' => $record->latest_diagnostic_run_batch_queued_at,
+                            ])
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Guided Laravel Setup')
                     ->key('guided_setup')
                     ->description('Create an account API key here and copy a ready-to-run install snippet without leaving the application page.')
@@ -157,7 +193,8 @@ class ProjectInfolist
             ->withTrashed()
             ->selectRaw(<<<'SQL'
                 COALESCE(SUM(CASE WHEN uptime_check THEN 1 ELSE 0 END), 0)
-                + COALESCE(SUM(CASE WHEN ssl_check THEN 1 ELSE 0 END), 0) as total
+                + COALESCE(SUM(CASE WHEN ssl_check THEN 1 ELSE 0 END), 0)
+                + COALESCE(SUM(CASE WHEN NOT uptime_check AND NOT ssl_check THEN 1 ELSE 0 END), 0) as total
             SQL)
             ->value('total');
     }
@@ -167,5 +204,150 @@ class ProjectInfolist
         return $record->components()
             ->where('source', 'package')
             ->count();
+    }
+
+    private static function latestSyncSummaryOverview(Project $record): string
+    {
+        $summary = $record->latest_package_sync_summary;
+
+        if (! is_array($summary) || $summary === []) {
+            return 'No summary recorded yet';
+        }
+
+        return collect([
+            static::summaryPart('created', static::summaryTotal($summary, 'created')),
+            static::summaryPart('updated', static::summaryTotal($summary, 'updated')),
+            static::summaryPart('disabled', static::summaryDisabledCount($summary)),
+        ])
+            ->filter()
+            ->implode(', ') ?: 'No check changes';
+    }
+
+    private static function latestSyncSummaryDetail(Project $record): string
+    {
+        $summary = $record->latest_package_sync_summary;
+
+        if (! is_array($summary) || $summary === []) {
+            return 'No summary recorded yet';
+        }
+
+        return collect([
+            static::summaryLine($summary, 'api_checks', 'API checks'),
+            static::summaryLine($summary, 'uptime_checks', 'Uptime checks'),
+            static::summaryLine($summary, 'ssl_checks', 'SSL checks'),
+        ])
+            ->filter()
+            ->implode(PHP_EOL) ?: 'No per-check breakdown recorded';
+    }
+
+    private static function latestComponentSyncSummaryOverview(Project $record): string
+    {
+        $summary = $record->latest_component_sync_summary;
+
+        if (! is_array($summary) || $summary === []) {
+            return 'No summary recorded yet';
+        }
+
+        return collect([
+            static::summaryPart('created', static::summaryNestedCount($summary, 'components', 'created')),
+            static::summaryPart('updated', static::summaryNestedCount($summary, 'components', 'updated')),
+            static::summaryPart('archived', static::summaryNestedCount($summary, 'components', 'archived')),
+        ])
+            ->filter()
+            ->implode(', ') ?: 'No component changes';
+    }
+
+    private static function latestComponentSyncSummaryDetail(Project $record): string
+    {
+        $summary = $record->latest_component_sync_summary;
+
+        if (! is_array($summary) || $summary === []) {
+            return 'No summary recorded yet';
+        }
+
+        $componentParts = collect([
+            static::summaryPart('created', static::summaryNestedCount($summary, 'components', 'created')),
+            static::summaryPart('updated', static::summaryNestedCount($summary, 'components', 'updated')),
+            static::summaryPart('archived', static::summaryNestedCount($summary, 'components', 'archived')),
+        ])
+            ->filter()
+            ->implode(', ');
+
+        return collect([
+            'Components: '.($componentParts === '' ? 'no changes' : $componentParts),
+        ])->implode(PHP_EOL);
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryLine(array $summary, string $key, string $label): ?string
+    {
+        if (! isset($summary[$key]) || ! is_array($summary[$key])) {
+            return null;
+        }
+
+        $counts = $summary[$key];
+        $parts = collect([
+            static::summaryPart('created', static::summaryCount($counts, 'created')),
+            static::summaryPart('updated', static::summaryCount($counts, 'updated')),
+            static::summaryPart('disabled', static::summaryDisabledCount($counts)),
+        ])
+            ->filter()
+            ->implode(', ');
+
+        return $label.': '.($parts === '' ? 'no changes' : $parts);
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryPart(string $label, int $count): ?string
+    {
+        return $count > 0 ? "{$count} {$label}" : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryCount(array $summary, string $key): int
+    {
+        return (int) ($summary[$key] ?? 0);
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryDisabledCount(array $summary): int
+    {
+        return static::summaryTotal($summary, 'disabled_missing')
+            + static::summaryTotal($summary, 'deleted');
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryNestedCount(array $summary, string $bucket, string $key): int
+    {
+        if (! isset($summary[$bucket]) || ! is_array($summary[$bucket])) {
+            return 0;
+        }
+
+        return static::summaryCount($summary[$bucket], $key);
+    }
+
+    /**
+     * @param  array<string, mixed>  $summary
+     */
+    private static function summaryTotal(array $summary, string $key): int
+    {
+        if (array_key_exists($key, $summary)) {
+            return static::summaryCount($summary, $key);
+        }
+
+        return collect(['api_checks', 'uptime_checks', 'ssl_checks'])
+            ->sum(fn (string $bucket): int => isset($summary[$bucket]) && is_array($summary[$bucket])
+                ? static::summaryCount($summary[$bucket], $key)
+                : 0);
     }
 }

@@ -21,7 +21,7 @@ class ServerLogFileHistory extends Model
 
     public function logCategory(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        return $this->belongsTo(ServerLogCategory::class);
+        return $this->belongsTo(ServerLogCategory::class, 'server_log_category_id');
     }
 
     public static function doShellScript(int $server_id, int $user): Response
@@ -57,26 +57,28 @@ class ServerLogFileHistory extends Model
         $token = $this->token;
         $url = config('app.url');
 
-        $content .= "API_LOG_URL='$url/api/v1/server-log-history' \n";
+        $content .= 'API_LOG_URL='.escapeshellarg($url.'/api/v1/server-log-history')." \n";
 
         // Set the token-id variable
-        $content .= "TOKEN_ID='$token'\n";
+        $content .= 'TOKEN_ID='.escapeshellarg((string) $token)."\n";
 
-        $content .= "SERVER_ID='$server_id'\n";
+        $content .= 'SERVER_ID='.escapeshellarg((string) $server_id)."\n";
         if (! empty($logCategories)) {
             foreach ($logCategories as $logCategory) {
                 $tmpLog = '/tmp/'.$logCategory['name'].'_log.log';
+                $escapedTmpLog = escapeshellarg($tmpLog);
+                $curlLogFormValue = 'log=@"'.addcslashes($tmpLog, '\\"').'"';
 
                 // Send the request to the API endpoint
                 $content .= "\n";
-                $content .= 'tail -c 2097152 '.$logCategory['log_directory'].' > '.$tmpLog;
+                $content .= 'tail -c 2097152 '.escapeshellarg($logCategory['log_directory']).' > '.$escapedTmpLog;
                 $content .= "\n\n";
-                $content .= "curl -4 -s -X POST \\\n";
+                $content .= "curl -4 -fsS -o /dev/null -X POST \\\n";
                 $content .= ' $API_LOG_URL\\'."\n";
                 $content .= ' -H \'Authorization: Bearer \'$TOKEN_ID \\'."\n";
-                $content .= ' -F \'log=@'.$tmpLog.'\' \\'."\n";
-                $content .= ' -F \'li='.$logCategory['id'].'\' \\'."\n\n";
-                $content .= 'rm '.$tmpLog;
+                $content .= ' -F '.escapeshellarg($curlLogFormValue).' \\'."\n";
+                $content .= ' -F '.escapeshellarg('li='.$logCategory['id']).' \\'."\n\n";
+                $content .= 'rm '.$escapedTmpLog;
             }
         }
 
@@ -100,7 +102,10 @@ class ServerLogFileHistory extends Model
 
         $command = 'wget '.escapeshellarg($signedUrl).' -O log_reporter_server_info.sh ';
         $command .= '&& chmod +x $(pwd)/log_reporter_server_info.sh ';
-        $command .= '&& (crontab -l ; echo "0 * * * * $(pwd)/log_reporter_server_info.sh") | crontab -';
+        $command .= '&& CRON_CMD="$(pwd)/log_reporter_server_info.sh" ';
+        $command .= '&& CRON_ENTRY="0 * * * * \"$CRON_CMD\"" ';
+        $command .= '&& (crontab -l 2>/dev/null | grep -Fqx "$CRON_ENTRY" || ';
+        $command .= '(crontab -l 2>/dev/null; echo "$CRON_ENTRY") | crontab -)';
 
         return $command;
     }

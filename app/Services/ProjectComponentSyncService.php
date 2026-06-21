@@ -8,27 +8,23 @@ use Illuminate\Support\Facades\DB;
 
 class ProjectComponentSyncService
 {
-    public function __construct(
-        protected ProjectComponentNotificationService $projectComponentNotificationService
-    ) {}
+    public const MISSING_PACKAGE_SYNC_SUMMARY = 'Disabled because it was missing from the latest package sync.';
 
     /**
-     * @param  array{declared_components?: array<int, array<string, mixed>>, components?: array<int, array<string, mixed>>}  $payload
+     * @param  array{full_manifest?: bool, declared_components?: array<int, array<string, mixed>>, components?: array<int, array<string, mixed>>}  $payload
      * @return array<string, array<string, int>>
      */
     public function sync(Project $project, array $payload): array
     {
         $declaredComponents = $payload['declared_components'] ?? [];
-        $heartbeats = $payload['components'] ?? [];
+        $isFullManifest = array_key_exists('declared_components', $payload)
+            && filter_var($payload['full_manifest'] ?? false, FILTER_VALIDATE_BOOLEAN);
         $declaredNames = array_values(array_unique(array_column($declaredComponents, 'name')));
-        $heartbeatNames = array_values(array_unique(array_column($heartbeats, 'name')));
-        $componentNames = array_values(array_unique(array_merge($declaredNames, $heartbeatNames)));
+        $componentNames = $declaredNames;
 
-        return DB::transaction(function () use ($project, $declaredComponents, $heartbeats, $componentNames): array {
+        return DB::transaction(function () use ($project, $declaredComponents, $componentNames, $isFullManifest): array {
             $createdNames = [];
             $updatedNames = [];
-            $recordedHeartbeats = 0;
-            $activeNames = $componentNames;
             $componentsByName = collect();
 
             if ($componentNames !== []) {
@@ -46,14 +42,18 @@ class ProjectComponentSyncService
                     'project_id' => $project->id,
                     'name' => $declaration['name'],
                     'source' => 'package',
-                    'is_archived' => false,
-                    'archived_at' => null,
                     'declared_interval' => $declaration['interval'],
                     'interval_minutes' => IntervalParser::toMinutes($declaration['interval']),
                     'created_by' => $project->created_by,
                 ];
 
                 if ($component) {
+                    if ($component->archive_reason === ProjectComponent::ARCHIVE_REASON_PACKAGE) {
+                        $attributes['is_archived'] = false;
+                        $attributes['archived_at'] = null;
+                        $attributes['archive_reason'] = null;
+                    }
+
                     $component->fill($attributes);
 
                     if (! $component->isDirty()) {
@@ -67,9 +67,12 @@ class ProjectComponentSyncService
                     }
                 } else {
                     $component = ProjectComponent::create($attributes + [
+                        'is_archived' => false,
+                        'archived_at' => null,
+                        'archive_reason' => null,
                         'current_status' => 'unknown',
                         'last_reported_status' => 'unknown',
-                        'summary' => 'Awaiting first heartbeat',
+                        'summary' => 'Awaiting active child check results',
                         'metrics' => [],
                     ]);
                     $componentsByName->put($component->name, $component);
@@ -77,104 +80,24 @@ class ProjectComponentSyncService
                 }
             }
 
-            foreach ($heartbeats as $payload) {
-                $component = $componentsByName->get($payload['name']);
+            $archived = $isFullManifest
+                ? $this->archiveMissingComponents($project, $componentNames)
+                : 0;
 
-                if (! $component) {
-                    $component = ProjectComponent::create([
-                        'project_id' => $project->id,
-                        'name' => $payload['name'],
-                        'source' => 'package',
-                        'is_archived' => false,
-                        'archived_at' => null,
-                        'declared_interval' => $payload['interval'],
-                        'interval_minutes' => IntervalParser::toMinutes($payload['interval']),
-                        'current_status' => 'unknown',
-                        'last_reported_status' => 'unknown',
-                        'summary' => 'Awaiting first heartbeat',
-                        'metrics' => [],
-                        'created_by' => $project->created_by,
-                    ]);
-
-                    $componentsByName->put($component->name, $component);
-                    $createdNames[] = $component->name;
-                }
-
-                $previousStatus = $component->current_status;
-                $wasStale = $component->is_stale;
-
-                $component->fill([
-                    'summary' => $payload['summary'] ?? null,
-                    'current_status' => $payload['status'],
-                    'last_reported_status' => $payload['status'],
-                    'metrics' => $payload['metrics'] ?? [],
-                    'last_heartbeat_at' => $payload['observed_at'],
-                    'stale_detected_at' => null,
-                    'is_stale' => false,
-                    'is_archived' => false,
-                    'archived_at' => null,
-                    'declared_interval' => $payload['interval'],
-                    'interval_minutes' => IntervalParser::toMinutes($payload['interval']),
-                ]);
-
-                if ($component->isDirty()) {
-                    $component->save();
-                }
-
-                if (
-                    ! in_array($component->name, $createdNames, true)
-                    && ! in_array($component->name, $updatedNames, true)
-                ) {
-                    $updatedNames[] = $component->name;
-                }
-
-                $component->heartbeats()->create([
-                    'component_name' => $component->name,
-                    'status' => $payload['status'],
-                    'event' => 'heartbeat',
-                    'summary' => $payload['summary'] ?? null,
-                    'metrics' => $payload['metrics'] ?? [],
-                    'observed_at' => $payload['observed_at'],
-                ]);
-
-                $recordedHeartbeats++;
-
-                if (
-                    in_array($payload['status'], ['warning', 'danger'], true)
-                    && $previousStatus !== $payload['status']
-                ) {
-                    $this->projectComponentNotificationService->notify(
-                        $component->loadMissing('project'),
-                        'heartbeat',
-                        $payload['status']
-                    );
-                } elseif (
-                    $payload['status'] === 'healthy'
-                    && (
-                        in_array($previousStatus, ['warning', 'danger'], true)
-                        || $wasStale
-                    )
-                ) {
-                    $this->projectComponentNotificationService->notify(
-                        $component->loadMissing('project'),
-                        'recovered',
-                        $payload['status']
-                    );
-                }
-            }
-
-            $archived = $this->archiveMissingComponents($project, $activeNames);
-
-            return [
+            $summary = [
                 'components' => [
                     'created' => count($createdNames),
                     'updated' => count($updatedNames),
                     'archived' => $archived,
                 ],
-                'heartbeats' => [
-                    'recorded' => $recordedHeartbeats,
-                ],
             ];
+
+            $project->forceFill([
+                'last_component_synced_at' => now(),
+                'latest_component_sync_summary' => $summary,
+            ])->save();
+
+            return $summary;
         });
     }
 
@@ -192,9 +115,10 @@ class ProjectComponentSyncService
             $query->whereNotIn('name', $activeNames);
         }
 
-        return $query->update([
+        return $query->update(ProjectComponent::disabledHealthAttributes(self::MISSING_PACKAGE_SYNC_SUMMARY) + [
             'is_archived' => true,
             'archived_at' => now(),
+            'archive_reason' => ProjectComponent::ARCHIVE_REASON_PACKAGE,
         ]);
     }
 }

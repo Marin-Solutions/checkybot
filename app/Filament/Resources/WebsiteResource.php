@@ -7,8 +7,14 @@ use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\WebsiteResource\Schemas\WebsiteInfolist;
 use App\Filament\Support\HealthStatusFilter;
+use App\Jobs\LogUptimeSslJob;
+use App\Models\Project;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use App\Services\SeoHealthCheckService;
+use App\Support\HealthStatusLabel;
+use App\Support\ScheduledFailureStreak;
+use App\Support\UptimeTransportError;
 use App\Tables\Columns\SparklineColumn;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -19,6 +25,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\Log;
 
 class WebsiteResource extends Resource
 {
@@ -35,6 +42,25 @@ class WebsiteResource extends Resource
     public static function canViewAny(): bool
     {
         return auth()->user()?->hasAnyRole(['Super Admin', 'Admin']) ?? false;
+    }
+
+    public static function scopeActiveMonitoring(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $query): Builder => $query
+            ->where('uptime_check', true)
+            ->orWhere('ssl_check', true));
+    }
+
+    public static function scopeDisabledMonitoring(Builder $query): Builder
+    {
+        return $query
+            ->where('uptime_check', false)
+            ->where('ssl_check', false);
+    }
+
+    public static function canRunDiagnostic(Website $record): bool
+    {
+        return ! $record->trashed() && ((bool) $record->uptime_check || (bool) $record->ssl_check);
     }
 
     public static function form(Schema $schema): Schema
@@ -61,6 +87,19 @@ class WebsiteResource extends Resource
                                     ->url()
                                     ->helperText('If DNS, SSL, or HTTP checks fail during setup, Checkybot will still save the monitor and mark it with a warning.')
                                     ->maxLength(255),
+                                \Filament\Forms\Components\Select::make('project_id')
+                                    ->label('Application')
+                                    ->options(fn (): array => Project::query()
+                                        ->where('created_by', auth()->id())
+                                        ->orderBy('name')
+                                        ->pluck('name', 'id')
+                                        ->all())
+                                    ->searchable()
+                                    ->preload()
+                                    ->nullable()
+                                    ->native(false)
+                                    ->disabled(fn (?Website $record): bool => $record?->source === 'package')
+                                    ->helperText('Attach this manual website to an application so its incidents and health count toward that application.'),
                                 \Filament\Forms\Components\Textarea::make('description')
                                     ->translateLabel()
                                     ->columnSpanFull(),
@@ -189,13 +228,42 @@ class WebsiteResource extends Resource
                 Tables\Columns\TextColumn::make('current_status')
                     ->label('Health')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_summary')
+                    ->label('Latest Failure')
+                    ->state(fn (Website $record): ?string => static::latestScheduledFailure($record)?->summary)
+                    ->placeholder('-')
+                    ->limit(80)
+                    ->wrap()
+                    ->tooltip(fn (Website $record): ?string => static::latestScheduledFailure($record)?->summary)
+                    ->color(fn (Website $record): string => HealthStatusLabel::color(static::latestScheduledFailure($record)?->status)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_transport')
+                    ->label('Cause')
+                    ->state(fn (Website $record): ?string => static::latestScheduledFailure($record)?->transport_error_type)
+                    ->placeholder('-')
+                    ->badge()
+                    ->formatStateUsing(fn (?string $state): string => UptimeTransportError::label($state))
+                    ->color(fn (?string $state): string => UptimeTransportError::color($state)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_http')
+                    ->label('HTTP')
+                    ->state(fn (Website $record): ?int => static::latestScheduledFailure($record)?->http_status_code)
+                    ->placeholder('-')
+                    ->badge()
+                    ->formatStateUsing(fn (?int $state): string => $state === 0 ? 'No response' : (string) ($state ?? '-'))
+                    ->color(fn (?int $state): string => static::httpCodeColor($state)),
+                Tables\Columns\TextColumn::make('latest_scheduled_failure_observed_at')
+                    ->label('Observed At')
+                    ->state(fn (Website $record): ?\Illuminate\Support\Carbon => static::latestScheduledFailure($record)?->created_at)
+                    ->placeholder('-')
+                    ->sinceInUserZone()
+                    ->tooltip(fn (Website $record): ?string => static::latestScheduledFailure($record)?->created_at?->toDayDateTimeString()),
+                Tables\Columns\TextColumn::make('scheduled_failure_streak')
+                    ->label('Failure Streak')
+                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::displayForWebsite($record))
+                    ->placeholder('-')
+                    ->color('danger')
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('silenced_until')
                     ->label('Snoozed')
                     ->badge()
@@ -240,6 +308,8 @@ class WebsiteResource extends Resource
                     Tables\Columns\ToggleColumn::make('uptime_check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
+                            $record->normalizeLiveHealthWhenNoStatusChecksRemain();
+
                             $notification = Notification::make()
                                 ->title($state
                                     ? "Uptime checks enabled for {$record->name}"
@@ -270,6 +340,8 @@ class WebsiteResource extends Resource
                         ->label('SSL check')
                         ->translateLabel()
                         ->afterStateUpdated(function (Website $record, bool $state): void {
+                            $record->normalizeLiveHealthWhenNoStatusChecksRemain();
+
                             $notification = Notification::make()
                                 ->title($state
                                     ? "SSL checks enabled for {$record->name}"
@@ -416,7 +488,7 @@ class WebsiteResource extends Resource
             ->filters([
                 HealthStatusFilter::make(),
                 HealthStatusFilter::onlyFailing(
-                    activeScope: fn (Builder $query): Builder => $query->where('uptime_check', true),
+                    activeScope: fn (Builder $query): Builder => static::scopeActiveMonitoring($query),
                 ),
                 Tables\Filters\TrashedFilter::make(),
             ])
@@ -476,6 +548,77 @@ class WebsiteResource extends Resource
                             ->success()
                             ->send();
                     }),
+                \Filament\Actions\Action::make('run_now')
+                    ->label('Run check now')
+                    ->color('primary')
+                    ->icon('heroicon-o-bolt')
+                    ->requiresConfirmation()
+                    ->modalIcon('heroicon-o-bolt')
+                    ->modalHeading('Run website diagnostics now')
+                    ->modalDescription('Checkybot will queue the enabled checks for this website, append the result to run history, update live status, and alert subscribers on status changes.')
+                    ->modalSubmitActionLabel('Run now')
+                    ->authorize(fn (): bool => auth()->user()?->can('Update:Website') ?? false)
+                    ->visible(fn (Website $record): bool => static::canRunDiagnostic($record))
+                    ->disabled(fn (Website $record): bool => $record->hasQueuedDiagnostic())
+                    ->action(function (Website $record): void {
+                        $queuedStatePersisted = false;
+
+                        try {
+                            $record->refresh();
+
+                            if (! static::canRunDiagnostic($record)) {
+                                Notification::make()
+                                    ->title('Diagnostic unavailable')
+                                    ->body('Archived or disabled websites cannot run fresh diagnostics.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            if ($record->hasQueuedDiagnostic()) {
+                                Notification::make()
+                                    ->title('Diagnostic already queued')
+                                    ->body('Checkybot is already waiting for this website diagnostic to finish.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            $record->forceFill([
+                                'diagnostic_queued_at' => now(),
+                            ])->save();
+                            $queuedStatePersisted = true;
+
+                            LogUptimeSslJob::dispatch($record->withoutRelations(), onDemand: true);
+                        } catch (\Throwable $e) {
+                            if ($queuedStatePersisted) {
+                                $record->forceFill([
+                                    'diagnostic_queued_at' => null,
+                                ])->save();
+                            }
+
+                            Log::error('Run Now uptime/SSL diagnostic dispatch failed from table action', [
+                                'website_id' => $record->id,
+                                'exception' => $e,
+                            ]);
+
+                            Notification::make()
+                                ->title('Diagnostic could not be queued')
+                                ->body('Checkybot could not queue the on-demand check. Check the application logs for details.')
+                                ->danger()
+                                ->send();
+
+                            return;
+                        }
+
+                        Notification::make()
+                            ->title('Diagnostic queued')
+                            ->body('Checkybot will run this website check in the background and add the evidence to diagnostic history.')
+                            ->success()
+                            ->send();
+                    }),
                 \Filament\Actions\Action::make('view_seo_progress')
                     ->label('View Progress')
                     ->icon('heroicon-o-chart-bar')
@@ -501,7 +644,7 @@ class WebsiteResource extends Resource
                     ->requiresConfirmation()
                     ->modalHeading('Start SEO Health Check')
                     ->modalDescription('This will start a comprehensive SEO health check for this website. The process may take several minutes depending on the site size. The crawler will respect robots.txt and use sitemap.xml if available.')
-                    ->action(function (Website $record) {
+                    ->action(function (Website $record, \Filament\Actions\Action $action) {
                         try {
                             $seoService = app(SeoHealthCheckService::class);
                             $seoCheck = $seoService->startManualCheck($record);
@@ -511,6 +654,10 @@ class WebsiteResource extends Resource
                                 ->body("SEO health check has been started for {$record->name}. You can monitor progress in real-time.")
                                 ->success()
                                 ->send();
+
+                            $action->successRedirectUrl(SeoCheckResource::getUrl('view', [
+                                'record' => $seoCheck,
+                            ]));
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->title('Error Starting SEO Check')
@@ -568,6 +715,14 @@ class WebsiteResource extends Resource
                             $count = $ids->isEmpty()
                                 ? 0
                                 : Website::query()->whereIn('id', $ids)->update(['uptime_check' => false]);
+
+                            if (! $ids->isEmpty()) {
+                                Website::query()
+                                    ->whereIn('id', $ids)
+                                    ->where('uptime_check', false)
+                                    ->where('ssl_check', false)
+                                    ->update(Website::disabledLiveHealthAttributes());
+                            }
 
                             Notification::make()
                                 ->title($count === 0
@@ -750,6 +905,15 @@ class WebsiteResource extends Resource
             ]);
     }
 
+    protected static function scopeUnhealthyNavigationBadgeQuery(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query
+                ->where('uptime_check', true)
+                ->orWhere('ssl_check', true);
+        });
+    }
+
     public static function getModelLabel(): string
     {
         return __('Website');
@@ -779,5 +943,32 @@ class WebsiteResource extends Resource
             ->beforeStateUpdated(function (): void {
                 abort_unless(auth()->user()?->can('Update:Website') ?? false, 403);
             });
+    }
+
+    protected static function latestScheduledFailure(Website $record): ?WebsiteLogHistory
+    {
+        $latestScheduledLog = $record->latestScheduledLogHistory;
+
+        if (! in_array($latestScheduledLog?->status, ['warning', 'danger'], true)) {
+            return null;
+        }
+
+        return $latestScheduledLog;
+    }
+
+    protected static function httpCodeColor(?int $code): string
+    {
+        if ($code === null) {
+            return 'gray';
+        }
+
+        return match (true) {
+            $code <= 0 => 'danger',
+            $code >= 200 && $code < 300 => 'success',
+            $code >= 300 && $code < 400 => 'info',
+            $code >= 400 && $code < 500 => 'warning',
+            $code >= 500 => 'danger',
+            default => 'danger',
+        };
     }
 }

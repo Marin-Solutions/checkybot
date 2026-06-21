@@ -8,11 +8,15 @@ use App\Filament\Resources\MonitorApisResource\Pages;
 use App\Filament\Resources\MonitorApisResource\RelationManagers;
 use App\Filament\Resources\Support\MonitorSnoozeAction;
 use App\Filament\Support\HealthStatusFilter;
+use App\Jobs\RunApiMonitorDiagnosticJob;
+use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApis;
-use App\Services\ApiMonitorExecutionService;
+use App\Models\Project;
 use App\Services\IntervalParser;
-use App\Support\ApiMonitorRunNotification;
+use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\HealthStatusLabel;
 use App\Support\PackageCheckTableEvidence;
+use App\Support\ScheduledFailureStreak;
 use Filament\Forms;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
@@ -58,6 +62,16 @@ class MonitorApisResource extends Resource
             ]);
     }
 
+    protected static function scopeUnhealthyNavigationBadgeQuery(Builder $query): Builder
+    {
+        return $query->where('is_enabled', true);
+    }
+
+    public static function canRunDiagnostic(MonitorApis $record): bool
+    {
+        return ! $record->trashed() && (bool) $record->is_enabled;
+    }
+
     public static function form(Schema $schema): Schema
     {
         return $schema
@@ -73,6 +87,20 @@ class MonitorApisResource extends Resource
                             ->label('Enabled')
                             ->helperText('Disable this monitor to keep its configuration without running scheduled checks.')
                             ->default(true)
+                            ->columnSpanFull(),
+                        Forms\Components\Select::make('project_id')
+                            ->label('Application')
+                            ->options(fn (): array => Project::query()
+                                ->where('created_by', auth()->id())
+                                ->orderBy('name')
+                                ->pluck('name', 'id')
+                                ->all())
+                            ->searchable()
+                            ->preload()
+                            ->nullable()
+                            ->native(false)
+                            ->disabled(fn (?MonitorApis $record): bool => $record?->source === 'package')
+                            ->helperText('Attach this manual API monitor to an application so its incidents and health count toward that application.')
                             ->columnSpanFull(),
                         Forms\Components\Select::make('package_interval')
                             ->label('Polling Interval')
@@ -120,8 +148,14 @@ class MonitorApisResource extends Resource
                             ->maxValue(120)
                             ->placeholder((string) config('monitor.api_timeout', 10))
                             ->helperText('Optional override for slow endpoints. Leave blank to use the default timeout.'),
+                        Forms\Components\TextInput::make('max_response_time_ms')
+                            ->label('Response-time warning (ms)')
+                            ->numeric()
+                            ->minValue(1)
+                            ->maxValue(120000)
+                            ->helperText('Optional threshold that marks a successful API check as warning when it responds too slowly.'),
                         Forms\Components\TextInput::make('data_path')
-                            ->helperText('Optional JSON path to validate in the response body (for example: data.items).')
+                            ->helperText('Optional legacy single JSON path check. Use response assertions below for richer API checks.')
                             ->maxLength(255)
                             ->columnSpanFull(),
                         Forms\Components\KeyValue::make('headers')
@@ -181,6 +215,24 @@ class MonitorApisResource extends Resource
                                 };
                             }),
                     ]),
+                Section::make('Response Assertions')
+                    ->description('Add JSON response checks now so the first scheduled run validates the fields that prove this endpoint is healthy.')
+                    ->visibleOn('create')
+                    ->schema([
+                        Forms\Components\Repeater::make('assertions')
+                            ->schema(static::assertionFormSchema())
+                            ->columns(2)
+                            ->default([])
+                            ->defaultItems(0)
+                            ->itemLabel(fn (array $state): ?string => filled($state['data_path'] ?? null)
+                                ? ($state['data_path'].' - '.str_replace('_', ' ', (string) ($state['assertion_type'] ?? 'assertion')))
+                                : 'New assertion')
+                            ->addActionLabel('Add assertion')
+                            ->reorderableWithButtons()
+                            ->collapsible()
+                            ->maxItems(50)
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Failure Handling')
                     ->schema([
                         Forms\Components\Toggle::make('save_failed_response')
@@ -189,6 +241,122 @@ class MonitorApisResource extends Resource
                             ->default(true),
                     ]),
             ]);
+    }
+
+    /**
+     * @return array<int, \Filament\Schemas\Components\Component>
+     */
+    public static function assertionFormSchema(bool $includeSortOrder = false): array
+    {
+        $schema = [
+            Forms\Components\TextInput::make('data_path')
+                ->required()
+                ->label('JSON Path')
+                ->helperText('Path to the value in the JSON response, for example data.user.id.')
+                ->maxLength(255),
+
+            Forms\Components\Select::make('assertion_type')
+                ->required()
+                ->label('Assertion')
+                ->options([
+                    'type_check' => 'Check Type',
+                    'value_compare' => 'Compare Value',
+                    'exists' => 'Value Exists',
+                    'not_exists' => 'Value Does Not Exist',
+                    'array_length' => 'Array Length',
+                    'regex_match' => 'Regex Match',
+                ])
+                ->default('exists')
+                ->native(false)
+                ->live()
+                ->afterStateUpdated(function (?string $state, Set $set): void {
+                    $set('expected_type', null);
+                    $set('comparison_operator', null);
+                    $set('expected_value', null);
+                    $set('regex_pattern', null);
+                }),
+
+            Forms\Components\Select::make('expected_type')
+                ->options([
+                    'string' => 'String',
+                    'integer' => 'Integer',
+                    'boolean' => 'Boolean',
+                    'array' => 'Array',
+                    'object' => 'Object',
+                    'float' => 'Float',
+                    'null' => 'Null',
+                ])
+                ->native(false)
+                ->required(fn (Get $get): bool => $get('assertion_type') === 'type_check')
+                ->visible(fn (Get $get): bool => $get('assertion_type') === 'type_check'),
+
+            Forms\Components\Select::make('comparison_operator')
+                ->options(fn (Get $get): array => static::comparisonOperatorOptions($get('assertion_type')))
+                ->native(false)
+                ->required(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->visible(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->rules(fn (Get $get): array => in_array($get('assertion_type'), ['value_compare', 'array_length'], true)
+                    ? ['in:'.implode(',', array_keys(static::comparisonOperatorOptions($get('assertion_type'))))]
+                    : []),
+
+            Forms\Components\TextInput::make('expected_value')
+                ->required(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->visible(fn (Get $get): bool => in_array($get('assertion_type'), ['value_compare', 'array_length'], true))
+                ->label(fn (Get $get): string => $get('assertion_type') === 'array_length' ? 'Expected Length' : 'Expected Value')
+                ->rules(fn (Get $get): array => $get('assertion_type') === 'array_length' ? ['integer', 'min:0'] : [])
+                ->maxLength(255),
+
+            Forms\Components\TextInput::make('regex_pattern')
+                ->required(fn (Get $get): bool => $get('assertion_type') === 'regex_match')
+                ->visible(fn (Get $get): bool => $get('assertion_type') === 'regex_match')
+                ->rules(fn (Get $get): array => $get('assertion_type') === 'regex_match'
+                    ? [
+                        function (string $attribute, mixed $value, \Closure $fail): void {
+                            if (! is_string($value) || ! MonitorApiAssertion::hasValidRegexPattern($value)) {
+                                $fail('Enter a valid regular expression pattern, including delimiters such as /pattern/.');
+                            }
+                        },
+                    ]
+                    : [])
+                ->helperText('Regular expression pattern, for example /^[0-9]+$/.')
+                ->placeholder('/pattern/')
+                ->maxLength(1000),
+
+            Forms\Components\Toggle::make('is_active')
+                ->label('Active')
+                ->default(true),
+        ];
+
+        if ($includeSortOrder) {
+            $schema[] = Forms\Components\TextInput::make('sort_order')
+                ->numeric()
+                ->default(0)
+                ->label('Sort Order')
+                ->helperText('Lower numbers are evaluated first.');
+        }
+
+        return $schema;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function comparisonOperatorOptions(?string $assertionType): array
+    {
+        $options = [
+            '=' => 'Equals',
+            '!=' => 'Not Equals',
+            '>' => 'Greater Than',
+            '<' => 'Less Than',
+            '>=' => 'Greater Than or Equal',
+            '<=' => 'Less Than or Equal',
+        ];
+
+        if ($assertionType !== 'array_length') {
+            $options['contains'] = 'Contains';
+        }
+
+        return $options;
     }
 
     public static function table(Table $table): Table
@@ -202,13 +370,20 @@ class MonitorApisResource extends Resource
                 Tables\Columns\TextColumn::make('current_status')
                     ->label('Health')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                Tables\Columns\TextColumn::make('latest_failure_evidence')
+                    ->label('Latest Evidence')
+                    ->state(fn (MonitorApis $record): ?string => ApiMonitorEvidenceFormatter::compactLatestEvidence($record->latestResult))
+                    ->placeholder('No runs yet')
+                    ->color(fn (MonitorApis $record): string => ApiMonitorEvidenceFormatter::statusColor($record->latestResult?->status ?? $record->current_status))
+                    ->wrap(),
+                Tables\Columns\TextColumn::make('scheduled_failure_streak')
+                    ->label('Failure Streak')
+                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::displayForApi($record))
+                    ->placeholder('-')
+                    ->color('danger')
+                    ->wrap(),
                 Tables\Columns\TextColumn::make('package_interval')
                     ->label('Interval')
                     ->state(fn (MonitorApis $record): string => PackageCheckTableEvidence::displayInterval($record->package_interval) ?? 'Missing')
@@ -235,6 +410,10 @@ class MonitorApisResource extends Resource
                         abort_unless(auth()->user()?->can('Update:MonitorApis') ?? false, 403);
                     })
                     ->afterStateUpdated(function (MonitorApis $record, bool $state): void {
+                        if (! $state) {
+                            $record->forceFill(MonitorApis::disabledHealthAttributes())->save();
+                        }
+
                         $notification = Notification::make()
                             ->title($state ? "{$record->title} enabled" : "{$record->title} disabled")
                             ->body($state
@@ -334,31 +513,69 @@ class MonitorApisResource extends Resource
                     ->requiresConfirmation()
                     ->modalIcon('heroicon-o-bolt')
                     ->modalHeading('Run API monitor now')
-                    ->modalDescription('Checkybot will execute a real heartbeat against this endpoint immediately and append the result to its run history. The monitor\'s live status is reserved for the scheduler, so this manual run will not move the dashboard or alert subscribers.')
+                    ->modalDescription('Checkybot will queue a real request against this endpoint, append the result to run history, update live status, and alert subscribers on status changes.')
                     ->modalSubmitActionLabel('Run now')
                     ->authorize(fn (): bool => auth()->user()?->can('Update:MonitorApis') ?? false)
-                    ->visible(fn (MonitorApis $record): bool => (bool) $record->is_enabled)
+                    ->visible(fn (MonitorApis $record): bool => static::canRunDiagnostic($record))
+                    ->disabled(fn (MonitorApis $record): bool => $record->hasQueuedDiagnostic())
                     ->action(function (MonitorApis $record): void {
+                        $queuedStatePersisted = false;
+
                         try {
-                            $outcome = app(ApiMonitorExecutionService::class)->execute($record, onDemand: true);
+                            $record->refresh();
+
+                            if (! static::canRunDiagnostic($record)) {
+                                Notification::make()
+                                    ->title('Diagnostic unavailable')
+                                    ->body('Archived or disabled API monitors cannot run fresh diagnostics.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            if ($record->hasQueuedDiagnostic()) {
+                                Notification::make()
+                                    ->title('Diagnostic already queued')
+                                    ->body('Checkybot is already waiting for this API monitor diagnostic to finish.')
+                                    ->warning()
+                                    ->send();
+
+                                return;
+                            }
+
+                            $record->forceFill([
+                                'diagnostic_queued_at' => now(),
+                            ])->save();
+                            $queuedStatePersisted = true;
+
+                            RunApiMonitorDiagnosticJob::dispatch($record->withoutRelations());
                         } catch (\Throwable $e) {
-                            Log::error('Run Now API monitor check failed from table action', [
+                            if ($queuedStatePersisted) {
+                                $record->forceFill([
+                                    'diagnostic_queued_at' => null,
+                                ])->save();
+                            }
+
+                            Log::error('Run Now API monitor diagnostic dispatch failed from table action', [
                                 'monitor_api_id' => $record->id,
                                 'exception' => $e,
                             ]);
 
                             Notification::make()
-                                ->title('Run failed')
-                                ->body('Checkybot could not complete the on-demand check. Check the application logs for details.')
+                                ->title('Diagnostic could not be queued')
+                                ->body('Checkybot could not queue the on-demand check. Check the application logs for details.')
                                 ->danger()
                                 ->send();
 
                             return;
                         }
 
-                        $record->load(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult']);
-
-                        ApiMonitorRunNotification::send($outcome);
+                        Notification::make()
+                            ->title('Diagnostic queued')
+                            ->body('Checkybot will run this API monitor in the background and add the evidence to diagnostic history.')
+                            ->success()
+                            ->send();
                     }),
             ])
             ->bulkActions([
@@ -376,7 +593,10 @@ class MonitorApisResource extends Resource
                             $ids = $records->where('is_enabled', false)->pluck('id');
                             $count = $ids->isEmpty()
                                 ? 0
-                                : MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => true]);
+                                : MonitorApis::query()->whereIn('id', $ids)->update([
+                                    'is_enabled' => true,
+                                    'project_paused_monitoring' => false,
+                                ]);
 
                             Notification::make()
                                 ->title($count === 0
@@ -402,7 +622,10 @@ class MonitorApisResource extends Resource
                             $ids = $records->where('is_enabled', true)->pluck('id');
                             $count = $ids->isEmpty()
                                 ? 0
-                                : MonitorApis::query()->whereIn('id', $ids)->update(['is_enabled' => false]);
+                                : MonitorApis::query()->whereIn('id', $ids)->update([
+                                    'is_enabled' => false,
+                                    'project_paused_monitoring' => false,
+                                ] + MonitorApis::disabledHealthAttributes());
 
                             Notification::make()
                                 ->title($count === 0
@@ -433,7 +656,11 @@ class MonitorApisResource extends Resource
                         ->action(function (Collection $records, array $data): void {
                             $interval = IntervalParser::normalizeOrFail($data['interval'], 'interval');
 
-                            $ids = $records
+                            $editableRecords = $records
+                                ->reject(fn (MonitorApis $monitor): bool => $monitor->source === 'package');
+                            $skippedCount = $records->count() - $editableRecords->count();
+
+                            $ids = $editableRecords
                                 ->reject(fn (MonitorApis $monitor): bool => $monitor->package_interval === $interval)
                                 ->pluck('id');
 
@@ -441,13 +668,26 @@ class MonitorApisResource extends Resource
                                 ? 0
                                 : MonitorApis::query()->whereIn('id', $ids)->update(['package_interval' => $interval]);
 
+                            $title = $count === 0
+                                ? 'Nothing to update'
+                                : ($count === 1 ? '1 API monitor updated' : "{$count} API monitors updated");
+
+                            if ($skippedCount > 0 && $count > 0) {
+                                $title .= $skippedCount === 1
+                                    ? ', 1 package-managed monitor skipped'
+                                    : ", {$skippedCount} package-managed monitors skipped";
+                            }
+
                             Notification::make()
-                                ->title($count === 0
-                                    ? 'Nothing to update'
-                                    : ($count === 1 ? '1 API monitor updated' : "{$count} API monitors updated"))
-                                ->body($count === 0
-                                    ? "All selected API monitors already run every {$interval}."
-                                    : "New polling interval: {$interval}.")
+                                ->title($title)
+                                ->body(match (true) {
+                                    $count === 0 && $skippedCount > 0 => $skippedCount === $records->count()
+                                        ? 'Package-managed API monitor intervals are controlled by the package and were not changed.'
+                                        : "Editable monitors already run every {$interval}; package-managed schedules were not changed.",
+                                    $count === 0 => "All selected API monitors already run every {$interval}.",
+                                    $skippedCount > 0 => "New polling interval: {$interval}. Package-managed schedules stay controlled by the package.",
+                                    default => "New polling interval: {$interval}.",
+                                })
                                 ->success()
                                 ->send();
                         })
@@ -547,6 +787,7 @@ class MonitorApisResource extends Resource
     public static function getRelations(): array
     {
         return [
+            RelationManagers\NotificationSettingsRelationManager::class,
             RelationManagers\AssertionsRelationManager::class,
             RelationManagers\ResultsRelationManager::class,
         ];

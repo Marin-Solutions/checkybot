@@ -57,6 +57,7 @@ function createBackupManagerBackup(User $user, array $attributes = []): Backup
 
     return Backup::query()->create([
         'server_id' => $server->id,
+        'created_by' => $user->id,
         'dir_path' => $attributes['dir_path'] ?? '/var/www/html',
         'remote_storage_id' => $storage->id,
         'remote_storage_path' => '/',

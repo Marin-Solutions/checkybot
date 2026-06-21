@@ -3,7 +3,9 @@
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
+use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 
@@ -25,11 +27,33 @@ test('notification setting can belong to website', function () {
     expect($setting->website->id)->toBe($website->id);
 });
 
+test('notification setting can belong to api monitor', function () {
+    $monitor = MonitorApis::factory()->create();
+    $setting = NotificationSetting::factory()->apiMonitorScope()->create([
+        'monitor_api_id' => $monitor->id,
+    ]);
+
+    expect($setting->monitorApi)->toBeInstanceOf(MonitorApis::class);
+    expect($setting->monitorApi->id)->toBe($monitor->id);
+});
+
+test('notification setting can belong to project component', function () {
+    $component = ProjectComponent::factory()->create();
+    $setting = NotificationSetting::factory()->projectComponentScope()->create([
+        'project_component_id' => $component->id,
+    ]);
+
+    expect($setting->projectComponent)->toBeInstanceOf(ProjectComponent::class);
+    expect($setting->projectComponent->id)->toBe($component->id);
+});
+
 test('notification setting can be global scope', function () {
     $setting = NotificationSetting::factory()->globalScope()->create();
 
     expect($setting->scope)->toBe(NotificationScopesEnum::GLOBAL);
     expect($setting->website_id)->toBeNull();
+    expect($setting->monitor_api_id)->toBeNull();
+    expect($setting->project_component_id)->toBeNull();
 });
 
 test('notification setting can be website scope', function () {
@@ -37,6 +61,26 @@ test('notification setting can be website scope', function () {
 
     expect($setting->scope)->toBe(NotificationScopesEnum::WEBSITE);
     expect($setting->website_id)->not->toBeNull();
+    expect($setting->monitor_api_id)->toBeNull();
+    expect($setting->project_component_id)->toBeNull();
+});
+
+test('notification setting can be api monitor scope', function () {
+    $setting = NotificationSetting::factory()->apiMonitorScope()->create();
+
+    expect($setting->scope)->toBe(NotificationScopesEnum::API_MONITOR);
+    expect($setting->website_id)->toBeNull();
+    expect($setting->monitor_api_id)->not->toBeNull();
+    expect($setting->project_component_id)->toBeNull();
+});
+
+test('notification setting can be project component scope', function () {
+    $setting = NotificationSetting::factory()->projectComponentScope()->create();
+
+    expect($setting->scope)->toBe(NotificationScopesEnum::PROJECT_COMPONENT);
+    expect($setting->website_id)->toBeNull();
+    expect($setting->monitor_api_id)->toBeNull();
+    expect($setting->project_component_id)->not->toBeNull();
 });
 
 test('notification setting can use email channel', function () {
@@ -99,12 +143,41 @@ test('notification setting scope returns only global settings', function () {
 test('notification setting scope returns only website settings', function () {
     NotificationSetting::factory()->globalScope()->count(3)->create();
     NotificationSetting::factory()->websiteScope()->count(2)->create();
+    NotificationSetting::factory()->apiMonitorScope()->count(4)->create();
+    NotificationSetting::factory()->projectComponentScope()->count(5)->create();
 
     $websiteSettings = NotificationSetting::websiteScope()->get();
 
     expect($websiteSettings)->toHaveCount(2);
     $websiteSettings->each(function ($setting) {
         expect($setting->scope)->toBe(NotificationScopesEnum::WEBSITE);
+    });
+});
+
+test('notification setting scope returns only project component settings', function () {
+    NotificationSetting::factory()->globalScope()->count(3)->create();
+    NotificationSetting::factory()->websiteScope()->count(2)->create();
+    NotificationSetting::factory()->apiMonitorScope()->count(4)->create();
+    NotificationSetting::factory()->projectComponentScope()->count(5)->create();
+
+    $componentSettings = NotificationSetting::projectComponentScope()->get();
+
+    expect($componentSettings)->toHaveCount(5);
+    $componentSettings->each(function ($setting) {
+        expect($setting->scope)->toBe(NotificationScopesEnum::PROJECT_COMPONENT);
+    });
+});
+
+test('notification setting scope returns only api monitor settings', function () {
+    NotificationSetting::factory()->globalScope()->count(3)->create();
+    NotificationSetting::factory()->websiteScope()->count(2)->create();
+    NotificationSetting::factory()->apiMonitorScope()->count(4)->create();
+
+    $apiMonitorSettings = NotificationSetting::apiMonitorScope()->get();
+
+    expect($apiMonitorSettings)->toHaveCount(4);
+    $apiMonitorSettings->each(function ($setting) {
+        expect($setting->scope)->toBe(NotificationScopesEnum::API_MONITOR);
     });
 });
 

@@ -59,3 +59,17 @@ test('copy command includes cron setup', function () {
     expect($command)->toContain('crontab -l');
     expect($command)->toContain('*/1 * * * *');
 });
+
+test('content shell script keeps successful cron runs quiet', function () {
+    $history = new ServerInformationHistory;
+    $history->server_id = 123;
+    $history->token = 'token';
+
+    $method = new ReflectionMethod(ServerInformationHistory::class, 'contentShellScript');
+    $method->setAccessible(true);
+
+    $script = $method->invoke($history);
+
+    expect($script)->toContain('curl -4 -fsS -o /dev/null -X POST');
+    expect($script)->not->toContain('curl -4 -s -X POST');
+});

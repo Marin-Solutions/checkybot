@@ -19,8 +19,7 @@ class BackupPolicy
 
     public function view(AuthUser $authUser, Backup $backup): bool
     {
-        return $this->ownsBackup($authUser, $backup)
-            && $authUser->can('View:Backup');
+        return $authUser->can('View:Backup') && $this->ownsBackup($authUser, $backup);
     }
 
     public function create(AuthUser $authUser): bool
@@ -30,26 +29,22 @@ class BackupPolicy
 
     public function update(AuthUser $authUser, Backup $backup): bool
     {
-        return $this->ownsBackup($authUser, $backup)
-            && $authUser->can('Update:Backup');
+        return $authUser->can('Update:Backup') && $this->ownsBackup($authUser, $backup);
     }
 
     public function delete(AuthUser $authUser, Backup $backup): bool
     {
-        return $this->ownsBackup($authUser, $backup)
-            && $authUser->can('Delete:Backup');
+        return $authUser->can('Delete:Backup') && $this->ownsBackup($authUser, $backup);
     }
 
     public function restore(AuthUser $authUser, Backup $backup): bool
     {
-        return $this->ownsBackup($authUser, $backup)
-            && $authUser->can('Restore:Backup');
+        return $authUser->can('Restore:Backup') && $this->ownsBackup($authUser, $backup);
     }
 
     public function forceDelete(AuthUser $authUser, Backup $backup): bool
     {
-        return $this->ownsBackup($authUser, $backup)
-            && $authUser->can('ForceDelete:Backup');
+        return $authUser->can('ForceDelete:Backup') && $this->ownsBackup($authUser, $backup);
     }
 
     public function forceDeleteAny(AuthUser $authUser): bool
@@ -64,8 +59,7 @@ class BackupPolicy
 
     public function replicate(AuthUser $authUser, Backup $backup): bool
     {
-        return $this->ownsBackup($authUser, $backup)
-            && $authUser->can('Replicate:Backup');
+        return $authUser->can('Replicate:Backup') && $this->ownsBackup($authUser, $backup);
     }
 
     public function reorder(AuthUser $authUser): bool
@@ -73,9 +67,10 @@ class BackupPolicy
         return $authUser->can('Reorder:Backup');
     }
 
-    protected function ownsBackup(AuthUser $authUser, Backup $backup): bool
+    private function ownsBackup(AuthUser $authUser, Backup $backup): bool
     {
-        return (int) ($backup->server?->created_by ?? 0) === (int) $authUser->id
-            && (int) ($backup->remoteStorage?->created_by ?? 0) === (int) $authUser->id;
+        return (int) $backup->created_by === (int) $authUser->id
+            && (int) $backup->server?->created_by === (int) $authUser->id
+            && (int) $backup->remoteStorage?->created_by === (int) $authUser->id;
     }
 }

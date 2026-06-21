@@ -22,6 +22,14 @@ class Website extends Model
     use HasSnooze;
     use SoftDeletes;
 
+    public const ADMIN_DISABLED_STATUS_SUMMARY = 'Disabled in Checkybot admin.';
+
+    private const REMOVED_HEARTBEAT_ATTRIBUTES = [
+        'last_heartbeat_at',
+        'awaiting_heartbeat_since',
+        'stale_at',
+    ];
+
     protected $fillable = [
         'ploi_website_id',
         'name',
@@ -29,20 +37,21 @@ class Website extends Model
         'description',
         'created_by',
         'project_id',
+        'project_component_id',
         'uptime_check',
         'uptime_interval',
         'ssl_check',
         'ssl_expiry_date',
         'outbound_check',
         'last_outbound_checked_at',
+        'outbound_scan_queued_at',
         'source',
         'package_name',
         'package_interval',
         'last_synced_at',
         'current_status',
-        'last_heartbeat_at',
-        'stale_at',
         'status_summary',
+        'diagnostic_queued_at',
         'silenced_until',
     ];
 
@@ -55,10 +64,10 @@ class Website extends Model
         'outbound_check' => 'boolean',
         'project_paused_outbound_check' => 'boolean',
         'last_outbound_checked_at' => 'datetime',
+        'outbound_scan_queued_at' => 'datetime',
         'ssl_expiry_reminder_sent_at' => 'datetime',
         'last_synced_at' => 'datetime',
-        'last_heartbeat_at' => 'datetime',
-        'stale_at' => 'datetime',
+        'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
 
@@ -75,6 +84,36 @@ class Website extends Model
                 }
             }
         });
+
+    }
+
+    public function setAttribute($key, $value): mixed
+    {
+        if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
+    }
+
+    public static function disabledLiveHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'status_summary' => $summary,
+            'diagnostic_queued_at' => null,
+        ];
+    }
+
+    public function normalizeLiveHealthWhenNoStatusChecksRemain(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): bool
+    {
+        if ((bool) $this->uptime_check || (bool) $this->ssl_check) {
+            return false;
+        }
+
+        $this->forceFill(self::disabledLiveHealthAttributes($summary))->save();
+
+        return true;
     }
 
     /**
@@ -261,6 +300,11 @@ class Website extends Model
         return $this->belongsTo(Project::class);
     }
 
+    public function component(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(ProjectComponent::class, 'project_component_id');
+    }
+
     public function notificationChannels(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(NotificationSetting::class)->websiteScope()->active();
@@ -322,6 +366,24 @@ class Website extends Model
             ['created_at' => 'max', 'id' => 'max'],
             fn ($query) => $query->where('is_on_demand', true),
         );
+    }
+
+    public function hasQueuedDiagnostic(): bool
+    {
+        return $this->diagnostic_queued_at !== null
+            && (
+                $this->latestDiagnosticLogHistory === null
+                || $this->diagnostic_queued_at->greaterThan($this->latestDiagnosticLogHistory->created_at)
+            );
+    }
+
+    public function hasQueuedOutboundScan(): bool
+    {
+        return $this->outbound_scan_queued_at !== null
+            && (
+                $this->last_outbound_checked_at === null
+                || $this->outbound_scan_queued_at->greaterThan($this->last_outbound_checked_at)
+            );
     }
 
     public function logHistoryLast24h(): \Illuminate\Database\Eloquent\Relations\HasMany

@@ -38,9 +38,11 @@ class LogJobCheckUptimeSsl extends Command
             ->where('uptime_check', true)
             ->whereIn('uptime_interval', $this->intervals)
             ->where(function (Builder $query): void {
+                $latestScheduledAtSql = $this->latestScheduledLogAtSql();
+
                 $query
-                    ->whereNull('last_heartbeat_at')
-                    ->orWhereRaw($this->dueAtExpression(), [now()->startOfMinute()->toDateTimeString()]);
+                    ->whereRaw("{$latestScheduledAtSql} is null")
+                    ->orWhereRaw($this->dueAtExpression($latestScheduledAtSql), [now()->startOfMinute()->toDateTimeString()]);
             })
             ->chunkById(100, function ($websites) use (&$count): void {
                 $websites->each(function (Website $website) use (&$count): void {
@@ -56,13 +58,26 @@ class LogJobCheckUptimeSsl extends Command
         return Command::SUCCESS;
     }
 
-    private function dueAtExpression(): string
+    private function dueAtExpression(string $anchorSql): string
     {
         return match (Website::query()->getConnection()->getDriverName()) {
-            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', last_heartbeat_at), '+' || uptime_interval || ' minutes') <= ?",
-            'pgsql' => "date_trunc('minute', last_heartbeat_at) + (uptime_interval * interval '1 minute') <= ?",
-            'sqlsrv' => 'DATEADD(minute, uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, last_heartbeat_at), 0)) <= ?',
-            default => "DATE_ADD(DATE_FORMAT(last_heartbeat_at, '%Y-%m-%d %H:%i:00'), INTERVAL uptime_interval MINUTE) <= ?",
+            'sqlite' => "datetime(strftime('%Y-%m-%d %H:%M:00', {$anchorSql}), '+' || websites.uptime_interval || ' minutes') <= ?",
+            'pgsql' => "date_trunc('minute', {$anchorSql}) + (websites.uptime_interval * interval '1 minute') <= ?",
+            'sqlsrv' => "DATEADD(minute, websites.uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, {$anchorSql}), 0)) <= ?",
+            default => "DATE_ADD(DATE_FORMAT({$anchorSql}, '%Y-%m-%d %H:%i:00'), INTERVAL websites.uptime_interval MINUTE) <= ?",
+        };
+    }
+
+    private function latestScheduledLogAtSql(): string
+    {
+        return '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and '.$this->scheduledRunPredicate('website_log_history.is_on_demand').')';
+    }
+
+    private function scheduledRunPredicate(string $column): string
+    {
+        return match (Website::query()->getConnection()->getDriverName()) {
+            'pgsql' => "({$column} is null or {$column} = false)",
+            default => "({$column} is null or {$column} = 0)",
         };
     }
 }

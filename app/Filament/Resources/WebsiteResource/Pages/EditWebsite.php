@@ -2,8 +2,10 @@
 
 namespace App\Filament\Resources\WebsiteResource\Pages;
 
+use App\Filament\Resources\Support\ValidatesProjectAssignment;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\SeoSchedule;
+use App\Models\Website;
 use App\Services\WebsiteUrlValidator;
 use Filament\Actions;
 use Filament\Resources\Pages\EditRecord;
@@ -11,6 +13,8 @@ use Illuminate\Support\Facades\Auth;
 
 class EditWebsite extends EditRecord
 {
+    use ValidatesProjectAssignment;
+
     protected static string $resource = WebsiteResource::class;
 
     protected ?array $setupValidationResult = null;
@@ -59,8 +63,13 @@ class EditWebsite extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
+        $this->validateProjectAssignment($data['project_id'] ?? null);
+
         if (! $this->isUrlChanged()) {
-            return $data;
+            return [
+                ...$data,
+                ...$this->disabledLiveHealthAttributesForSave($data),
+            ];
         }
 
         $this->setupValidationResult ??= WebsiteUrlValidator::inspect(
@@ -68,10 +77,32 @@ class EditWebsite extends EditRecord
             $this->getRecord()->id,
         );
 
-        return [
+        $data = [
             ...$data,
             ...($this->setupValidationResult['warning_state'] ?? []),
+            ...$this->disabledLiveHealthAttributesForSave($data),
         ];
+
+        return $data;
+    }
+
+    protected function disabledLiveHealthAttributesForSave(array $data): array
+    {
+        if ((bool) ($data['uptime_check'] ?? false) || (bool) ($data['ssl_check'] ?? false)) {
+            return [];
+        }
+
+        $record = $this->getRecord();
+
+        if (
+            ! (bool) $record->uptime_check
+            && ! (bool) $record->ssl_check
+            && $record->current_status === 'unknown'
+        ) {
+            return Website::disabledLiveHealthAttributes($record->status_summary);
+        }
+
+        return Website::disabledLiveHealthAttributes();
     }
 
     protected function beforeSave(): void
@@ -92,7 +123,7 @@ class EditWebsite extends EditRecord
         $website = $this->getRecord();
         $scheduleEnabled = $this->data['seo_schedule_enabled'] ?? false;
         $scheduleFrequency = $this->data['seo_schedule_frequency'] ?? null;
-        $scheduleTime = $this->data['seo_schedule_time'] ?? '02:00';
+        $scheduleTime = SeoSchedule::normalizeScheduleTime($this->data['seo_schedule_time'] ?? '02:00');
         $scheduleDay = $this->data['seo_schedule_day'] ?? 'Monday';
 
         $existingSchedule = $website->seoSchedule;
@@ -100,7 +131,7 @@ class EditWebsite extends EditRecord
         if ($scheduleEnabled && $scheduleFrequency) {
             $scheduleData = [
                 'frequency' => $scheduleFrequency,
-                'schedule_time' => $scheduleTime.':00',
+                'schedule_time' => $scheduleTime,
                 'schedule_day' => $scheduleFrequency === 'weekly' ? $scheduleDay : null,
                 'is_active' => true,
                 'next_run_at' => SeoSchedule::calculateNextRunAt($scheduleFrequency, $scheduleTime, $scheduleDay),

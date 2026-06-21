@@ -10,6 +10,10 @@ class ApiMonitorEvidenceRedactor
 {
     private const MAX_EVIDENCE_STRING_LENGTH = 4096;
 
+    private const MAX_SAVED_RESPONSE_BODY_LENGTH = 32768;
+
+    private const TRUNCATED_PAYLOAD_KEY = '__checky_truncated_payload__';
+
     /**
      * @param  array<string, mixed>  $headers
      * @return array<string, mixed>
@@ -18,7 +22,7 @@ class ApiMonitorEvidenceRedactor
     {
         return collect($headers)
             ->mapWithKeys(fn (mixed $value, string $name): array => [
-                $name => self::redactValue($value, $name),
+                $name => self::redactValue($value, $name, preserveNumericCookieMetrics: false),
             ])
             ->all();
     }
@@ -36,6 +40,27 @@ class ApiMonitorEvidenceRedactor
     }
 
     /**
+     * @param  array<string, mixed>  $responseBody
+     * @return array<string, mixed>
+     */
+    public static function redactSavedResponseBody(array $responseBody): array
+    {
+        $redacted = self::redactValue($responseBody);
+
+        if (! is_array($redacted)) {
+            return [];
+        }
+
+        $encoded = json_encode($redacted, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+        if ($encoded === false || strlen($encoded) <= self::MAX_SAVED_RESPONSE_BODY_LENGTH) {
+            return $redacted;
+        }
+
+        return self::truncateSavedPayload($encoded);
+    }
+
+    /**
      * @return string|null Redacted and truncated transport error evidence.
      */
     public static function redactTransportErrorMessage(?string $message): ?string
@@ -47,9 +72,13 @@ class ApiMonitorEvidenceRedactor
         return Str::limit(self::sanitizeString($message), self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
     }
 
-    private static function redactValue(mixed $value, ?string $key = null): mixed
+    private static function redactValue(mixed $value, ?string $key = null, bool $preserveNumericCookieMetrics = true): mixed
     {
         if ($key !== null && self::isSensitiveKey($key)) {
+            if ($preserveNumericCookieMetrics && self::isNumericCookieMetric($key, $value)) {
+                return $value;
+            }
+
             return '[redacted]';
         }
 
@@ -59,13 +88,14 @@ class ApiMonitorEvidenceRedactor
                     $itemKey => self::redactValue(
                         $item,
                         is_string($itemKey) ? $itemKey : null,
+                        $preserveNumericCookieMetrics,
                     ),
                 ])
                 ->all();
         }
 
         if (is_string($value)) {
-            return Str::limit($value, self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
+            return Str::limit(self::sanitizeString($value), self::MAX_EVIDENCE_STRING_LENGTH, '... [truncated]');
         }
 
         return $value;
@@ -91,6 +121,20 @@ class ApiMonitorEvidenceRedactor
             || str_contains($compact, 'password');
     }
 
+    private static function isNumericCookieMetric(string $name, mixed $value): bool
+    {
+        if (! is_int($value) && ! is_float($value)) {
+            return false;
+        }
+
+        $compact = str_replace(['-', '_', ' '], '', strtolower($name));
+
+        return $compact !== 'cookie'
+            && $compact !== 'cookies'
+            && $compact !== 'setcookie'
+            && str_contains($compact, 'cookie');
+    }
+
     private static function sanitizeString(string $value): string
     {
         $value = preg_replace_callback(
@@ -110,6 +154,32 @@ class ApiMonitorEvidenceRedactor
             '$1 [redacted]',
             $value,
         ) ?? $value;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function truncateSavedPayload(string $encodedPayload): array
+    {
+        $suffix = '... [truncated]';
+        $availableBytes = self::MAX_SAVED_RESPONSE_BODY_LENGTH - strlen(json_encode(
+            [self::TRUNCATED_PAYLOAD_KEY => $suffix],
+            JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE,
+        ));
+
+        do {
+            $truncated = mb_strcut($encodedPayload, 0, max(0, $availableBytes), 'UTF-8').$suffix;
+            $payload = [self::TRUNCATED_PAYLOAD_KEY => $truncated];
+            $encoded = json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+
+            if ($encoded === false || strlen($encoded) <= self::MAX_SAVED_RESPONSE_BODY_LENGTH) {
+                return $payload;
+            }
+
+            $availableBytes -= max(1, strlen($encoded) - self::MAX_SAVED_RESPONSE_BODY_LENGTH);
+        } while ($availableBytes > 0);
+
+        return [self::TRUNCATED_PAYLOAD_KEY => $suffix];
     }
 
     private static function redactUrl(string $url): string

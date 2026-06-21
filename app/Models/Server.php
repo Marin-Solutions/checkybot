@@ -4,11 +4,16 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class Server extends Model
 {
     use HasFactory;
+
+    public const REPORTER_FRESHNESS_WINDOW_MINUTES = 2;
 
     protected $fillable = [
         'ip',
@@ -18,6 +23,13 @@ class Server extends Model
         'created_by',
         'token',
         'ploi_server_id',
+        'last_reporter_ip',
+        'last_reporter_user_agent',
+        'last_reporter_seen_at',
+    ];
+
+    protected $casts = [
+        'last_reporter_seen_at' => 'datetime',
     ];
 
     public function user()
@@ -38,6 +50,23 @@ class Server extends Model
     public function rules()
     {
         return $this->hasMany(ServerRule::class);
+    }
+
+    public function hasReporterToken(?string $token): bool
+    {
+        return is_string($this->token)
+            && $this->token !== ''
+            && is_string($token)
+            && hash_equals($this->token, $token);
+    }
+
+    public function recordReporterMetadata(Request $request): void
+    {
+        $this->forceFill([
+            'last_reporter_ip' => $request->ip(),
+            'last_reporter_user_agent' => Str::limit((string) $request->userAgent(), 1024, ''),
+            'last_reporter_seen_at' => now(),
+        ])->saveQuietly();
     }
 
     public function parseLatestServerHistoryInfo(?string $summary = null): array
@@ -61,6 +90,16 @@ class Server extends Model
         $cores = max(1, (int) ($this->cpu_cores ?? 1));
 
         return ($load / $cores) * 100;
+    }
+
+    public function hasFreshLatestHistory(?int $freshForMinutes = null): bool
+    {
+        if (! $this->latest_server_history_created_at) {
+            return false;
+        }
+
+        return Carbon::parse($this->latest_server_history_created_at)
+            ->diffInMinutes(now()) <= ($freshForMinutes ?? self::REPORTER_FRESHNESS_WINDOW_MINUTES);
     }
 
     public function ploiServer(): \Illuminate\Database\Eloquent\Relations\BelongsTo

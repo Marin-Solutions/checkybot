@@ -3,7 +3,9 @@
 namespace App\Filament\Resources\WebsiteResource\RelationManagers;
 
 use App\Enums\RunSource;
+use App\Enums\UptimeTransportErrorType;
 use App\Models\WebsiteLogHistory;
+use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
 use Carbon\Carbon;
 use Filament\Actions\ViewAction;
@@ -28,13 +30,8 @@ class LogHistoryRelationManager extends RelationManager
             ->columns([
                 TextColumn::make('status')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => match ($state) {
-                        'healthy' => 'success',
-                        'warning' => 'warning',
-                        'danger' => 'danger',
-                        default => 'gray',
-                    }),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                 TextColumn::make('run_source')
                     ->label('Run')
                     ->badge()
@@ -69,11 +66,23 @@ class LogHistoryRelationManager extends RelationManager
                     ->options([
                         'healthy' => 'Healthy',
                         'warning' => 'Warning',
-                        'danger' => 'Danger',
+                        'danger' => 'Failing',
                     ]),
                 Tables\Filters\SelectFilter::make('run_source')
                     ->label('Run')
                     ->options(RunSource::options()),
+                Tables\Filters\SelectFilter::make('transport_error_type')
+                    ->label('Transport error')
+                    ->options(static::transportErrorOptions()),
+                Tables\Filters\Filter::make('no_response')
+                    ->label('No response')
+                    ->query(fn ($query) => $query->where('http_status_code', 0)),
+                Tables\Filters\Filter::make('http_4xx')
+                    ->label('HTTP 4xx')
+                    ->query(fn ($query) => $query->whereBetween('http_status_code', [400, 499])),
+                Tables\Filters\Filter::make('http_5xx')
+                    ->label('HTTP 5xx')
+                    ->query(fn ($query) => $query->whereBetween('http_status_code', [500, 599])),
             ])
             ->defaultSort('created_at', 'desc')
             ->headerActions([])
@@ -93,8 +102,8 @@ class LogHistoryRelationManager extends RelationManager
                     ->schema([
                         TextEntry::make('status')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => static::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('run_source')
                             ->label('Run')
                             ->badge()
@@ -161,6 +170,15 @@ class LogHistoryRelationManager extends RelationManager
             'danger' => 'danger',
             default => 'gray',
         };
+    }
+
+    private static function transportErrorOptions(): array
+    {
+        return collect(UptimeTransportErrorType::cases())
+            ->mapWithKeys(fn (UptimeTransportErrorType $type): array => [
+                $type->value => UptimeTransportError::label($type),
+            ])
+            ->all();
     }
 
     private static function httpCodeColor(?int $code): string

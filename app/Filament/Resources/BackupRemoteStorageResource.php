@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\BackupRemoteStorageResource\Pages;
 use App\Models\BackupRemoteStorageConfig;
+use App\Models\BackupRemoteStorageType;
 use Filament\Actions\Action;
 use Filament\Forms;
 use Filament\Notifications\Notification;
@@ -13,6 +14,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 
 class BackupRemoteStorageResource extends Resource
 {
@@ -26,34 +28,39 @@ class BackupRemoteStorageResource extends Resource
 
     protected static \BackedEnum|string|null $navigationIcon = 'heroicon-o-inbox-stack';
 
-    protected static function isHiddenForStorageType(array $types): \Closure
+    protected static function selectedStorageTypeId(callable $get): mixed
     {
-        return fn (callable $get) => $get('backup_remote_storage_type_id') === null || in_array($get('backup_remote_storage_type_id'), $types);
+        return $get('backup_remote_storage_type_id');
     }
 
-    protected static function onlyVisibleForSftpFtp(): \Closure
+    protected static function shouldHideFileTransferFields(): \Closure
     {
-        return self::isHiddenForStorageType(['3', '4']);
+        return fn (callable $get): bool => ! BackupRemoteStorageType::usesFileTransferFieldsForId(self::selectedStorageTypeId($get));
     }
 
-    protected static function onlyVisibleForCustomAwsS3(): \Closure
+    protected static function shouldHideS3Fields(): \Closure
     {
-        return self::isHiddenForStorageType(['1', '2']);
+        return fn (callable $get): bool => ! BackupRemoteStorageType::usesS3FieldsForId(self::selectedStorageTypeId($get));
     }
 
-    protected static function onlyVisibleForCustomS3(): \Closure
+    protected static function shouldHideS3EndpointField(): \Closure
     {
-        return self::isHiddenForStorageType(['1', '2', '3']);
+        return fn (callable $get): bool => ! BackupRemoteStorageType::requiresEndpointForId(self::selectedStorageTypeId($get));
     }
 
     protected static function requiredWhenSftpFtp(): \Closure
     {
-        return self::isHiddenForStorageType(['1', '2']);
+        return fn (callable $get): bool => BackupRemoteStorageType::usesFileTransferFieldsForId(self::selectedStorageTypeId($get));
     }
 
     protected static function requiredWhenCustomAwsS3(): \Closure
     {
-        return self::isHiddenForStorageType(['3', '4']);
+        return fn (callable $get): bool => BackupRemoteStorageType::usesS3FieldsForId(self::selectedStorageTypeId($get));
+    }
+
+    protected static function requiredWhenCustomS3(): \Closure
+    {
+        return fn (callable $get): bool => BackupRemoteStorageType::requiresEndpointForId(self::selectedStorageTypeId($get));
     }
 
     public static function form(Schema $schema): Schema
@@ -76,35 +83,35 @@ class BackupRemoteStorageResource extends Resource
                         /* For FTP or SFTP */
                         Forms\Components\TextInput::make('host')
                             ->required(self::requiredWhenSftpFtp())
-                            ->hidden(self::onlyVisibleForSftpFtp()),
+                            ->hidden(self::shouldHideFileTransferFields()),
                         Forms\Components\TextInput::make('port')->numeric()->default('21')
                             ->required(self::requiredWhenSftpFtp())
-                            ->hidden(self::onlyVisibleForSftpFtp()),
+                            ->hidden(self::shouldHideFileTransferFields()),
                         Forms\Components\TextInput::make('username')
                             ->required(self::requiredWhenSftpFtp())
-                            ->hidden(self::onlyVisibleForSftpFtp()),
+                            ->hidden(self::shouldHideFileTransferFields()),
                         Forms\Components\TextInput::make('password')->password()
                             ->required(self::requiredWhenSftpFtp())
-                            ->hidden(self::onlyVisibleForSftpFtp()),
+                            ->hidden(self::shouldHideFileTransferFields()),
                         Forms\Components\TextInput::make('directory')
                             ->required(self::requiredWhenSftpFtp())
-                            ->hidden(self::onlyVisibleForSftpFtp()),
+                            ->hidden(self::shouldHideFileTransferFields()),
                         /* For AWS S3 or Custom S3 */
                         Forms\Components\TextInput::make('access_key')
                             ->required(self::requiredWhenCustomAwsS3())
-                            ->hidden(self::onlyVisibleForCustomAwsS3()),
-                        Forms\Components\TextInput::make('secret_key')->numeric()->default('21')
+                            ->hidden(self::shouldHideS3Fields()),
+                        Forms\Components\TextInput::make('secret_key')->password()
                             ->required(self::requiredWhenCustomAwsS3())
-                            ->hidden(self::onlyVisibleForCustomAwsS3()),
+                            ->hidden(self::shouldHideS3Fields()),
                         Forms\Components\TextInput::make('bucket')
                             ->required(self::requiredWhenCustomAwsS3())
-                            ->hidden(self::onlyVisibleForCustomAwsS3()),
-                        Forms\Components\TextInput::make('region')->password()
+                            ->hidden(self::shouldHideS3Fields()),
+                        Forms\Components\TextInput::make('region')
                             ->required(self::requiredWhenCustomAwsS3())
-                            ->hidden(self::onlyVisibleForCustomAwsS3()),
+                            ->hidden(self::shouldHideS3Fields()),
                         Forms\Components\TextInput::make('endpoint')
-                            ->required(self::isHiddenForStorageType(['4']))
-                            ->hidden(self::onlyVisibleForCustomS3()),
+                            ->required(self::requiredWhenCustomS3())
+                            ->hidden(self::shouldHideS3EndpointField()),
                     ])
                     ->footerActions([
                         Action::make('test_connection')
@@ -112,16 +119,16 @@ class BackupRemoteStorageResource extends Resource
                             ->action(function ($state) {
                                 $rules = [
                                     'backup_remote_storage_type_id' => 'required',
-                                    'host' => 'required_if:backup_remote_storage_type_id,1,2|string|max:255',
+                                    'host' => [Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesFileTransferFieldsForId($state['backup_remote_storage_type_id'] ?? null)), 'string', 'max:255'],
                                     'port' => 'nullable|integer|min:1|max:65535',
-                                    'username' => 'required_if:backup_remote_storage_type_id,1,2|string|max:255',
-                                    'password' => 'required_if:backup_remote_storage_type_id,1,2|string|max:255',
-                                    'directory' => 'required_if:backup_remote_storage_type_id,1,2|string|max:255',
-                                    'access_key' => 'required_if:backup_remote_storage_type_id,3,4',
-                                    'secret_key' => 'required_if:backup_remote_storage_type_id,3,4',
-                                    'bucket' => 'required_if:backup_remote_storage_type_id,3,4',
-                                    'region' => 'required_if:backup_remote_storage_type_id,3,4',
-                                    'endpoint' => 'required_if:backup_remote_storage_type_id,4',
+                                    'username' => [Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesFileTransferFieldsForId($state['backup_remote_storage_type_id'] ?? null)), 'string', 'max:255'],
+                                    'password' => [Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesFileTransferFieldsForId($state['backup_remote_storage_type_id'] ?? null)), 'string', 'max:255'],
+                                    'directory' => [Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesFileTransferFieldsForId($state['backup_remote_storage_type_id'] ?? null)), 'string', 'max:255'],
+                                    'access_key' => Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesS3FieldsForId($state['backup_remote_storage_type_id'] ?? null)),
+                                    'secret_key' => Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesS3FieldsForId($state['backup_remote_storage_type_id'] ?? null)),
+                                    'bucket' => Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesS3FieldsForId($state['backup_remote_storage_type_id'] ?? null)),
+                                    'region' => Rule::requiredIf(fn (): bool => BackupRemoteStorageType::usesS3FieldsForId($state['backup_remote_storage_type_id'] ?? null)),
+                                    'endpoint' => Rule::requiredIf(fn (): bool => BackupRemoteStorageType::requiresEndpointForId($state['backup_remote_storage_type_id'] ?? null)),
                                 ];
 
                                 $validator = Validator::make($state, $rules);
@@ -179,6 +186,14 @@ class BackupRemoteStorageResource extends Resource
         ];
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        $userId = auth()->id();
+
+        return parent::getEloquentQuery()
+            ->when($userId, fn (Builder $query): Builder => $query->ownedBy($userId), fn (Builder $query): Builder => $query->whereRaw('1 = 0'));
+    }
+
     public static function getPages(): array
     {
         return [
@@ -186,11 +201,5 @@ class BackupRemoteStorageResource extends Resource
             'create' => Pages\CreateBackupRemoteStorage::route('/create'),
             'edit' => Pages\EditBackupRemoteStorage::route('/{record}/edit'),
         ];
-    }
-
-    public static function getEloquentQuery(): Builder
-    {
-        return parent::getEloquentQuery()
-            ->where('created_by', auth()->id());
     }
 }

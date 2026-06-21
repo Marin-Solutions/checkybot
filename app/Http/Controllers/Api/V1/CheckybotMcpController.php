@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers\Api\V1;
 
+use App\Enums\NotificationChannelTypesEnum;
+use App\Enums\WebhookHttpMethod;
+use App\Enums\WebsiteServicesEnum;
 use App\Http\Controllers\Controller;
 use App\Models\ApiKey;
+use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
@@ -109,6 +113,8 @@ class CheckybotMcpController extends Controller
             'checkybot_me' => $this->control->me($user, $apiKey?->name),
             'list_projects',
             'checkybot_list_projects' => $this->control->listProjects($user),
+            'create_project',
+            'checkybot_create_project' => $this->control->createProject($user, $this->validateProjectArguments($arguments)),
             'get_project',
             'checkybot_get_project' => $this->control->getProject($user, $this->requiredString($arguments, 'project')),
             'list_checks',
@@ -124,13 +130,45 @@ class CheckybotMcpController extends Controller
                 $user,
                 $this->requiredString($arguments, 'project'),
                 $this->requiredString($arguments, 'check'),
+                $this->optionalCheckType($arguments),
             ),
             'trigger_run',
             'checkybot_trigger_run' => isset($arguments['check'])
-                ? $this->control->triggerCheckRun($user, $this->requiredString($arguments, 'project'), $this->requiredString($arguments, 'check'))
+                ? $this->control->triggerCheckRun(
+                    $user,
+                    $this->requiredString($arguments, 'project'),
+                    $this->requiredString($arguments, 'check'),
+                    $this->optionalRunnableCheckType($arguments),
+                )
                 : $this->control->triggerProjectRun($user, $this->requiredString($arguments, 'project')),
+            'get_run_batch',
+            'checkybot_get_run_batch' => $this->control->projectRunBatch(
+                $user,
+                $this->requiredString($arguments, 'project'),
+                $this->requiredString($arguments, 'batch'),
+            ),
+            'recent_runs',
+            'checkybot_recent_runs' => $this->recentRuns($request, $arguments),
             'latest_failures',
             'checkybot_latest_failures' => $this->latestFailures($request, $arguments),
+            'current_issues',
+            'checkybot_current_issues' => $this->currentIssues($request, $arguments),
+            'list_notification_channels',
+            'checkybot_list_notification_channels' => $this->control->listNotificationChannels($user),
+            'upsert_notification_channel',
+            'checkybot_upsert_notification_channel' => $this->control->upsertNotificationChannel($user, $this->validateNotificationChannelArguments($arguments)),
+            'delete_notification_channel',
+            'checkybot_delete_notification_channel' => $this->control->deleteNotificationChannel($user, $this->requiredInteger($arguments, 'id')),
+            'test_notification_channel',
+            'checkybot_test_notification_channel' => $this->control->testNotificationChannel($user, $this->requiredInteger($arguments, 'id')),
+            'list_notification_settings',
+            'checkybot_list_notification_settings' => $this->control->listNotificationSettings($user),
+            'upsert_notification_setting',
+            'checkybot_upsert_notification_setting' => $this->control->upsertNotificationSetting($user, $this->validateNotificationSettingArguments($arguments)),
+            'delete_notification_setting',
+            'checkybot_delete_notification_setting' => $this->control->deleteNotificationSetting($user, $this->requiredInteger($arguments, 'id')),
+            'test_notification_setting',
+            'checkybot_test_notification_setting' => $this->control->testNotificationSetting($user, $this->requiredInteger($arguments, 'id')),
             default => throw ValidationException::withMessages(['name' => ['Unknown Checkybot MCP tool.']]),
         };
 
@@ -149,6 +187,19 @@ class CheckybotMcpController extends Controller
      * @param  array<string, mixed>  $arguments
      * @return array<int, array<string, mixed>>
      */
+    private function recentRuns(Request $request, array $arguments): array
+    {
+        return $this->control->recentRuns(
+            $request->user(),
+            isset($arguments['project']) ? $this->requiredString($arguments, 'project') : null,
+            (int) ($arguments['limit'] ?? 25),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<int, array<string, mixed>>
+     */
     private function latestFailures(Request $request, array $arguments): array
     {
         $project = isset($arguments['project'])
@@ -156,6 +207,38 @@ class CheckybotMcpController extends Controller
             : null;
 
         return $this->control->latestFailures($request->user(), $project, (int) ($arguments['limit'] ?? 25));
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<int, array<string, mixed>>
+     */
+    private function currentIssues(Request $request, array $arguments): array
+    {
+        $data = Validator::make($arguments, [
+            'project' => ['nullable', 'string', 'max:255'],
+            'type' => ['nullable', Rule::in(['all', 'project', 'api', 'website', 'component'])],
+            'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
+            'statuses.*' => ['required', 'string', Rule::in(['warning', 'danger', 'pending', 'unknown'])],
+            'cause' => ['nullable', 'string', Rule::in(['timeout', 'dns', 'rate_limit', 'http_4xx', 'http_5xx', 'assertion', 'stale_setup'])],
+            'min_streak' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'first_failed_before' => ['nullable', 'date'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'exclude' => ['nullable', 'array', 'max:25'],
+            'exclude.*' => ['required', 'string', 'max:255'],
+        ])->validate();
+
+        return $this->control->currentIssues(
+            $request->user(),
+            $data['project'] ?? null,
+            $data['type'] ?? null,
+            $data['statuses'] ?? ['warning', 'danger'],
+            $data['limit'] ?? 25,
+            $data['exclude'] ?? [],
+            $data['cause'] ?? null,
+            $data['min_streak'] ?? null,
+            $data['first_failed_before'] ?? null,
+        );
     }
 
     /**
@@ -170,16 +253,127 @@ class CheckybotMcpController extends Controller
 
     /**
      * @param  array<string, mixed>  $arguments
+     */
+    private function requiredInteger(array $arguments, string $key): int
+    {
+        return (int) Validator::make($arguments, [
+            $key => ['required', 'integer', 'min:1'],
+        ])->validate()[$key];
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<string, mixed>
+     */
+    private function validateNotificationChannelArguments(array $arguments): array
+    {
+        $validator = Validator::make($arguments, [
+            'id' => ['nullable', 'integer', 'min:1'],
+            'title' => ['required', 'string', 'max:255'],
+            'method' => ['required', Rule::in([WebhookHttpMethod::GET->value, WebhookHttpMethod::POST->value])],
+            'url' => ['required', 'url', 'max:2083'],
+            'description' => ['nullable', 'string', 'max:2000'],
+            'request_body' => ['nullable', 'array'],
+            'request_body.*' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $validator->after(function (ValidationValidator $validator) use ($arguments): void {
+            $url = (string) ($arguments['url'] ?? '');
+            $method = (string) ($arguments['method'] ?? '');
+            $requestBody = $arguments['request_body'] ?? [];
+            $requestBodyValues = is_array($requestBody) ? array_values($requestBody) : [];
+
+            if (! in_array(strtolower((string) parse_url($url, PHP_URL_SCHEME)), ['http', 'https'], true)) {
+                $validator->errors()->add('url', 'The webhook URL must be an HTTP or HTTPS URL.');
+            }
+
+            if ($method === WebhookHttpMethod::GET->value
+                && (! str_contains($url, '{message}') || ! str_contains($url, '{description}'))) {
+                $validator->errors()->add('url', 'GET webhook URLs must contain {message} and {description} placeholders.');
+            }
+
+            if ($method === WebhookHttpMethod::POST->value) {
+                if (! str_contains($url, '{message}') && ! in_array('{message}', $requestBodyValues, true)) {
+                    $validator->errors()->add('request_body', 'POST webhook configuration must include a {message} placeholder in the URL or request body.');
+                }
+
+                if (! str_contains($url, '{description}') && ! in_array('{description}', $requestBodyValues, true)) {
+                    $validator->errors()->add('request_body', 'POST webhook configuration must include a {description} placeholder in the URL or request body.');
+                }
+            }
+        });
+
+        return $validator->validate();
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<string, mixed>
+     */
+    private function validateNotificationSettingArguments(array $arguments): array
+    {
+        $validator = Validator::make($arguments, [
+            'id' => ['nullable', 'integer', 'min:1'],
+            'inspection' => ['required', Rule::in(array_map(fn (WebsiteServicesEnum $case): string => $case->value, WebsiteServicesEnum::cases()))],
+            'channel_type' => ['required', Rule::in([NotificationChannelTypesEnum::MAIL->value, NotificationChannelTypesEnum::WEBHOOK->value])],
+            'address' => ['nullable', 'email', 'max:255'],
+            'notification_channel_id' => ['nullable', 'integer', 'min:1'],
+            'active' => ['nullable', 'boolean'],
+        ]);
+
+        $validator->after(function (ValidationValidator $validator) use ($arguments): void {
+            $channelType = $arguments['channel_type'] ?? null;
+
+            if ($channelType === NotificationChannelTypesEnum::MAIL->value && blank($arguments['address'] ?? null)) {
+                $validator->errors()->add('address', 'The address field is required for email notification settings.');
+            }
+
+            if ($channelType === NotificationChannelTypesEnum::WEBHOOK->value && blank($arguments['notification_channel_id'] ?? null)) {
+                $validator->errors()->add('notification_channel_id', 'The notification_channel_id field is required for webhook notification settings.');
+            }
+        });
+
+        return $validator->validate();
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     */
+    private function optionalCheckType(array $arguments): ?string
+    {
+        return Validator::make($arguments, [
+            'type' => ['nullable', Rule::in(['api', 'website', 'component'])],
+        ])->validate()['type'] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     */
+    private function optionalRunnableCheckType(array $arguments): ?string
+    {
+        return Validator::make($arguments, [
+            'type' => ['nullable', Rule::in(['api', 'website'])],
+        ])->validate()['type'] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
      * @return array<string, mixed>
      */
     private function validateCheckArguments(array $arguments): array
     {
+        if (isset($arguments['url']) && is_string($arguments['url'])) {
+            $arguments['url'] = trim($arguments['url']);
+        }
+
         $validator = Validator::make($arguments, [
             'key' => ['required', 'string', 'alpha_dash', 'max:150'],
-            'type' => ['nullable', Rule::in(['api'])],
+            'type' => ['nullable', Rule::in(['api', 'website'])],
+            'check_types' => ['nullable', 'array', 'min:1', 'max:2'],
+            'check_types.*' => ['required', 'string', Rule::in(['uptime', 'ssl'])],
             'name' => ['required', 'string', 'max:255'],
             'method' => ['nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'url' => ['required', 'string', 'max:1000'],
+            'url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'headers' => ['nullable', 'array'],
             'headers.*' => ['nullable', 'string', 'max:2000'],
             'request_body_type' => [new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
@@ -233,6 +427,25 @@ class CheckybotMcpController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>  $arguments
+     * @return array<string, mixed>
+     */
+    private function validateProjectArguments(array $arguments): array
+    {
+        return Validator::make($arguments, [
+            'key' => ['required', 'string', 'alpha_dash', 'max:100'],
+            'name' => ['required', 'string', 'max:255'],
+            'environment' => ['required', 'string', 'max:255'],
+            'base_url' => ['required', 'url', 'max:1000'],
+            'repository' => ['nullable', 'string', 'max:255'],
+            'group' => ['nullable', 'string', 'max:255'],
+            'technology' => ['nullable', 'string', 'max:255'],
+            'identity_endpoint' => ['nullable', 'url', 'max:1000'],
+            'package_version' => ['nullable', 'string', 'max:50'],
+        ])->validate();
+    }
+
+    /**
      * @return array<int, array<string, mixed>>
      */
     private function tools(): array
@@ -240,15 +453,28 @@ class CheckybotMcpController extends Controller
         return [
             $this->tool('me', 'Verify Checkybot API authentication and app version.', []),
             $this->tool('list_projects', 'List Checkybot projects visible to the API key.', []),
-            $this->tool('get_project', 'Get project detail, check counts, and latest failure.', [
+            $this->tool('create_project', 'Create or update a Checkybot project so checks can be synced or managed by project key.', [
+                'key' => ['type' => 'string', 'description' => 'Stable package key used as the project identifier.'],
+                'name' => ['type' => 'string'],
+                'environment' => ['type' => 'string'],
+                'base_url' => ['type' => 'string', 'format' => 'uri'],
+                'repository' => ['type' => 'string'],
+                'group' => ['type' => 'string'],
+                'technology' => ['type' => 'string'],
+                'identity_endpoint' => ['type' => 'string', 'format' => 'uri', 'description' => 'Defaults to base_url when omitted.'],
+                'package_version' => ['type' => 'string'],
+            ], ['key', 'name', 'environment', 'base_url']),
+            $this->tool('get_project', 'Get project detail, API/website/component check counts, health counts, and latest failure.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('list_checks', 'List package-managed API checks for a project.', [
+            $this->tool('list_checks', 'List package-managed API checks, website checks, and component declarations for a project. Component status is derived from linked active API and website checks and supports_run=false.', [
                 'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
             ]),
-            $this->tool('upsert_check', 'Create or update a package-managed API check by stable key.', [
+            $this->tool('upsert_check', 'Create or update a package-managed API or website check by stable key.', [
                 'project' => ['type' => 'string'],
                 'key' => ['type' => 'string'],
+                'type' => ['type' => 'string', 'enum' => ['api', 'website'], 'default' => 'api'],
+                'check_types' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['uptime', 'ssl']], 'description' => 'Website checks only. Defaults to the existing enabled website check types, or uptime for new website checks.'],
                 'name' => ['type' => 'string'],
                 'url' => ['type' => 'string'],
                 'method' => ['type' => 'string', 'default' => 'GET'],
@@ -264,15 +490,65 @@ class CheckybotMcpController extends Controller
             $this->tool('disable_check', 'Disable a check without deleting its definition or history.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string'],
+                'type' => ['type' => 'string', 'enum' => ['api', 'website', 'component'], 'description' => 'Optional check type. Required when multiple check surfaces share the same key.'],
             ]),
-            $this->tool('trigger_run', 'Run enabled checks for a project or a single check.', [
+            $this->tool('trigger_run', 'Queue enabled API and website diagnostics for a project, or run a single API or website check immediately. Components are declarations and are not runnable from MCP.', [
                 'project' => ['type' => 'string'],
                 'check' => ['type' => 'string', 'description' => 'Optional check key.'],
+                'type' => ['type' => 'string', 'enum' => ['api', 'website'], 'description' => 'Optional runnable check type. Required when an API and website share the same key.'],
             ], ['project']),
-            $this->tool('latest_failures', 'List latest warning or danger check results.', [
+            $this->tool('get_run_batch', 'Get queued project diagnostic batch status for a batch returned by trigger_run. Returns project identity plus run_batch id, status, name, total_jobs, pending_jobs, failed_jobs, created_at, and finished_at.', [
+                'project' => ['type' => 'string', 'description' => 'Project id or package key.'],
+                'batch' => ['type' => 'string', 'description' => 'Laravel batch id returned by trigger_run.'],
+            ], ['project', 'batch']),
+            $this->tool('recent_runs', 'List recent API and website runs executed by Checkybot.', [
                 'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
                 'limit' => ['type' => 'integer', 'default' => 25],
             ]),
+            $this->tool('latest_failures', 'List latest warning or danger API and website runs executed by Checkybot.', [
+                'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
+                'limit' => ['type' => 'integer', 'default' => 25],
+            ]),
+            $this->tool('current_issues', 'List currently unhealthy or pending checks and project setup problems from the dashboard status surface. Use type=api to see unhealthy API monitors only, type=project to see stale or incomplete package setup, min_streak or first_failed_before to find persistent scheduled failures, and exclude to omit known work-in-progress checks.', [
+                'project' => ['type' => 'string', 'description' => 'Optional project id or package key.'],
+                'type' => ['type' => 'string', 'enum' => ['all', 'project', 'api', 'website', 'component'], 'default' => 'all'],
+                'statuses' => ['type' => 'array', 'items' => ['type' => 'string', 'enum' => ['warning', 'danger', 'pending', 'unknown']], 'default' => ['warning', 'danger']],
+                'cause' => ['type' => 'string', 'enum' => ['timeout', 'dns', 'rate_limit', 'http_4xx', 'http_5xx', 'assertion', 'stale_setup'], 'description' => 'Optional failure class filter.'],
+                'min_streak' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 1000, 'description' => 'Only return API and website issues with at least this many consecutive scheduled failures.'],
+                'first_failed_before' => ['type' => 'string', 'format' => 'date-time', 'description' => 'Only return API and website issues whose current scheduled failure streak started before this time.'],
+                'limit' => ['type' => 'integer', 'default' => 25],
+                'exclude' => ['type' => 'array', 'items' => ['type' => 'string'], 'description' => 'Case-insensitive substrings matched against check key, name, URL, or summary.'],
+            ]),
+            $this->tool('list_notification_channels', 'List webhook notification channels with masked destination and latest delivery evidence.', []),
+            $this->tool('upsert_notification_channel', 'Create or update a webhook notification channel.', [
+                'id' => ['type' => 'integer', 'description' => 'Existing channel id to update. Omit to create.'],
+                'title' => ['type' => 'string'],
+                'method' => ['type' => 'string', 'enum' => ['GET', 'POST']],
+                'url' => ['type' => 'string', 'format' => 'uri'],
+                'description' => ['type' => 'string'],
+                'request_body' => ['type' => 'object', 'additionalProperties' => ['type' => 'string'], 'description' => 'POST body template. Include {message} and {description} in the URL or body.'],
+            ], ['title', 'method', 'url']),
+            $this->tool('delete_notification_channel', 'Delete an unused webhook notification channel.', [
+                'id' => ['type' => 'integer'],
+            ], ['id']),
+            $this->tool('test_notification_channel', 'Send a test payload through a webhook notification channel and save delivery evidence.', [
+                'id' => ['type' => 'integer'],
+            ], ['id']),
+            $this->tool('list_notification_settings', 'List global notification rules with destination and latest delivery evidence.', []),
+            $this->tool('upsert_notification_setting', 'Create or update a global email or webhook notification rule.', [
+                'id' => ['type' => 'integer', 'description' => 'Existing setting id to update. Omit to create.'],
+                'inspection' => ['type' => 'string', 'enum' => ['WEBSITE_CHECK', 'API_MONITOR', 'APPLICATION_HEALTH', 'BACKUP_MONITOR', 'ALL_CHECK']],
+                'channel_type' => ['type' => 'string', 'enum' => ['MAIL', 'WEBHOOK']],
+                'address' => ['type' => 'string', 'format' => 'email', 'description' => 'Required when channel_type=MAIL.'],
+                'notification_channel_id' => ['type' => 'integer', 'description' => 'Required when channel_type=WEBHOOK.'],
+                'active' => ['type' => 'boolean', 'default' => true],
+            ], ['inspection', 'channel_type']),
+            $this->tool('delete_notification_setting', 'Delete a global notification rule.', [
+                'id' => ['type' => 'integer'],
+            ], ['id']),
+            $this->tool('test_notification_setting', 'Send a test notification through a global notification rule and save delivery evidence.', [
+                'id' => ['type' => 'integer'],
+            ], ['id']),
         ];
     }
 

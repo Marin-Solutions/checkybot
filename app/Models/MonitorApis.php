@@ -26,7 +26,19 @@ class MonitorApis extends Model
     use HasSnooze;
     use SoftDeletes;
 
+    public const ADMIN_DISABLED_STATUS_SUMMARY = 'Disabled in Checkybot admin.';
+
     public const LEGACY_RAW_BODY_KEY = 'raw_body';
+
+    public const INTERACTIVE_RUN_KEY = 'interactive';
+
+    public const SCHEDULED_RUN_KEY = 'scheduled';
+
+    private const REMOVED_HEARTBEAT_ATTRIBUTES = [
+        'last_heartbeat_at',
+        'awaiting_heartbeat_since',
+        'stale_at',
+    ];
 
     protected $fillable = [
         'title',
@@ -39,19 +51,21 @@ class MonitorApis extends Model
         'request_body',
         'expected_status',
         'timeout_seconds',
+        'max_response_time_ms',
         'package_schedule',
         'is_enabled',
+        'project_paused_monitoring',
         'last_synced_at',
         'save_failed_response',
         'created_by',
         'project_id',
+        'project_component_id',
         'source',
         'package_name',
         'package_interval',
         'current_status',
-        'last_heartbeat_at',
-        'stale_at',
         'status_summary',
+        'diagnostic_queued_at',
         'silenced_until',
     ];
 
@@ -59,12 +73,41 @@ class MonitorApis extends Model
         'save_failed_response' => 'boolean',
         'expected_status' => 'integer',
         'timeout_seconds' => 'integer',
+        'max_response_time_ms' => 'integer',
         'is_enabled' => 'boolean',
+        'project_paused_monitoring' => 'boolean',
         'last_synced_at' => 'datetime',
-        'last_heartbeat_at' => 'datetime',
-        'stale_at' => 'datetime',
+        'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (MonitorApis $api): void {
+            if ($api->exists && $api->isDirty('is_enabled') && $api->project_paused_monitoring) {
+                $api->project_paused_monitoring = false;
+            }
+        });
+
+    }
+
+    public function setAttribute($key, $value): mixed
+    {
+        if (in_array($key, self::REMOVED_HEARTBEAT_ATTRIBUTES, true)) {
+            return $this;
+        }
+
+        return parent::setAttribute($key, $value);
+    }
+
+    public static function disabledHealthAttributes(?string $summary = self::ADMIN_DISABLED_STATUS_SUMMARY): array
+    {
+        return [
+            'current_status' => 'unknown',
+            'status_summary' => $summary,
+            'diagnostic_queued_at' => null,
+        ];
+    }
 
     protected function headers(): Attribute
     {
@@ -97,6 +140,11 @@ class MonitorApis extends Model
         return $this->belongsTo(Project::class);
     }
 
+    public function component(): BelongsTo
+    {
+        return $this->belongsTo(ProjectComponent::class, 'project_component_id');
+    }
+
     public function assertions(): HasMany
     {
         return $this->hasMany(MonitorApiAssertion::class, 'monitor_api_id')
@@ -106,6 +154,16 @@ class MonitorApis extends Model
     public function results(): HasMany
     {
         return $this->hasMany(MonitorApiResult::class, 'monitor_api_id');
+    }
+
+    public function notificationSettings(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'monitor_api_id')->apiMonitorScope();
+    }
+
+    public function notificationChannels(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class, 'monitor_api_id')->apiMonitorScope()->active();
     }
 
     public function latestResult(): HasOne
@@ -127,6 +185,15 @@ class MonitorApis extends Model
             ['created_at' => 'max', 'id' => 'max'],
             fn ($query) => $query->where('is_on_demand', true),
         );
+    }
+
+    public function hasQueuedDiagnostic(): bool
+    {
+        return $this->diagnostic_queued_at !== null
+            && (
+                $this->latestDiagnosticResult === null
+                || $this->diagnostic_queued_at->greaterThan($this->latestDiagnosticResult->created_at)
+            );
     }
 
     /**
@@ -187,10 +254,12 @@ class MonitorApis extends Model
             'http_method' => $this->http_method,
             'expected_status' => $this->expected_status,
             'timeout_seconds' => $this->timeout_seconds,
+            'max_response_time_ms' => $this->max_response_time_ms,
             'headers' => $this->headers,
             'request_body_type' => $this->request_body_type,
             'request_body' => $this->request_body,
             'data_path' => $this->data_path,
+            self::INTERACTIVE_RUN_KEY => true,
         ]);
 
         if (
@@ -228,7 +297,10 @@ class MonitorApis extends Model
         $expectedStatus = isset($data['expected_status']) ? (int) $data['expected_status'] : null;
 
         $responseData = self::initializeResponseData();
+        $responseData['max_response_time_ms'] = self::normalizeMaxResponseTime($data['max_response_time_ms'] ?? null);
         $httpConfig = self::getHttpConfiguration($data);
+        $responseData['effective_timeout_seconds'] = $httpConfig['timeout'];
+        $responseData['retry_count'] = $httpConfig['retries'];
         $sanitizedUrl = self::sanitizeUrlForLogs($url);
         try {
             $storedMonitor = isset($data['id']) && (! array_key_exists('headers', $data) || ! array_key_exists('request_body', $data))
@@ -247,17 +319,17 @@ class MonitorApis extends Model
             $responseData = self::applyExpectedStatusAssertion($responseData, $expectedStatus);
 
             if (! self::requiresJsonAssertions($data)) {
-                return $responseData;
+                return self::withElapsedWallTime($responseData, $startTime);
             }
 
             $responseData = self::parseJsonResponse($responseData);
             if (self::jsonParsingFailed($responseData)) {
-                return $responseData;
+                return self::withElapsedWallTime($responseData, $startTime);
             }
 
             $responseData = self::runAssertions($data, $responseData);
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         } catch (ConnectionException $exception) {
             $transportError = UptimeTransportError::fromThrowable($exception);
 
@@ -281,7 +353,7 @@ class MonitorApis extends Model
             $responseData['transport_error_message'] = self::sanitizeLogMessage($transportError['message'], $url);
             $responseData['transport_error_code'] = $transportError['code'];
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         } catch (RequestException $exception) {
             Log::error('Request error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
@@ -311,7 +383,7 @@ class MonitorApis extends Model
             $responseData['error'] = self::sanitizeLogMessage($exception->getMessage(), $url);
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         } catch (\Exception $exception) {
             Log::error('Unexpected error while testing API', [
                 'monitor_id' => $data['id'] ?? null,
@@ -321,12 +393,14 @@ class MonitorApis extends Model
                 'error' => self::sanitizeLogMessage($exception->getMessage(), $url),
             ]);
 
+            $sanitizedMessage = self::sanitizeLogMessage($exception->getMessage(), $url);
+
             $responseData['code'] = 0;
             $responseData['body'] = null;
-            $responseData['error'] = 'Unexpected error: '.$exception->getMessage();
+            $responseData['error'] = 'Unexpected error: '.$sanitizedMessage;
             $responseData['response_time_ms'] = self::elapsedMilliseconds($startTime);
 
-            return $responseData;
+            return self::withElapsedWallTime($responseData, $startTime);
         }
     }
 
@@ -341,10 +415,25 @@ class MonitorApis extends Model
             'request_headers' => [],
             'response_headers' => [],
             'response_time_ms' => 0,
+            'max_response_time_ms' => null,
+            'effective_timeout_seconds' => null,
+            'retry_count' => null,
+            'elapsed_wall_time_ms' => 0,
             'transport_error_type' => null,
             'transport_error_message' => null,
             'transport_error_code' => null,
         ];
+    }
+
+    private static function normalizeMaxResponseTime(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $threshold = (int) $value;
+
+        return $threshold > 0 ? $threshold : null;
     }
 
     private static function elapsedMilliseconds(float $startTime): int
@@ -352,13 +441,35 @@ class MonitorApis extends Model
         return (int) round((microtime(true) - $startTime) * 1000);
     }
 
+    private static function withElapsedWallTime(array $responseData, float $startTime): array
+    {
+        $responseData['elapsed_wall_time_ms'] = self::elapsedMilliseconds($startTime);
+
+        return $responseData;
+    }
+
     private static function getHttpConfiguration(array $data): array
     {
         $timeout = (int) ($data['timeout_seconds'] ?? config('monitor.api_timeout', 10));
+        $retries = (int) config('monitor.api_retries', 3);
+
+        if ((bool) ($data[self::INTERACTIVE_RUN_KEY] ?? false)) {
+            $interactiveTimeout = max(1, (int) config('monitor.api_interactive_timeout', 5));
+            $interactiveRetries = max(0, (int) config('monitor.api_interactive_retries', 0));
+
+            $timeout = min($timeout > 0 ? $timeout : $interactiveTimeout, $interactiveTimeout);
+            $retries = min($retries, $interactiveRetries);
+        } elseif ((bool) ($data[self::SCHEDULED_RUN_KEY] ?? false)) {
+            $scheduledTimeout = max(1, (int) config('monitor.api_scheduled_timeout', 90));
+            $scheduledRetries = max(0, (int) config('monitor.api_scheduled_retries', 3));
+
+            $timeout = min($timeout > 0 ? $timeout : $scheduledTimeout, $scheduledTimeout);
+            $retries = min($retries, $scheduledRetries);
+        }
 
         return [
             'timeout' => $timeout > 0 ? $timeout : config('monitor.api_timeout', 10),
-            'retries' => config('monitor.api_retries', 3),
+            'retries' => $retries,
             'retryDelay' => config('monitor.api_retry_delay', 1000),
         ];
     }
@@ -471,8 +582,11 @@ class MonitorApis extends Model
 
     private static function configureHttpClient(array $config, array $headers = []): \Illuminate\Http\Client\PendingRequest
     {
-        $client = Http::timeout($config['timeout'])
-            ->retry($config['retries'], $config['retryDelay'], throw: false);
+        $client = Http::timeout($config['timeout']);
+
+        if ($config['retries'] > 0) {
+            $client = $client->retry($config['retries'], $config['retryDelay'], throw: false);
+        }
 
         if (! empty($headers)) {
             $client = $client->withHeaders($headers);

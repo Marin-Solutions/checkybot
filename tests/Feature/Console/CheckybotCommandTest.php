@@ -23,54 +23,36 @@ afterEach(function () {
     Cache::flush();
 });
 
-test('sync command sends only due health component heartbeats with raw metrics and computed status', function () {
+test('sync command registers declared health components without runtime heartbeat metrics', function () {
     $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
 
     Checkybot::component('queue')
-        ->everyFiveMinutes()
-        ->metric('pending_jobs', fn (): int => 144)
-        ->warningWhen('>=', 100)
-        ->dangerWhen('>=', 200);
+        ->everyFiveMinutes();
 
     Checkybot::component('database')
-        ->everyMinute()
-        ->metric('reachable', fn (): bool => false)
-        ->dangerWhen('===', false);
+        ->everyMinute();
 
     $components = app(\MarinSolutions\CheckybotLaravel\CheckRegistry::class)->getComponents();
 
     expect($components)->toHaveCount(2)
-        ->and($components[0]->toHeartbeatPayload(now()))->toMatchArray([
+        ->and($components[0]->toArray())->toBe([
             'name' => 'queue',
             'interval' => '5m',
-            'status' => 'warning',
-            'metrics' => [
-                'pending_jobs' => 144,
-            ],
         ])
-        ->and($components[1]->toHeartbeatPayload(now()))->toMatchArray([
+        ->and($components[1]->toArray())->toBe([
             'name' => 'database',
             'interval' => '1m',
-            'status' => 'danger',
-            'metrics' => [
-                'reachable' => false,
-            ],
         ]);
 });
 
-test('sync command sends only due component heartbeats', function () {
+test('sync command keeps component intervals as declarations only', function () {
     $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
 
     Checkybot::component('queue')
-        ->everyFiveMinutes()
-        ->metric('pending_jobs', fn (): int => 144)
-        ->warningWhen('>=', 100)
-        ->dangerWhen('>=', 200);
+        ->everyFiveMinutes();
 
     Checkybot::component('database')
-        ->everyMinute()
-        ->metric('reachable', fn (): bool => false)
-        ->dangerWhen('===', false);
+        ->everyMinute();
 
     $registry = app(CheckRegistry::class);
     $components = $registry->getComponents();
@@ -79,29 +61,20 @@ test('sync command sends only due component heartbeats', function () {
     expect($components)->toHaveCount(2)
         ->and(Interval::isDue($components[0]->getInterval(), $currentTime->copy()->subMinute(), $currentTime->copy()))->toBeFalse()
         ->and(Interval::isDue($components[1]->getInterval(), $currentTime->copy()->subMinutes(2), $currentTime->copy()))->toBeTrue()
-        ->and($components[1]->toHeartbeatPayload($currentTime))->toMatchArray([
+        ->and($components[1]->toArray())->toBe([
             'name' => 'database',
             'interval' => '1m',
-            'status' => 'danger',
-            'metrics' => [
-                'reachable' => false,
-            ],
         ]);
 });
 
-test('sync command sends the full declared component schema alongside due heartbeats', function () {
+test('sync command sends the full declared component schema without heartbeats', function () {
     $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
 
     Checkybot::component('queue')
-        ->everyFiveMinutes()
-        ->metric('pending_jobs', fn (): int => 144)
-        ->warningWhen('>=', 100)
-        ->dangerWhen('>=', 200);
+        ->everyFiveMinutes();
 
     Checkybot::component('database')
-        ->everyMinute()
-        ->metric('reachable', fn (): bool => false)
-        ->dangerWhen('===', false);
+        ->everyMinute();
 
     Cache::forever(
         'checkybot-laravel.components.identity:'.sha1('production|https://checkout.example.com').'.queue.last_reported_at',
@@ -151,32 +124,44 @@ test('sync command sends the full declared component schema alongside due heartb
         ->assertExitCode(0);
 
     expect($fakeClient->componentPayloads)->toHaveCount(1)
+        ->and($fakeClient->componentPayloads[0]['full_manifest'])->toBeTrue()
         ->and($fakeClient->componentPayloads[0]['declared_components'])->toMatchArray([
             [
                 'name' => 'queue',
                 'interval' => '5m',
-                'metric' => 'pending_jobs',
-                'warning_threshold' => [
-                    'operator' => '>=',
-                    'value' => 100,
-                ],
-                'danger_threshold' => [
-                    'operator' => '>=',
-                    'value' => 200,
-                ],
             ],
             [
                 'name' => 'database',
                 'interval' => '1m',
-                'metric' => 'reachable',
-                'danger_threshold' => [
-                    'operator' => '===',
-                    'value' => false,
-                ],
             ],
         ])
-        ->and($fakeClient->componentPayloads[0]['components'])->toHaveCount(1)
-        ->and($fakeClient->componentPayloads[0]['components'][0]['name'])->toBe('database');
+        ->and($fakeClient->componentPayloads[0])->not->toHaveKey('components');
+});
+
+test('dry run shows declared components without runtime component heartbeats', function () {
+    $this->travelTo(now()->setDate(2026, 3, 21)->setTime(12, 0));
+
+    Checkybot::component('queue')
+        ->everyFiveMinutes();
+
+    Checkybot::component('database')
+        ->everyMinute();
+
+    Cache::forever(
+        'checkybot-laravel.components.identity:'.sha1('production|https://checkout.example.com').'.queue.last_reported_at',
+        now()->copy()->subMinute()->toISOString()
+    );
+
+    $this->artisan('checkybot:sync --dry-run')
+        ->expectsOutput('Checkybot Sync Starting...')
+        ->expectsOutput('Found 0 checks to sync and 2 components to declare')
+        ->expectsOutput('DRY RUN - No changes will be made')
+        ->expectsOutput('Declared Components (2):')
+        ->expectsOutput('  - queue every 5m')
+        ->expectsOutput('  - database every 1m')
+        ->doesntExpectOutput('Due Component Heartbeats (1):')
+        ->doesntExpectOutput('Components:')
+        ->assertExitCode(0);
 });
 
 test('sync command sends external checks from the registry alongside due components', function () {
@@ -184,14 +169,17 @@ test('sync command sends external checks from the registry alongside due compone
 
     Checkybot::uptime('homepage')
         ->url('https://example.com')
+        ->component('queue')
         ->every('5m');
 
     Checkybot::ssl('certificate')
         ->url('https://example.com')
+        ->component('queue')
         ->every('1d');
 
     Checkybot::api('health')
         ->url('https://example.com/api/health')
+        ->component('queue')
         ->headers([
             'Accept' => 'application/json',
         ])
@@ -205,10 +193,7 @@ test('sync command sends external checks from the registry alongside due compone
         ->every('5m');
 
     Checkybot::component('queue')
-        ->everyMinute()
-        ->metric('pending_jobs', fn (): int => 12)
-        ->warningWhen('>=', 50)
-        ->dangerWhen('>=', 100);
+        ->everyMinute();
 
     $fakeClient = new class extends CheckybotClient
     {
@@ -217,6 +202,8 @@ test('sync command sends external checks from the registry alongside due compone
         public array $checkPayloads = [];
 
         public array $componentPayloads = [];
+
+        public array $events = [];
 
         public function __construct() {}
 
@@ -235,6 +222,7 @@ test('sync command sends external checks from the registry alongside due compone
 
         public function syncChecks(array $payload): array
         {
+            $this->events[] = 'checks';
             $this->checkPayloads[] = $payload;
 
             return [
@@ -248,6 +236,7 @@ test('sync command sends external checks from the registry alongside due compone
 
         public function syncComponents(array $payload): array
         {
+            $this->events[] = 'components';
             $this->componentPayloads[] = $payload;
 
             return [];
@@ -266,6 +255,7 @@ test('sync command sends external checks from the registry alongside due compone
                     'name' => 'homepage',
                     'url' => 'https://example.com',
                     'interval' => '5m',
+                    'component' => 'queue',
                 ],
             ],
             'ssl_checks' => [
@@ -273,6 +263,7 @@ test('sync command sends external checks from the registry alongside due compone
                     'name' => 'certificate',
                     'url' => 'https://example.com',
                     'interval' => '1d',
+                    'component' => 'queue',
                 ],
             ],
             'api_checks' => [
@@ -280,6 +271,7 @@ test('sync command sends external checks from the registry alongside due compone
                     'name' => 'health',
                     'url' => 'https://example.com/api/health',
                     'interval' => '5m',
+                    'component' => 'queue',
                     'headers' => [
                         'Accept' => 'application/json',
                     ],
@@ -302,14 +294,27 @@ test('sync command sends external checks from the registry alongside due compone
             ],
         ])
         ->and($fakeClient->componentPayloads)->toHaveCount(1)
-        ->and($fakeClient->componentPayloads[0]['components'][0])->toMatchArray([
+        ->and($fakeClient->events)->toBe(['components', 'checks'])
+        ->and($fakeClient->componentPayloads[0]['declared_components'][0])->toMatchArray([
             'name' => 'queue',
             'interval' => '1m',
-            'status' => 'healthy',
-            'metrics' => [
-                'pending_jobs' => 12,
-            ],
-        ]);
+        ])
+        ->and($fakeClient->componentPayloads[0])->not->toHaveKey('components');
+});
+
+test('sync command rejects checks that reference undeclared components', function () {
+    Checkybot::uptime('homepage')
+        ->url('https://example.com')
+        ->component('queeu')
+        ->every('5m');
+
+    Checkybot::component('queue')
+        ->everyMinute();
+
+    $this->artisan('checkybot:sync')
+        ->expectsOutput('Configuration validation failed:')
+        ->expectsOutput('  - The uptime check "homepage" references undeclared component "queeu". Declare it with Checkybot::component(\'queeu\') or fix the component name.')
+        ->assertExitCode(1);
 });
 
 test('sync command posts an empty external check payload so package-managed removals can be pruned', function () {
@@ -367,11 +372,12 @@ test('sync command posts an empty external check payload so package-managed remo
             'uptime_checks' => [],
             'ssl_checks' => [],
             'api_checks' => [],
+            'full_manifest' => true,
         ],
     ])->and($fakeClient->componentPayloads)->toBe([
         [
+            'full_manifest' => true,
             'declared_components' => [],
-            'components' => [],
         ],
     ]);
 });
@@ -448,8 +454,8 @@ test('sync command registers a guided setup application before syncing package d
         ->and($fakeClient->checkPayloads)->toHaveCount(1)
         ->and($fakeClient->componentPayloads)->toBe([
             [
+                'full_manifest' => true,
                 'declared_components' => [],
-                'components' => [],
             ],
         ]);
 });
@@ -459,10 +465,7 @@ test('sync command can bootstrap without a guided app id and still sync package 
     config()->set('checkybot-laravel.app_id', null);
 
     Checkybot::component('queue')
-        ->everyMinute()
-        ->metric('pending_jobs', fn (): int => 4)
-        ->warningWhen('>=', 50)
-        ->dangerWhen('>=', 100);
+        ->everyMinute();
 
     $fakeClient = new class extends CheckybotClient
     {

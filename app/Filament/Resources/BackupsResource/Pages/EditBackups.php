@@ -3,11 +3,9 @@
 namespace App\Filament\Resources\BackupsResource\Pages;
 
 use App\Filament\Resources\BackupsResource;
-use App\Models\BackupRemoteStorageConfig;
-use App\Models\Server;
 use Filament\Actions;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\EditRecord;
-use Illuminate\Validation\ValidationException;
 
 class EditBackups extends EditRecord
 {
@@ -25,31 +23,34 @@ class EditBackups extends EditRecord
         ];
     }
 
+    protected function beforeSave(): void
+    {
+        $password = $this->data['password'] ?? null;
+        $confirmPassword = $this->data['confirm_password'] ?? null;
+        $storedPassword = $this->record->getAttribute('password');
+
+        if ($password !== $storedPassword && $password !== $confirmPassword) {
+            Notification::make()
+                ->title('Passwords do not match')
+                ->body('Please confirm your password.')
+                ->danger()
+                ->persistent()
+                ->send();
+
+            $this->halt();
+        }
+    }
+
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        $serverOwned = Server::query()
-            ->whereKey($data['server_id'] ?? null)
-            ->where('created_by', auth()->id())
-            ->exists();
+        BackupsResource::validateSelectedReferences($data);
 
-        $storageOwned = BackupRemoteStorageConfig::query()
-            ->whereKey($data['remote_storage_id'] ?? null)
-            ->where('created_by', auth()->id())
-            ->exists();
-
-        $errors = [];
-
-        if (! $serverOwned) {
-            $errors['server_id'] = 'Choose one of your own servers.';
+        if (blank($data['password'] ?? null)) {
+            unset($data['password']);
         }
 
-        if (! $storageOwned) {
-            $errors['remote_storage_id'] = 'Choose one of your own remote storage configs.';
-        }
-
-        if ($errors !== []) {
-            throw ValidationException::withMessages($errors);
-        }
+        unset($data['confirm_password']);
+        $data['created_by'] = $this->record->created_by ?? auth()->id();
 
         return $data;
     }

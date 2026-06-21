@@ -10,6 +10,30 @@ trait ValidatesMonitorApiRegexAssertions
     /**
      * @param  array<int, mixed>  $assertions
      */
+    protected function addExpectedValueShapeValidationErrors(
+        Validator $validator,
+        array $assertions,
+        string $attributePrefix,
+    ): void {
+        foreach ($assertions as $index => $assertion) {
+            if (! is_array($assertion)) {
+                continue;
+            }
+
+            if (! array_key_exists('expected_value', $assertion) || is_scalar($assertion['expected_value']) || $assertion['expected_value'] === null) {
+                continue;
+            }
+
+            $validator->errors()->add(
+                "{$attributePrefix}.{$index}.expected_value",
+                'The expected value must be a string, number, boolean, or null. Arrays and objects are not supported.'
+            );
+        }
+    }
+
+    /**
+     * @param  array<int, mixed>  $assertions
+     */
     protected function addRegexAssertionValidationErrors(
         Validator $validator,
         array $assertions,

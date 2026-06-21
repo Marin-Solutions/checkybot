@@ -42,10 +42,20 @@ test('monitor api result tracks diagnostic run source', function () {
 });
 
 test('monitor api result casts response time to integer', function () {
-    $result = MonitorApiResult::factory()->create(['response_time_ms' => '150']);
+    $result = MonitorApiResult::factory()->create([
+        'response_time_ms' => '150',
+        'max_response_time_ms' => '1000',
+        'effective_timeout_seconds' => '30',
+        'retry_count' => '2',
+        'elapsed_wall_time_ms' => '62000',
+    ]);
 
     expect($result->response_time_ms)->toBeInt();
-    expect($result->response_time_ms)->toBe(150);
+    expect($result->response_time_ms)->toBe(150)
+        ->and($result->max_response_time_ms)->toBe(1000)
+        ->and($result->effective_timeout_seconds)->toBe(30)
+        ->and($result->retry_count)->toBe(2)
+        ->and($result->elapsed_wall_time_ms)->toBe(62000);
 });
 
 test('monitor api result casts http code to integer', function () {
@@ -143,10 +153,34 @@ test('record result stores header snapshots for run evidence', function () {
         'response_headers' => ['content-type' => 'application/json'],
     ];
 
-    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'danger', 'API check failed with HTTP status 500.');
 
     expect($result->request_headers)->toBe(['Authorization' => '[redacted]'])
         ->and($result->response_headers)->toBe(['content-type' => 'application/json']);
+});
+
+test('record result stores retry and timeout execution evidence', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $testResult = [
+        'code' => 0,
+        'body' => null,
+        'assertions' => [],
+        'effective_timeout_seconds' => 30,
+        'retry_count' => 2,
+        'elapsed_wall_time_ms' => 92000,
+        'transport_error_type' => 'timeout',
+        'transport_error_message' => 'cURL error 28: Operation timed out after 30000 milliseconds',
+        'transport_error_code' => 28,
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'danger', 'API check timed out.');
+
+    expect($result->effective_timeout_seconds)->toBe(30)
+        ->and($result->retry_count)->toBe(2)
+        ->and($result->elapsed_wall_time_ms)->toBe(92000)
+        ->and($result->transport_error_type)->toBe('timeout');
 });
 
 test('record result only saves response body on error', function () {
@@ -172,7 +206,7 @@ test('record result only saves response body on error', function () {
     expect($result->response_body)->not->toBeNull();
 });
 
-test('record result preserves raw failure payloads when json parsing fails', function () {
+test('record result redacts raw failure payloads when json parsing fails', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);
 
@@ -184,15 +218,69 @@ test('record result preserves raw failure payloads when json parsing fails', fun
         'error' => 'Invalid JSON response: Syntax error',
     ];
 
-    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API heartbeat failed with HTTP status 500.');
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API check failed with HTTP status 500.');
 
     expect($result->response_body)->toBe([
-        MonitorApiResult::RAW_BODY_KEY => '<html>upstream exploded</html>',
+        MonitorApiResult::RAW_BODY_KEY => '[redacted]',
         'error' => 'Invalid JSON response: Syntax error',
     ]);
 });
 
-test('record result uses internal metadata key for error-only failures', function () {
+test('record result redacts saved failure payload keys before persistence', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $failedResult = [
+        'code' => 500,
+        'body' => [
+            'message' => 'upstream failed',
+            'access_token' => 'token-secret',
+            'customer' => [
+                'email' => 'customer@example.com',
+                'password' => 'plaintext-password',
+            ],
+        ],
+        'assertions' => [['passed' => false, 'message' => 'Failed']],
+        'error' => 'Invalid JSON response: token=should-not-persist',
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime);
+
+    expect($result->response_body)->toBe([
+        'message' => 'upstream failed',
+        'access_token' => '[redacted]',
+        'customer' => [
+            'email' => 'customer@example.com',
+            'password' => '[redacted]',
+        ],
+        'error' => 'Invalid JSON response: token=[redacted]',
+    ])
+        ->and($result->getRawOriginal('response_body'))->not->toContain('token-secret')
+        ->and($result->getRawOriginal('response_body'))->not->toContain('plaintext-password')
+        ->and($result->getRawOriginal('response_body'))->not->toContain('should-not-persist');
+});
+
+test('record result caps saved failure payload size before persistence', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true);
+
+    $failedResult = [
+        'code' => 500,
+        'body' => collect(range(1, 200))->mapWithKeys(fn (int $index): array => [
+            "field_{$index}" => str_repeat('日\"', 250),
+        ])->all(),
+        'assertions' => [['passed' => false, 'message' => 'Failed']],
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime);
+
+    expect($result->response_body)->toHaveKey('__checky_truncated_payload__')
+        ->and($result->response_body['__checky_truncated_payload__'])->toEndWith('... [truncated]')
+        ->and(strlen($result->getRawOriginal('response_body')))->toBeLessThanOrEqual(32768)
+        ->and(mb_check_encoding($result->response_body['__checky_truncated_payload__'], 'UTF-8'))->toBeTrue();
+});
+
+test('record result uses redacted internal metadata key for error-only failures', function () {
     $monitor = MonitorApis::factory()->create();
     $startTime = microtime(true);
 
@@ -207,7 +295,7 @@ test('record result uses internal metadata key for error-only failures', functio
     $result = MonitorApiResult::recordResult($monitor, $failedResult, $startTime, 'danger', 'API request failed.');
 
     expect($result->response_body)->toBe([
-        MonitorApiResult::ERROR_METADATA_KEY => 'Connection timeout: cURL error 28',
+        MonitorApiResult::ERROR_METADATA_KEY => '[redacted]',
     ]);
 });
 
@@ -234,6 +322,24 @@ test('record result calculates response time', function () {
 
     expect($result->response_time_ms)->toBeGreaterThan(100);
     expect($result->response_time_ms)->toBeLessThan(200);
+});
+
+test('record result persists measured response time from test result when available', function () {
+    $monitor = MonitorApis::factory()->create();
+    $startTime = microtime(true) - 0.15;
+
+    $testResult = [
+        'code' => 200,
+        'body' => [],
+        'assertions' => [],
+        'response_time_ms' => 25,
+        'elapsed_wall_time_ms' => 150,
+    ];
+
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime);
+
+    expect($result->response_time_ms)->toBe(25)
+        ->and($result->elapsed_wall_time_ms)->toBe(150);
 });
 
 test('record result persists actual and expected values for failed assertions', function () {
@@ -414,7 +520,7 @@ test('record result treats healthy expected 404 status as success when status is
         'assertions' => [],
     ];
 
-    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'healthy', 'API heartbeat succeeded with HTTP status 404.');
+    $result = MonitorApiResult::recordResult($monitor, $testResult, $startTime, 'healthy', 'API check succeeded with HTTP status 404.');
 
     expect($result->is_success)->toBeTrue()
         ->and($result->status)->toBe('healthy')

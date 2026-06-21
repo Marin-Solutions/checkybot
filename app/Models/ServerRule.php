@@ -25,6 +25,9 @@ class ServerRule extends Model
         'is_triggered' => 'boolean',
         'triggered_at' => 'datetime',
         'recovered_at' => 'datetime',
+        'last_evaluated_value' => 'float',
+        'last_evaluated_at' => 'datetime',
+        'last_reported_at' => 'datetime',
     ];
 
     protected static function booted(): void
@@ -34,6 +37,11 @@ class ServerRule extends Model
                 $rule->is_triggered = false;
                 $rule->triggered_at = null;
                 $rule->recovered_at = null;
+                $rule->last_evaluated_value = null;
+                $rule->last_evaluated_at = null;
+                $rule->last_evaluation_status = null;
+                $rule->last_evaluation_reason = null;
+                $rule->last_reported_at = null;
             }
         });
     }

@@ -364,12 +364,18 @@
                             'PATCH /control/projects/{project}/checks/{check}/disable',
                             'POST /control/projects/{project}/runs',
                             'POST /control/projects/{project}/checks/{check}/runs',
+                            'GET /control/projects/{project}/runs/{batch}',
                             'GET /control/runs?project={project}&limit=25',
                             'GET /control/failures?project={project}&limit=25',
+                            'GET /control/issues?project={project}&type=api',
                         ] as $endpoint)
                             <div class="cb-docs-chip">{{ $endpoint }}</div>
                         @endforeach
                     </div>
+
+                    <p>
+                        Control payloads include API checks, website checks, and declared components. Component checks are declaration-only: they expose identity, schedule, derived status, delivery state, and <span class="cb-docs-code">supports_run: false</span>, but omit runtime heartbeat observations, stale timing, and metrics. Project run batches return the batch id, status, name, job counts, and created or finished timestamps.
+                    </p>
                 </div>
 
                 <div x-cloak x-show="tab === 'tools'">
@@ -389,11 +395,26 @@
                             'upsert_check',
                             'disable_check',
                             'trigger_run',
+                            'get_run_batch',
+                            'recent_runs',
                             'latest_failures',
+                            'current_issues',
+                            'list_notification_channels',
+                            'upsert_notification_channel',
+                            'delete_notification_channel',
+                            'test_notification_channel',
+                            'list_notification_settings',
+                            'upsert_notification_setting',
+                            'delete_notification_setting',
+                            'test_notification_setting',
                         ] as $tool)
                             <div class="cb-docs-chip">{{ $tool }}</div>
                         @endforeach
                     </div>
+
+                    <p>
+                        <span class="cb-docs-code">list_checks</span> includes declared components alongside API and website checks, and <span class="cb-docs-code">current_issues</span> can return derived component issues from their child checks. <span class="cb-docs-code">recent_runs</span> and <span class="cb-docs-code">latest_failures</span> cover executable API and website results only. Use <span class="cb-docs-code">get_run_batch</span> with the batch id returned by <span class="cb-docs-code">trigger_run</span> to poll queued project diagnostics.
+                    </p>
                 </div>
             </div>
         </section>

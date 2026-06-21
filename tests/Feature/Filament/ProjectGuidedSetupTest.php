@@ -66,6 +66,37 @@ test('application view shows the guided Laravel setup snippet with pairing data'
         ->toContain('Schedule::command(\'checkybot:sync\')->everyMinute();');
 });
 
+test('application view does not treat selected Laravel technology as package registration', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $project = Project::factory()->create([
+        'name' => 'Unregistered Laravel App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => null,
+        'package_version' => null,
+        'package_key' => null,
+        'base_url' => null,
+        'repository' => null,
+        'last_synced_at' => null,
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Waiting for registration')
+        ->assertSee('Checkybot has not received a Laravel package registration for this application yet.')
+        ->assertSee('Finish registration')
+        ->assertSee('Create or copy an API key')
+        ->assertSee('php artisan vendor:publish --tag=&quot;checkybot-routes&quot;', false)
+        ->assertSee('php artisan checkybot:sync')
+        ->assertSee('Waiting for the package to register this application with Checkybot.')
+        ->assertDontSee('Waiting for first sync')
+        ->assertDontSee('Registration received.');
+});
+
 test('application view shows waiting for first sync after registration arrives', function () {
     $this->createResourcePermissions('Project');
 
@@ -87,6 +118,9 @@ test('application view shows waiting for first sync after registration arrives',
         ->assertSee('Waiting for first sync')
         ->assertSee('Registration received from https://checkout.example.com.')
         ->assertSee('Waiting for the package to send checks, components, and package metadata.')
+        ->assertSee('Run first sync')
+        ->assertSee('php artisan checkybot:sync --dry-run')
+        ->assertSee('php artisan schedule:list | grep &#039;checkybot:sync&#039;', false)
         ->assertSee('Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.');
 });
 
@@ -113,6 +147,63 @@ test('application view shows synced setup verification after first package sync'
         ->assertSee('Checkybot has received both the Laravel package registration and the first package sync payload for this application.')
         ->assertSee('First sync received')
         ->assertSee('Complete');
+});
+
+test('application view warns when package sync is stale', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    config()->set('monitor.package_sync_stale_minutes', 15);
+
+    $project = Project::factory()->create([
+        'name' => 'Stale App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+        'package_key' => 'stale-app',
+        'base_url' => 'https://checkout.example.com',
+        'last_synced_at' => now()->subMinutes(16),
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Sync stale')
+        ->assertSee('Checkybot has received package sync payloads before, but the latest sync is more than 15 minutes old.')
+        ->assertSee('The Laravel scheduler or package integration may have stopped.')
+        ->assertSee('Last sync received 16 minutes ago, which is outside the 15 minute freshness window.')
+        ->assertSee('Run sync repair')
+        ->assertSee('tail -n 100 storage/logs/laravel.log | grep -i &#039;checkybot&#039;', false)
+        ->assertSee('Run `php artisan checkybot:sync` in the Laravel app')
+        ->assertSee('Stale');
+});
+
+test('application view keeps recent package sync marked synced', function () {
+    $this->createResourcePermissions('Project');
+
+    $user = $this->actingAsSuperAdmin();
+
+    config()->set('monitor.package_sync_stale_minutes', 15);
+
+    $project = Project::factory()->create([
+        'name' => 'Fresh App',
+        'environment' => 'production',
+        'technology' => 'Laravel',
+        'identity_endpoint' => 'https://checkout.example.com',
+        'package_version' => '1.2.3',
+        'package_key' => 'fresh-app',
+        'base_url' => 'https://checkout.example.com',
+        'last_synced_at' => now()->subMinutes(14),
+        'created_by' => $user->id,
+    ]);
+
+    Livewire::test(ViewProject::class, ['record' => $project->getRouteKey()])
+        ->assertSuccessful()
+        ->assertSee('Synced')
+        ->assertDontSee('Sync stale')
+        ->assertDontSee('The Laravel scheduler or package integration may have stopped.');
 });
 
 test('application view can create an api key inline and update the guided setup snippet', function () {

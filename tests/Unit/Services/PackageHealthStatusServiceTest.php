@@ -13,7 +13,7 @@ test('api status treats matching expected 404 as healthy', function () {
     ];
 
     expect($service->apiStatusFromResult($result, 404))->toBe('healthy')
-        ->and($service->summaryForApi($result, 404))->toBe('API heartbeat succeeded with HTTP status 404.');
+        ->and($service->summaryForApi($result, 404))->toBe('API check succeeded with HTTP status 404.');
 });
 
 test('api status treats matching expected status with failed assertions as warning', function () {
@@ -29,7 +29,7 @@ test('api status treats matching expected status with failed assertions as warni
     ];
 
     expect($service->apiStatusFromResult($result, 404))->toBe('warning')
-        ->and($service->summaryForApi($result, 404))->toBe('API heartbeat is degraded with HTTP status 404.');
+        ->and($service->summaryForApi($result, 404))->toBe('API check is degraded with HTTP status 404.');
 });
 
 test('api status treats non-matching expected 201 as warning', function () {
@@ -41,7 +41,21 @@ test('api status treats non-matching expected 201 as warning', function () {
     ];
 
     expect($service->apiStatusFromResult($result, 201))->toBe('warning')
-        ->and($service->summaryForApi($result, 201))->toBe('API heartbeat is degraded with HTTP status 200.');
+        ->and($service->summaryForApi($result, 201))->toBe('API check is degraded with HTTP status 200.');
+});
+
+test('api status treats slow successful response as warning', function () {
+    $service = app(PackageHealthStatusService::class);
+
+    $result = [
+        'code' => 200,
+        'response_time_ms' => 30500,
+        'max_response_time_ms' => 30000,
+        'assertions' => [],
+    ];
+
+    expect($service->apiStatusFromResult($result, 200))->toBe('warning')
+        ->and($service->summaryForApi($result, 200))->toBe('API check exceeded the 30000ms response-time warning threshold (30500ms).');
 });
 
 test('stale detection waits until after the exact interval boundary', function () {

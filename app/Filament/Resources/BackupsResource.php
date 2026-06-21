@@ -3,13 +3,17 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\BackupsResource\Pages;
+use App\Filament\Resources\BackupsResource\RelationManagers\HistoriesRelationManager;
 use App\Models\Backup;
+use App\Models\BackupRemoteStorageConfig;
+use App\Models\Server;
 use Filament\Forms;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\ValidationException;
 use Webbingbrasil\FilamentCopyActions\Tables\Actions\CopyAction;
 
 class BackupsResource extends Resource
@@ -93,10 +97,59 @@ class BackupsResource extends Resource
                     ->description(fn (Backup $record) => $record->server->ip),
                 Tables\Columns\TextColumn::make('remoteStorage.label')
                     ->description(fn (Backup $record) => $record->remoteStorage->host),
+                Tables\Columns\TextColumn::make('freshness_state')
+                    ->label('Freshness')
+                    ->state(fn (Backup $record): string => $record->freshnessState())
+                    ->badge()
+                    ->color(fn (Backup $record): string => match ($record->freshnessState()) {
+                        'Missed run' => 'danger',
+                        'Awaiting first run' => 'warning',
+                        default => 'success',
+                    })
+                    ->description(fn (Backup $record): string => $record->freshnessSummary())
+                    ->wrap(),
+                Tables\Columns\TextColumn::make('latest_history_received_at')
+                    ->label('Latest Run')
+                    ->state(fn (Backup $record): mixed => $record->latestHistoryReceivedAt())
+                    ->dateTimeInUserZone()
+                    ->placeholder('No runs yet')
+                    ->sortable(query: fn (Builder $query, string $direction): Builder => $query->orderBy('last_history_at', $direction)),
+                Tables\Columns\TextColumn::make('freshness_threshold_at')
+                    ->label('Expected By')
+                    ->state(fn (Backup $record): mixed => $record->freshnessThresholdAt())
+                    ->dateTimeInUserZone()
+                    ->placeholder('-'),
                 Tables\Columns\TextColumn::make('first_run_at')->dateTimeInUserZone(),
             ])
             ->filters([
-                //
+                Tables\Filters\SelectFilter::make('freshness_state')
+                    ->label('Freshness')
+                    ->options([
+                        'missed_run' => 'Missed runs',
+                        'awaiting_first_run' => 'Awaiting first run',
+                        'fresh' => 'Fresh backups',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'missed_run' => $query->missedRun(),
+                            'awaiting_first_run' => $query->awaitingFirstRun(),
+                            'fresh' => $query->fresh(),
+                            default => $query,
+                        };
+                    }),
+                Tables\Filters\SelectFilter::make('latest_run_failure')
+                    ->label('Latest Run Failure')
+                    ->options([
+                        'zip_failed' => 'Zip failed',
+                        'upload_failed' => 'Upload failed',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'zip_failed' => $query->latestZipFailed(),
+                            'upload_failed' => $query->latestUploadFailed(),
+                            default => $query,
+                        };
+                    }),
             ])
             ->actions([
                 \Filament\Actions\EditAction::make(),
@@ -114,8 +167,67 @@ class BackupsResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            HistoriesRelationManager::class,
         ];
+    }
+
+    public static function getEloquentQuery(): Builder
+    {
+        $userId = auth()->id();
+
+        return parent::getEloquentQuery()
+            ->when($userId, fn (Builder $query): Builder => $query->ownedBy($userId), fn (Builder $query): Builder => $query->whereRaw('1 = 0'))
+            ->with(['interval', 'latestHistory', 'remoteStorage', 'server']);
+    }
+
+    public static function ownsSelectedReferences(array $data): bool
+    {
+        return static::selectedReferenceErrors($data) === [];
+    }
+
+    public static function validateSelectedReferences(array $data): void
+    {
+        $errors = static::selectedReferenceErrors($data);
+
+        if ($errors === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages($errors);
+    }
+
+    protected static function selectedReferenceErrors(array $data): array
+    {
+        $userId = auth()->id();
+
+        if (! $userId) {
+            return [
+                'server_id' => 'Choose one of your own servers.',
+                'remote_storage_id' => 'Choose one of your own remote storage configs.',
+            ];
+        }
+
+        $serverOwned = Server::query()
+            ->whereKey($data['server_id'] ?? null)
+            ->where('created_by', $userId)
+            ->exists();
+
+        $storageOwned = BackupRemoteStorageConfig::query()
+            ->whereKey($data['remote_storage_id'] ?? null)
+            ->where('created_by', $userId)
+            ->exists();
+
+        $errors = [];
+
+        if (! $serverOwned) {
+            $errors['server_id'] = 'Choose one of your own servers.';
+        }
+
+        if (! $storageOwned) {
+            $errors['remote_storage_id'] = 'Choose one of your own remote storage configs.';
+        }
+
+        return $errors;
     }
 
     public static function getPages(): array
@@ -125,12 +237,5 @@ class BackupsResource extends Resource
             'create' => Pages\CreateBackups::route('/create'),
             'edit' => Pages\EditBackups::route('/{record}/edit'),
         ];
-    }
-
-    public static function getEloquentQuery(): Builder
-    {
-        return parent::getEloquentQuery()
-            ->whereHas('server', fn (Builder $query): Builder => $query->where('created_by', auth()->id()))
-            ->whereHas('remoteStorage', fn (Builder $query): Builder => $query->where('created_by', auth()->id()));
     }
 }

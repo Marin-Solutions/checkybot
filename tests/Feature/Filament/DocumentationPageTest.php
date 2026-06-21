@@ -15,7 +15,15 @@ test('super admin can render developer documentation page', function () {
         ->assertSee('MCP configuration')
         ->assertSee('https://checkybot.example.com/api/v1/mcp')
         ->assertSee('GET /control/projects')
-        ->assertSee('upsert_check');
+        ->assertSee('GET /control/projects/{project}/runs/{batch}', false)
+        ->assertSee('upsert_check')
+        ->assertSee('get_run_batch')
+        ->assertSee('recent_runs')
+        ->assertSee('current_issues')
+        ->assertSee('delete_notification_channel')
+        ->assertSee('test_notification_setting')
+        ->assertSee('Component checks are declaration-only')
+        ->assertSee('runtime heartbeat observations');
 });
 
 test('developer documentation widget links setup entry points', function () {

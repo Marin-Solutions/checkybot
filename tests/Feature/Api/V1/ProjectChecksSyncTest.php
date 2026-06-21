@@ -5,11 +5,13 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\CheckSyncService;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\ValidationException;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -38,6 +40,24 @@ test('syncs uptime checks successfully', function () {
         'deleted' => 0,
     ]);
 
+    expect($this->project->refresh()->latest_package_sync_summary)->toMatchArray([
+        'uptime_checks' => [
+            'created' => 1,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'ssl_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'api_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+    ]);
+
     $this->assertDatabaseHas('websites', [
         'project_id' => $this->project->id,
         'name' => 'homepage-uptime',
@@ -48,6 +68,109 @@ test('syncs uptime checks successfully', function () {
         'package_name' => 'homepage-uptime',
         'package_interval' => '5m',
     ]);
+});
+
+test('project check sync rejects non server runtime health fields', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'homepage',
+                    'url' => 'https://example.com',
+                    'interval' => '5m',
+                    'status' => 'danger',
+                    'last_heartbeat_at' => now()->toISOString(),
+                    'stale_at' => now()->addMinutes(5)->toISOString(),
+                ],
+            ],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'api-health',
+                    'url' => 'https://example.com/health',
+                    'interval' => '5m',
+                    'metrics' => ['latency_ms' => 123],
+                    'observed_at' => now()->toISOString(),
+                ],
+            ],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'uptime_checks.0.status',
+            'uptime_checks.0.last_heartbeat_at',
+            'uptime_checks.0.stale_at',
+            'api_checks.0.metrics',
+            'api_checks.0.observed_at',
+        ]);
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+    ]);
+    $this->assertDatabaseMissing('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'api-health',
+    ]);
+});
+
+test('project check sync rejects empty manifests without full manifest confirmation', function () {
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['checks']);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'deleted_at' => null,
+    ]);
+});
+
+test('project check sync accepts full empty manifests and archives package checks', function () {
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+    ]);
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'api-health',
+        'is_enabled' => true,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'full_manifest' => true,
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ])
+        ->assertOk()
+        ->assertJsonPath('summary.uptime_checks.deleted', 1)
+        ->assertJsonPath('summary.ssl_checks.deleted', 0)
+        ->assertJsonPath('summary.api_checks.deleted', 1);
+
+    expect(Website::withTrashed()->where('project_id', $this->project->id)->where('package_name', 'homepage')->first()?->trashed())->toBeTrue()
+        ->and(MonitorApis::withTrashed()->where('project_id', $this->project->id)->where('package_name', 'api-health')->first()?->trashed())->toBeTrue();
 });
 
 test('syncs ssl checks successfully', function () {
@@ -77,6 +200,80 @@ test('syncs ssl checks successfully', function () {
         'source' => 'package',
         'package_name' => 'homepage-ssl',
         'package_interval' => '1d',
+    ]);
+});
+
+test('legacy sync honors disabled uptime and ssl package checks', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'homepage-uptime',
+                    'url' => 'https://uptime-example.com',
+                    'interval' => '5m',
+                    'enabled' => false,
+                ],
+            ],
+            'ssl_checks' => [
+                [
+                    'name' => 'homepage-ssl',
+                    'url' => 'https://ssl-example.com',
+                    'interval' => '1d',
+                    'enabled' => false,
+                ],
+            ],
+            'api_checks' => [],
+        ]);
+
+    $response->assertOk()
+        ->assertJsonPath('summary.uptime_checks.created', 1)
+        ->assertJsonPath('summary.ssl_checks.created', 1);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage-uptime',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'source' => 'package',
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage-ssl',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'source' => 'package',
+    ]);
+});
+
+test('legacy sync preserves package side pause for one check type on shared website', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://shared-example.com',
+                'interval' => '5m',
+                'enabled' => false,
+            ],
+        ],
+        'ssl_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://shared-example.com',
+                'interval' => '1d',
+                'enabled' => true,
+            ],
+        ],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'url' => 'https://shared-example.com',
+        'uptime_check' => false,
+        'ssl_check' => true,
+        'source' => 'package',
     ]);
 });
 
@@ -148,6 +345,180 @@ test('syncs api checks with assertions successfully', function () {
         ->and($api->request_body)->toBe('{"grant_type":"client_credentials","scope":"health"}');
 });
 
+test('legacy sync links package checks to declared project components', function () {
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'database-http',
+                'url' => 'https://database.example.com',
+                'interval' => '5m',
+                'component' => 'database',
+            ],
+        ],
+        'ssl_checks' => [
+            [
+                'name' => 'database-certificate',
+                'url' => 'https://database.example.com',
+                'interval' => '1d',
+                'component' => 'database',
+            ],
+        ],
+        'api_checks' => [
+            [
+                'name' => 'database-health',
+                'url' => 'https://database.example.com/health',
+                'interval' => '5m',
+                'component' => 'database',
+            ],
+        ],
+    ]);
+
+    expect($summary['uptime_checks']['created'])->toBe(1)
+        ->and($summary['ssl_checks']['created'])->toBe(1)
+        ->and($summary['api_checks']['created'])->toBe(1);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-http',
+        'project_component_id' => $component->id,
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-certificate',
+        'project_component_id' => $component->id,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-health',
+        'project_component_id' => $component->id,
+    ]);
+});
+
+test('legacy sync rejects checks that reference undeclared project components', function () {
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
+    expect(fn () => $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'database-http',
+                'url' => 'https://database.example.com',
+                'interval' => '5m',
+                'component' => 'databse',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]))->toThrow(ValidationException::class);
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-http',
+    ]);
+});
+
+test('project check sync returns validation errors for undeclared components', function () {
+    ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    ProjectComponent::factory()->archived()->create([
+        'project_id' => $this->project->id,
+        'name' => 'databse',
+        'created_by' => $this->user->id,
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'database-http',
+                    'url' => 'https://database.example.com',
+                    'interval' => '5m',
+                    'component' => 'databse',
+                ],
+            ],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ])
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors([
+            'uptime_checks.0.component',
+        ]);
+
+    $this->assertDatabaseMissing('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'database-http',
+    ]);
+});
+
+test('legacy sync clears component links when package checks omit component names', function () {
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database',
+        'created_by' => $this->user->id,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'database-http',
+        'url' => 'https://database.example.com',
+        'source' => 'package',
+        'package_name' => 'database-http',
+        'package_interval' => '5m',
+        'project_component_id' => $component->id,
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'database-health',
+        'url' => 'https://database.example.com/health',
+        'source' => 'package',
+        'package_name' => 'database-health',
+        'package_interval' => '5m',
+        'project_component_id' => $component->id,
+        'created_by' => $this->user->id,
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'database-http',
+                'url' => 'https://database.example.com',
+                'interval' => '5m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'database-health',
+                'url' => 'https://database.example.com/health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    expect($summary['uptime_checks']['updated'])->toBe(1)
+        ->and($summary['api_checks']['updated'])->toBe(1);
+
+    expect(Website::query()->where('package_name', 'database-http')->sole()->project_component_id)->toBeNull()
+        ->and(MonitorApis::query()->where('package_name', 'database-health')->sole()->project_component_id)->toBeNull();
+});
+
 test('updates api checks with execution settings from legacy sync', function () {
     MonitorApis::factory()->create([
         'project_id' => $this->project->id,
@@ -174,6 +545,7 @@ test('updates api checks with execution settings from legacy sync', function () 
                 'method' => 'patch',
                 'expected_status' => 204,
                 'timeout_seconds' => 30,
+                'max_response_time_ms' => 5000,
                 'save_failed_response' => false,
                 'enabled' => false,
             ],
@@ -194,11 +566,223 @@ test('updates api checks with execution settings from legacy sync', function () 
         'request_path' => 'https://api.example.com/health',
         'expected_status' => 204,
         'timeout_seconds' => 30,
+        'max_response_time_ms' => 5000,
         'save_failed_response' => false,
         'package_schedule' => '10m',
         'package_interval' => '10m',
         'is_enabled' => false,
     ]);
+});
+
+test('legacy sync resets api live health when target-defining settings change', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/old-health',
+        'http_method' => 'GET',
+        'expected_status' => 200,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous target was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(7),
+        'diagnostic_queued_at' => now(),
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'status',
+        'assertion_type' => 'exists',
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/new-health',
+                'interval' => '5m',
+                'method' => 'POST',
+                'expected_status' => 201,
+                'assertions' => [
+                    [
+                        'data_path' => 'data.ready',
+                        'assertion_type' => 'exists',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $api->id,
+        'url' => 'https://api.example.com/new-health',
+        'http_method' => 'POST',
+        'expected_status' => 201,
+        'current_status' => 'pending',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+});
+
+test('legacy sync resets api live health when request configuration changes', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'POST',
+        'headers' => [
+            'Authorization' => 'Bearer old-token',
+        ],
+        'request_body_type' => 'json',
+        'request_body' => [
+            'probe' => 'old',
+        ],
+        'expected_status' => 200,
+        'timeout_seconds' => 15,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous request configuration was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(7),
+        'diagnostic_queued_at' => now(),
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'status',
+        'assertion_type' => 'exists',
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+                'method' => 'POST',
+                'expected_status' => 200,
+                'headers' => [
+                    'Authorization' => 'Bearer new-token',
+                ],
+                'request_body_type' => 'raw',
+                'request_body' => 'probe=new',
+                'timeout_seconds' => 30,
+                'assertions' => [
+                    [
+                        'data_path' => 'status',
+                        'assertion_type' => 'exists',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'id' => $api->id,
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'POST',
+        'expected_status' => 200,
+        'request_body_type' => 'raw',
+        'timeout_seconds' => 30,
+        'current_status' => 'pending',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+
+    expect($api->fresh()->awaiting_heartbeat_since)->toBeNull();
+});
+
+test('legacy sync does not reset api live health when assertions arrive out of sort order', function () {
+    $api = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'http_method' => 'GET',
+        'headers' => [],
+        'expected_status' => 200,
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Current target is healthy.',
+        'last_heartbeat_at' => now()->subMinutes(3),
+        'stale_at' => now()->addMinutes(7),
+        'created_by' => $this->user->id,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'data.ready',
+        'assertion_type' => 'exists',
+        'comparison_operator' => null,
+        'expected_value' => null,
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    MonitorApiAssertion::factory()->create([
+        'monitor_api_id' => $api->id,
+        'data_path' => 'data.count',
+        'assertion_type' => 'value_compare',
+        'comparison_operator' => '>=',
+        'expected_value' => '1',
+        'sort_order' => 1,
+        'is_active' => true,
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+                'method' => 'GET',
+                'expected_status' => 200,
+                'assertions' => [
+                    [
+                        'data_path' => 'data.count',
+                        'assertion_type' => 'value_compare',
+                        'comparison_operator' => '>=',
+                        'expected_value' => '1',
+                        'is_active' => true,
+                    ],
+                    [
+                        'data_path' => 'data.ready',
+                        'assertion_type' => 'exists',
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ]);
+
+    $api->refresh();
+
+    expect($api->current_status)->toBe('healthy')
+        ->and($api->status_summary)->toBe('Current target is healthy.');
 });
 
 test('preserves existing api execution settings when legacy sync omits them', function () {
@@ -248,6 +832,110 @@ test('preserves existing api execution settings when legacy sync omits them', fu
     ]);
 });
 
+test('re-enables orphaned api checks when legacy sync reintroduces them without enabled flag', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '10m',
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'package_interval' => '10m',
+        'is_enabled' => true,
+        'current_status' => 'pending',
+        'status_summary' => null,
+    ]);
+});
+
+test('clears missing sync evidence when orphaned api checks return disabled', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'optional-health-check',
+                'url' => 'https://api.example.com/optional-health',
+                'interval' => '5m',
+            ],
+        ],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'optional-health-check',
+                'url' => 'https://api.example.com/optional-health',
+                'interval' => '10m',
+                'enabled' => false,
+            ],
+        ],
+    ]);
+
+    expect($summary['api_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'optional-health-check',
+        'package_interval' => '10m',
+        'is_enabled' => false,
+        'current_status' => 'pending',
+        'status_summary' => null,
+    ]);
+});
+
 test('legacy sync defaults nullable expected status to success status', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
@@ -269,6 +957,140 @@ test('legacy sync defaults nullable expected status to success status', function
         'project_id' => $this->project->id,
         'package_name' => 'nullable-status-api',
         'expected_status' => 200,
+    ]);
+});
+
+test('legacy sync does not count unchanged existing checks as updated', function () {
+    $payload = [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage-uptime',
+                'url' => 'https://example.com',
+                'interval' => '5m',
+                'enabled' => true,
+            ],
+        ],
+        'ssl_checks' => [
+            [
+                'name' => 'homepage-ssl',
+                'url' => 'https://secure.example.com',
+                'interval' => '1h',
+                'enabled' => true,
+            ],
+        ],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '10m',
+                'method' => 'POST',
+                'expected_status' => 202,
+                'timeout_seconds' => 15,
+                'save_failed_response' => false,
+                'enabled' => true,
+                'headers' => [
+                    'Authorization' => 'Bearer secret',
+                ],
+                'request_body_type' => 'json',
+                'request_body' => [
+                    'probe' => true,
+                    'filters' => [],
+                ],
+                'assertions' => [
+                    [
+                        'data_path' => 'status',
+                        'assertion_type' => 'value_compare',
+                        'comparison_operator' => '=',
+                        'expected_value' => 'ok',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload)
+        ->assertOk()
+        ->assertJsonPath('summary.uptime_checks.created', 1)
+        ->assertJsonPath('summary.ssl_checks.created', 1)
+        ->assertJsonPath('summary.api_checks.created', 1)
+        ->assertJsonPath('summary.uptime_checks.updated', 0)
+        ->assertJsonPath('summary.ssl_checks.updated', 0)
+        ->assertJsonPath('summary.api_checks.updated', 0);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload);
+
+    $response->assertOk()
+        ->assertJsonPath('summary.uptime_checks.created', 0)
+        ->assertJsonPath('summary.ssl_checks.created', 0)
+        ->assertJsonPath('summary.api_checks.created', 0)
+        ->assertJsonPath('summary.uptime_checks.updated', 0)
+        ->assertJsonPath('summary.ssl_checks.updated', 0)
+        ->assertJsonPath('summary.api_checks.updated', 0)
+        ->assertJsonPath('summary.uptime_checks.deleted', 0)
+        ->assertJsonPath('summary.ssl_checks.deleted', 0)
+        ->assertJsonPath('summary.api_checks.deleted', 0);
+
+    expect($this->project->refresh()->latest_package_sync_summary)->toMatchArray([
+        'uptime_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'ssl_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+        'api_checks' => [
+            'created' => 0,
+            'updated' => 0,
+            'deleted' => 0,
+        ],
+    ]);
+});
+
+test('legacy sync counts changed api assertions as an update', function () {
+    $payload = [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [
+            [
+                'name' => 'health-check',
+                'url' => 'https://api.example.com/health',
+                'interval' => '5m',
+                'assertions' => [
+                    [
+                        'data_path' => 'status',
+                        'assertion_type' => 'exists',
+                        'sort_order' => 1,
+                        'is_active' => true,
+                    ],
+                ],
+            ],
+        ],
+    ];
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload)
+        ->assertOk()
+        ->assertJsonPath('summary.api_checks.created', 1)
+        ->assertJsonPath('summary.api_checks.updated', 0);
+
+    $payload['api_checks'][0]['assertions'][0]['data_path'] = 'data.status';
+
+    $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload)
+        ->assertOk()
+        ->assertJsonPath('summary.api_checks.created', 0)
+        ->assertJsonPath('summary.api_checks.updated', 1);
+
+    $this->assertDatabaseHas('monitor_api_assertions', [
+        'data_path' => 'data.status',
+        'assertion_type' => 'exists',
     ]);
 });
 
@@ -307,7 +1129,45 @@ test('updates existing checks', function () {
     ]);
 });
 
-test('prunes orphaned checks', function () {
+test('legacy sync resets website live health when url changes', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'homepage-uptime',
+        'url' => 'https://old-url.com',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'source' => 'package',
+        'package_name' => 'homepage-uptime',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'status_summary' => 'Previous URL was healthy.',
+        'last_heartbeat_at' => now()->subMinutes(4),
+        'stale_at' => now()->addMinutes(6),
+        'diagnostic_queued_at' => now(),
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage-uptime',
+                'url' => 'https://new-url.com',
+                'interval' => '10m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'id' => $website->id,
+        'url' => 'https://new-url.com',
+        'current_status' => 'pending',
+        'status_summary' => null,
+        'diagnostic_queued_at' => null,
+    ]);
+});
+
+test('disables orphaned uptime checks without deleting them', function () {
     Website::factory()->create([
         'project_id' => $this->project->id,
         'name' => 'old-check',
@@ -316,6 +1176,10 @@ test('prunes orphaned checks', function () {
         'ssl_check' => false,
         'source' => 'package',
         'package_name' => 'old-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'last_heartbeat_at' => now(),
+        'stale_at' => now()->addMinutes(10),
     ]);
 
     $summary = $this->syncService->syncChecks($this->project, [
@@ -336,11 +1200,75 @@ test('prunes orphaned checks', function () {
         'deleted' => 1,
     ]);
 
-    $this->assertSoftDeleted('websites', ['package_name' => 'old-check']);
+    $this->assertDatabaseHas('websites', [
+        'package_name' => 'old-check',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'package_interval' => null,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+    ]);
     $this->assertDatabaseHas('websites', ['package_name' => 'new-check']);
 });
 
-test('archives orphaned package-managed checks and preserves their history', function () {
+test('re-enables orphaned website checks without stale disabled evidence', function () {
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://example.com',
+                'interval' => '5m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+    ]);
+
+    $summary = $this->syncService->syncChecks($this->project, [
+        'uptime_checks' => [
+            [
+                'name' => 'homepage',
+                'url' => 'https://example.com',
+                'interval' => '10m',
+            ],
+        ],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ]);
+
+    expect($summary['uptime_checks'])->toBe([
+        'created' => 0,
+        'updated' => 1,
+        'deleted' => 0,
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'uptime_interval' => 10,
+        'current_status' => 'pending',
+        'status_summary' => null,
+    ]);
+});
+
+test('disables orphaned package-managed checks and preserves their history', function () {
     $website = Website::factory()->create([
         'project_id' => $this->project->id,
         'name' => 'old-check',
@@ -350,6 +1278,11 @@ test('archives orphaned package-managed checks and preserves their history', fun
         'source' => 'package',
         'package_name' => 'old-check',
         'package_interval' => '5m',
+        'current_status' => 'danger',
+        'status_summary' => 'HTTP 500',
+        'last_heartbeat_at' => now(),
+        'stale_at' => now()->addMinutes(10),
+        'diagnostic_queued_at' => now(),
     ]);
 
     $api = MonitorApis::factory()->create([
@@ -359,6 +1292,12 @@ test('archives orphaned package-managed checks and preserves their history', fun
         'source' => 'package',
         'package_name' => 'old-api',
         'package_interval' => '5m',
+        'is_enabled' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'Expected 200, got 500.',
+        'last_heartbeat_at' => now(),
+        'stale_at' => now()->addMinutes(10),
+        'diagnostic_queued_at' => now(),
         'created_by' => $this->user->id,
     ]);
 
@@ -379,12 +1318,22 @@ test('archives orphaned package-managed checks and preserves their history', fun
     expect($summary['uptime_checks']['deleted'])->toBe(1);
     expect($summary['api_checks']['deleted'])->toBe(1);
 
-    $this->assertSoftDeleted('websites', [
+    $this->assertDatabaseHas('websites', [
         'id' => $website->id,
+        'uptime_check' => false,
+        'ssl_check' => false,
+        'package_interval' => null,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'diagnostic_queued_at' => null,
     ]);
 
-    $this->assertSoftDeleted('monitor_apis', [
+    $this->assertDatabaseHas('monitor_apis', [
         'id' => $api->id,
+        'is_enabled' => false,
+        'current_status' => 'unknown',
+        'status_summary' => 'Disabled because it was missing from the latest package sync.',
+        'diagnostic_queued_at' => null,
     ]);
 
     $this->assertDatabaseHas('website_log_history', [
@@ -442,6 +1391,55 @@ test('requires project ownership', function () {
     $response->assertStatus(403);
 });
 
+test('rejects empty sync payload without disabling package checks', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'title' => 'health-check',
+        'url' => 'https://api.example.com/health',
+        'is_enabled' => true,
+        'source' => 'package',
+        'package_name' => 'health-check',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+        'created_by' => $this->user->id,
+    ]);
+
+    Website::factory()->create([
+        'project_id' => $this->project->id,
+        'name' => 'homepage',
+        'url' => 'https://example.com',
+        'uptime_check' => true,
+        'source' => 'package',
+        'package_name' => 'homepage',
+        'package_interval' => '5m',
+        'current_status' => 'healthy',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors(['checks']);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'health-check',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'homepage',
+        'uptime_check' => true,
+        'current_status' => 'healthy',
+    ]);
+});
+
 test('validates interval format', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
@@ -459,6 +1457,152 @@ test('validates interval format', function () {
     $response->assertStatus(422)
         ->assertJsonValidationErrors(['uptime_checks.0.interval']);
 });
+
+test('accepts interval parser formats at the request boundary', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'fast-uptime',
+                    'url' => 'https://example.com',
+                    'interval' => '30s',
+                ],
+            ],
+            'ssl_checks' => [
+                [
+                    'name' => 'ssl-certificate',
+                    'url' => 'https://example.com',
+                    'interval' => 'every_5_minutes',
+                ],
+            ],
+            'api_checks' => [
+                [
+                    'name' => 'api-health',
+                    'url' => 'https://api.example.com/health',
+                    'interval' => 'every_1_hour',
+                ],
+            ],
+        ]);
+
+    $response->assertOk();
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'fast-uptime',
+        'uptime_interval' => 1,
+        'package_interval' => '30s',
+    ]);
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'ssl-certificate',
+        'package_interval' => 'every_5_minutes',
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'api-health',
+        'package_interval' => 'every_1_hour',
+    ]);
+});
+
+test('sync accepts relative check paths at the request boundary', function () {
+    $this->project->update(['base_url' => 'https://checks.example.com']);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [
+                [
+                    'name' => 'relative-uptime',
+                    'url' => '/status',
+                    'interval' => '5m',
+                ],
+            ],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'relative-api',
+                    'url' => 'api/health',
+                    'interval' => '5m',
+                ],
+            ],
+        ]);
+
+    $response->assertOk();
+
+    $this->assertDatabaseHas('websites', [
+        'project_id' => $this->project->id,
+        'package_name' => 'relative-uptime',
+        'url' => 'https://checks.example.com/status',
+    ]);
+
+    $this->assertDatabaseHas('monitor_apis', [
+        'project_id' => $this->project->id,
+        'package_name' => 'relative-api',
+        'url' => 'https://checks.example.com/api/health',
+        'request_path' => 'api/health',
+    ]);
+});
+
+test('sync rejects relative check paths when the project has no base url', function (string $field, string $url) {
+    $payload = [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ];
+
+    $payload[$field] = [
+        [
+            'name' => 'relative-without-base-url',
+            'url' => $url,
+            'interval' => '5m',
+        ],
+    ];
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(["{$field}.0.url"]);
+
+    $this->assertDatabaseMissing($field === 'api_checks' ? 'monitor_apis' : 'websites', [
+        'package_name' => 'relative-without-base-url',
+    ]);
+})->with([
+    'uptime relative path' => ['uptime_checks', '/status'],
+    'ssl relative path' => ['ssl_checks', '/status'],
+    'api relative path' => ['api_checks', 'api/health'],
+]);
+
+test('sync rejects malformed and unsupported check urls before storing definitions', function (string $field, string $url) {
+    $payload = [
+        'uptime_checks' => [],
+        'ssl_checks' => [],
+        'api_checks' => [],
+    ];
+
+    $payload[$field] = [
+        [
+            'name' => 'bad-url',
+            'url' => $url,
+            'interval' => '5m',
+        ],
+    ];
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", $payload);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(["{$field}.0.url"]);
+
+    $this->assertDatabaseMissing($field === 'api_checks' ? 'monitor_apis' : 'websites', [
+        'package_name' => 'bad-url',
+    ]);
+})->with([
+    'uptime unsupported scheme' => ['uptime_checks', 'ftp://example.com/status'],
+    'ssl malformed absolute' => ['ssl_checks', 'https//example.com/status'],
+    'api protocol relative' => ['api_checks', '//api.example.com/health'],
+]);
 
 test('rejects zero intervals at the request boundary', function () {
     $response = $this->withToken($this->apiKey->key)
@@ -494,13 +1638,53 @@ test('rejects zero intervals at the request boundary', function () {
         ]);
 });
 
-test('validates url format', function () {
+test('rejects unsupported legacy check families at the request boundary', function (array $linkChecks, array $openGraphChecks) {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+            'link_checks' => $linkChecks,
+            'open_graph_checks' => $openGraphChecks,
+        ]);
+
+    $response->assertStatus(422)
+        ->assertJsonValidationErrors([
+            'link_checks',
+            'open_graph_checks',
+        ])
+        ->assertJsonPath('errors.link_checks.0', 'link_checks are not supported by project check sync yet.')
+        ->assertJsonPath('errors.open_graph_checks.0', 'open_graph_checks are not supported by project check sync yet.');
+})->with([
+    'populated unsupported families' => [
+        [
+            [
+                'name' => 'homepage-links',
+                'url' => 'https://example.com',
+                'interval' => '1d',
+            ],
+        ],
+        [
+            [
+                'name' => 'homepage-og',
+                'url' => 'https://example.com',
+                'interval' => '1d',
+            ],
+        ],
+    ],
+    'empty unsupported families' => [
+        [],
+        [],
+    ],
+]);
+
+test('validates malformed absolute url format', function () {
     $response = $this->withToken($this->apiKey->key)
         ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
             'uptime_checks' => [
                 [
                     'name' => 'test',
-                    'url' => 'not-a-url',
+                    'url' => 'https//example.com',
                     'interval' => '5m',
                 ],
             ],
@@ -615,6 +1799,65 @@ test('validates regex assertion patterns before syncing api checks', function ()
 
     $this->assertDatabaseMissing('monitor_apis', [
         'package_name' => 'regex-health',
+    ]);
+});
+
+test('validates expected value shapes before syncing api checks', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'array-expected-value',
+                    'url' => 'https://api.example.com/health',
+                    'interval' => '5m',
+                    'assertions' => [
+                        [
+                            'data_path' => 'status',
+                            'assertion_type' => 'value_compare',
+                            'comparison_operator' => '=',
+                            'expected_value' => ['ok'],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['api_checks.0.assertions.0.expected_value']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'array-expected-value',
+    ]);
+});
+
+test('validates unused expected value shapes before syncing api checks', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [
+                [
+                    'name' => 'unused-array-expected-value',
+                    'url' => 'https://api.example.com/health',
+                    'interval' => '5m',
+                    'assertions' => [
+                        [
+                            'data_path' => 'status',
+                            'assertion_type' => 'exists',
+                            'expected_value' => ['ok'],
+                        ],
+                    ],
+                ],
+            ],
+        ]);
+
+    $response->assertUnprocessable()
+        ->assertJsonValidationErrors(['api_checks.0.assertions.0.expected_value']);
+
+    $this->assertDatabaseMissing('monitor_apis', [
+        'package_name' => 'unused-array-expected-value',
     ]);
 });
 
@@ -1013,6 +2256,8 @@ test('transitioning from uptime-only to ssl-only does not restore uptime from th
         'package_name' => 'homepage',
         'uptime_check' => false,
         'ssl_check' => true,
+        'current_status' => 'pending',
+        'status_summary' => null,
     ]);
 });
 

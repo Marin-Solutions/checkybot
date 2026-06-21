@@ -5,8 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreBackupHistoryRequest;
 use App\Models\Backup;
 use App\Models\BackupHistory;
+use App\Services\HealthEventNotificationService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 
 class BackupHistoryController extends Controller
 {
@@ -29,9 +29,8 @@ class BackupHistoryController extends Controller
     /**
      * Store a newly created resource in storage.
      */
-    public function store(StoreBackupHistoryRequest $request)
+    public function store(StoreBackupHistoryRequest $request, HealthEventNotificationService $notifications)
     {
-        $ip = $request->ip();
         $id = $request->input('bi');
         $backup = Backup::query()->where('id', $id)->first();
 
@@ -44,26 +43,50 @@ class BackupHistoryController extends Controller
 
         if (! $server) {
             return response()->json(['message' => __('The server id is not in this DB')], 404);
-        } else {
-            if ($server->token !== $token) {
-                return response()->json(['message' => __('Error: Unauthorized')], 401);
-            } else {
-                if ($server->ip === $ip) {
-                    // Proses simpan ke database
-                    $backupHistory = BackupHistory::create([
-                        'backup_id' => $backup->id,
-                        'filename' => $request->input('nf'),
-                        'filesize' => $request->input('sf'),
-                        'is_zipped' => $request->input('iz'),
-                        'is_uploaded' => $request->input('iu'),
-                    ]);
-
-                    return response()->json($backupHistory, 200);
-                } else {
-                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 403);
-                }
-            }
         }
+
+        if (! $server->hasReporterToken($token)) {
+            return response()->json(['message' => __('Error: Unauthorized')], 401);
+        }
+
+        $backupHistory = BackupHistory::create([
+            'backup_id' => $backup->id,
+            'filename' => $request->input('nf'),
+            'filesize' => $request->input('sf'),
+            'is_zipped' => $request->input('iz'),
+            'is_uploaded' => $request->input('iu'),
+            'message' => $request->input('msg'),
+        ]);
+
+        $server->recordReporterMetadata($request);
+        $wasMissingExpectedRun = $backup->markHistoryReceived($backupHistory->created_at);
+
+        if (! $backupHistory->is_zipped || ! $backupHistory->is_uploaded) {
+            $notifications->notifyBackup(
+                $backup,
+                'backup_failed',
+                'danger',
+                $this->failureSummary($backupHistory),
+            );
+        } elseif ($wasMissingExpectedRun) {
+            $notifications->notifyBackup(
+                $backup,
+                'recovered',
+                'healthy',
+                'Backup reporter recovered. Latest run reported at '.$backupHistory->created_at->toDayDateTimeString().'.',
+            );
+        }
+
+        return response()->json($backupHistory, 200);
+    }
+
+    private function failureSummary(BackupHistory $backupHistory): string
+    {
+        if (! $backupHistory->is_zipped) {
+            return 'Backup archive creation failed before upload. File: '.$backupHistory->filename.'.';
+        }
+
+        return 'Backup archive was created but upload failed. File: '.$backupHistory->filename.'.';
     }
 
     /**

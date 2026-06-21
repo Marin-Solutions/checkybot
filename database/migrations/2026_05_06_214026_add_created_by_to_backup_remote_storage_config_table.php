@@ -9,15 +9,17 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('backup_remote_storage_config', function (Blueprint $table) {
-            $table->foreignId('created_by')
-                ->nullable()
-                ->after('label')
-                ->constrained('users')
-                ->nullOnDelete();
+        if (! Schema::hasColumn('backup_remote_storage_config', 'created_by')) {
+            Schema::table('backup_remote_storage_config', function (Blueprint $table) {
+                $table->foreignId('created_by')
+                    ->nullable()
+                    ->after('label')
+                    ->constrained('users')
+                    ->nullOnDelete();
 
-            $table->index('created_by');
-        });
+                $table->index('created_by');
+            });
+        }
 
         DB::table('backups')
             ->join('servers', 'servers.id', '=', 'backups.server_id')
@@ -36,8 +38,17 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasColumn('backup_remote_storage_config', 'created_by')) {
+            return;
+        }
+
         Schema::table('backup_remote_storage_config', function (Blueprint $table) {
-            $table->dropForeign(['created_by']);
+            try {
+                $table->dropForeign(['created_by']);
+            } catch (Throwable) {
+                //
+            }
+
             $table->dropIndex(['created_by']);
             $table->dropColumn('created_by');
         });

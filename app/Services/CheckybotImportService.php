@@ -6,10 +6,12 @@ use App\Models\MonitorApiAssertion;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Support\ApiMonitorEvidenceRedactor;
+use App\Support\ProjectComponentDeliveryState;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Collection;
@@ -24,8 +26,10 @@ class CheckybotImportService
         $project = $this->findProject($user, $projectKey)
             ->loadCount([
                 'packageManagedApis as api_checks_count',
+                'components as component_checks_count' => fn (Builder $query) => $query->where('source', 'package'),
             ]);
         $websiteChecksCount = $this->countWebsiteChecks($project);
+        $componentChecksCount = (int) $project->component_checks_count;
 
         return [
             'id' => $project->id,
@@ -37,12 +41,29 @@ class CheckybotImportService
             'identity_endpoint' => $project->identity_endpoint,
             'base_url' => $project->base_url,
             'repository' => $project->repository,
-            'checks_count' => (int) $project->api_checks_count + $websiteChecksCount,
+            'checks_count' => (int) $project->api_checks_count + $websiteChecksCount + $componentChecksCount,
             'api_checks_count' => (int) $project->api_checks_count,
             'website_checks_count' => $websiteChecksCount,
+            'component_checks_count' => $componentChecksCount,
+            'setup_verification' => $this->setupVerificationPayload($project),
             'last_synced_at' => $project->last_synced_at?->toISOString(),
             'created_at' => $project->created_at?->toISOString(),
             'updated_at' => $project->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array{state: string, label: string, tone: string, summary: string, action: string, steps: array<int, array{title: string, status: string, description: string}>}
+     */
+    private function setupVerificationPayload(Project $project): array
+    {
+        return [
+            'state' => $project->setupVerificationState(),
+            'label' => $project->setupVerificationLabel(),
+            'tone' => $project->setupVerificationTone(),
+            'summary' => $project->setupVerificationSummary(),
+            'action' => $project->setupVerificationAction(),
+            'steps' => $project->setupVerificationSteps(),
         ];
     }
 
@@ -65,19 +86,25 @@ class CheckybotImportService
     /**
      * @return array<string, mixed>
      */
-    public function getCheck(User $user, string|int $projectKey, string $checkKey): array
+    public function getCheck(User $user, string|int $projectKey, string $checkKey, ?string $type = null): array
     {
         $project = $this->findProject($user, $projectKey);
 
-        return $this->findCheck($project, $checkKey);
+        return $this->findCheck($project, $checkKey, $type);
     }
 
     /**
      * @return array<string, mixed>
      */
-    private function findCheck(Project $project, string $checkKey): array
+    private function findCheck(Project $project, string $checkKey, ?string $type = null): array
     {
         $checks = $this->checksForProject($project);
+
+        if ($type !== null) {
+            $checks = $checks
+                ->filter(fn (array $check): bool => $check['type'] === $type)
+                ->values();
+        }
 
         $idMatches = $checks
             ->filter(fn (array $check): bool => $check['id'] === $checkKey)
@@ -121,16 +148,26 @@ class CheckybotImportService
     /**
      * @return array<int, array<string, mixed>>
      */
-    public function recentResults(User $user, string|int $projectKey, string $checkKey, int $limit = 25): array
-    {
+    public function recentResults(
+        User $user,
+        string|int $projectKey,
+        string $checkKey,
+        int $limit = 25,
+        string $runSource = 'all',
+        ?string $type = null,
+    ): array {
         $project = $this->findProject($user, $projectKey);
-        $check = $this->findCheck($project, $checkKey);
+        $check = $this->findCheck($project, $checkKey, $type);
         $limit = min(max($limit, 1), 100);
 
         if ($check['storage'] === 'monitor_api') {
-            return MonitorApiResult::query()
+            $query = MonitorApiResult::query()
                 ->with('monitorApi.project')
-                ->where('monitor_api_id', $check['database_id'])
+                ->where('monitor_api_id', $check['database_id']);
+
+            $this->applyRunSourceFilter($query, $runSource);
+
+            return $query
                 ->latest()
                 ->limit($limit)
                 ->get()
@@ -138,13 +175,37 @@ class CheckybotImportService
                 ->all();
         }
 
-        return WebsiteLogHistory::query()
-            ->where('website_id', $check['database_id'])
+        if ($check['storage'] === 'project_component') {
+            return [];
+        }
+
+        $query = WebsiteLogHistory::query()
+            ->where('website_id', $check['database_id']);
+
+        $this->applyRunSourceFilter($query, $runSource);
+
+        return $query
             ->latest()
             ->limit($limit)
             ->get()
             ->map(fn (WebsiteLogHistory $result): array => $this->websiteResultPayload($result, $check))
             ->all();
+    }
+
+    private function applyRunSourceFilter(Builder $query, string $runSource): void
+    {
+        if ($runSource === 'scheduled') {
+            $query->where('is_on_demand', false);
+
+            return;
+        }
+
+        if ($runSource === 'on_demand') {
+            $query->where('is_on_demand', true);
+
+            return;
+        }
+
     }
 
     public function findProject(User $user, string|int $projectKey): Project
@@ -174,18 +235,27 @@ class CheckybotImportService
     private function checksForProject(Project $project): Collection
     {
         $websiteChecks = $project->packageManagedWebsites()
-            ->with('latestLogHistory')
+            ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
             ->orderBy('package_name')
             ->get()
             ->flatMap(fn (Website $website): array => $this->websiteCheckPayloads($website));
 
         $apiChecks = $project->packageManagedApis()
-            ->with(['assertions', 'latestResult'])
+            ->with(['assertions', 'latestResult', 'latestDiagnosticResult'])
             ->orderBy('package_name')
             ->get()
             ->map(fn (MonitorApis $check): array => $this->apiCheckPayload($check));
 
-        return $websiteChecks->concat($apiChecks)->values();
+        $componentChecks = $project->components()
+            ->where('source', 'package')
+            ->orderBy('name')
+            ->get()
+            ->map(fn (ProjectComponent $component): array => $this->componentCheckPayload($component));
+
+        return $websiteChecks
+            ->concat($apiChecks)
+            ->concat($componentChecks)
+            ->values();
     }
 
     private function countWebsiteChecks(Project $project): int
@@ -226,11 +296,21 @@ class CheckybotImportService
         $latestResult = $website->relationLoaded('latestLogHistory')
             ? $website->latestLogHistory
             : $website->logHistory()->latest()->first();
+        $latestDiagnosticResult = $website->relationLoaded('latestDiagnosticLogHistory')
+            ? $website->latestDiagnosticLogHistory
+            : $website->latestDiagnosticLogHistory()->first();
 
         $key = $website->package_name ?: (string) $website->id;
+        $identity = [
+            'id' => "{$type}:{$website->id}",
+            'database_id' => $website->id,
+            'key' => $key,
+            'type' => $type,
+            'name' => $website->name,
+        ];
 
         return [
-            'id' => "{$type}:{$website->id}",
+            'id' => $identity['id'],
             'database_id' => $website->id,
             'key' => $key,
             'type' => $type,
@@ -245,17 +325,15 @@ class CheckybotImportService
             'enabled' => $type === 'uptime' ? $website->uptime_check : $website->ssl_check,
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
-            'last_checked_at' => $website->last_heartbeat_at?->toISOString(),
-            'last_heartbeat_at' => $website->last_heartbeat_at?->toISOString(),
-            'stale_at' => $website->stale_at?->toISOString(),
+            'last_checked_at' => $latestResult?->created_at?->toISOString(),
+            'diagnostic_queued' => $website->hasQueuedDiagnostic(),
+            'diagnostic_queued_at' => $website->diagnostic_queued_at?->toISOString(),
+            'silenced_until' => $website->silenced_until?->toISOString(),
             'latest_result' => $latestResult instanceof WebsiteLogHistory
-                ? $this->websiteResultPayload($latestResult, [
-                    'id' => "{$type}:{$website->id}",
-                    'database_id' => $website->id,
-                    'key' => $key,
-                    'type' => $type,
-                    'name' => $website->name,
-                ])
+                ? $this->websiteResultPayload($latestResult, $identity)
+                : null,
+            'latest_diagnostic_result' => $latestDiagnosticResult instanceof WebsiteLogHistory
+                ? $this->websiteResultPayload($latestDiagnosticResult, $identity)
                 : null,
             'raw' => [
                 'website_id' => $website->id,
@@ -279,6 +357,9 @@ class CheckybotImportService
         $latestResult = $check->relationLoaded('latestResult')
             ? $check->latestResult
             : $check->results()->latest()->first();
+        $latestDiagnosticResult = $check->relationLoaded('latestDiagnosticResult')
+            ? $check->latestDiagnosticResult
+            : $check->latestDiagnosticResult()->first();
 
         return [
             'id' => "api:{$check->id}",
@@ -298,14 +379,16 @@ class CheckybotImportService
             'enabled' => $check->is_enabled,
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
-            'last_checked_at' => $check->last_heartbeat_at?->toISOString(),
-            'last_heartbeat_at' => $check->last_heartbeat_at?->toISOString(),
-            'stale_at' => $check->stale_at?->toISOString(),
+            'last_checked_at' => $latestResult?->created_at?->toISOString(),
+            'diagnostic_queued' => $check->hasQueuedDiagnostic(),
+            'diagnostic_queued_at' => $check->diagnostic_queued_at?->toISOString(),
+            'silenced_until' => $check->silenced_until?->toISOString(),
             'headers' => $this->redactHeaders($check->headers),
             'request_body_type' => $check->request_body_type,
             'has_request_body' => $check->hasRequestBody(),
             'assertions' => $this->assertionsPayload($check->assertions),
             'latest_result' => $latestResult instanceof MonitorApiResult ? $this->apiResultPayload($latestResult) : null,
+            'latest_diagnostic_result' => $latestDiagnosticResult instanceof MonitorApiResult ? $this->apiResultPayload($latestDiagnosticResult) : null,
             'raw' => [
                 'monitor_api_id' => $check->id,
                 'package_name' => $check->package_name,
@@ -316,6 +399,45 @@ class CheckybotImportService
             'last_synced_at' => $check->last_synced_at?->toISOString(),
             'created_at' => $check->created_at?->toISOString(),
             'updated_at' => $check->updated_at?->toISOString(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function componentCheckPayload(ProjectComponent $component): array
+    {
+        $deliveryState = ProjectComponentDeliveryState::value($component);
+
+        return [
+            'id' => "component:{$component->id}",
+            'database_id' => $component->id,
+            'key' => $component->name,
+            'type' => 'component',
+            'storage' => 'project_component',
+            'name' => $component->name,
+            'target' => null,
+            'url' => null,
+            'interval' => $component->declared_interval,
+            'declared_interval' => $component->declared_interval,
+            'interval_minutes' => $component->interval_minutes,
+            'enabled' => ! (bool) $component->is_archived,
+            'status' => $component->derivedCurrentStatus(),
+            'status_summary' => $component->derivedStatusSummary(),
+            'delivery_state' => $deliveryState,
+            'delivery_state_label' => ProjectComponentDeliveryState::label($component),
+            'is_archived' => (bool) $component->is_archived,
+            'last_checked_at' => null,
+            'silenced_until' => $component->silenced_until?->toISOString(),
+            'latest_result' => null,
+            'raw' => [
+                'project_component_id' => $component->id,
+                'source' => $component->source,
+                'archive_reason' => $component->archive_reason,
+            ],
+            'last_synced_at' => null,
+            'created_at' => $component->created_at?->toISOString(),
+            'updated_at' => $component->updated_at?->toISOString(),
         ];
     }
 
@@ -355,7 +477,15 @@ class CheckybotImportService
             'is_on_demand' => (bool) $result->is_on_demand,
             'http_code' => $result->http_code,
             'response_time_ms' => $result->response_time_ms,
+            'effective_timeout_seconds' => $result->effective_timeout_seconds,
+            'retry_count' => $result->retry_count,
+            'elapsed_wall_time_ms' => $result->elapsed_wall_time_ms,
+            'transport_error_type' => $result->transport_error_type,
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($result->transport_error_message),
+            'transport_error_code' => $result->transport_error_code,
             'failed_assertions' => $result->failed_assertions,
+            'request_headers' => ApiMonitorEvidenceRedactor::redactHeaders($result->request_headers ?? []),
+            'response_headers' => ApiMonitorEvidenceRedactor::redactHeaders($result->response_headers ?? []),
             'response_body' => ApiMonitorEvidenceRedactor::redactResponseBody($result->response_body),
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
@@ -379,12 +509,18 @@ class CheckybotImportService
             'is_on_demand' => (bool) $result->is_on_demand,
             'http_code' => $result->http_status_code,
             'response_time_ms' => $result->speed,
-            'ssl_expiry_date' => $result->ssl_expiry_date,
+            'ssl_expiry_date' => $result->ssl_expiry_date?->toISOString(),
+            'transport_error_type' => $result->transport_error_type,
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage($result->transport_error_message),
+            'transport_error_code' => $result->transport_error_code,
             'checked_at' => $result->created_at?->toISOString(),
             'created_at' => $result->created_at?->toISOString(),
         ];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     /**
      * @param  array<string, mixed>  $headers
      * @return array<string, mixed>

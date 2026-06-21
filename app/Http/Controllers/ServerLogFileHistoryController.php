@@ -6,6 +6,7 @@ use App\Http\Requests\StoreServerLogHistoryRequest;
 use App\Models\ServerLogCategory;
 use App\Models\ServerLogFileHistory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 
 class ServerLogFileHistoryController extends Controller
@@ -23,7 +24,6 @@ class ServerLogFileHistoryController extends Controller
      */
     public function store(StoreServerLogHistoryRequest $request)
     {
-        $ip = $request->ip();
         $id = $request->input('li');
         $serverLogCategory = ServerLogCategory::query()->where('id', $id)->first();
 
@@ -36,24 +36,29 @@ class ServerLogFileHistoryController extends Controller
 
         if (! $server) {
             return response()->json(['message' => __('The server id is not in this DB')], 404);
-        } else {
-            if ($server->token === $token) {
-                if ($server->ip == $ip) {
-                    $file = Storage::putFile('ServerLogFiles', $request->file('log'));
-                    $newServerLogFileHistory = [
-                        'server_log_category_id' => request()->input('li'),
-                        'log_file_name' => $file,
-                    ];
-                    ServerLogFileHistory::create($newServerLogFileHistory);
-
-                    return response()->json($newServerLogFileHistory, 200);
-                } else {
-                    return response()->json(['message' => __('Error: Server IP from request not match with Server IP in DB')], 403);
-                }
-            } else {
-                return response()->json(['message' => __('Error: Unauthorized')], 401);
-            }
         }
+
+        if (! $server->hasReporterToken($token)) {
+            return response()->json(['message' => __('Error: Unauthorized')], 401);
+        }
+
+        if (! $serverLogCategory->should_collect) {
+            return response()->json(['message' => __('Server log category collection is disabled')], 403);
+        }
+
+        $file = Storage::putFile('ServerLogFiles', $request->file('log'));
+        $newServerLogFileHistory = [
+            'server_log_category_id' => $request->input('li'),
+            'log_file_name' => $file,
+        ];
+        ServerLogFileHistory::create($newServerLogFileHistory);
+        $serverLogCategory->forceFill([
+            'last_collected_at' => now(),
+        ])->save();
+
+        $server->recordReporterMetadata($request);
+
+        return response()->json($newServerLogFileHistory, 200);
     }
 
     /**
@@ -62,6 +67,26 @@ class ServerLogFileHistoryController extends Controller
     public function show(ServerLogFileHistory $serverLogFileHistory)
     {
         //
+    }
+
+    public function download(ServerLogFileHistory $serverLogFileHistory)
+    {
+        $server = $serverLogFileHistory->logCategory?->server;
+
+        if (! $server) {
+            abort(404);
+        }
+
+        Gate::authorize('view', $server);
+
+        if (! Storage::exists($serverLogFileHistory->log_file_name)) {
+            abort(404, 'Log file not found');
+        }
+
+        return Storage::download(
+            $serverLogFileHistory->log_file_name,
+            basename($serverLogFileHistory->log_file_name),
+        );
     }
 
     /**

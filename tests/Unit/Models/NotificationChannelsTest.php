@@ -3,6 +3,7 @@
 use App\Models\NotificationChannels;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Psr7\Request as GuzzleRequest;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -72,6 +73,22 @@ test('test webhook sends post request', function () {
     expect($result['body'])->toBe(['success' => true]);
 });
 
+test('test webhook accepts a null post request body', function () {
+    Http::fake(['*' => Http::response(['success' => true], 200)]);
+
+    $result = NotificationChannels::testWebhook([
+        'method' => 'post',
+        'url' => 'https://example.com/webhook?text={message}&description={description}',
+        'description' => 'Test webhook',
+        'request_body' => null,
+    ]);
+
+    expect($result['code'])->toBe(200);
+    expect($result['body'])->toBe(['success' => true]);
+
+    Http::assertSent(fn ($request): bool => $request->data() === []);
+});
+
 test('test webhook replaces message placeholder in url', function () {
     Http::fake(['*' => Http::response([], 200)]);
 
@@ -137,6 +154,32 @@ test('send webhook notification sends request', function () {
 
     expect($result['code'])->toBe(200);
     expect($result['body'])->toBe(['result' => 'sent']);
+
+    $channel->refresh();
+    expect($channel->last_delivery_kind)->toBe('send');
+    expect($channel->last_delivery_succeeded)->toBeTrue();
+    expect($channel->last_delivery_response_code)->toBe(200);
+    expect($channel->last_delivery_summary)->toContain('HTTP 200');
+});
+
+test('send webhook notification accepts a null post request body', function () {
+    Http::fake(['*' => Http::response(['result' => 'sent'], 200)]);
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/webhook?text={message}&description={description}',
+        'method' => 'POST',
+        'request_body' => null,
+    ]);
+
+    $result = $channel->sendWebhookNotification([
+        'message' => 'Test notification',
+        'description' => 'Test description',
+    ]);
+
+    expect($result['code'])->toBe(200);
+    expect($result['body'])->toBe(['result' => 'sent']);
+
+    Http::assertSent(fn ($request): bool => $request->data() === []);
 });
 
 test('send webhook notification replaces placeholders', function () {
@@ -156,6 +199,34 @@ test('send webhook notification replaces placeholders', function () {
     Http::assertSent(function ($request) {
         return str_contains($request->url(), 'Alert')
             && ! str_contains($request->url(), '{message}');
+    });
+});
+
+test('send webhook notification encodes url placeholders and preserves request body placeholders', function () {
+    Http::fake(['*' => Http::response([], 200)]);
+
+    $description = "Evidence:\nMetrics: {\n    \"queue_depth\": 42\n}";
+    $channel = NotificationChannels::factory()->create([
+        'url' => 'https://example.com/webhook?text={message}&description={description}',
+        'method' => 'POST',
+        'request_body' => [
+            'message' => '{message}',
+            'description' => '{description}',
+        ],
+    ]);
+
+    $channel->sendWebhookNotification([
+        'message' => 'Application component danger: Billing queue',
+        'description' => $description,
+    ]);
+
+    Http::assertSent(function ($request) use ($description): bool {
+        $body = $request->data();
+
+        return str_contains($request->url(), 'Application%20component%20danger%3A%20Billing%20queue')
+            && str_contains($request->url(), 'Evidence%3A%0AMetrics%3A%20%7B%0A%20%20%20%20%22queue_depth%22%3A%2042%0A%7D')
+            && ($body['message'] ?? null) === 'Application component danger: Billing queue'
+            && ($body['description'] ?? null) === $description;
     });
 });
 
@@ -181,6 +252,60 @@ test('send webhook notification preserves a 4xx status code so operators can deb
     ]);
 
     expect($result['code'])->toBe(401);
+
+    $channel->refresh();
+    expect($channel->last_delivery_succeeded)->toBeFalse();
+    expect($channel->last_delivery_response_code)->toBe(401);
+    expect($channel->last_delivery_summary)->toContain('HTTP 401');
+});
+
+test('send webhook notification records connection exceptions as failed delivery evidence', function () {
+    $url = 'https://missing.example/webhook/secret-token?signature=secret-signature';
+
+    Http::shouldReceive('POST')
+        ->once()
+        ->andThrow(new ConnectionException('cURL error 6: Could not resolve host for '.$url));
+
+    $channel = NotificationChannels::factory()->create([
+        'url' => $url,
+        'method' => 'POST',
+    ]);
+
+    $result = $channel->sendWebhookNotification([
+        'message' => 'Test',
+    ], 'test');
+
+    expect($result['code'])->toBe(0);
+    expect($result['body'])->toContain('Could not resolve host');
+
+    $channel->refresh();
+    expect($channel->last_delivery_kind)->toBe('test');
+    expect($channel->last_delivery_succeeded)->toBeFalse();
+    expect($channel->last_delivery_response_code)->toBeNull();
+    expect($channel->last_delivery_summary)->toContain('No response');
+    expect($channel->last_delivery_summary)->toContain('Could not resolve host');
+    expect($channel->last_delivery_summary)->not->toContain('secret-token');
+    expect($channel->last_delivery_summary)->not->toContain('secret-signature');
+});
+
+test('test webhook returns connection exceptions as no response failures', function () {
+    $url = 'https://example.com/webhook/secret-token?signature=secret-signature';
+
+    Http::shouldReceive('POST')
+        ->once()
+        ->andThrow(new ConnectionException('cURL error 28: Operation timed out for '.$url));
+
+    $result = NotificationChannels::testWebhook([
+        'method' => 'post',
+        'url' => $url,
+        'description' => 'Test webhook',
+        'request_body' => ['message' => '{message}'],
+    ]);
+
+    expect($result['code'])->toBe(0);
+    expect($result['body'])->toContain('Operation timed out');
+    expect($result['body'])->not->toContain('secret-token');
+    expect($result['body'])->not->toContain('secret-signature');
 });
 
 test('send webhook notification redacts webhook secrets from request logs without changing delivery', function () {

@@ -24,7 +24,21 @@ class ListWebsites extends ListRecords
 
     protected function disabledColumn(): string
     {
+        // Required by HasHealthStatusTabs; WebsiteResource overrides the
+        // disabled scope because websites have separate uptime and SSL checks.
         return 'uptime_check';
+    }
+
+    protected function scopeFailing(Builder $query): Builder
+    {
+        return WebsiteResource::scopeActiveMonitoring(
+            $query->whereIn('current_status', self::UNHEALTHY_STATUSES)
+        );
+    }
+
+    protected function scopeDisabled(Builder $query): Builder
+    {
+        return WebsiteResource::scopeDisabledMonitoring($query);
     }
 
     protected function historyTable(): string

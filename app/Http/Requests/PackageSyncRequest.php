@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Console\Commands\LogJobCheckUptimeSsl;
+use App\Rules\RelativeOrHttpUrl;
 use App\Rules\RequestBodyMaxSize;
 use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
@@ -32,7 +33,15 @@ class PackageSyncRequest extends FormRequest
 
         foreach ($checks as $index => $check) {
             if (! is_array($check) || ($check['type'] ?? null) !== 'api') {
+                if (is_array($check) && isset($check['url']) && is_string($check['url'])) {
+                    $checks[$index]['url'] = trim($check['url']);
+                }
+
                 continue;
+            }
+
+            if (isset($check['url']) && is_string($check['url'])) {
+                $checks[$index]['url'] = trim($check['url']);
             }
 
             if (
@@ -61,19 +70,36 @@ class PackageSyncRequest extends FormRequest
             'defaults.headers' => ['nullable', 'array'],
             'defaults.headers.*' => ['nullable', 'string', 'max:2000'],
             'defaults.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'defaults.max_response_time_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
 
             'checks' => ['present', 'array', 'max:200'],
+            'checks.*.last_heartbeat_at' => ['prohibited'],
+            'checks.*.awaiting_heartbeat_since' => ['prohibited'],
+            'checks.*.stale_at' => ['prohibited'],
+            'checks.*.stale_detected_at' => ['prohibited'],
+            'checks.*.stale_threshold_at' => ['prohibited'],
+            'checks.*.is_stale' => ['prohibited'],
+            'checks.*.status' => ['prohibited'],
+            'checks.*.current_status' => ['prohibited'],
+            'checks.*.status_summary' => ['prohibited'],
+            'checks.*.reported_status' => ['prohibited'],
+            'checks.*.last_reported_status' => ['prohibited'],
+            'checks.*.metrics' => ['prohibited'],
+            'checks.*.observed_at' => ['prohibited'],
+            'checks.*.summary' => ['prohibited'],
             'checks.*.key' => ['required', 'string', 'alpha_dash', 'max:150'],
             'checks.*.type' => ['required', Rule::in(['api', 'ssl', 'uptime'])],
+            'checks.*.component' => ['nullable', 'string', 'max:255'],
             'checks.*.name' => ['required', 'string', 'max:255'],
             'checks.*.method' => ['required_if:checks.*.type,api', 'nullable', 'string', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'])],
-            'checks.*.url' => ['required', 'string', 'max:1000'],
+            'checks.*.url' => ['required', 'string', 'max:1000', new RelativeOrHttpUrl],
             'checks.*.headers' => ['nullable', 'array'],
             'checks.*.headers.*' => ['nullable', 'string', 'max:2000'],
             'checks.*.request_body_type' => ['exclude_unless:checks.*.type,api', new RequestBodyTypeRequired, 'nullable', 'string', Rule::in(['json', 'form', 'raw'])],
             'checks.*.request_body' => ['exclude_unless:checks.*.type,api', 'nullable', new RequestBodyMaxSize, new StructuredRequestBody],
             'checks.*.expected_status' => ['nullable', 'integer', 'min:100', 'max:599'],
             'checks.*.timeout_seconds' => ['nullable', 'integer', 'min:1', 'max:120'],
+            'checks.*.max_response_time_ms' => ['nullable', 'integer', 'min:1', 'max:120000'],
             'checks.*.save_failed_response' => ['exclude_unless:checks.*.type,api', 'nullable', 'boolean'],
             'checks.*.assertions' => ['nullable', 'array', 'max:50'],
             'checks.*.assertions.*.type' => ['required', 'string', Rule::in([
@@ -129,6 +155,12 @@ class PackageSyncRequest extends FormRequest
                 }
 
                 if (is_array($check['assertions'] ?? null)) {
+                    $this->addExpectedValueShapeValidationErrors(
+                        $validator,
+                        $check['assertions'],
+                        "checks.{$index}.assertions"
+                    );
+
                     $this->addRegexAssertionValidationErrors(
                         $validator,
                         $check['assertions'],

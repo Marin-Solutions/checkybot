@@ -2,8 +2,13 @@
 
 use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Models\Website;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
+
+afterEach(function () {
+    Carbon::setTestNow();
+});
 
 test('command can be executed', function () {
     Queue::fake();
@@ -15,7 +20,7 @@ test('command can be executed', function () {
 test('command dispatches jobs for websites with outbound check enabled', function () {
     Queue::fake();
 
-    $websites = Website::factory()->count(3)->create([
+    Website::factory()->count(3)->create([
         'outbound_check' => true,
     ]);
 
@@ -100,6 +105,7 @@ test('command handles no websites', function () {
 
 test('command dispatches correct website to job', function () {
     Queue::fake();
+    Carbon::setTestNow('2026-05-08 16:15:00');
 
     $website = Website::factory()->create([
         'outbound_check' => true,
@@ -109,7 +115,30 @@ test('command dispatches correct website to job', function () {
     $this->artisan('website:scan-outbound-check')
         ->assertSuccessful();
 
-    Queue::assertPushed(WebsiteCheckOutboundLinkJob::class, 1);
+    Queue::assertPushed(
+        WebsiteCheckOutboundLinkJob::class,
+        fn (WebsiteCheckOutboundLinkJob $job): bool => $job->website->is($website)
+            && $job->source === WebsiteCheckOutboundLinkJob::SOURCE_SCHEDULED,
+    );
+
+    expect($website->refresh()->outbound_scan_queued_at?->toDateTimeString())->toBe('2026-05-08 16:15:00');
+});
+
+test('command skips websites with outbound scans already queued', function () {
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'outbound_check' => true,
+        'last_outbound_checked_at' => now()->subMinutes(10),
+        'outbound_scan_queued_at' => now()->subMinutes(5),
+    ]);
+
+    $this->artisan('website:scan-outbound-check')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(WebsiteCheckOutboundLinkJob::class);
+
+    expect($website->refresh()->outbound_scan_queued_at)->not->toBeNull();
 });
 
 test('command handles large number of websites', function () {

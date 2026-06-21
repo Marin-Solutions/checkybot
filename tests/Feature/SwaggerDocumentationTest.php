@@ -6,6 +6,8 @@ test('swagger documentation can be generated', function () {
 
     $documentation = json_decode(file_get_contents(storage_path('api-docs/api-docs.json')), true, flags: JSON_THROW_ON_ERROR);
     $requestSchema = fn (string $path, string $method = 'post'): array => $documentation['paths'][$path][$method]['requestBody']['content']['application/json']['schema'];
+    $controlRunOperation = $documentation['paths']['/v1/control/projects/{project}/checks/{check}/runs']['post'];
+    $controlRunTypeParameter = collect($controlRunOperation['parameters'])->firstWhere('name', 'type');
 
     expect(storage_path('api-docs/api-docs.json'))->toBeFile()
         ->and(array_keys($documentation['paths']))->toContain(
@@ -15,7 +17,9 @@ test('swagger documentation can be generated', function () {
             '/v1/control/projects/{project}/checks',
             '/v1/control/projects/{project}/checks/{check}',
             '/v1/control/projects/{project}/runs',
+            '/v1/control/projects/{project}/runs/{batch}',
             '/v1/control/failures',
+            '/v1/control/issues',
             '/v1/mcp',
             '/v1/package/register',
             '/v1/package/sync',
@@ -26,7 +30,12 @@ test('swagger documentation can be generated', function () {
         ->and($documentation['paths']['/v1/package/sync']['post']['responses'])->toHaveKeys(['200', '201', '401', '422'])
         ->and($documentation['paths']['/v1/projects/{project}/checks/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
         ->and($documentation['paths']['/v1/projects/{project}/components/sync']['post']['responses'])->toHaveKeys(['200', '401', '403', '404', '422'])
-        ->and($documentation['paths']['/v1/control/projects/{project}/checks/{check}/runs']['post']['responses'])->toHaveKeys(['200', '401', '404', '409'])
+        ->and($controlRunOperation['summary'])->toContain('API or website check')
+        ->and($controlRunOperation['description'])->toContain('type=api or type=website')
+        ->and($controlRunOperation['responses'])->toHaveKeys(['200', '202', '401', '404', '409', '422'])
+        ->and($controlRunTypeParameter['in'])->toBe('query')
+        ->and($controlRunTypeParameter['schema']['enum'])->toBe(['api', 'website'])
+        ->and($documentation['paths']['/v1/control/projects/{project}/runs/{batch}']['get']['responses'])->toHaveKeys(['200', '401', '404'])
         ->and($documentation['paths']['/v1/control/runs']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
         ->and($documentation['paths']['/v1/control/failures']['get']['responses'])->toHaveKeys(['200', '401', '404', '422'])
         ->and($documentation['paths']['/v1/mcp']['post']['requestBody']['content']['application/json']['schema']['properties']['id']['oneOf'])->sequence(
@@ -46,23 +55,25 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][1]['properties']['type']['enum'])->toBe(['ssl', 'uptime'])
         ->and($requestSchema('/v1/package/sync')['properties']['checks']['items']['oneOf'][1]['properties']['headers']['additionalProperties']['nullable'])->toBeTrue()
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['required'])->toBe(['name', 'url', 'interval'])
-        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['properties']['interval']['pattern'])->toBe('^\d+[mhd]$')
-        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['ssl_checks']['items']['properties']['interval']['pattern'])->toBe('^\d+[mhd]$')
-        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['interval']['pattern'])->toBe('^\d+[mhd]$')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['full_manifest']['type'])->toBe('boolean')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['properties']['enabled']['type'])->toBe('boolean')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['properties']['component']['type'])->toBe('string')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['uptime_checks']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['ssl_checks']['items']['properties']['enabled']['type'])->toBe('boolean')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['ssl_checks']['items']['properties']['component']['type'])->toBe('string')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['ssl_checks']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['component']['type'])->toBe('string')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['required'])->toBe(['data_path', 'assertion_type'])
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['save_failed_response']['type'])->toBe('boolean')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['headers'])->not->toHaveKey('nullable')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions'])->not->toHaveKey('nullable')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['properties']['sort_order'])->not->toHaveKey('nullable')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['properties']['is_active'])->not->toHaveKey('nullable')
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['required'])->toBe(['declared_components', 'components'])
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['required'])->toBe(['name', 'interval', 'status', 'observed_at'])
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['declared_components']['items']['properties']['interval']['pattern'])->toBe('^\d+[mhd]$')
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['properties']['interval']['pattern'])->toBe('^\d+[mhd]$')
-        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['components']['items']['properties']['metrics']['oneOf'])->sequence(
-            fn ($schema) => $schema->type->toBe('object'),
-            fn ($schema) => $schema->type->toBe('array'),
-        )
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['required'])->toBe(['declared_components'])
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['full_manifest']['type'])->toBe('boolean')
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['declared_components']['items']['required'])->toBe(['name', 'interval'])
+        ->and($requestSchema('/v1/projects/{project}/components/sync')['properties']['declared_components']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['required'])->toBe(['name', 'url'])
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['headers']['additionalProperties']['nullable'])->toBeTrue()
         ->and($requestSchema('/v1/control/projects/{project}/checks/{check}', 'put')['properties']['assertions']['items']['required'])->toBe(['type', 'path'])
@@ -72,5 +83,5 @@ test('swagger documentation can be generated', function () {
             fn ($schema) => $schema->type->toBe('object'),
             fn ($schema) => $schema->type->toBe('array'),
         )
-        ->and($documentation['paths'])->toHaveCount(19);
+        ->and($documentation['paths']['/v1/control/issues']['get']['responses'])->toHaveKeys(['200', '401', '404', '422']);
 });

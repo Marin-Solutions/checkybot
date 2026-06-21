@@ -3,11 +3,8 @@
 namespace App\Filament\Resources\BackupsResource\Pages;
 
 use App\Filament\Resources\BackupsResource;
-use App\Models\BackupRemoteStorageConfig;
-use App\Models\Server;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\CreateRecord;
-use Illuminate\Validation\ValidationException;
 
 class CreateBackups extends CreateRecord
 {
@@ -18,9 +15,9 @@ class CreateBackups extends CreateRecord
         return $this->previousUrl ?? $this->getResource()::getUrl('index');
     }
 
-    protected function mutateFormDataBeforeCreate(array $data): array
+    protected function beforeCreate(): void
     {
-        if ($data['password'] !== $data['confirm_password']) {
+        if (($this->data['password'] ?? null) !== ($this->data['confirm_password'] ?? null)) {
             Notification::make()
                 ->title('Passwords do not match')
                 ->body('Please confirm your password.')
@@ -30,40 +27,15 @@ class CreateBackups extends CreateRecord
 
             $this->halt();
         }
-
-        unset($data['confirm_password']);
-
-        $this->validateOwnership($data);
-
-        return $data;
     }
 
-    protected function validateOwnership(array $data): void
+    protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $serverOwned = Server::query()
-            ->whereKey($data['server_id'] ?? null)
-            ->where('created_by', auth()->id())
-            ->exists();
+        unset($data['confirm_password']);
+        $data['created_by'] = auth()->id();
 
-        $storageOwned = BackupRemoteStorageConfig::query()
-            ->whereKey($data['remote_storage_id'] ?? null)
-            ->where('created_by', auth()->id())
-            ->exists();
+        BackupsResource::validateSelectedReferences($data);
 
-        $errors = [];
-
-        if (! $serverOwned) {
-            $errors['server_id'] = 'Choose one of your own servers.';
-        }
-
-        if (! $storageOwned) {
-            $errors['remote_storage_id'] = 'Choose one of your own remote storage configs.';
-        }
-
-        if ($errors === []) {
-            return;
-        }
-
-        throw ValidationException::withMessages($errors);
+        return $data;
     }
 }

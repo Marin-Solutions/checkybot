@@ -23,28 +23,51 @@ describe('ProjectHealthOverviewWidget', function () {
             ->assertSee('No websites, APIs or components tracked yet');
     });
 
-    it('groups failing, healthy and stale counts across components, websites and APIs', function () {
-        // 1 healthy component, 1 failing component, 1 stale component
-        ProjectComponent::factory()->create([
+    it('groups failing, healthy and pending counts across components, websites and APIs', function () {
+        // 1 healthy component, 1 failing component, 1 pending component
+        $healthyComponent = ProjectComponent::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'current_status' => 'healthy',
             'is_stale' => false,
         ]);
-        ProjectComponent::factory()->create([
+        MonitorApis::factory()->create([
+            'project_id' => null,
+            'project_component_id' => $healthyComponent->id,
+            'created_by' => $this->user->id,
+            'is_enabled' => true,
+            'current_status' => 'healthy',
+        ]);
+
+        $dangerComponent = ProjectComponent::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'current_status' => 'danger',
             'is_stale' => false,
         ]);
-        ProjectComponent::factory()->create([
+        MonitorApis::factory()->create([
+            'project_id' => null,
+            'project_component_id' => $dangerComponent->id,
+            'created_by' => $this->user->id,
+            'is_enabled' => true,
+            'current_status' => 'danger',
+        ]);
+
+        $warningComponent = ProjectComponent::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'current_status' => 'warning',
             'is_stale' => true,
         ]);
+        MonitorApis::factory()->create([
+            'project_id' => null,
+            'project_component_id' => $warningComponent->id,
+            'created_by' => $this->user->id,
+            'is_enabled' => true,
+            'current_status' => 'warning',
+        ]);
 
-        // 1 healthy website, 1 stale website
+        // 1 healthy website, 1 warning website
         Website::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
@@ -64,7 +87,7 @@ describe('ProjectHealthOverviewWidget', function () {
             'stale_at' => now()->subMinutes(10),
         ]);
 
-        // 1 failing API, 1 awaiting first heartbeat (no data)
+        // 1 failing API, 1 pending API
         MonitorApis::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
@@ -86,26 +109,104 @@ describe('ProjectHealthOverviewWidget', function () {
             ->assertSuccessful()
             ->assertSee('Failing')
             ->assertSee('Healthy')
-            ->assertSee('Stale / No data');
+            ->assertSee('Pending')
+            ->assertDontSee('Stale / No data');
 
         $counts = $widget->instance()->collectCounts();
 
         expect($counts)->toMatchArray([
             'tracked' => 7,
-            'failing' => 2, // 1 danger component + 1 danger api (warning component is stale, not failing)
-            'healthy' => 2, // 1 healthy component + 1 healthy website
-            'stale' => 2,   // 1 stale component + 1 stale website
-            'no_data' => 1, // 1 api awaiting heartbeat
-            'failing_components' => 1,
-            'failing_websites' => 0,
+            'failing' => 4,
+            'healthy' => 2,
+            'pending' => 1,
+            'failing_components' => 2,
+            'failing_websites' => 1,
             'failing_apis' => 1,
+            'unmapped' => 4,
+            'unmapped_websites' => 2,
+            'unmapped_apis' => 2,
         ]);
     });
 
-    it('ignores archived components and other projects', function () {
-        ProjectComponent::factory()->create([
+    it('counts active package checks that are not mapped to components', function () {
+        $component = ProjectComponent::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
+        ]);
+
+        $mappedWebsite = Website::factory()->create([
+            'project_id' => $this->project->id,
+            'project_component_id' => $component->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => true,
+            'ssl_check' => false,
+            'current_status' => 'healthy',
+        ]);
+        MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'project_component_id' => $component->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'is_enabled' => true,
+            'current_status' => 'healthy',
+        ]);
+
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => true,
+            'ssl_check' => false,
+            'current_status' => 'warning',
+        ]);
+        Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'uptime_check' => false,
+            'ssl_check' => false,
+            'current_status' => 'danger',
+        ]);
+        MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'is_enabled' => true,
+            'current_status' => 'danger',
+        ]);
+        MonitorApis::factory()->disabled()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'current_status' => 'danger',
+        ]);
+
+        $widget = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
+            ->assertSuccessful()
+            ->assertSee('Unmapped')
+            ->assertSee('1 website, 1 API');
+
+        $counts = $widget->instance()->collectCounts();
+
+        expect($counts)->toMatchArray([
+            'unmapped' => 2,
+            'unmapped_websites' => 1,
+            'unmapped_apis' => 1,
+        ])->and($mappedWebsite->project_component_id)->toBe($component->id);
+    });
+
+    it('ignores archived components and other projects', function () {
+        $component = ProjectComponent::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'current_status' => 'healthy',
+        ]);
+        MonitorApis::factory()->create([
+            'project_id' => null,
+            'project_component_id' => $component->id,
+            'created_by' => $this->user->id,
+            'is_enabled' => true,
             'current_status' => 'healthy',
         ]);
         ProjectComponent::factory()->archived()->create([
@@ -128,16 +229,23 @@ describe('ProjectHealthOverviewWidget', function () {
         expect($counts['tracked'])->toBe(1)
             ->and($counts['healthy'])->toBe(1)
             ->and($counts['failing'])->toBe(0)
-            ->and($counts['stale'])->toBe(0);
+            ->and($counts['pending'])->toBe(0);
     });
 
     it('counts explicit component warning or danger as failing before awaiting heartbeat state', function () {
-        ProjectComponent::factory()->create([
+        $component = ProjectComponent::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
             'current_status' => 'danger',
             'last_heartbeat_at' => null,
             'is_stale' => false,
+        ]);
+        MonitorApis::factory()->create([
+            'project_id' => null,
+            'project_component_id' => $component->id,
+            'created_by' => $this->user->id,
+            'is_enabled' => true,
+            'current_status' => 'danger',
         ]);
 
         $counts = Livewire::test(ProjectHealthOverviewWidget::class, ['record' => $this->project])
@@ -147,10 +255,10 @@ describe('ProjectHealthOverviewWidget', function () {
         expect($counts['tracked'])->toBe(1)
             ->and($counts['failing'])->toBe(1)
             ->and($counts['failing_components'])->toBe(1)
-            ->and($counts['no_data'])->toBe(0);
+            ->and($counts['pending'])->toBe(0);
     });
 
-    it('treats package websites with detected stale_at as stale even when current_status is healthy', function () {
+    it('ignores legacy stale_at when counting website current status', function () {
         Website::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
@@ -166,11 +274,11 @@ describe('ProjectHealthOverviewWidget', function () {
             ->collectCounts();
 
         expect($counts['tracked'])->toBe(1)
-            ->and($counts['stale'])->toBe(1)
-            ->and($counts['healthy'])->toBe(0);
+            ->and($counts['healthy'])->toBe(1)
+            ->and($counts['pending'])->toBe(0);
     });
 
-    it('uses package freshness thresholds for websites before stale_at is written', function () {
+    it('does not use package freshness thresholds for project health counts', function () {
         Website::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
@@ -187,11 +295,11 @@ describe('ProjectHealthOverviewWidget', function () {
             ->collectCounts();
 
         expect($counts['tracked'])->toBe(1)
-            ->and($counts['stale'])->toBe(1)
-            ->and($counts['healthy'])->toBe(0);
+            ->and($counts['healthy'])->toBe(1)
+            ->and($counts['pending'])->toBe(0);
     });
 
-    it('treats package apis with detected stale_at as stale even when the detection time is not in the past', function () {
+    it('ignores legacy stale_at when counting api current status', function () {
         MonitorApis::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
@@ -208,11 +316,11 @@ describe('ProjectHealthOverviewWidget', function () {
             ->collectCounts();
 
         expect($counts['tracked'])->toBe(1)
-            ->and($counts['stale'])->toBe(1)
-            ->and($counts['failing'])->toBe(0);
+            ->and($counts['failing'])->toBe(1)
+            ->and($counts['pending'])->toBe(0);
     });
 
-    it('excludes paused websites from the failing and stale counts', function () {
+    it('excludes paused websites from the failing counts', function () {
         // An actively-monitored healthy website
         Website::factory()->create([
             'project_id' => $this->project->id,
@@ -239,7 +347,7 @@ describe('ProjectHealthOverviewWidget', function () {
 
         expect($counts['tracked'])->toBe(1)
             ->and($counts['failing'])->toBe(0)
-            ->and($counts['stale'])->toBe(0)
+            ->and($counts['pending'])->toBe(0)
             ->and($counts['healthy'])->toBe(1);
     });
 
@@ -263,7 +371,7 @@ describe('ProjectHealthOverviewWidget', function () {
             ->and($counts['failing_websites'])->toBe(1);
     });
 
-    it('excludes disabled API monitors from the failing and stale counts', function () {
+    it('excludes disabled API monitors from the failing counts', function () {
         MonitorApis::factory()->create([
             'project_id' => $this->project->id,
             'created_by' => $this->user->id,
@@ -287,7 +395,7 @@ describe('ProjectHealthOverviewWidget', function () {
 
         expect($counts['tracked'])->toBe(1)
             ->and($counts['failing'])->toBe(0)
-            ->and($counts['stale'])->toBe(0)
+            ->and($counts['pending'])->toBe(0)
             ->and($counts['healthy'])->toBe(1);
     });
 });

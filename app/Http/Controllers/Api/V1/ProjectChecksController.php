@@ -9,6 +9,7 @@ use App\Services\CheckSyncService;
 use App\Services\CheckybotImportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ProjectChecksController extends Controller
 {
@@ -33,8 +34,17 @@ class ProjectChecksController extends Controller
 
     public function show(Request $request, string $project, string $check): JsonResponse
     {
+        $data = $request->validate([
+            'type' => ['string', 'in:api,uptime,ssl,component'],
+        ]);
+
         return response()->json([
-            'data' => $this->importService->getCheck($request->user(), $project, $check),
+            'data' => $this->importService->getCheck(
+                $request->user(),
+                $project,
+                $check,
+                $data['type'] ?? null,
+            ),
         ]);
     }
 
@@ -42,6 +52,8 @@ class ProjectChecksController extends Controller
     {
         $data = $request->validate([
             'limit' => ['integer', 'min:1', 'max:100'],
+            'run_source' => ['string', 'in:scheduled,on_demand,all'],
+            'type' => ['string', 'in:api,uptime,ssl,component'],
         ]);
 
         return response()->json([
@@ -50,6 +62,8 @@ class ProjectChecksController extends Controller
                 $project,
                 $check,
                 $data['limit'] ?? 25,
+                $data['run_source'] ?? 'all',
+                $data['type'] ?? null,
             ),
         ]);
     }
@@ -66,6 +80,8 @@ class ProjectChecksController extends Controller
                 'message' => 'Checks synced successfully',
                 'summary' => $summary,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Failed to sync checks',

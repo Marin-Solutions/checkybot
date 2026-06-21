@@ -146,6 +146,68 @@ test('global notification list shows the destination for email and webhook rules
         ->assertSee('Ops Webhook');
 });
 
+test('global notification list shows last delivery evidence', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $setting = NotificationSetting::factory()->email()->create([
+        'user_id' => $user->id,
+        'address' => 'ops@example.com',
+        'last_delivery_kind' => 'test',
+        'last_delivery_succeeded' => false,
+        'last_delivery_response_code' => null,
+        'last_delivery_summary' => 'Mail transport error: connection refused',
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->assertCanSeeTableRecords([$setting])
+        ->assertSee('Failed test')
+        ->assertSee('Mail transport error: connection refused');
+});
+
+test('global notification list filters delivery outcome channel type and inactive rules', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $failedEmail = NotificationSetting::factory()->email()->create([
+        'user_id' => $user->id,
+        'last_delivery_kind' => 'test',
+        'last_delivery_succeeded' => false,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    $untestedWebhook = NotificationSetting::factory()->webhook()->create([
+        'user_id' => $user->id,
+        'last_delivery_attempted_at' => null,
+    ]);
+
+    $inactiveEmail = NotificationSetting::factory()->email()->inactive()->create([
+        'user_id' => $user->id,
+        'last_delivery_kind' => 'send',
+        'last_delivery_succeeded' => true,
+        'last_delivery_attempted_at' => now(),
+    ]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->filterTable('delivery_outcome', 'failed')
+        ->assertCanSeeTableRecords([$failedEmail])
+        ->assertCanNotSeeTableRecords([$untestedWebhook, $inactiveEmail]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->filterTable('delivery_outcome', 'untested')
+        ->assertCanSeeTableRecords([$untestedWebhook])
+        ->assertCanNotSeeTableRecords([$failedEmail, $inactiveEmail]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->filterTable('channel_type', NotificationChannelTypesEnum::WEBHOOK->value)
+        ->assertCanSeeTableRecords([$untestedWebhook])
+        ->assertCanNotSeeTableRecords([$failedEmail, $inactiveEmail]);
+
+    Livewire::test(ListNotificationSettings::class)
+        ->filterTable('rule_state', 'inactive')
+        ->assertCanSeeTableRecords([$inactiveEmail])
+        ->assertCanNotSeeTableRecords([$failedEmail, $untestedWebhook]);
+});
+
 test('global notification list flags webhook rules with removed channels', function () {
     $user = $this->actingAsSuperAdmin();
 

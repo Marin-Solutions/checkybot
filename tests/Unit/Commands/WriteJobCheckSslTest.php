@@ -2,7 +2,20 @@
 
 use App\Jobs\CheckSslExpiryDateJob;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use Illuminate\Support\Facades\Queue;
+
+if (! function_exists('seedScheduledWebsiteLog')) {
+    function seedScheduledWebsiteLog(Website $website, \Illuminate\Support\Carbon $createdAt): WebsiteLogHistory
+    {
+        return WebsiteLogHistory::factory()
+            ->create([
+                'website_id' => $website->id,
+                'created_at' => $createdAt,
+                'updated_at' => $createdAt,
+            ]);
+    }
+}
 
 test('command can be executed', function () {
     $this->artisan('ssl:check')
@@ -119,9 +132,9 @@ test('command dispatches package ssl-only checks when package interval is due', 
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => '1d',
-        'last_heartbeat_at' => now()->subDay(),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subDay());
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -132,15 +145,15 @@ test('command dispatches package ssl-only checks when package interval is due', 
 test('command does not dispatch package ssl-only checks before package interval is due', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => '1d',
-        'last_heartbeat_at' => now()->subHours(12),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subHours(12));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -148,18 +161,72 @@ test('command does not dispatch package ssl-only checks before package interval 
     Queue::assertNotPushed(CheckSslExpiryDateJob::class);
 });
 
+test('command dispatches manual ssl-only checks when uptime interval is due', function () {
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => 5,
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(5));
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
+test('command does not dispatch manual ssl-only checks before uptime interval is due', function () {
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => 5,
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(4));
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(CheckSslExpiryDateJob::class);
+});
+
+test('command dispatches manual ssl-only checks once when interval and reminder day are both due', function () {
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => 5,
+        'ssl_expiry_date' => today()->addDays(14)->toDateString(),
+    ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(5));
+
+    $this->artisan('ssl:check')
+        ->assertSuccessful();
+
+    Queue::assertPushed(CheckSslExpiryDateJob::class, 1);
+});
+
 test('command does not dispatch package ssl-only reminder checks before package interval is due', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => '1d',
-        'last_heartbeat_at' => now()->subHours(12),
         'ssl_expiry_date' => today()->addDays(14)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subHours(12));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -170,15 +237,15 @@ test('command does not dispatch package ssl-only reminder checks before package 
 test('command dispatches package ssl-only checks for arbitrary valid hour intervals', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => '2h',
-        'last_heartbeat_at' => now()->subHours(2),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subHours(2));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -189,15 +256,15 @@ test('command dispatches package ssl-only checks for arbitrary valid hour interv
 test('command dispatches package ssl-only checks for legacy scheduler-style intervals', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => 'every_5_minutes',
-        'last_heartbeat_at' => now()->subMinutes(5),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(5));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -208,25 +275,25 @@ test('command dispatches package ssl-only checks for legacy scheduler-style inte
 test('command dispatches package ssl-only checks for zero-padded intervals', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $dailyWebsite = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => '01d',
-        'last_heartbeat_at' => now()->subDay(),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($dailyWebsite, now()->subDay());
 
-    Website::factory()->create([
+    $fiveMinuteWebsite = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate-legacy',
         'package_interval' => 'every_05_minutes',
-        'last_heartbeat_at' => now()->subMinutes(5),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($fiveMinuteWebsite, now()->subMinutes(5));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -237,15 +304,15 @@ test('command dispatches package ssl-only checks for zero-padded intervals', fun
 test('command honors legacy scheduler-style intervals before dispatching package ssl-only checks', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => 'every_2_hours',
-        'last_heartbeat_at' => now()->subMinutes(90),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(90));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -256,15 +323,15 @@ test('command honors legacy scheduler-style intervals before dispatching package
 test('command dispatches legacy seconds package ssl-only intervals on the same cadence as interval parser', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => 'every_30_seconds',
-        'last_heartbeat_at' => now()->subMinute(),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subMinute());
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -275,15 +342,15 @@ test('command dispatches legacy seconds package ssl-only intervals on the same c
 test('command honors arbitrary valid day intervals before dispatching package ssl-only checks', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => '3d',
-        'last_heartbeat_at' => now()->subDays(2),
         'ssl_expiry_date' => today()->addDays(45)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subDays(2));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();
@@ -294,15 +361,15 @@ test('command honors arbitrary valid day intervals before dispatching package ss
 test('command dispatches package ssl-only checks once when package interval and reminder day are both due', function () {
     Queue::fake();
 
-    Website::factory()->create([
+    $website = Website::factory()->create([
         'ssl_check' => true,
         'uptime_check' => false,
         'source' => 'package',
         'package_name' => 'certificate',
         'package_interval' => '2h',
-        'last_heartbeat_at' => now()->subHours(3),
         'ssl_expiry_date' => today()->addDays(14)->toDateString(),
     ]);
+    seedScheduledWebsiteLog($website, now()->subHours(3));
 
     $this->artisan('ssl:check')
         ->assertSuccessful();

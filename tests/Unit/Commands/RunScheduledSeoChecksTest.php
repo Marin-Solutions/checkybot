@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Website;
 use App\Services\RobotsSitemapService;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 
@@ -25,18 +26,12 @@ test('heavy scheduled commands use overlap protection', function () {
 
     $monitorCheckApisEvent = $findEvent('monitor:check-apis');
     $runScheduledEvent = $findEvent('seo:run-scheduled');
-    $markStalePackagesEvent = $findEvent('app:mark-stale-package-checks');
-    $projectComponentsEvent = $findEvent('project-components:check-stale');
 
     expect($monitorCheckApisEvent)->not->toBeNull();
     expect($runScheduledEvent)->not->toBeNull();
-    expect($markStalePackagesEvent)->not->toBeNull();
-    expect($projectComponentsEvent)->not->toBeNull();
 
     expect($monitorCheckApisEvent->withoutOverlapping)->toBeTrue();
     expect($runScheduledEvent->withoutOverlapping)->toBeTrue();
-    expect($markStalePackagesEvent->withoutOverlapping)->toBeTrue();
-    expect($projectComponentsEvent->withoutOverlapping)->toBeTrue();
 });
 
 test('command finds no scheduled checks', function () {
@@ -225,6 +220,14 @@ test('command records failed check and advances schedule when no crawlable urls 
         ->and($seoCheck->started_at)->not->toBeNull()
         ->and($seoCheck->finished_at)->not->toBeNull()
         ->and($seoCheck->finished_at->equalTo($seoCheck->started_at))->toBeTrue()
+        ->and($seoCheck->failure_summary)->toBe('No crawlable URLs were found. The sitemap may be empty, unavailable, or blocked by robots.txt.')
+        ->and($seoCheck->failure_context)->toMatchArray([
+            'failure_reason' => 'no_crawlable_urls',
+            'website_url' => $website->url,
+            'schedule_id' => $schedule->id,
+            'scheduled_by' => $user->id,
+        ])
+        ->and($seoCheck->failure_context['checked_at'])->not->toBeEmpty()
         ->and($seoCheck->crawl_summary['scheduled_by'])->toBe($user->id)
         ->and($seoCheck->crawl_summary['schedule_id'])->toBe($schedule->id)
         ->and($seoCheck->crawl_summary['is_scheduled'])->toBeTrue()
@@ -341,7 +344,159 @@ test('command handles exceptions gracefully', function () {
         'url' => 'https://example.com',
     ]);
 
-    SeoSchedule::create([
+    $schedule = SeoSchedule::create([
+        'website_id' => $website->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
+    $originalNextRun = $schedule->next_run_at->copy();
+
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->with($website->url)
+        ->andThrow(new \RuntimeException('Service error'));
+
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
+
+    Queue::assertNotPushed(SeoHealthCheckJob::class);
+
+    $schedule->refresh();
+
+    expect($schedule->last_run_at)->not->toBeNull();
+    expect($schedule->next_run_at->equalTo($originalNextRun))->toBeFalse();
+    expect($schedule->next_run_at->isFuture())->toBeTrue();
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->first();
+
+    expect($seoCheck)->not->toBeNull()
+        ->and($seoCheck->status)->toBe('failed')
+        ->and($seoCheck->total_urls_crawled)->toBe(0)
+        ->and($seoCheck->total_crawlable_urls)->toBe(0)
+        ->and($seoCheck->robots_txt_checked)->toBeFalse()
+        ->and($seoCheck->started_at)->not->toBeNull()
+        ->and($seoCheck->finished_at)->not->toBeNull()
+        ->and($seoCheck->finished_at->equalTo($seoCheck->started_at))->toBeTrue()
+        ->and($seoCheck->failure_summary)->toBe('Scheduled SEO check could not start: Service error')
+        ->and($seoCheck->failure_context)->toMatchArray([
+            'failure_reason' => 'scheduled_startup_failed',
+            'website_url' => $website->url,
+            'schedule_id' => $schedule->id,
+            'scheduled_by' => $user->id,
+            'exception_class' => RuntimeException::class,
+            'exception_message' => 'Service error',
+        ])
+        ->and($seoCheck->failure_context['checked_at'])->not->toBeEmpty()
+        ->and($seoCheck->crawl_summary['scheduled_by'])->toBe($user->id)
+        ->and($seoCheck->crawl_summary['schedule_id'])->toBe($schedule->id)
+        ->and($seoCheck->crawl_summary['is_scheduled'])->toBeTrue()
+        ->and($seoCheck->crawl_summary['failure_reason'])->toBe('scheduled_startup_failed')
+        ->and($seoCheck->crawl_summary['summary'])->toBe('Scheduled SEO check could not start: Service error');
+
+    Log::shouldHaveReceived('error')
+        ->withArgs(function ($message) use ($schedule, $website) {
+            return str_contains($message, "Failed to start scheduled SEO check for website {$website->url}: Service error")
+                && str_contains($message, (string) $schedule->next_run_at);
+        })
+        ->once();
+});
+
+test('command exits successfully when due schedule query fails', function () {
+    Log::spy();
+
+    $originalResolver = Model::getConnectionResolver();
+    $resolver = Mockery::mock(\Illuminate\Database\ConnectionResolverInterface::class);
+    $resolver->shouldReceive('connection')
+        ->andThrow(new RuntimeException('database unavailable'));
+
+    Model::setConnectionResolver($resolver);
+
+    try {
+        $this->artisan('seo:run-scheduled')
+            ->expectsOutput('Checking for scheduled SEO health checks...')
+            ->expectsOutput('Scheduled SEO checks could not load due schedules: database unavailable')
+            ->assertSuccessful();
+    } finally {
+        Model::setConnectionResolver($originalResolver);
+    }
+
+    Log::shouldHaveReceived('error')
+        ->withArgs(function ($message, $context = []) {
+            return $message === 'Scheduled SEO checks could not load due schedules: database unavailable'
+                && ($context['exception_class'] ?? null) === RuntimeException::class;
+        })
+        ->once();
+});
+
+test('command continues processing due schedules after one startup failure', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $failingWebsite = Website::factory()->create([
+        'url' => 'https://failing.example.com',
+    ]);
+    $healthyWebsite = Website::factory()->create([
+        'url' => 'https://healthy.example.com',
+    ]);
+
+    $failingSchedule = SeoSchedule::create([
+        'website_id' => $failingWebsite->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHours(2),
+    ]);
+    $healthySchedule = SeoSchedule::create([
+        'website_id' => $healthyWebsite->id,
+        'created_by' => $user->id,
+        'frequency' => 'daily',
+        'schedule_time' => '02:00:00',
+        'is_active' => true,
+        'next_run_at' => now()->subHour(),
+    ]);
+
+    $mockService = $this->mock(RobotsSitemapService::class);
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->with($failingWebsite->url)
+        ->andThrow(new RuntimeException('Sitemap startup failed'));
+    $mockService->shouldReceive('getCrawlableUrls')
+        ->with($healthyWebsite->url)
+        ->andReturn([$healthyWebsite->url]);
+
+    $this->artisan('seo:run-scheduled')
+        ->assertSuccessful();
+
+    Queue::assertPushedOn('seo-checks', SeoHealthCheckJob::class);
+
+    $failedCheck = SeoCheck::where('website_id', $failingWebsite->id)->sole();
+    $pendingCheck = SeoCheck::where('website_id', $healthyWebsite->id)->sole();
+
+    expect($failedCheck->status)->toBe(SeoCheck::STATUS_FAILED)
+        ->and($failedCheck->failure_context)->toMatchArray([
+            'failure_reason' => 'scheduled_startup_failed',
+            'schedule_id' => $failingSchedule->id,
+            'exception_message' => 'Sitemap startup failed',
+        ])
+        ->and($pendingCheck->status)->toBe(SeoCheck::STATUS_PENDING)
+        ->and($pendingCheck->crawl_summary)->toMatchArray([
+            'schedule_id' => $healthySchedule->id,
+            'is_scheduled' => true,
+        ]);
+});
+
+test('command does not fail seo check when follow-up processing fails after dispatch', function () {
+    Queue::fake();
+
+    $user = User::factory()->create();
+    $website = Website::factory()->create([
+        'url' => 'https://example.com',
+    ]);
+
+    $schedule = SeoSchedule::create([
         'website_id' => $website->id,
         'created_by' => $user->id,
         'frequency' => 'daily',
@@ -352,12 +507,32 @@ test('command handles exceptions gracefully', function () {
 
     $mockService = $this->mock(RobotsSitemapService::class);
     $mockService->shouldReceive('getCrawlableUrls')
-        ->andThrow(new \Exception('Service error'));
+        ->with($website->url)
+        ->andReturn(['https://example.com']);
+
+    Log::shouldReceive('info')
+        ->once()
+        ->andThrow(new RuntimeException('Log sink failed'));
+
+    Log::shouldReceive('error')
+        ->once()
+        ->withArgs(function ($message, $context = []) use ($schedule, $website) {
+            return str_contains($message, "Scheduled SEO check was dispatched for website {$website->url}, but follow-up processing failed: Log sink failed")
+                && ($context['schedule_id'] ?? null) === $schedule->id;
+        });
 
     $this->artisan('seo:run-scheduled')
         ->assertSuccessful();
 
-    Log::shouldHaveReceived('error')->once();
+    Queue::assertPushedOn('seo-checks', SeoHealthCheckJob::class);
+
+    $seoCheck = SeoCheck::where('website_id', $website->id)->first();
+
+    expect(SeoCheck::where('website_id', $website->id)->count())->toBe(1)
+        ->and($seoCheck)->not->toBeNull()
+        ->and($seoCheck->status)->toBe('pending')
+        ->and($seoCheck->failure_summary)->toBeNull()
+        ->and($seoCheck->failure_context)->toBeNull();
 });
 
 test('command displays progress bar', function () {

@@ -7,22 +7,33 @@ use App\Filament\Resources\ProjectComponents\ProjectComponentResource;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\Incident;
 use App\Models\MonitorApiResult;
-use App\Models\ProjectComponentHeartbeat;
+use App\Models\ProjectComponent;
 use App\Models\WebsiteLogHistory;
+use Filament\Actions\Action;
+use Filament\Schemas\Components\View as SchemaView;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder as QueryBuilder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class IncidentFeedWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?string $heading = 'Recent incidents';
 
-    protected static ?string $description = 'Warning and danger transitions from websites, API monitors and components — in the order they happened.';
+    protected static ?string $description = 'Warning, danger and recovery transitions from websites and API monitors — in the order they happened.';
 
     protected int|string|array $columnSpan = 'full';
 
@@ -33,6 +44,39 @@ class IncidentFeedWidget extends BaseWidget
     protected const INCIDENT_STATUSES = ['warning', 'danger'];
 
     protected const NON_INCIDENT_STATUSES = ['healthy', 'unknown'];
+
+    public function hydrateMountedActions(array $mountedActions): void
+    {
+        $this->mountedActions = $this->sanitizeMountedActions($mountedActions);
+    }
+
+    public function updatedMountedActions(mixed $value = null, ?string $key = null): void
+    {
+        $this->mountedActions = $this->sanitizeMountedActions($this->mountedActions ?? []);
+    }
+
+    /**
+     * @param  array<mixed>  $mountedActions
+     * @return array<int, array<string, mixed>>
+     */
+    protected function sanitizeMountedActions(array $mountedActions): array
+    {
+        return array_values(array_filter(
+            $mountedActions,
+            fn (mixed $action): bool => is_array($action) && filled($action['name'] ?? null),
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $mountedActions
+     * @return array<Action>
+     */
+    protected function cacheMountedActions(array $mountedActions): array
+    {
+        $this->mountedActions = $this->sanitizeMountedActions($mountedActions);
+
+        return parent::cacheMountedActions($this->mountedActions);
+    }
 
     public function table(Table $table): Table
     {
@@ -45,14 +89,24 @@ class IncidentFeedWidget extends BaseWidget
                     ->tooltip(fn (Incident $record): string => $record->occurred_at?->toDayDateTimeString() ?? '')
                     ->sortable(),
                 TextColumn::make('status')
-                    ->label('Severity')
+                    ->label('Transition')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'danger' => 'danger',
                         'warning' => 'warning',
+                        'healthy' => 'success',
                         default => 'gray',
                     })
-                    ->formatStateUsing(fn (string $state): string => strtoupper($state))
+                    ->formatStateUsing(fn (string $state): string => match ($state) {
+                        'healthy', 'unknown' => 'RECOVERED',
+                        default => strtoupper($state),
+                    })
+                    ->sortable(),
+                TextColumn::make('state')
+                    ->label('Current state')
+                    ->badge()
+                    ->color(fn (string $state): string => $state === 'active' ? 'danger' : 'success')
+                    ->formatStateUsing(fn (string $state): string => $state === 'active' ? 'Active' : 'Resolved')
                     ->sortable(),
                 TextColumn::make('source')
                     ->label('Source')
@@ -61,15 +115,39 @@ class IncidentFeedWidget extends BaseWidget
                     ->formatStateUsing(fn (string $state): string => match ($state) {
                         'website' => 'Website',
                         'api' => 'API monitor',
-                        'component' => 'Component',
                         default => ucfirst($state),
                     })
                     ->icon(fn (string $state): string => match ($state) {
                         'website' => 'heroicon-o-globe-alt',
                         'api' => 'heroicon-o-bolt',
-                        'component' => 'heroicon-o-cube',
                         default => 'heroicon-o-question-mark-circle',
                     }),
+                TextColumn::make('cause_key')
+                    ->label('Cause')
+                    ->badge()
+                    ->placeholder('—')
+                    ->formatStateUsing(fn (?string $state): string => self::formatCauseLabel($state))
+                    ->color(fn (?string $state): string => match ($state) {
+                        'timeout' => 'warning',
+                        'dns', 'ssl', 'http', 'assertion' => 'danger',
+                        'other' => 'gray',
+                        default => 'gray',
+                    })
+                    ->icon(fn (?string $state): ?string => match ($state) {
+                        'timeout' => 'heroicon-o-clock',
+                        'dns' => 'heroicon-o-globe-alt',
+                        'ssl' => 'heroicon-o-lock-closed',
+                        'http' => 'heroicon-o-server-stack',
+                        'assertion' => 'heroicon-o-check-badge',
+                        'other' => 'heroicon-o-question-mark-circle',
+                        default => null,
+                    }),
+                TextColumn::make('component_name')
+                    ->label('Component')
+                    ->placeholder('Unmapped')
+                    ->url(fn (Incident $record): ?string => $this->resolveComponentUrl($record), shouldOpenInNewTab: false)
+                    ->searchable(query: fn (Builder $query, string $search): Builder => $query->where('component_name', 'like', "%{$search}%"))
+                    ->wrap(),
                 TextColumn::make('subject')
                     ->label('Subject')
                     ->weight('bold')
@@ -85,25 +163,43 @@ class IncidentFeedWidget extends BaseWidget
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->label('Severity')
+                    ->label('Transition')
                     ->options([
-                        'danger' => 'Danger',
+                        'danger' => 'Failing',
                         'warning' => 'Warning',
+                        'recovered' => 'Recovered',
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         if (blank($data['value'] ?? null)) {
                             return $query;
                         }
 
+                        if ($data['value'] === 'recovered') {
+                            return $query->whereIn('status', self::NON_INCIDENT_STATUSES);
+                        }
+
                         return $query->where('status', $data['value']);
                     })
-                    ->placeholder('All severities'),
+                    ->placeholder('All transitions'),
+                SelectFilter::make('state')
+                    ->label('Current state')
+                    ->options([
+                        'active' => 'Active',
+                        'resolved' => 'Resolved',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->whereRaw(self::incidentStateSql().' = ?', [$data['value']]);
+                    })
+                    ->placeholder('All states'),
                 SelectFilter::make('source')
                     ->label('Source')
                     ->options([
                         'website' => 'Websites',
                         'api' => 'API monitors',
-                        'component' => 'Components',
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         if (blank($data['value'] ?? null)) {
@@ -113,6 +209,46 @@ class IncidentFeedWidget extends BaseWidget
                         return $query->where('source', $data['value']);
                     })
                     ->placeholder('All sources'),
+                SelectFilter::make('cause_key')
+                    ->label('Cause')
+                    ->options(self::getCauseFilterOptions())
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->where('cause_key', $data['value']);
+                    })
+                    ->placeholder('All causes'),
+                SelectFilter::make('component_id')
+                    ->label('Component')
+                    ->options(fn (): array => $this->getComponentFilterOptions())
+                    ->query(function (Builder $query, array $data): Builder {
+                        if (blank($data['value'] ?? null)) {
+                            return $query;
+                        }
+
+                        return $query->where('component_id', (int) $data['value']);
+                    })
+                    ->placeholder('All components'),
+            ])
+            ->recordActions([
+                Action::make('viewEvidence')
+                    ->label('View Evidence')
+                    ->icon('heroicon-o-document-magnifying-glass')
+                    ->modalHeading(fn (Incident $record): string => "{$this->formatSourceLabel($record->source)} evidence")
+                    ->modalDescription(fn (Incident $record): string => "Exact supporting run for {$record->subject}.")
+                    ->modalWidth('5xl')
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->schema([
+                        SchemaView::make('filament.widgets.incident-feed-evidence-modal')
+                            ->viewData(fn (Incident $record): array => [
+                                'incident' => $record,
+                                'evidence' => $this->resolveEvidenceRecord($record),
+                                'targetUrl' => $this->resolveTargetUrl($record),
+                            ]),
+                    ]),
             ])
             ->defaultSort('occurred_at', 'desc')
             ->paginated([10, 25, 50])
@@ -136,7 +272,22 @@ class IncidentFeedWidget extends BaseWidget
 
     protected function getEmptyStateDescriptionText(): string
     {
-        return 'No warning or danger transitions from your websites, API monitors or components in the selected window.';
+        return 'No warning, danger or recovery transitions from your websites or API monitors in the selected window.';
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function getComponentFilterOptions(): array
+    {
+        $projectId = $this->getScopedProjectId();
+
+        return ProjectComponent::query()
+            ->where('created_by', Auth::id())
+            ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId))
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
     }
 
     protected function buildIncidentsQuery(): Builder
@@ -152,12 +303,17 @@ class IncidentFeedWidget extends BaseWidget
      * Build the union query that powers every incident feed in the app.
      *
      * Pass a $projectId to restrict the feed to a single application's
-     * websites, monitor APIs and components.
+     * websites and monitor APIs.
      */
     public static function buildIncidentsQueryFor(int $userId, \Carbon\CarbonInterface $since, ?int $projectId = null): Builder
     {
         $websiteRuns = WebsiteLogHistory::query()
             ->join('websites', 'websites.id', '=', 'website_log_history.website_id')
+            ->leftJoin('project_components as website_components', function (JoinClause $join) use ($userId): void {
+                $join
+                    ->on('website_components.id', '=', 'websites.project_component_id')
+                    ->where('website_components.created_by', $userId);
+            })
             ->whereNull('websites.deleted_at')
             ->where('website_log_history.is_on_demand', false)
             ->where('websites.created_by', $userId)
@@ -167,12 +323,21 @@ class IncidentFeedWidget extends BaseWidget
             ->selectRaw("'website' as source")
             ->selectRaw('website_log_history.website_id as source_subject_id')
             ->selectRaw("COALESCE(NULLIF(website_log_history.status, ''), 'unknown') as normalized_status")
+            ->selectRaw('
+                CASE
+                    WHEN websites.uptime_check OR websites.ssl_check THEN 1
+                    ELSE 0
+                END as current_monitoring_enabled
+            ')
             ->selectRaw('websites.name as subject')
             ->selectRaw('website_log_history.website_id as subject_id')
+            ->selectRaw('website_components.id as component_id')
+            ->selectRaw('website_components.name as component_name')
             ->selectRaw("COALESCE(NULLIF(website_log_history.summary, ''), CONCAT('HTTP ', COALESCE(website_log_history.http_status_code, 0))) as summary")
+            ->selectRaw(self::websiteCauseKeySql().' as cause_key')
             ->selectRaw('website_log_history.created_at as occurred_at');
 
-        // API results use a stricter severity definition than websites or components:
+        // API results use a stricter severity definition than websites:
         // older rows written before the `status` column existed still need to surface
         // as incidents, so we also pick up any failed result (`is_success = false`)
         // even when `status` is null/empty. The normalized status expression below
@@ -180,6 +345,11 @@ class IncidentFeedWidget extends BaseWidget
         // against its previous scheduled status.
         $apiRuns = MonitorApiResult::query()
             ->join('monitor_apis', 'monitor_apis.id', '=', 'monitor_api_results.monitor_api_id')
+            ->leftJoin('project_components as api_components', function (JoinClause $join) use ($userId): void {
+                $join
+                    ->on('api_components.id', '=', 'monitor_apis.project_component_id')
+                    ->where('api_components.created_by', $userId);
+            })
             ->where('monitor_apis.created_by', $userId)
             ->whereNull('monitor_apis.deleted_at')
             ->where('monitor_api_results.is_on_demand', false)
@@ -195,38 +365,50 @@ class IncidentFeedWidget extends BaseWidget
                     ELSE 'healthy'
                 END as normalized_status
             ")
+            ->selectRaw('
+                CASE
+                    WHEN monitor_apis.is_enabled THEN 1
+                    ELSE 0
+                END as current_monitoring_enabled
+            ')
             ->selectRaw('monitor_apis.title as subject')
             ->selectRaw('monitor_api_results.monitor_api_id as subject_id')
+            ->selectRaw('api_components.id as component_id')
+            ->selectRaw('api_components.name as component_name')
             ->selectRaw("COALESCE(NULLIF(monitor_api_results.summary, ''), CONCAT('HTTP ', COALESCE(monitor_api_results.http_code, 0))) as summary")
+            ->selectRaw(self::apiCauseKeySql().' as cause_key')
             ->selectRaw('monitor_api_results.created_at as occurred_at');
 
-        $componentRuns = ProjectComponentHeartbeat::query()
-            ->join('project_components', 'project_components.id', '=', 'project_component_heartbeats.project_component_id')
-            ->where('project_components.created_by', $userId)
-            ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_components.project_id', $projectId))
-            ->selectRaw("CONCAT('component_heartbeat-', project_component_heartbeats.id) as id")
-            ->selectRaw('project_component_heartbeats.id as source_row_id')
-            ->selectRaw("'component' as source")
-            ->selectRaw('project_component_heartbeats.project_component_id as source_subject_id')
-            ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.status, ''), 'unknown') as normalized_status")
-            ->selectRaw('project_component_heartbeats.component_name as subject')
-            ->selectRaw('project_component_heartbeats.project_component_id as subject_id')
-            ->selectRaw("COALESCE(NULLIF(project_component_heartbeats.summary, ''), project_component_heartbeats.event) as summary")
-            ->selectRaw('project_component_heartbeats.observed_at as occurred_at');
-
         $runs = self::limitRunsToFeedWindow($websiteRuns->toBase(), $since)
-            ->unionAll(self::limitRunsToFeedWindow($apiRuns->toBase(), $since))
-            ->unionAll(self::limitRunsToFeedWindow($componentRuns->toBase(), $since));
+            ->unionAll(self::limitRunsToFeedWindow($apiRuns->toBase(), $since));
 
         $rankedRuns = DB::query()
             ->fromSub($runs, 'runs')
             ->selectRaw('id')
+            ->selectRaw('source_row_id')
             ->selectRaw('source')
             ->selectRaw('normalized_status as status')
             ->selectRaw('subject')
             ->selectRaw('subject_id')
+            ->selectRaw('component_id')
+            ->selectRaw('component_name')
             ->selectRaw('summary')
+            ->selectRaw('cause_key')
             ->selectRaw('occurred_at')
+            ->selectRaw('
+                FIRST_VALUE(current_monitoring_enabled) OVER (
+                    PARTITION BY source, source_subject_id
+                    ORDER BY occurred_at DESC, source_row_id DESC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ) as current_monitoring_enabled
+            ')
+            ->selectRaw('
+                FIRST_VALUE(normalized_status) OVER (
+                    PARTITION BY source, source_subject_id
+                    ORDER BY occurred_at DESC, source_row_id DESC
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ) as current_status
+            ')
             ->selectRaw('
                 LAG(normalized_status) OVER (
                     PARTITION BY source, source_subject_id
@@ -236,13 +418,27 @@ class IncidentFeedWidget extends BaseWidget
 
         return Incident::query()
             ->fromSub($rankedRuns, 'incidents')
-            ->whereIn('status', self::INCIDENT_STATUSES)
             ->where('occurred_at', '>=', $since)
             ->where(function (Builder $transitionQuery): void {
-                $transitionQuery->whereNull('previous_status')
-                    ->orWhereIn('previous_status', self::NON_INCIDENT_STATUSES)
-                    ->orWhereColumn('previous_status', '!=', 'status');
-            });
+                $transitionQuery
+                    ->where(function (Builder $incidentTransitionQuery): void {
+                        $incidentTransitionQuery
+                            ->whereIn('status', self::INCIDENT_STATUSES)
+                            ->where(function (Builder $statusChangeQuery): void {
+                                $statusChangeQuery
+                                    ->whereNull('previous_status')
+                                    ->orWhereIn('previous_status', self::NON_INCIDENT_STATUSES)
+                                    ->orWhereColumn('previous_status', '!=', 'status');
+                            });
+                    })
+                    ->orWhere(function (Builder $recoveryTransitionQuery): void {
+                        $recoveryTransitionQuery
+                            ->whereIn('status', self::NON_INCIDENT_STATUSES)
+                            ->whereIn('previous_status', self::INCIDENT_STATUSES);
+                    });
+            })
+            ->select('incidents.*')
+            ->selectRaw(self::incidentStateSql().' as state');
     }
 
     /**
@@ -253,22 +449,108 @@ class IncidentFeedWidget extends BaseWidget
     {
         $windowRuns = DB::query()
             ->fromSub(clone $baseRuns, 'window_runs')
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'cause_key', 'occurred_at')
             ->where('occurred_at', '>=', $since);
 
         $latestPriorRuns = DB::query()
             ->fromSub(
                 DB::query()
                     ->fromSub(clone $baseRuns, 'prior_runs')
-                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
-                    ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
+                    ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'cause_key', 'occurred_at')
+                    ->selectRaw('ROW_NUMBER() OVER (PARTITION BY source, source_subject_id ORDER BY occurred_at DESC, source_row_id DESC) as prior_rank')
                     ->where('occurred_at', '<', $since),
                 'ranked_prior_runs'
             )
-            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'subject', 'subject_id', 'summary', 'occurred_at')
+            ->select('id', 'source_row_id', 'source', 'source_subject_id', 'normalized_status', 'current_monitoring_enabled', 'subject', 'subject_id', 'component_id', 'component_name', 'summary', 'cause_key', 'occurred_at')
             ->where('prior_rank', 1);
 
         return $windowRuns->unionAll($latestPriorRuns);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected static function getCauseFilterOptions(): array
+    {
+        return [
+            'timeout' => 'Timeout',
+            'dns' => 'DNS failure',
+            'rate_limit' => 'Rate limit',
+            'http' => 'HTTP error',
+            'ssl' => 'SSL failure',
+            'assertion' => 'Assertion failure',
+            'other' => 'Other failure',
+        ];
+    }
+
+    protected static function incidentStateSql(): string
+    {
+        return "
+            CASE
+                WHEN current_monitoring_enabled = 1 AND current_status IN ('warning', 'danger') THEN 'active'
+                ELSE 'resolved'
+            END
+        ";
+    }
+
+    protected static function formatCauseLabel(?string $cause): string
+    {
+        return match ($cause) {
+            'timeout' => 'Timeout',
+            'dns' => 'DNS',
+            'rate_limit' => 'Rate limit',
+            'http' => 'HTTP',
+            'ssl' => 'SSL',
+            'assertion' => 'Assertion',
+            'other' => 'Other',
+            default => '—',
+        };
+    }
+
+    protected static function websiteCauseKeySql(): string
+    {
+        return "
+            CASE
+                WHEN COALESCE(NULLIF(website_log_history.status, ''), 'unknown') IN ('healthy', 'unknown') THEN NULL
+                WHEN website_log_history.transport_error_type = 'dns' THEN 'dns'
+                WHEN website_log_history.transport_error_type = 'timeout' THEN 'timeout'
+                WHEN website_log_history.transport_error_type = 'tls' THEN 'ssl'
+                WHEN website_log_history.http_status_code BETWEEN 400 AND 599 THEN 'http'
+                WHEN website_log_history.ssl_expiry_date IS NOT NULL THEN 'ssl'
+                ELSE 'other'
+            END
+        ";
+    }
+
+    protected static function apiCauseKeySql(): string
+    {
+        return "
+            CASE
+                WHEN (
+                    CASE
+                        WHEN NULLIF(monitor_api_results.status, '') IS NOT NULL THEN monitor_api_results.status
+                        WHEN monitor_api_results.is_success = 0 THEN 'danger'
+                        ELSE 'healthy'
+                    END
+                ) IN ('healthy', 'unknown') THEN NULL
+                WHEN monitor_api_results.transport_error_type = 'dns' THEN 'dns'
+                WHEN monitor_api_results.transport_error_type = 'timeout' THEN 'timeout'
+                WHEN monitor_api_results.transport_error_type = 'tls' THEN 'ssl'
+                WHEN monitor_api_results.http_code = 429 THEN 'rate_limit'
+                WHEN ".self::failedAssertionsPresentSql('monitor_api_results.failed_assertions')." THEN 'assertion'
+                WHEN monitor_api_results.http_code BETWEEN 400 AND 599 THEN 'http'
+                ELSE 'other'
+            END
+        ";
+    }
+
+    protected static function failedAssertionsPresentSql(string $column): string
+    {
+        return match (DB::connection()->getDriverName()) {
+            'sqlite' => "json_array_length({$column}) > 0",
+            'pgsql' => "jsonb_typeof({$column}::jsonb) = 'array' AND jsonb_array_length({$column}::jsonb) > 0",
+            default => "JSON_LENGTH({$column}) > 0",
+        };
     }
 
     protected function resolveTargetUrl(Incident $record): ?string
@@ -276,8 +558,52 @@ class IncidentFeedWidget extends BaseWidget
         return match ($record->source) {
             'website' => WebsiteResource::getUrl('view', ['record' => $record->subject_id]),
             'api' => MonitorApisResource::getUrl('view', ['record' => $record->subject_id]),
-            'component' => ProjectComponentResource::getUrl('view', ['record' => $record->subject_id]),
             default => null,
+        };
+    }
+
+    protected function resolveComponentUrl(Incident $record): ?string
+    {
+        return $record->component_id === null
+            ? null
+            : ProjectComponentResource::getUrl('view', ['record' => $record->component_id]);
+    }
+
+    protected function resolveEvidenceRecord(Incident $record): ?Model
+    {
+        $sourceRowId = (int) $record->source_row_id;
+        $projectId = $this->getScopedProjectId();
+        $userId = (int) Auth::id();
+
+        return match ($record->source) {
+            'website' => WebsiteLogHistory::query()
+                ->with('website')
+                ->whereKey($sourceRowId)
+                ->whereHas('website', function (Builder $query) use ($projectId, $userId): void {
+                    $query
+                        ->where('created_by', $userId)
+                        ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId));
+                })
+                ->first(),
+            'api' => MonitorApiResult::query()
+                ->with('monitorApi')
+                ->whereKey($sourceRowId)
+                ->whereHas('monitorApi', function (Builder $query) use ($projectId, $userId): void {
+                    $query
+                        ->where('created_by', $userId)
+                        ->when($projectId !== null, fn (Builder $query): Builder => $query->where('project_id', $projectId));
+                })
+                ->first(),
+            default => null,
+        };
+    }
+
+    protected function formatSourceLabel(?string $source): string
+    {
+        return match ($source) {
+            'website' => 'Website run',
+            'api' => 'API result',
+            default => 'Incident',
         };
     }
 }

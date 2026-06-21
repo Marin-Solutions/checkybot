@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 class Project extends Model
 {
@@ -19,6 +18,7 @@ class Project extends Model
         'healthy',
         'warning',
         'danger',
+        'pending',
     ];
 
     protected $fillable = [
@@ -33,6 +33,11 @@ class Project extends Model
         'repository',
         'sync_defaults',
         'last_synced_at',
+        'latest_package_sync_summary',
+        'last_component_synced_at',
+        'latest_component_sync_summary',
+        'latest_diagnostic_run_batch_id',
+        'latest_diagnostic_run_batch_queued_at',
         'token',
         'created_by',
     ];
@@ -42,6 +47,10 @@ class Project extends Model
         return [
             'sync_defaults' => 'array',
             'last_synced_at' => 'datetime',
+            'latest_package_sync_summary' => 'array',
+            'last_component_synced_at' => 'datetime',
+            'latest_component_sync_summary' => 'array',
+            'latest_diagnostic_run_batch_queued_at' => 'datetime',
         ];
     }
 
@@ -75,16 +84,25 @@ class Project extends Model
         return $this->hasMany(ProjectComponent::class);
     }
 
+    public function notificationSettings(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->projectScope();
+    }
+
+    public function notificationChannels(): HasMany
+    {
+        return $this->hasMany(NotificationSetting::class)->projectScope()->active();
+    }
+
     public function activeComponents(): HasMany
     {
         return $this->hasMany(ProjectComponent::class)->where('is_archived', false);
     }
 
     /**
-     * Application status uses website current_status, which is maintained by
-     * uptime checks and package-managed SSL checks. SSL-only rows without a
-     * current_status are ignored by the status rollup; outbound-only scans are
-     * excluded because they do not maintain website current_status.
+     * Application status uses live current_status from active components,
+     * website checks, and API checks. Outbound-only scans are excluded because
+     * they do not maintain website current_status.
      */
     public function monitoredWebsites(): HasMany
     {
@@ -135,21 +153,46 @@ class Project extends Model
         return collect()
             ->merge($this->loadedOrQueriedStatuses('activeComponents'))
             ->merge($this->loadedOrQueriedStatuses('monitoredWebsites'))
-            ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'))
-            ->filter(fn (?string $status): bool => in_array($status, self::KNOWN_APPLICATION_STATUSES, true));
+            ->merge($this->loadedOrQueriedStatuses('enabledMonitorApis'));
     }
 
     /**
-     * @return Collection<int, string|null>
+     * @return Collection<int, string>
      */
     protected function loadedOrQueriedStatuses(string $relation): Collection
     {
         /** @var Collection<int, ProjectComponent|Website|MonitorApis> $records */
         $records = $this->relationLoaded($relation)
             ? $this->getRelation($relation)
-            : $this->{$relation}()->get(['current_status']);
+            : $this->{$relation}()->get($this->statusRollupColumns($relation));
 
-        return $records->pluck('current_status');
+        return $records->map(fn (ProjectComponent|Website|MonitorApis $record): string => $this->effectiveSurfaceStatus($record));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    protected function statusRollupColumns(string $relation): array
+    {
+        return match ($relation) {
+            'activeComponents' => ['id', 'current_status', 'is_archived', 'source'],
+            default => ['current_status'],
+        };
+    }
+
+    protected function effectiveSurfaceStatus(ProjectComponent|Website|MonitorApis $record): string
+    {
+        if ($record instanceof ProjectComponent) {
+            return $record->derivedCurrentStatus();
+        }
+
+        if (in_array($record->current_status, ['warning', 'danger'], true)) {
+            return $record->current_status;
+        }
+
+        return $record->current_status === 'healthy'
+            ? 'healthy'
+            : 'pending';
     }
 
     protected function statusPriority(?string $status): int
@@ -157,7 +200,8 @@ class Project extends Model
         return match ($status) {
             'danger' => 3,
             'warning' => 2,
-            'healthy' => 1,
+            'pending', 'unknown' => 1,
+            'healthy' => 0,
             default => 0,
         };
     }
@@ -206,8 +250,7 @@ class Project extends Model
         }
 
         return filled($this->identity_endpoint)
-            || filled($this->package_version)
-            || Str::lower((string) $this->technology) === 'laravel';
+            || filled($this->package_version);
     }
 
     public function hasReceivedFirstPackageSync(): bool
@@ -218,9 +261,27 @@ class Project extends Model
             || $this->last_synced_at !== null;
     }
 
+    public function hasStalePackageSync(): bool
+    {
+        if ($this->last_synced_at === null) {
+            return false;
+        }
+
+        return $this->last_synced_at->lt(now()->subMinutes($this->packageSyncStaleMinutes()));
+    }
+
+    public function packageSyncStaleMinutes(): int
+    {
+        return max(1, (int) config('monitor.package_sync_stale_minutes', 15));
+    }
+
     public function setupVerificationState(): string
     {
         if ($this->hasReceivedFirstPackageSync()) {
+            if ($this->hasStalePackageSync()) {
+                return 'sync_stale';
+            }
+
             return 'synced';
         }
 
@@ -235,6 +296,7 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'Synced',
+            'sync_stale' => 'Sync stale',
             'waiting_for_first_sync' => 'Waiting for first sync',
             default => 'Waiting for registration',
         };
@@ -244,6 +306,7 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'success',
+            'sync_stale' => 'warning',
             'waiting_for_first_sync' => 'info',
             default => 'warning',
         };
@@ -253,6 +316,10 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'Checkybot has received both the Laravel package registration and the first package sync payload for this application.',
+            'sync_stale' => sprintf(
+                'Checkybot has received package sync payloads before, but the latest sync is more than %d minutes old. The Laravel scheduler or package integration may have stopped.',
+                $this->packageSyncStaleMinutes(),
+            ),
             'waiting_for_first_sync' => 'Checkybot has seen the Laravel package register this application, but the first package sync has not arrived yet.',
             default => 'Checkybot has not received a Laravel package registration for this application yet.',
         };
@@ -262,8 +329,98 @@ class Project extends Model
     {
         return match ($this->setupVerificationState()) {
             'synced' => 'Continue in the monitored checks and components tables if expected package-managed monitors are still missing.',
+            'sync_stale' => 'Run `php artisan checkybot:sync` in the Laravel app, confirm the scheduler is still executing `Schedule::command(\'checkybot:sync\')->everyMinute();`, and inspect the app logs if the command fails.',
             'waiting_for_first_sync' => 'Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.',
             default => 'Copy the guided install snippet into the Laravel app, then run `php artisan checkybot:sync` once to trigger registration.',
+        };
+    }
+
+    public function setupRepairActionLabel(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'sync_stale' => 'Run sync repair',
+            'waiting_for_first_sync' => 'Run first sync',
+            'synced' => 'Review monitors',
+            default => 'Finish registration',
+        };
+    }
+
+    public function setupRepairTableSummary(): string
+    {
+        return match ($this->setupVerificationState()) {
+            'sync_stale' => 'Run the sync command now, then verify the scheduler and Laravel logs.',
+            'waiting_for_first_sync' => 'Run the package sync command once, then confirm the scheduler is active.',
+            'synced' => 'Open the application if package-managed monitors are missing.',
+            default => 'Create or copy an API key, install the package, then run the first sync.',
+        };
+    }
+
+    /**
+     * @return array<int, array{title: string, detail: string, command?: string}>
+     */
+    public function setupRepairRunbook(): array
+    {
+        return match ($this->setupVerificationState()) {
+            'sync_stale' => [
+                [
+                    'title' => 'Run a package sync now',
+                    'detail' => 'Run this from the Laravel application root. A successful run should update Last Synced on this page within a minute.',
+                    'command' => 'php artisan checkybot:sync',
+                ],
+                [
+                    'title' => 'Confirm the scheduled sync is registered',
+                    'detail' => 'The package should run every minute so Checkybot can trust the application status.',
+                    'command' => "php artisan schedule:list | grep 'checkybot:sync'",
+                ],
+                [
+                    'title' => 'Check the application log if the sync fails',
+                    'detail' => 'Look for API key, network, validation, or route publishing errors from the package.',
+                    'command' => "tail -n 100 storage/logs/laravel.log | grep -i 'checkybot'",
+                ],
+            ],
+            'waiting_for_first_sync' => [
+                [
+                    'title' => 'Preview the payload',
+                    'detail' => 'The dry run confirms the package can discover checks, components, and metadata before sending anything.',
+                    'command' => 'php artisan checkybot:sync --dry-run',
+                ],
+                [
+                    'title' => 'Send the first package sync',
+                    'detail' => 'A successful run should move setup from Waiting for first sync to Synced.',
+                    'command' => 'php artisan checkybot:sync',
+                ],
+                [
+                    'title' => 'Confirm recurring syncs',
+                    'detail' => 'Keep the scheduler entry active so the application does not become stale again.',
+                    'command' => "php artisan schedule:list | grep 'checkybot:sync'",
+                ],
+            ],
+            'synced' => [
+                [
+                    'title' => 'Review package-managed monitors',
+                    'detail' => 'Use the checks and components tables on this application to confirm the expected monitors were created.',
+                ],
+                [
+                    'title' => 'Run diagnostics if status still looks wrong',
+                    'detail' => 'The Run diagnostics action queues enabled package-managed checks and refreshes the live status evidence.',
+                ],
+            ],
+            default => [
+                [
+                    'title' => 'Create or copy an API key',
+                    'detail' => 'Use Guided Laravel Setup on this page, then copy the install snippet into the Laravel application.',
+                ],
+                [
+                    'title' => 'Publish the package routes and config',
+                    'detail' => 'The guided snippet includes both publish commands and the required CHECKYBOT environment values.',
+                    'command' => 'php artisan vendor:publish --tag="checkybot-routes" && php artisan vendor:publish --tag="checkybot-laravel-config"',
+                ],
+                [
+                    'title' => 'Trigger registration and first sync',
+                    'detail' => 'Run this once after the environment values are present.',
+                    'command' => 'php artisan checkybot:sync',
+                ],
+            ],
         };
     }
 
@@ -285,14 +442,29 @@ class Project extends Model
             ],
             [
                 'title' => 'First package sync',
-                'status' => $this->hasReceivedFirstPackageSync() ? 'complete' : 'pending',
+                'status' => $this->hasStalePackageSync()
+                    ? 'stale'
+                    : ($this->hasReceivedFirstPackageSync() ? 'complete' : 'pending'),
                 'description' => $this->hasReceivedFirstPackageSync()
-                    ? sprintf(
-                        'First sync received%s.',
-                        $this->last_synced_at ? ' '.$this->last_synced_at->diffForHumans() : ''
-                    )
+                    ? $this->packageSyncStepDescription()
                     : 'Waiting for the package to send checks, components, and package metadata.',
             ],
         ];
+    }
+
+    private function packageSyncStepDescription(): string
+    {
+        if ($this->hasStalePackageSync()) {
+            return sprintf(
+                'Last sync received %s, which is outside the %d minute freshness window.',
+                $this->last_synced_at->diffForHumans(),
+                $this->packageSyncStaleMinutes(),
+            );
+        }
+
+        return sprintf(
+            'First sync received%s.',
+            $this->last_synced_at ? ' '.$this->last_synced_at->diffForHumans() : ''
+        );
     }
 }

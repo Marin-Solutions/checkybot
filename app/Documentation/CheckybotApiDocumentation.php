@@ -44,7 +44,7 @@ class CheckybotApiDocumentation
      *     operationId="syncPackageChecks",
      *     tags={"package"},
      *     summary="Sync package-managed API, uptime, and SSL checks",
-     *     description="The package payload is the source of truth for package-managed checks. Matching checks are overwritten on each sync, package-managed website descriptions are reset from package data, missing package checks are disabled, and uptime plus SSL may share one key when they describe the same website.",
+     *     description="The package payload is the source of truth for package-managed check configuration. Checkybot executes API, uptime, and SSL checks and owns live status/result history. Runtime heartbeat, stale, status, metric, or observed_at fields are rejected.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\RequestBody(
@@ -162,6 +162,12 @@ class CheckybotApiDocumentation
      *             type="object",
      *
      *             @OA\Property(
+     *                 property="full_manifest",
+     *                 type="boolean",
+     *                 example=false,
+     *                 description="Set true only when uptime_checks, ssl_checks, and api_checks represent the complete active check manifest; empty arrays archive missing package-managed checks only in full-manifest syncs."
+     *             ),
+     *             @OA\Property(
      *                 property="uptime_checks",
      *                 type="array",
      *                 maxItems=100,
@@ -172,8 +178,10 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Homepage"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
-     *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5)
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="every_5_minutes"),
+     *                     @OA\Property(property="max_redirects", type="integer", minimum=0, maximum=20, example=5),
+     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
+     *                     @OA\Property(property="component", type="string", nullable=true, example="database")
      *                 )
      *             ),
      *             @OA\Property(
@@ -187,7 +195,9 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Certificate"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="1d")
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="1d"),
+     *                     @OA\Property(property="enabled", type="boolean", nullable=true, example=true),
+     *                     @OA\Property(property="component", type="string", nullable=true, example="database")
      *                 )
      *             ),
      *             @OA\Property(
@@ -201,11 +211,12 @@ class CheckybotApiDocumentation
      *
      *                     @OA\Property(property="name", type="string", example="Health endpoint"),
      *                     @OA\Property(property="url", type="string", format="uri", example="https://app.example.com/health"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="30s"),
      *                     @OA\Property(property="headers", type="object"),
      *                     @OA\Property(property="request_body_type", type="string", nullable=true, enum={"json", "form", "raw"}, example="json"),
      *                     @OA\Property(property="request_body", nullable=true, example={"email": "monitor@example.com", "password": "secret"}),
      *                     @OA\Property(property="save_failed_response", type="boolean", nullable=true, example=false, description="Set false to avoid storing failed response bodies for this API check."),
+     *                     @OA\Property(property="component", type="string", nullable=true, example="database"),
      *                     @OA\Property(
      *                         property="assertions",
      *                         type="array",
@@ -253,8 +264,14 @@ class CheckybotApiDocumentation
      *
      *         @OA\JsonContent(
      *             type="object",
-     *             required={"declared_components", "components"},
+     *             required={"declared_components"},
      *
+     *             @OA\Property(
+     *                 property="full_manifest",
+     *                 type="boolean",
+     *                 example=false,
+     *                 description="Set true only when declared_components represents the complete active component manifest; missing package components are archived only in full-manifest syncs."
+     *             ),
      *             @OA\Property(
      *                 property="declared_components",
      *                 type="array",
@@ -265,33 +282,7 @@ class CheckybotApiDocumentation
      *                     required={"name", "interval"},
      *
      *                     @OA\Property(property="name", type="string", example="Database"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m")
-     *                 )
-     *             ),
-     *             @OA\Property(
-     *                 property="components",
-     *                 type="array",
-     *                 maxItems=100,
-     *
-     *                 @OA\Items(
-     *                     type="object",
-     *                     required={"name", "interval", "status", "observed_at"},
-     *
-     *                     @OA\Property(property="name", type="string", example="Database"),
-     *                     @OA\Property(property="interval", type="string", pattern="^\d+[mhd]$", example="5m"),
-     *                     @OA\Property(property="status", type="string", enum={"healthy", "warning", "danger"}, example="healthy"),
-     *                     @OA\Property(property="summary", type="string", nullable=true, example="Replication lag is normal"),
-     *                     @OA\Property(
-     *                         property="metrics",
-     *                         nullable=true,
-     *                         oneOf={
-     *
-     *                             @OA\Schema(type="object"),
-     *                             @OA\Schema(type="array", @OA\Items())
-     *                         }
-     *                     ),
-     *
-     *                     @OA\Property(property="observed_at", type="string", format="date-time", example="2026-04-22T07:00:00Z")
+     *                     @OA\Property(property="interval", type="string", pattern="^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$", example="5m")
      *                 )
      *             )
      *         )
@@ -356,7 +347,7 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/checks",
      *     operationId="listControlProjectChecks",
      *     tags={"control"},
-     *     summary="List package-managed API checks for a project",
+     *     summary="List package-managed API, website, and component checks for a project",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
@@ -389,7 +380,7 @@ class CheckybotApiDocumentation
      *             @OA\Property(property="type", type="string", nullable=true, enum={"api"}, example="api"),
      *             @OA\Property(property="name", type="string", example="Health endpoint"),
      *             @OA\Property(property="method", type="string", nullable=true, enum={"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}, example="GET"),
-     *             @OA\Property(property="url", type="string", example="/health"),
+     *             @OA\Property(property="url", type="string", description="HTTP(S) URL or relative path resolved against the project base_url.", example="/health"),
      *             @OA\Property(property="headers", type="object", nullable=true, additionalProperties=@OA\AdditionalProperties(type="string", nullable=true)),
      *             @OA\Property(property="expected_status", type="integer", nullable=true, minimum=100, maximum=599, example=200),
      *             @OA\Property(property="timeout_seconds", type="integer", nullable=true, minimum=1, maximum=120, example=10),
@@ -432,15 +423,24 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/checks/{check}/disable",
      *     operationId="disableControlProjectCheck",
      *     tags={"control"},
-     *     summary="Disable a package-managed API check",
+     *     summary="Disable a package-managed API, website, or component check",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *     @OA\Parameter(name="check", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(
+     *         name="type",
+     *         in="query",
+     *         required=false,
+     *         description="Check type to disable. Required when multiple check surfaces share the same key.",
+     *
+     *         @OA\Schema(type="string", enum={"api", "website", "component"})
+     *     ),
      *
      *     @OA\Response(response=200, description="Check disabled"),
      *     @OA\Response(response=401, description="Invalid API key"),
-     *     @OA\Response(response=404, description="Project or check not found")
+     *     @OA\Response(response=404, description="Project or check not found"),
+     *     @OA\Response(response=409, description="Check key matches multiple check types")
      * )
      */
     public function disableControlProjectCheck(): void {}
@@ -450,12 +450,13 @@ class CheckybotApiDocumentation
      *     path="/v1/control/projects/{project}/runs",
      *     operationId="triggerControlProjectRun",
      *     tags={"control"},
-     *     summary="Run diagnostic checks for all enabled checks in a project",
+     *     summary="Queue diagnostic checks for all enabled checks in a project",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *
-     *     @OA\Response(response=200, description="Diagnostic project run completed"),
+     *     @OA\Response(response=202, description="Diagnostic project run queued"),
+     *     @OA\Response(response=200, description="No enabled checks to queue"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=404, description="Project not found")
      * )
@@ -463,20 +464,42 @@ class CheckybotApiDocumentation
     public function triggerControlProjectRun(): void {}
 
     /**
+     * @OA\Get(
+     *     path="/v1/control/projects/{project}/runs/{batch}",
+     *     operationId="getControlProjectRunBatch",
+     *     tags={"control"},
+     *     summary="Get queued project diagnostic batch status",
+     *     security={{"checkybotApiKey": {}}},
+     *
+     *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="batch", in="path", required=true, @OA\Schema(type="string")),
+     *
+     *     @OA\Response(response=200, description="Project run batch status"),
+     *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=404, description="Project run batch not found")
+     * )
+     */
+    public function getControlProjectRunBatch(): void {}
+
+    /**
      * @OA\Post(
      *     path="/v1/control/projects/{project}/checks/{check}/runs",
      *     operationId="triggerControlProjectCheckRun",
      *     tags={"control"},
-     *     summary="Run one package-managed API check as a diagnostic",
+     *     summary="Run one package-managed API or website check as a diagnostic",
+     *     description="Runs one package-managed API check immediately or queues one package-managed website check. Pass type=api or type=website when an API check and website check share the same package key.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\Parameter(name="project", in="path", required=true, @OA\Schema(type="string")),
      *     @OA\Parameter(name="check", in="path", required=true, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="type", in="query", required=false, description="Runnable check surface. Required when the package key matches both an API check and a website check.", @OA\Schema(type="string", enum={"api", "website"})),
      *
      *     @OA\Response(response=200, description="Diagnostic check run completed"),
+     *     @OA\Response(response=202, description="Diagnostic website check run queued"),
      *     @OA\Response(response=401, description="Invalid API key"),
      *     @OA\Response(response=404, description="Project or check not found"),
-     *     @OA\Response(response=409, description="Check is disabled")
+     *     @OA\Response(response=409, description="Check is disabled or check key matches multiple runnable check types"),
+     *     @OA\Response(response=422, description="Validation error")
      * )
      */
     public function triggerControlProjectCheckRun(): void {}
@@ -558,12 +581,38 @@ class CheckybotApiDocumentation
     public function listControlProjectFailures(): void {}
 
     /**
+     * @OA\Get(
+     *     path="/v1/control/issues",
+     *     operationId="listControlCurrentIssues",
+     *     tags={"control"},
+     *     summary="List current dashboard status issues",
+     *     description="Returns currently unhealthy or pending API monitors, website checks, and components. Use type=api to list API monitor issues only. Use cause to triage by failure class. Use min_streak and first_failed_before to separate fresh regressions from persistent scheduled failures.",
+     *     security={{"checkybotApiKey": {}}},
+     *
+     *     @OA\Parameter(name="project", in="query", required=false, @OA\Schema(type="string")),
+     *     @OA\Parameter(name="type", in="query", required=false, @OA\Schema(type="string", enum={"all", "project", "api", "website", "component"})),
+     *     @OA\Parameter(name="statuses[]", in="query", required=false, @OA\Schema(type="array", @OA\Items(type="string", enum={"warning", "danger", "pending", "unknown"}))),
+     *     @OA\Parameter(name="cause", in="query", required=false, @OA\Schema(type="string", enum={"timeout", "dns", "rate_limit", "http_4xx", "http_5xx", "assertion", "stale_setup"})),
+     *     @OA\Parameter(name="min_streak", in="query", required=false, @OA\Schema(type="integer", minimum=1, maximum=1000)),
+     *     @OA\Parameter(name="first_failed_before", in="query", required=false, @OA\Schema(type="string", format="date-time")),
+     *     @OA\Parameter(name="exclude[]", in="query", required=false, @OA\Schema(type="array", @OA\Items(type="string"))),
+     *     @OA\Parameter(name="limit", in="query", required=false, @OA\Schema(type="integer", minimum=1, maximum=100)),
+     *
+     *     @OA\Response(response=200, description="Current dashboard issues"),
+     *     @OA\Response(response=401, description="Invalid API key"),
+     *     @OA\Response(response=404, description="Project not found"),
+     *     @OA\Response(response=422, description="Validation error")
+     * )
+     */
+    public function listControlCurrentIssues(): void {}
+
+    /**
      * @OA\Post(
      *     path="/v1/mcp",
      *     operationId="callCheckybotMcp",
      *     tags={"mcp"},
      *     summary="Call the Checkybot MCP JSON-RPC endpoint",
-     *     description="Authenticated JSON-RPC endpoint exposing tools such as me, list_projects, get_project, list_checks, upsert_check, disable_check, trigger_run, and latest_failures.",
+     *     description="Authenticated JSON-RPC endpoint exposing tools such as me, list_projects, get_project, list_checks, upsert_check, disable_check, trigger_run, latest_failures, current_issues, notification channel management, and notification setting management.",
      *     security={{"checkybotApiKey": {}}},
      *
      *     @OA\RequestBody(

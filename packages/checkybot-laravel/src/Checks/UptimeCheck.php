@@ -86,6 +86,6 @@ class UptimeCheck extends BaseCheck
             $data['max_redirects'] = $this->maxRedirects;
         }
 
-        return $data;
+        return $this->withCommonPayload($data);
     }
 }

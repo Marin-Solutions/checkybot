@@ -11,7 +11,7 @@ test('healthy on demand result produces success run history notification', funct
         'http_code' => 200,
         'response_time_ms' => 142,
         'failed_assertions' => [],
-        'summary' => 'API heartbeat succeeded with HTTP status 200.',
+        'summary' => 'API check succeeded with HTTP status 200.',
         'run_source' => RunSource::OnDemand,
         'is_on_demand' => true,
     ]);
@@ -19,7 +19,7 @@ test('healthy on demand result produces success run history notification', funct
     $notification = ApiMonitorRunNotification::fromOutcome([
         'result' => $result,
         'status' => 'healthy',
-        'summary' => 'API heartbeat succeeded with HTTP status 200.',
+        'summary' => 'API check succeeded with HTTP status 200.',
         'previous_status' => null,
     ]);
 
@@ -29,7 +29,7 @@ test('healthy on demand result produces success run history notification', funct
         ->and($notification->getBody())->toContain('Recorded to run history.')
         ->and($notification->getBody())->toContain('HTTP 200')
         ->and($notification->getBody())->toContain('142ms')
-        ->and($notification->getBody())->toContain('API heartbeat succeeded with HTTP status 200.');
+        ->and($notification->getBody())->toContain('API check succeeded with HTTP status 200.');
 });
 
 test('failed on demand result produces danger notification with assertion count', function () {
@@ -45,7 +45,7 @@ test('failed on demand result produces danger notification with assertion count'
     $notification = ApiMonitorRunNotification::fromOutcome([
         'result' => $result,
         'status' => 'danger',
-        'summary' => 'API heartbeat failed with HTTP status 500.',
+        'summary' => 'API check failed with HTTP status 500.',
         'previous_status' => 'healthy',
     ]);
 
@@ -54,7 +54,7 @@ test('failed on demand result produces danger notification with assertion count'
         ->and($notification->getBody())->toContain('HTTP 500')
         ->and($notification->getBody())->toContain('987ms')
         ->and($notification->getBody())->toContain('2 assertions failed.')
-        ->and($notification->getBody())->toContain('API heartbeat failed with HTTP status 500.');
+        ->and($notification->getBody())->toContain('API check failed with HTTP status 500.');
 });
 
 test('run notification escapes summary html', function () {

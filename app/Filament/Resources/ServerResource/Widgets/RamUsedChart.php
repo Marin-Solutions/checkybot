@@ -12,6 +12,13 @@ use Livewire\Attributes\On;
 
 class RamUsedChart extends ChartWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'RAM Used';
 
     public ?Model $record = null;

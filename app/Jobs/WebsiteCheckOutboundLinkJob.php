@@ -3,10 +3,16 @@
 namespace App\Jobs;
 
 use App\Crawlers\WebsiteOutboundLinkCrawler;
+use App\Models\OutboundLink;
 use App\Models\Website;
+use App\Services\HealthEventNotificationService;
+use App\Support\ApiMonitorEvidenceRedactor;
+use App\Support\UptimeTransportError;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Spatie\Crawler\Crawler;
 
@@ -14,19 +20,42 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
 {
     use Queueable;
 
-    public function __construct(public Website $website)
-    {
+    private const BROKEN_STATUS_CODE_MIN = 400;
+
+    private const BROKEN_STATUS_CODE_MAX = 599;
+
+    public const SOURCE_SCHEDULED = 'scheduled';
+
+    public const SOURCE_ON_DEMAND = 'on-demand';
+
+    public function __construct(
+        public Website $website,
+        public string $source = self::SOURCE_SCHEDULED,
+    ) {
         //
+    }
+
+    public static function scheduled(Website $website): self
+    {
+        return new self($website, self::SOURCE_SCHEDULED);
+    }
+
+    public static function onDemand(Website $website): self
+    {
+        return new self($website, self::SOURCE_ON_DEMAND);
     }
 
     public function uniqueId(): string
     {
-        return "website-outbound-link:{$this->website->getKey()}";
+        return "website-outbound-link:{$this->source}:{$this->website->getKey()}";
     }
 
     public function uniqueFor(): int
     {
-        return 86400;
+        return match ($this->source) {
+            self::SOURCE_ON_DEMAND => 300,
+            default => 86400,
+        };
     }
 
     /**
@@ -35,11 +64,144 @@ class WebsiteCheckOutboundLinkJob implements ShouldBeUnique, ShouldQueue
     public function handle(): void
     {
         try {
-            Crawler::create()
+            $this->createCrawler()
                 ->setCrawlObserver(new WebsiteOutboundLinkCrawler($this->website))
                 ->startCrawling($this->website->getBaseURL());
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Outbound link check failed for website '.$this->website->url.': '.$e->getMessage());
+
+            try {
+                $this->recordStartupFailure($e);
+            } catch (\Throwable $recordingException) {
+                Log::error('Failed to record outbound link startup failure evidence for website '.$this->website->url.': '.$recordingException->getMessage());
+                $this->clearQueuedOutboundScan();
+            }
         }
+    }
+
+    public function createCrawler(): Crawler
+    {
+        return Crawler::create();
+    }
+
+    private function recordStartupFailure(\Throwable $exception): void
+    {
+        $checkedAt = Carbon::now();
+        $baseUrl = $this->failureEvidenceUrl();
+        $transportError = UptimeTransportError::fromThrowable($exception);
+        $scanSource = $this->sourceLabel();
+        $failureEvidence = $this->startupFailureEvidence($checkedAt, $scanSource, $transportError);
+        $shouldNotify = false;
+
+        DB::transaction(function () use ($baseUrl, $checkedAt, $failureEvidence, &$shouldNotify): void {
+            $inserted = OutboundLink::query()->insertOrIgnore([array_merge([
+                'website_id' => $this->website->id,
+                'found_on' => $baseUrl,
+                'outgoing_url' => $baseUrl,
+                'created_at' => $checkedAt,
+                'updated_at' => $checkedAt,
+            ], $failureEvidence)]);
+
+            if ($inserted === 1) {
+                $shouldNotify = true;
+                $this->markOutboundStartupFailureRecorded($checkedAt);
+
+                return;
+            }
+
+            $link = OutboundLink::query()
+                ->where('website_id', $this->website->id)
+                ->where('found_on', $baseUrl)
+                ->where('outgoing_url', $baseUrl)
+                ->lockForUpdate()
+                ->first();
+
+            $shouldNotify = ! $this->isBrokenEvidence($link);
+
+            $link?->forceFill($failureEvidence)->save();
+
+            $this->markOutboundStartupFailureRecorded($checkedAt);
+        });
+
+        if ($shouldNotify) {
+            app(HealthEventNotificationService::class)->notifyWebsite(
+                $this->website,
+                'outbound_link_broken',
+                'danger',
+                $this->startupFailureSummary($baseUrl, $transportError['type']->value),
+            );
+        }
+    }
+
+    private function startupFailureEvidence(Carbon $checkedAt, string $scanSource, array $transportError): array
+    {
+        return [
+            'http_status_code' => null,
+            'transport_error_type' => $transportError['type']->value,
+            'transport_error_message' => ApiMonitorEvidenceRedactor::redactTransportErrorMessage(
+                "Outbound {$scanSource} scan failed before crawling started: {$transportError['message']}"
+            ),
+            'transport_error_code' => $transportError['code'],
+            'last_checked_at' => $checkedAt,
+        ];
+    }
+
+    private function markOutboundStartupFailureRecorded(Carbon $checkedAt): void
+    {
+        $this->website->forceFill([
+            'last_outbound_checked_at' => $checkedAt,
+            'outbound_scan_queued_at' => null,
+        ])->save();
+    }
+
+    private function isBrokenEvidence(?OutboundLink $link): bool
+    {
+        if (! $link) {
+            return false;
+        }
+
+        if (filled($link->transport_error_type)) {
+            return true;
+        }
+
+        return is_int($link->http_status_code)
+            && $link->http_status_code >= self::BROKEN_STATUS_CODE_MIN
+            && $link->http_status_code <= self::BROKEN_STATUS_CODE_MAX;
+    }
+
+    private function startupFailureSummary(string $url, string $transportErrorType): string
+    {
+        $reason = UptimeTransportError::label($transportErrorType);
+
+        return "Outbound link check failed to start.\n\n{$url} could not be reached ({$reason}) before crawling began.";
+    }
+
+    private function clearQueuedOutboundScan(): void
+    {
+        try {
+            $this->website->forceFill([
+                'outbound_scan_queued_at' => null,
+            ])->save();
+        } catch (\Throwable $e) {
+            Log::error('Failed to clear queued outbound scan state for website '.$this->website->url.': '.$e->getMessage());
+        }
+    }
+
+    private function failureEvidenceUrl(): string
+    {
+        try {
+            return $this->website->getBaseURL();
+        } catch (\Throwable) {
+            return $this->website->url ?: "website:{$this->website->getKey()}";
+        }
+    }
+
+    private function sourceLabel(): string
+    {
+        return match ($this->source) {
+            self::SOURCE_SCHEDULED => 'scheduled',
+            self::SOURCE_ON_DEMAND => 'on demand',
+            default => 'unknown source',
+        };
     }
 }

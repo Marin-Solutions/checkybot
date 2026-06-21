@@ -6,14 +6,18 @@ use App\Enums\WebhookHttpMethod;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class NotificationChannels extends Model
 {
     use HasFactory;
 
     private const REDACTED_LOG_VALUE = '[redacted]';
+
+    private const REDACTED_DISPLAY_VALUE = '[redacted]';
 
     protected $fillable = [
         'title',
@@ -22,10 +26,17 @@ class NotificationChannels extends Model
         'description',
         'request_body',
         'created_by',
+        'last_delivery_kind',
+        'last_delivery_succeeded',
+        'last_delivery_response_code',
+        'last_delivery_summary',
+        'last_delivery_attempted_at',
     ];
 
     protected $casts = [
         'request_body' => 'array',
+        'last_delivery_succeeded' => 'boolean',
+        'last_delivery_attempted_at' => 'datetime',
     ];
 
     public static function testWebhook(array $data): array
@@ -34,17 +45,17 @@ class NotificationChannels extends Model
         $method = strtoupper($data['method']);
         $url = $data['url'];
         $responseData = [];
-        $requestBody = @$data['request_body'] ?? [];
+        $requestBody = self::normalizeRequestBody($data['request_body'] ?? null);
 
         try {
             if (str_contains($url, '{message}')) {
-                $url = str_replace('{message}', $messageTest, $url);
+                $url = str_replace('{message}', rawurlencode($messageTest), $url);
             }
             if (str_contains($url, '{description}')) {
-                $url = str_replace('{description}', $data['description'] ?? '', $url);
+                $url = str_replace('{description}', rawurlencode($data['description'] ?? ''), $url);
             }
 
-            if ($method === WebhookHttpMethod::POST->value && count($data['request_body'])) {
+            if ($method === WebhookHttpMethod::POST->value && count($requestBody)) {
                 foreach ($requestBody as $key => $value) {
                     if ($value === '{message}') {
                         $requestBody[$key] = $messageTest;
@@ -71,17 +82,22 @@ class NotificationChannels extends Model
             $responseData['body'] = $handlerContext['error'];
 
             return $responseData;
+        } catch (ConnectionException $exception) {
+            $responseData['code'] = 0;
+            $responseData['body'] = self::redactWebhookUrlTextForLogs($exception->getMessage(), $url);
+
+            return $responseData;
         }
     }
 
-    public function sendWebhookNotification(array $data): array
+    public function sendWebhookNotification(array $data, string $deliveryKind = 'send'): array
     {
         $messageText = @$data['message'] ?? "Hello, I'm from ".url('/');
         $descriptionText = @$data['description'] ?? 'Description Text';
         $method = $this->method;
         $url = $this->url;
         $responseData = ['url' => $url];
-        $requestBody = $this->request_body;
+        $requestBody = self::normalizeRequestBody($this->request_body);
 
         try {
             Log::info('Preparing webhook notification', [
@@ -92,10 +108,10 @@ class NotificationChannels extends Model
             ]);
 
             if (str_contains($url, '{message}')) {
-                $url = str_replace('{message}', $messageText, $url);
+                $url = str_replace('{message}', rawurlencode($messageText), $url);
             }
             if (str_contains($url, '{description}')) {
-                $url = str_replace('{description}', $descriptionText, $url);
+                $url = str_replace('{description}', rawurlencode($descriptionText), $url);
             }
 
             if ($method === WebhookHttpMethod::POST->value && count($requestBody)) {
@@ -122,6 +138,13 @@ class NotificationChannels extends Model
             $responseData['code'] = $webhookCallback->status();
             $responseData['body'] = $webhookCallback->json();
 
+            $this->recordDeliveryAttempt(
+                kind: $deliveryKind,
+                succeeded: $responseData['code'] >= 200 && $responseData['code'] < 300,
+                responseCode: (int) $responseData['code'],
+                summary: self::summarizeDeliveryResponse($responseData),
+            );
+
             Log::info('Webhook response received', [
                 'status_code' => $responseData['code'],
                 'response_body' => $responseData['body'],
@@ -140,8 +163,181 @@ class NotificationChannels extends Model
             $responseData['code'] = $handlerContext['errno'];
             $responseData['body'] = $handlerContext['error'];
 
+            $this->recordDeliveryAttempt(
+                kind: $deliveryKind,
+                succeeded: false,
+                responseCode: (int) ($responseData['code'] ?? 0) ?: null,
+                summary: self::summarizeDeliveryResponse($responseData),
+            );
+
+            return $responseData;
+        } catch (ConnectionException $exception) {
+            Log::error('Webhook request failed', [
+                'error_message' => self::redactWebhookUrlTextForLogs($exception->getMessage(), $url),
+                'url' => self::redactWebhookUrlForLogs($url),
+                'method' => $method,
+                'request_body' => self::redactPayloadForLogs($requestBody),
+            ]);
+
+            $responseData['code'] = 0;
+            $responseData['body'] = self::redactWebhookUrlTextForLogs($exception->getMessage(), $url);
+
+            $this->recordDeliveryAttempt(
+                kind: $deliveryKind,
+                succeeded: false,
+                responseCode: null,
+                summary: self::summarizeDeliveryResponse($responseData),
+            );
+
             return $responseData;
         }
+    }
+
+    public function recordDeliveryAttempt(string $kind, bool $succeeded, ?int $responseCode, ?string $summary): void
+    {
+        if (! $this->exists) {
+            return;
+        }
+
+        $this->forceFill([
+            'last_delivery_kind' => $kind,
+            'last_delivery_succeeded' => $succeeded,
+            'last_delivery_response_code' => $responseCode,
+            'last_delivery_summary' => $summary !== null ? Str::limit($summary, 500, '') : null,
+            'last_delivery_attempted_at' => now(),
+        ])->saveQuietly();
+    }
+
+    public static function summarizeDeliveryResponse(array $response): string
+    {
+        $code = (int) ($response['code'] ?? 0);
+        $body = $response['body'] ?? null;
+        $detail = is_string($body) ? $body : (json_encode($body) ?: '');
+
+        if ($code >= 100 && $code < 600) {
+            $prefix = 'HTTP '.$code;
+        } elseif ($code > 0) {
+            $prefix = 'Network error (curl errno '.$code.')';
+        } else {
+            $prefix = 'No response';
+        }
+
+        return Str::limit(trim($prefix.($detail !== '' ? ': '.$detail : '')), 500, '');
+    }
+
+    public function maskedWebhookUrlForDisplay(): string
+    {
+        return self::redactWebhookUrlForDisplay((string) $this->url);
+    }
+
+    public function maskedRequestBodyForDisplay(): ?string
+    {
+        $requestBody = self::normalizeRequestBody($this->request_body);
+
+        if ($requestBody === []) {
+            return null;
+        }
+
+        return json_encode(self::redactPayloadForDisplay($requestBody), JSON_UNESCAPED_SLASHES) ?: self::REDACTED_DISPLAY_VALUE;
+    }
+
+    public function requestBodyForCopy(): ?string
+    {
+        $requestBody = self::normalizeRequestBody($this->request_body);
+
+        if ($requestBody === []) {
+            return null;
+        }
+
+        return json_encode($requestBody, JSON_UNESCAPED_SLASHES) ?: null;
+    }
+
+    private static function redactWebhookUrlForDisplay(string $url): string
+    {
+        $parts = parse_url($url);
+
+        if ($parts === false || ! isset($parts['host'])) {
+            return self::REDACTED_DISPLAY_VALUE;
+        }
+
+        $redactedUrl = '';
+
+        if (isset($parts['scheme'])) {
+            $redactedUrl .= $parts['scheme'].'://';
+        }
+
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            $redactedUrl .= self::REDACTED_DISPLAY_VALUE.'@';
+        }
+
+        $redactedUrl .= $parts['host'];
+
+        if (isset($parts['port'])) {
+            $redactedUrl .= ':'.$parts['port'];
+        }
+
+        if (isset($parts['path']) && $parts['path'] !== '') {
+            $redactedUrl .= self::redactPathForDisplay($parts['path']);
+        }
+
+        if (isset($parts['query'])) {
+            $redactedUrl .= '?'.self::redactQueryStringForDisplay($parts['query']);
+        }
+
+        if (isset($parts['fragment'])) {
+            $redactedUrl .= '#'.self::REDACTED_DISPLAY_VALUE;
+        }
+
+        return $redactedUrl;
+    }
+
+    private static function redactPathForDisplay(string $path): string
+    {
+        $segments = explode('/', ltrim($path, '/'));
+
+        return '/'.implode('/', array_map(
+            fn (string $segment): string => $segment === '' ? '' : self::redactScalarForDisplay($segment),
+            $segments,
+        ));
+    }
+
+    private static function redactQueryStringForDisplay(string $query): string
+    {
+        $segments = array_filter(explode('&', $query), fn (string $segment): bool => $segment !== '');
+
+        if ($segments === []) {
+            return self::REDACTED_DISPLAY_VALUE;
+        }
+
+        return implode('&', array_map(function (string $segment): string {
+            if (! str_contains($segment, '=')) {
+                return self::REDACTED_DISPLAY_VALUE;
+            }
+
+            [$key, $value] = explode('=', $segment, 2);
+
+            if ($key === '') {
+                return self::REDACTED_DISPLAY_VALUE;
+            }
+
+            return urldecode($key).'='.self::redactScalarForDisplay(urldecode($value));
+        }, $segments));
+    }
+
+    private static function redactPayloadForDisplay(mixed $payload): mixed
+    {
+        if (is_array($payload)) {
+            return array_map(fn (mixed $value): mixed => self::redactPayloadForDisplay($value), $payload);
+        }
+
+        return self::redactScalarForDisplay($payload);
+    }
+
+    private static function redactScalarForDisplay(mixed $value): string
+    {
+        return in_array($value, ['{message}', '{description}'], true)
+            ? $value
+            : self::REDACTED_DISPLAY_VALUE;
     }
 
     private static function redactWebhookUrlForLogs(string $url): string
@@ -267,5 +463,10 @@ class NotificationChannels extends Model
         }
 
         return self::REDACTED_LOG_VALUE;
+    }
+
+    private static function normalizeRequestBody(mixed $requestBody): array
+    {
+        return is_array($requestBody) ? $requestBody : [];
     }
 }

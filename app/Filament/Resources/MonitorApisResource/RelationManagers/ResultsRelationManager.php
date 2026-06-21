@@ -3,11 +3,14 @@
 namespace App\Filament\Resources\MonitorApisResource\RelationManagers;
 
 use App\Enums\RunSource;
+use App\Enums\UptimeTransportErrorType;
 use App\Filament\Resources\MonitorApisResource\Widgets\ResponseTimeChart;
 use App\Models\MonitorApiResult;
 use App\Support\ApiMonitorEvidenceFormatter;
+use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
 use Filament\Actions\ViewAction;
+use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\KeyValueEntry;
 use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Components\TextEntry;
@@ -16,6 +19,7 @@ use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class ResultsRelationManager extends RelationManager
 {
@@ -48,8 +52,8 @@ class ResultsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('status')
                     ->label('Status')
                     ->badge()
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                    ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
 
                 Tables\Columns\TextColumn::make('run_source')
                     ->label('Run')
@@ -66,6 +70,20 @@ class ResultsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('response_time_ms')
                     ->label('Response Time')
                     ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                    ->badge()
+                    ->color(fn (MonitorApiResult $record): string => static::exceedsResponseTimeThreshold($record) ? 'warning' : 'gray')
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('max_response_time_ms')
+                    ->label('Warning Threshold')
+                    ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                    ->toggleable(isToggledHiddenByDefault: true)
+                    ->sortable(),
+
+                Tables\Columns\TextColumn::make('elapsed_wall_time_ms')
+                    ->label('Wall Time')
+                    ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                    ->toggleable()
                     ->sortable(),
 
                 Tables\Columns\TextColumn::make('http_code')
@@ -104,9 +122,40 @@ class ResultsRelationManager extends RelationManager
                 Tables\Filters\Filter::make('high_response_time')
                     ->label('High Response Time')
                     ->query(fn ($query) => $query->where('response_time_ms', '>', 1000)),
+                Tables\Filters\Filter::make('response_time_warning')
+                    ->label('Exceeded response-time warning')
+                    ->query(fn ($query) => $query
+                        ->whereNotNull('max_response_time_ms')
+                        ->whereColumn('response_time_ms', '>', 'max_response_time_ms')),
                 Tables\Filters\SelectFilter::make('run_source')
                     ->label('Run')
                     ->options(RunSource::options()),
+                Tables\Filters\SelectFilter::make('transport_error_type')
+                    ->label('Transport error')
+                    ->options(static::transportErrorOptions()),
+                Tables\Filters\Filter::make('assertion_failures')
+                    ->label('Assertion failures')
+                    ->query(fn ($query) => $query->whereJsonLength('failed_assertions', '>', 0)),
+                Tables\Filters\Filter::make('assertion_path')
+                    ->label('Assertion path')
+                    ->schema([
+                        TextInput::make('path')
+                            ->label('Assertion path')
+                            ->placeholder('data.parsed'),
+                    ])
+                    ->query(fn (Builder $query, array $data): Builder => static::filterByFailedAssertionPath($query, $data))
+                    ->indicateUsing(fn (array $data): array => filled($data['path'] ?? null)
+                        ? ['path' => 'Assertion path: '.trim((string) $data['path'])]
+                        : []),
+                Tables\Filters\Filter::make('no_response')
+                    ->label('No response')
+                    ->query(fn ($query) => $query->where('http_code', 0)),
+                Tables\Filters\Filter::make('http_4xx')
+                    ->label('HTTP 4xx')
+                    ->query(fn ($query) => $query->whereBetween('http_code', [400, 499])),
+                Tables\Filters\Filter::make('http_5xx')
+                    ->label('HTTP 5xx')
+                    ->query(fn ($query) => $query->whereBetween('http_code', [500, 599])),
             ])
             ->recordActions([
                 ViewAction::make()
@@ -124,8 +173,8 @@ class ResultsRelationManager extends RelationManager
                     ->schema([
                         TextEntry::make('status')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => ApiMonitorEvidenceFormatter::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('run_source')
                             ->label('Run')
                             ->badge()
@@ -147,7 +196,23 @@ class ResultsRelationManager extends RelationManager
                             ->visible(fn (MonitorApiResult $record): bool => filled($record->transport_error_type)),
                         TextEntry::make('response_time_ms')
                             ->label('Response Time')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-')
+                            ->badge()
+                            ->color(fn (MonitorApiResult $record): string => static::exceedsResponseTimeThreshold($record) ? 'warning' : 'gray'),
+                        TextEntry::make('max_response_time_ms')
+                            ->label('Response-time Warning')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : 'Not configured')
+                            ->badge()
+                            ->color(fn (MonitorApiResult $record): string => static::exceedsResponseTimeThreshold($record) ? 'warning' : 'gray'),
+                        TextEntry::make('elapsed_wall_time_ms')
+                            ->label('Elapsed Wall Time')
                             ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}ms" : '-'),
+                        TextEntry::make('effective_timeout_seconds')
+                            ->label('Effective Timeout')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? "{$state}s" : '-'),
+                        TextEntry::make('retry_count')
+                            ->label('Retries')
+                            ->formatStateUsing(fn (?int $state): string => $state !== null ? (string) $state : '-'),
                         TextEntry::make('created_at')
                             ->label('Captured At')
                             ->dateTimeInUserZone(),
@@ -213,6 +278,20 @@ class ResultsRelationManager extends RelationManager
                             ->hidden(fn (MonitorApiResult $record): bool => blank($record->response_headers)),
                     ])
                     ->columns(2),
+                Section::make('Replay Template')
+                    ->schema([
+                        TextEntry::make('replay_template')
+                            ->label('cURL command')
+                            ->helperText('Uses the current monitor method, URL, and safe request body. Replace redacted placeholders locally before running.')
+                            ->state(fn (MonitorApiResult $record): ?string => ApiMonitorEvidenceFormatter::replayTemplate($record))
+                            ->placeholder('Replay template unavailable.')
+                            ->copyable(fn (MonitorApiResult $record): bool => filled(ApiMonitorEvidenceFormatter::replayTemplate($record)))
+                            ->copyableState(fn (MonitorApiResult $record): ?string => ApiMonitorEvidenceFormatter::replayTemplate($record))
+                            ->copyMessage('Replay template copied')
+                            ->html()
+                            ->formatStateUsing(fn (?string $state) => filled($state) ? ApiMonitorEvidenceFormatter::formatAsPreHtml($state) : null)
+                            ->columnSpanFull(),
+                    ]),
                 Section::make('Saved Failure Payload')
                     ->hidden(fn (MonitorApiResult $record): bool => blank($record->response_body))
                     ->schema([
@@ -224,5 +303,49 @@ class ResultsRelationManager extends RelationManager
                             ->columnSpanFull(),
                     ]),
             ]);
+    }
+
+    private static function transportErrorOptions(): array
+    {
+        return collect(UptimeTransportErrorType::cases())
+            ->mapWithKeys(fn (UptimeTransportErrorType $type): array => [
+                $type->value => UptimeTransportError::label($type),
+            ])
+            ->all();
+    }
+
+    private static function exceedsResponseTimeThreshold(MonitorApiResult $record): bool
+    {
+        return $record->response_time_ms !== null
+            && $record->max_response_time_ms !== null
+            && $record->response_time_ms > $record->max_response_time_ms;
+    }
+
+    private static function filterByFailedAssertionPath(Builder $query, array $data): Builder
+    {
+        $path = trim((string) ($data['path'] ?? ''));
+
+        if ($path === '') {
+            return $query;
+        }
+
+        $column = $query->getModel()->qualifyColumn('failed_assertions');
+        $driver = $query->getConnection()->getDriverName();
+
+        return match ($driver) {
+            'mysql', 'mariadb' => $query->whereRaw(
+                "JSON_CONTAINS({$column}, JSON_OBJECT('path', ?), '$')",
+                [$path],
+            ),
+            'pgsql' => $query->whereRaw(
+                "EXISTS (SELECT 1 FROM jsonb_array_elements({$column}::jsonb) assertion WHERE assertion->>'path' = ?)",
+                [$path],
+            ),
+            'sqlite' => $query->whereRaw(
+                "EXISTS (SELECT 1 FROM json_each({$column}) WHERE json_extract(json_each.value, '$.path') = ?)",
+                [$path],
+            ),
+            default => $query->where($column, 'like', '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], '"path":'.json_encode($path)).'%'),
+        };
     }
 }

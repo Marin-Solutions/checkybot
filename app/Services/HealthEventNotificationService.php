@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\WebsiteServicesEnum;
+use App\Filament\Resources\BackupsResource;
 use App\Mail\HealthStatusAlert;
+use App\Models\Backup;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
@@ -47,6 +49,10 @@ class HealthEventNotificationService
                     $inner->websiteScope()
                         ->where('website_id', $website->id);
                 })->orWhere(function ($inner) use ($website): void {
+                    $inner->projectScope()
+                        ->whereNotNull('project_id')
+                        ->where('project_id', $website->project_id);
+                })->orWhere(function ($inner) use ($website): void {
                     $inner->globalScope()
                         ->where('user_id', $website->created_by);
                 });
@@ -55,6 +61,7 @@ class HealthEventNotificationService
                 WebsiteServicesEnum::WEBSITE_CHECK->value,
                 WebsiteServicesEnum::ALL_CHECK->value,
             ])
+            ->with('channel')
             ->get();
 
         return $this->deliver(
@@ -85,12 +92,24 @@ class HealthEventNotificationService
 
         $settings = NotificationSetting::query()
             ->active()
-            ->globalScope()
-            ->where('user_id', $monitorApi->created_by)
+            ->where(function ($query) use ($monitorApi): void {
+                $query->where(function ($inner) use ($monitorApi): void {
+                    $inner->apiMonitorScope()
+                        ->where('monitor_api_id', $monitorApi->id);
+                })->orWhere(function ($inner) use ($monitorApi): void {
+                    $inner->projectScope()
+                        ->whereNotNull('project_id')
+                        ->where('project_id', $monitorApi->project_id);
+                })->orWhere(function ($inner) use ($monitorApi): void {
+                    $inner->globalScope()
+                        ->where('user_id', $monitorApi->created_by);
+                });
+            })
             ->whereIn('inspection', [
                 WebsiteServicesEnum::API_MONITOR->value,
                 WebsiteServicesEnum::ALL_CHECK->value,
             ])
+            ->with('channel')
             ->get();
 
         return $this->deliver(
@@ -126,6 +145,45 @@ class HealthEventNotificationService
         }
 
         return true;
+    }
+
+    /**
+     * @see notifyWebsite() for the boolean return-value contract.
+     */
+    public function notifyBackup(Backup $backup, string $event, string $status, string $summary): bool
+    {
+        $server = $backup->server;
+        $userId = $server?->created_by;
+
+        if (! $userId) {
+            Log::warning('Skipping backup notification because the backup has no owning user', [
+                'backup_id' => $backup->id,
+                'server_id' => $backup->server_id,
+                'event' => $event,
+                'status' => $status,
+            ]);
+
+            return true;
+        }
+
+        $settings = NotificationSetting::query()
+            ->active()
+            ->globalScope()
+            ->where('user_id', $userId)
+            ->whereIn('inspection', [
+                WebsiteServicesEnum::BACKUP_MONITOR->value,
+                WebsiteServicesEnum::ALL_CHECK->value,
+            ])
+            ->get();
+
+        return $this->deliver(
+            $settings,
+            name: $this->backupName($backup),
+            event: $event,
+            status: $status,
+            summary: $summary,
+            url: BackupsResource::getUrl('edit', ['record' => $backup]),
+        );
     }
 
     /**
@@ -170,8 +228,22 @@ class HealthEventNotificationService
                         summary: $summary,
                         url: $url,
                     ));
+
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: true,
+                        responseCode: null,
+                        summary: 'Email accepted by configured mail transport.',
+                    );
                 } catch (Throwable $exception) {
                     $failures++;
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Mail transport error: '.$exception->getMessage(),
+                    );
+
                     Log::error('Failed to deliver health notification mail; continuing with other channels', [
                         'setting_id' => $setting->id,
                         'event' => $event,
@@ -187,6 +259,16 @@ class HealthEventNotificationService
                 $channel = $setting->channel;
 
                 if (! $channel) {
+                    $attempts++;
+                    $failures++;
+
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Webhook channel is missing.',
+                    );
+
                     Log::warning('No channel found for health notification setting', [
                         'setting_id' => $setting->id,
                     ]);
@@ -201,6 +283,14 @@ class HealthEventNotificationService
                         'message' => $message,
                         'description' => $summary,
                     ]);
+                    $code = (int) ($response['code'] ?? 0);
+
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: $this->webhookResponseWasSuccessful($response),
+                        responseCode: $code ?: null,
+                        summary: \App\Models\NotificationChannels::summarizeDeliveryResponse($response),
+                    );
 
                     if (! $this->webhookResponseWasSuccessful($response)) {
                         $failures++;
@@ -215,6 +305,13 @@ class HealthEventNotificationService
                     }
                 } catch (Throwable $exception) {
                     $failures++;
+                    $setting->recordDeliveryAttempt(
+                        kind: 'send',
+                        succeeded: false,
+                        responseCode: null,
+                        summary: 'Unexpected webhook error: '.$exception->getMessage(),
+                    );
+
                     Log::error('Failed to deliver health notification webhook; continuing with other channels', [
                         'setting_id' => $setting->id,
                         'event' => $event,
@@ -286,7 +383,15 @@ class HealthEventNotificationService
     private function webhookMessage(string $name, string $event, string $status): string
     {
         $label = $this->eventLabel($event, $status);
+        $eventDescription = $event === 'heartbeat' ? 'check' : $event;
 
-        return "[{$label}] {$name} {$event}";
+        return "[{$label}] {$name} {$eventDescription}";
+    }
+
+    private function backupName(Backup $backup): string
+    {
+        return $backup->backup_filename
+            ?: $backup->dir_path
+            ?: 'Backup #'.$backup->id;
     }
 }

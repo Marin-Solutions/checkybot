@@ -4,6 +4,7 @@ use App\Models\Backup;
 use App\Models\SeoCheck;
 use App\Models\Server;
 use App\Models\ServerLogCategory;
+use App\Models\ServerLogFileHistory;
 use App\Models\User;
 use App\Models\Website;
 use App\Services\SeoReportGenerationService;
@@ -87,12 +88,20 @@ test('guests cannot access api v1 server endpoints', function () {
 
 test('server owners can view their own servers through the api without panel permissions', function () {
     $owner = User::factory()->create();
-    $server = Server::factory()->create(['created_by' => $owner->id]);
+    $server = Server::factory()->create([
+        'created_by' => $owner->id,
+        'last_reporter_ip' => '198.51.100.24',
+        'last_reporter_user_agent' => 'checkybot-reporter/1.0',
+        'last_reporter_seen_at' => now()->subMinutes(5),
+    ]);
 
     $this->actingAs($owner)
         ->getJson("/api/v1/servers/{$server->id}")
         ->assertOk()
-        ->assertJsonPath('data.id', $server->id);
+        ->assertJsonPath('data.id', $server->id)
+        ->assertJsonPath('data.last_reporter_ip', '198.51.100.24')
+        ->assertJsonPath('data.last_reporter_user_agent', 'checkybot-reporter/1.0')
+        ->assertJsonPath('data.last_reporter_seen_at', fn (?string $value): bool => filled($value));
 });
 
 test('users cannot view another users server through the api even with server permissions', function () {
@@ -132,4 +141,28 @@ test('seo report downloads are isolated to the owning user', function () {
         ->get(route('seo.report.download', ['filename' => $filename]))
         ->assertOk()
         ->assertHeader('Content-Disposition', "attachment; filename=\"{$filename}\"");
+});
+
+test('server log file downloads are limited to the owning server user', function () {
+    Storage::fake('local');
+
+    $owner = User::factory()->create();
+    $otherUser = User::factory()->create();
+    $server = Server::factory()->create(['created_by' => $owner->id]);
+    $category = ServerLogCategory::factory()->create(['server_id' => $server->id]);
+    $file = ServerLogFileHistory::factory()->create([
+        'server_log_category_id' => $category->id,
+        'log_file_name' => 'ServerLogFiles/app.log',
+    ]);
+
+    Storage::put('ServerLogFiles/app.log', 'log contents');
+
+    $this->actingAs($otherUser)
+        ->get(route('server-log-file-history.download', $file))
+        ->assertForbidden();
+
+    $this->actingAs($owner)
+        ->get(route('server-log-file-history.download', $file))
+        ->assertOk()
+        ->assertHeader('Content-Disposition', 'attachment; filename=app.log');
 });

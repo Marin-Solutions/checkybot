@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Checkybot\CreateControlProjectRequest;
 use App\Http\Requests\Checkybot\ListControlFailuresRequest;
 use App\Http\Requests\Checkybot\ListControlRunsRequest;
 use App\Http\Requests\Checkybot\UpsertControlCheckRequest;
@@ -34,6 +35,16 @@ class CheckybotControlController extends Controller
         ]);
     }
 
+    public function createProject(CreateControlProjectRequest $request): JsonResponse
+    {
+        $result = $this->control->createProject($request->user(), $request->validated());
+
+        return response()->json([
+            'message' => $result['created'] ? 'Project created.' : 'Project updated.',
+            'data' => $result,
+        ], $result['created'] ? 201 : 200);
+    }
+
     public function project(Request $request, string $project): JsonResponse
     {
         return response()->json([
@@ -63,26 +74,49 @@ class CheckybotControlController extends Controller
 
     public function disableCheck(Request $request, string $project, string $check): JsonResponse
     {
+        $data = $request->validate([
+            'type' => ['nullable', 'in:api,website,component'],
+        ]);
+
         return response()->json([
             'message' => 'Check disabled.',
-            'data' => $this->control->disableCheck($request->user(), $project, $check),
+            'data' => $this->control->disableCheck($request->user(), $project, $check, $data['type'] ?? null),
         ]);
     }
 
     public function triggerProjectRun(Request $request, string $project): JsonResponse
     {
+        $result = $this->control->triggerProjectRun($request->user(), $project);
+
         return response()->json([
-            'message' => 'Project run completed.',
-            'data' => $this->control->triggerProjectRun($request->user(), $project),
+            'message' => match ($result['status']) {
+                'queued' => 'Project run queued.',
+                'already_queued' => 'Project diagnostics are already queued.',
+                default => 'Project has no enabled checks to run.',
+            },
+            'data' => $result,
+        ], $result['status'] === 'queued' ? 202 : 200);
+    }
+
+    public function projectRunBatch(Request $request, string $project, string $batch): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->control->projectRunBatch($request->user(), $project, $batch),
         ]);
     }
 
     public function triggerCheckRun(Request $request, string $project, string $check): JsonResponse
     {
-        return response()->json([
-            'message' => 'Check run completed.',
-            'data' => $this->control->triggerCheckRun($request->user(), $project, $check),
+        $data = $request->validate([
+            'type' => ['nullable', 'in:api,website'],
         ]);
+
+        $result = $this->control->triggerCheckRun($request->user(), $project, $check, $data['type'] ?? null);
+
+        return response()->json([
+            'message' => ($result['status'] ?? null) === 'queued' ? 'Check run queued.' : 'Check run completed.',
+            'data' => $result,
+        ], ($result['status'] ?? null) === 'queued' ? 202 : 200);
     }
 
     public function runs(ListControlRunsRequest $request): JsonResponse
@@ -117,6 +151,36 @@ class CheckybotControlController extends Controller
 
         return response()->json([
             'data' => $this->control->latestFailures($request->user(), $project, $data['limit'] ?? 25),
+        ]);
+    }
+
+    public function issues(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'project' => ['nullable', 'string', 'max:255'],
+            'type' => ['nullable', 'in:all,project,api,website,component'],
+            'statuses' => ['nullable', 'array', 'min:1', 'max:4'],
+            'statuses.*' => ['required', 'string', 'in:warning,danger,pending,unknown'],
+            'cause' => ['nullable', 'string', 'in:timeout,dns,rate_limit,http_4xx,http_5xx,assertion,stale_setup'],
+            'min_streak' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'first_failed_before' => ['nullable', 'date'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'exclude' => ['nullable', 'array', 'max:25'],
+            'exclude.*' => ['required', 'string', 'max:255'],
+        ]);
+
+        return response()->json([
+            'data' => $this->control->currentIssues(
+                $request->user(),
+                $data['project'] ?? null,
+                $data['type'] ?? null,
+                $data['statuses'] ?? ['warning', 'danger'],
+                $data['limit'] ?? 25,
+                $data['exclude'] ?? [],
+                $data['cause'] ?? null,
+                $data['min_streak'] ?? null,
+                $data['first_failed_before'] ?? null,
+            ),
         ]);
     }
 

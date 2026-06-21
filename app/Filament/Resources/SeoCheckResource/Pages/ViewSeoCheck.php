@@ -110,7 +110,7 @@ class ViewSeoCheck extends ViewRecord
                         ])
                             ->key('seo-check-progress-'.$this->getRecord()->id),
                     ])
-                    ->visible(fn () => $this->getRecord()->isRunning())
+                    ->visible(fn ($record): bool => $record->isPending() || $record->isRunning())
                     ->columnSpanFull(),
                 \Filament\Schemas\Components\Section::make('SEO Check Overview')
                     ->columnSpanFull()

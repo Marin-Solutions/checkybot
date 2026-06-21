@@ -19,6 +19,10 @@ class MonitorApiResultFactory extends Factory
             'monitor_api_id' => MonitorApis::factory(),
             'is_success' => $isSuccess,
             'response_time_ms' => fake()->numberBetween(50, 2000),
+            'max_response_time_ms' => null,
+            'effective_timeout_seconds' => 30,
+            'retry_count' => 3,
+            'elapsed_wall_time_ms' => fake()->numberBetween(50, 2000),
             'http_code' => $isSuccess ? 200 : fake()->randomElement([400, 404, 500, 503]),
             'failed_assertions' => $isSuccess ? null : [[
                 'path' => 'data.status',
@@ -44,7 +48,9 @@ class MonitorApiResultFactory extends Factory
             'is_success' => true,
             'http_code' => 200,
             'failed_assertions' => null,
+            'response_body' => ['data' => ['status' => 'success']],
             'status' => 'healthy',
+            'summary' => 'Heartbeat received successfully.',
         ]);
     }
 
@@ -58,7 +64,9 @@ class MonitorApiResultFactory extends Factory
                 'type' => 'value_compare',
                 'message' => 'Test failed',
             ]],
+            'response_body' => ['data' => ['status' => 'error']],
             'status' => 'danger',
+            'summary' => 'API heartbeat failed.',
         ]);
     }
 

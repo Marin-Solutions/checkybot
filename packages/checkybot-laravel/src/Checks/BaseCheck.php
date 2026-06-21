@@ -27,6 +27,11 @@ abstract class BaseCheck
     protected string $interval = '5m';
 
     /**
+     * Optional health component name this check contributes to.
+     */
+    protected ?string $component = null;
+
+    /**
      * Create a new check instance.
      *
      * @param  string  $name  Unique identifier for this check
@@ -88,6 +93,18 @@ abstract class BaseCheck
     public function interval(string $interval): static
     {
         return $this->every($interval);
+    }
+
+    /**
+     * Link this check to a declared health component.
+     *
+     * @return $this
+     */
+    public function component(string $name): static
+    {
+        $this->component = $name;
+
+        return $this;
     }
 
     /**
@@ -342,6 +359,29 @@ abstract class BaseCheck
     public function getInterval(): string
     {
         return $this->interval;
+    }
+
+    /**
+     * Get the health component this check contributes to, if any.
+     */
+    public function getComponent(): ?string
+    {
+        return $this->component;
+    }
+
+    /**
+     * Add shared optional attributes to a serialized check payload.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    protected function withCommonPayload(array $data): array
+    {
+        if ($this->component !== null) {
+            $data['component'] = $this->component;
+        }
+
+        return $data;
     }
 
     /**

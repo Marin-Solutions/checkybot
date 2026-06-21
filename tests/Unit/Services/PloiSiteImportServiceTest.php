@@ -176,7 +176,7 @@ test('updates existing sites', function () {
     ]);
 });
 
-test('throws exception on api failure', function () {
+test('records api failures without stopping the import', function () {
     $server = PloiServers::factory()->create([
         'ploi_account_id' => $this->account->id,
         'server_id' => 123,
@@ -190,9 +190,15 @@ test('throws exception on api failure', function () {
     ]);
 
     $service = new PloiSiteImportService($this->account);
+    $summary = $service->importWithSummary($server);
 
-    $service->import($server);
-})->throws(\Exception::class, 'Failed to fetch sites for server 123');
+    expect($summary['imported'])->toBe(0)
+        ->and($summary['imported_servers'])->toBe(0)
+        ->and($summary['skipped_servers'])->toBe(0)
+        ->and($summary['failed_servers'])->toBe(1)
+        ->and($summary['failures'][0]['server_id'])->toBe(123)
+        ->and($summary['failures'][0]['message'])->toContain('Failed to fetch sites for server 123');
+});
 
 test('uses correct api token', function () {
     $server = PloiServers::factory()->create([
@@ -253,6 +259,65 @@ test('imports sites from multiple servers', function () {
     assertDatabaseHas('ploi_websites', ['site_id' => 2, 'server_id' => 200]);
 });
 
+test('continues importing healthy servers when another server sites endpoint fails', function () {
+    PloiServers::factory()->create([
+        'ploi_account_id' => $this->account->id,
+        'server_id' => 100,
+        'name' => 'Healthy Server',
+        'created_by' => $this->user->id,
+    ]);
+
+    PloiServers::factory()->create([
+        'ploi_account_id' => $this->account->id,
+        'server_id' => 200,
+        'name' => 'Failing Server',
+        'created_by' => $this->user->id,
+    ]);
+
+    PloiServers::factory()->create([
+        'ploi_account_id' => $this->account->id,
+        'server_id' => 300,
+        'name' => 'Empty Server',
+        'created_by' => $this->user->id,
+    ]);
+
+    Http::fake([
+        'ploi.io/api/servers/100/sites*' => Http::response([
+            'data' => [
+                ['id' => 1, 'status' => 'active', 'domain' => 'server1-site.com'],
+                ['id' => 2, 'status' => 'active', 'domain' => 'server1-second-site.com'],
+            ],
+            'meta' => [
+                'current_page' => 1,
+                'last_page' => 1,
+            ],
+        ], 200),
+        'ploi.io/api/servers/200/sites*' => Http::response([
+            'error' => 'Temporary Ploi failure',
+        ], 503),
+        'ploi.io/api/servers/300/sites*' => Http::response([
+            'data' => [],
+            'meta' => [
+                'current_page' => 1,
+                'last_page' => 1,
+            ],
+        ], 200),
+    ]);
+
+    $service = new PloiSiteImportService($this->account);
+    $summary = $service->importWithSummary();
+
+    expect($summary['imported'])->toBe(2)
+        ->and($summary['imported_servers'])->toBe(1)
+        ->and($summary['skipped_servers'])->toBe(1)
+        ->and($summary['failed_servers'])->toBe(1)
+        ->and($summary['failures'][0]['server_id'])->toBe(200)
+        ->and($summary['failures'][0]['server_name'])->toBe('Failing Server');
+
+    assertDatabaseHas('ploi_websites', ['site_id' => 1, 'server_id' => 100]);
+    assertDatabaseHas('ploi_websites', ['site_id' => 2, 'server_id' => 100]);
+});
+
 test('handles empty response data', function () {
     $server = PloiServers::factory()->create([
         'ploi_account_id' => $this->account->id,
@@ -274,4 +339,54 @@ test('handles empty response data', function () {
     $imported = $service->import($server);
 
     expect($imported)->toBe(0);
+});
+
+test('formats ploi site import summary with server counts', function () {
+    $summary = [
+        'imported' => 2,
+        'imported_servers' => 1,
+        'skipped_servers' => 1,
+        'failed_servers' => 1,
+        'failures' => [
+            [
+                'server_id' => 200,
+                'server_name' => 'Failing Server',
+                'message' => 'Failed to fetch sites for server 200',
+            ],
+        ],
+    ];
+
+    expect(PloiSiteImportService::formatImportSummary($summary))
+        ->toBe('Imported/updated 2 sites. 1 server imported. 1 server skipped. 1 server failed. Failed servers: Failing Server.');
+});
+
+test('formats ploi site import summary without failed servers when all servers are healthy', function () {
+    $summary = [
+        'imported' => 4,
+        'imported_servers' => 2,
+        'skipped_servers' => 0,
+        'failed_servers' => 0,
+        'failures' => [],
+    ];
+
+    expect(PloiSiteImportService::formatImportSummary($summary))
+        ->toBe('Imported/updated 4 sites. 2 servers imported. 0 servers skipped. 0 servers failed.');
+});
+
+test('formats ploi site import summary with first three failed servers', function () {
+    $summary = [
+        'imported' => 0,
+        'imported_servers' => 0,
+        'skipped_servers' => 0,
+        'failed_servers' => 4,
+        'failures' => [
+            ['server_id' => 100, 'server_name' => 'First Server', 'message' => 'Failed'],
+            ['server_id' => 200, 'server_name' => 'Second Server', 'message' => 'Failed'],
+            ['server_id' => 300, 'server_name' => 'Third Server', 'message' => 'Failed'],
+            ['server_id' => 400, 'server_name' => 'Fourth Server', 'message' => 'Failed'],
+        ],
+    ];
+
+    expect(PloiSiteImportService::formatImportSummary($summary))
+        ->toBe('Imported/updated 0 sites. 0 servers imported. 0 servers skipped. 4 servers failed. Failed servers: First Server, Second Server, Third Server.');
 });

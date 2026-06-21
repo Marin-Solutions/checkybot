@@ -52,8 +52,6 @@ class ComponentHeartbeatSetupSnippet
     {
         $project = $component->project;
         $apiKey ??= 'replace-with-your-api-key';
-        $componentName = self::shellSingleQuote($component->name);
-        $interval = self::shellSingleQuote(self::interval($component));
         $declaredComponents = self::shellSingleQuote(json_encode(
             self::declaredComponents($component),
             JSON_UNESCAPED_SLASHES
@@ -61,29 +59,16 @@ class ComponentHeartbeatSetupSnippet
 
         return implode(PHP_EOL, [
             '# Requires jq for safe JSON quoting.',
-            "COMPONENT_NAME={$componentName}",
-            "COMPONENT_INTERVAL={$interval}",
             "DECLARED_COMPONENTS_JSON={$declaredComponents}",
-            'OBSERVED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"',
             '',
             'curl -fsS -X POST "'.self::checkybotUrl().'/api/v1/projects/'.$project->getKey().'/components/sync" \\',
             '  -H "Authorization: Bearer '.$apiKey.'" \\',
             '  -H "Content-Type: application/json" \\',
             '  --data-binary "$(jq -n \\',
-            '    --arg name "$COMPONENT_NAME" \\',
-            '    --arg interval "$COMPONENT_INTERVAL" \\',
-            '    --arg observed_at "$OBSERVED_AT" \\',
             '    --argjson declared_components "$DECLARED_COMPONENTS_JSON" \\',
             "    '{",
-            '      declared_components: $declared_components,',
-            '      components: [{',
-            '        name: $name,',
-            '        interval: $interval,',
-            '        status: "healthy",',
-            '        summary: ($name + " heartbeat completed"),',
-            '        metrics: { value: 0 },',
-            '        observed_at: $observed_at',
-            '      }]',
+            '      full_manifest: true,',
+            '      declared_components: $declared_components',
             "    }'",
             '  )"',
         ]);

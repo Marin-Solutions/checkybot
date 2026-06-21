@@ -28,11 +28,11 @@ class ProjectComponentFactory extends Factory
             'current_status' => fake()->randomElement(['healthy', 'warning', 'danger']),
             'last_reported_status' => 'healthy',
             'metrics' => ['value' => fake()->numberBetween(1, 100)],
-            'last_heartbeat_at' => now()->subMinute(),
-            'stale_detected_at' => null,
-            'is_stale' => false,
             'is_archived' => false,
+            'project_paused_monitoring' => false,
             'archived_at' => null,
+            'archive_reason' => null,
+            'silenced_until' => null,
             'created_by' => User::factory(),
         ];
     }
@@ -42,6 +42,7 @@ class ProjectComponentFactory extends Factory
         return $this->state(fn (): array => [
             'is_archived' => true,
             'archived_at' => now()->subHour(),
+            'archive_reason' => \App\Models\ProjectComponent::ARCHIVE_REASON_USER,
         ]);
     }
 }

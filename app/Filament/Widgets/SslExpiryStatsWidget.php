@@ -8,6 +8,13 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class SslExpiryStatsWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?int $sort = 5;
 
     protected ?string $pollingInterval = '60s';

@@ -11,32 +11,45 @@ use App\Services\SslCertificateService;
 use App\Support\UptimeTransportError;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
+use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
 {
-    use Queueable;
+    use Batchable, Queueable;
 
     /**
-     * @param  bool  $onDemand  When true, the job is treated as an operator-triggered diagnostic run:
-     *                          the result is appended to history but the website's live status fields
-     *                          (`current_status`, `last_heartbeat_at`, `stale_at`, `status_summary`)
-     *                          are left untouched so the scheduler's transition-based alerting baseline
-     *                          stays accurate, and no health notifications are sent.
+     * @param  bool  $onDemand  When true, the run is labeled as a manual run in history.
      */
+    public string $diagnosticRunId;
+
     public function __construct(
         public Website $website,
         public bool $onDemand = false,
-    ) {}
+        ?string $diagnosticRunId = null,
+    ) {
+        $this->diagnosticRunId = $diagnosticRunId ?? ($this->onDemand ? (string) Str::uuid() : '');
+    }
 
     public function uniqueId(): string
     {
         $mode = $this->isOnDemand() ? RunSource::OnDemand->value : RunSource::Scheduled->value;
+
+        if ($this->isOnDemand()) {
+            $runId = isset($this->diagnosticRunId) && $this->diagnosticRunId !== ''
+                ? $this->diagnosticRunId
+                : 'legacy';
+
+            return "website-uptime-ssl:{$this->website->getKey()}:{$mode}:{$runId}";
+        }
 
         return "website-uptime-ssl:{$this->website->getKey()}:{$mode}";
     }
@@ -61,7 +74,27 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
      */
     public function handle(SslCertificateService $sslCertificateService): void
     {
+        if ($this->batch()?->cancelled()) {
+            $this->clearQueuedDiagnostic();
+
+            return;
+        }
+
+        $queuedSslExpiryDate = $this->website->getRawOriginal('ssl_expiry_date');
+        $freshWebsite = $this->website->fresh();
+
+        if (! $freshWebsite instanceof Website) {
+            $this->clearQueuedDiagnostic();
+
+            return;
+        }
+
+        $this->website->uptime_check = $freshWebsite->uptime_check;
+        $this->website->ssl_check = $freshWebsite->ssl_check;
+
         if (! $this->shouldRunForWebsite()) {
+            $this->clearQueuedDiagnostic();
+
             return;
         }
 
@@ -138,47 +171,92 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
                 $sslStatus,
                 $sslExpiryDate,
             );
-            $previousStatus = $this->website->current_status;
-            $previousSslExpiryDate = $this->isOnDemand() || ! $this->website->ssl_check
-                ? null
-                : $this->currentOrLatestKnownSslExpiryDate();
+            if (! Website::query()->whereKey($this->website->getKey())->exists()) {
+                Log::info('Skipped uptime/SSL history write because website no longer exists.', [
+                    'website_id' => $this->website->getKey(),
+                ]);
 
-            WebsiteLogHistory::create([
-                'website_id' => $this->website->id,
-                'ssl_expiry_date' => $ssl_expiry_date,
-                'http_status_code' => $http_status_code,
-                'speed' => $speed,
-                'status' => $status,
-                'summary' => $summary,
-                'transport_error_type' => $transportError ? $transportError['type']->value : null,
-                'transport_error_message' => $transportError['message'] ?? null,
-                'transport_error_code' => $transportError['code'] ?? null,
-                'run_source' => $this->isOnDemand() ? RunSource::OnDemand : RunSource::Scheduled,
-                'is_on_demand' => $this->isOnDemand(),
-            ]);
+                return;
+            }
 
-            // On-demand runs keep scheduler-owned live status and notification state unchanged.
-            if (! $this->isOnDemand()) {
-                $this->syncScheduledSslExpirySnapshot($sslExpiryDate, $previousSslExpiryDate);
+            try {
+                $history = WebsiteLogHistory::create([
+                    'website_id' => $this->website->getKey(),
+                    'ssl_expiry_date' => $ssl_expiry_date,
+                    'http_status_code' => $http_status_code,
+                    'speed' => $speed,
+                    'status' => $status,
+                    'summary' => $summary,
+                    'transport_error_type' => $transportError ? $transportError['type']->value : null,
+                    'transport_error_message' => $transportError['message'] ?? null,
+                    'transport_error_code' => $transportError['code'] ?? null,
+                    'run_source' => $this->isOnDemand() ? RunSource::OnDemand : RunSource::Scheduled,
+                    'is_on_demand' => $this->isOnDemand(),
+                ]);
+            } catch (QueryException $exception) {
+                if (! $this->isForeignKeyConstraintViolation($exception)) {
+                    throw $exception;
+                }
 
-                $this->website->forceFill([
+                Log::info('Skipped uptime/SSL history write because website no longer exists.', [
+                    'website_id' => $this->website->getKey(),
+                ]);
+
+                return;
+            }
+
+            $liveUpdate = DB::transaction(function () use ($history, $queuedSslExpiryDate, $sslExpiryDate, $status, $summary): array {
+                $lockedWebsite = Website::query()
+                    ->whereKey($this->website->getKey())
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $lockedWebsite instanceof Website) {
+                    return [
+                        'updated' => false,
+                        'previous_status' => null,
+                    ];
+                }
+
+                $this->website = $lockedWebsite;
+                $previousStatus = $lockedWebsite->current_status;
+                $previousSslExpiryDate = ! $lockedWebsite->ssl_check || $sslExpiryDate === null
+                    ? null
+                    : $this->currentOrLatestKnownSslExpiryDate($lockedWebsite, $history);
+
+                $this->syncScheduledSslExpirySnapshot($sslExpiryDate, $previousSslExpiryDate, $queuedSslExpiryDate);
+
+                $lockedWebsite->forceFill([
                     'current_status' => $status,
-                    'last_heartbeat_at' => now(),
-                    'stale_at' => null,
                     'status_summary' => $summary,
                 ])->save();
 
-                if (
-                    in_array($status, ['warning', 'danger'], true)
-                    && $previousStatus !== $status
-                ) {
-                    $notificationService->notifyWebsite($this->website, 'heartbeat', $status, $summary);
-                } elseif (
-                    $status === 'healthy'
-                    && in_array($previousStatus, ['warning', 'danger'], true)
-                ) {
-                    $notificationService->notifyWebsite($this->website, 'recovered', $status, $summary);
-                }
+                return [
+                    'updated' => true,
+                    'previous_status' => $previousStatus,
+                ];
+            });
+
+            if (! $liveUpdate['updated']) {
+                Log::info('Skipped uptime/SSL live update because website no longer exists.', [
+                    'website_id' => $this->website->getKey(),
+                ]);
+
+                return;
+            }
+
+            $previousStatus = $liveUpdate['previous_status'];
+
+            if (
+                in_array($status, ['warning', 'danger'], true)
+                && $previousStatus !== $status
+            ) {
+                $notificationService->notifyWebsite($this->website, 'heartbeat', $status, $summary);
+            } elseif (
+                $status === 'healthy'
+                && in_array($previousStatus, ['warning', 'danger'], true)
+            ) {
+                $notificationService->notifyWebsite($this->website, 'recovered', $status, $summary);
             }
 
             Log::info('Successfully logged uptime/SSL for website '.$this->website->url);
@@ -186,7 +264,20 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
         } catch (\Exception $e) {
             Log::error('Error creating log for website '.$this->website->url.': '.$e->getMessage());
             throw $e;
+        } finally {
+            $this->clearQueuedDiagnostic();
         }
+    }
+
+    private function clearQueuedDiagnostic(): void
+    {
+        if (! $this->isOnDemand()) {
+            return;
+        }
+
+        Website::query()
+            ->whereKey($this->website->getKey())
+            ->update(['diagnostic_queued_at' => null]);
     }
 
     private function shouldRunForWebsite(): bool
@@ -244,18 +335,26 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
     private function syncScheduledSslExpirySnapshot(
         ?CarbonInterface $sslExpiryDate,
         ?CarbonInterface $previousSslExpiryDate,
+        mixed $queuedSslExpiryDate,
     ): void {
         if (! $this->website->ssl_check) {
             return;
         }
 
-        $attributes = [
-            'ssl_expiry_date' => $sslExpiryDate,
-        ];
+        if ($sslExpiryDate === null) {
+            $attributes = [
+                'ssl_expiry_date' => null,
+            ];
+        } else {
+            $attributes = [
+                'ssl_expiry_date' => $sslExpiryDate,
+            ];
+        }
 
         if (
             $sslExpiryDate !== null
-            && SslCertificateService::expiryDateChanged($previousSslExpiryDate, $sslExpiryDate)
+            &&
+            SslCertificateService::expiryDateChanged($previousSslExpiryDate, $sslExpiryDate)
         ) {
             $attributes['ssl_expiry_reminder_sent_at'] = null;
         }
@@ -264,33 +363,45 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
             ->whereKey($this->website->getKey())
             ->where('updated_at', $this->website->getRawOriginal('updated_at'));
 
-        $loadedSslExpiryDate = $this->website->getRawOriginal('ssl_expiry_date');
-
-        if ($loadedSslExpiryDate === null) {
+        if ($queuedSslExpiryDate === null) {
             $query->whereNull('ssl_expiry_date');
         } else {
-            $query->where('ssl_expiry_date', $loadedSslExpiryDate);
+            $query->where('ssl_expiry_date', $queuedSslExpiryDate);
         }
 
         $query->update($attributes);
     }
 
-    private function currentOrLatestKnownSslExpiryDate(): ?CarbonInterface
+    private function currentOrLatestKnownSslExpiryDate(Website $website, ?WebsiteLogHistory $currentHistory = null): ?CarbonInterface
     {
-        if ($this->website->ssl_expiry_date) {
-            return Carbon::parse($this->website->ssl_expiry_date);
+        if ($website->ssl_expiry_date) {
+            return Carbon::parse($website->ssl_expiry_date);
         }
 
-        $latestKnownExpiryDate = $this->website->logHistory()
+        $latestKnownExpiryDate = $website->logHistory()
+            ->when(
+                $currentHistory instanceof WebsiteLogHistory,
+                fn ($query) => $query->where(
+                    $currentHistory->getQualifiedKeyName(),
+                    '<',
+                    $currentHistory->getKey(),
+                ),
+            )
             ->whereNotNull('ssl_expiry_date')
-            ->where(function ($query): void {
-                $query->where('is_on_demand', false)
-                    ->orWhereNull('is_on_demand');
-            })
             ->latest('created_at')
             ->latest('id')
             ->value('ssl_expiry_date');
 
         return $latestKnownExpiryDate ? Carbon::parse($latestKnownExpiryDate) : null;
+    }
+
+    private function isForeignKeyConstraintViolation(QueryException $exception): bool
+    {
+        $errorInfo = $exception->errorInfo;
+        $sqlState = (string) ($errorInfo[0] ?? $exception->getCode());
+        $driverCode = (int) ($errorInfo[1] ?? 0);
+
+        return in_array($sqlState, ['23000', '23503'], true)
+            && in_array($driverCode, [0, 19, 1452, 23503], true);
     }
 }

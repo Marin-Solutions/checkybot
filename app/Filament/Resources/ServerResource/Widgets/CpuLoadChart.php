@@ -12,6 +12,13 @@ use Livewire\Attributes\On;
 
 class CpuLoadChart extends ChartWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected ?string $heading = 'CPU Load';
 
     public ?Model $record = null;

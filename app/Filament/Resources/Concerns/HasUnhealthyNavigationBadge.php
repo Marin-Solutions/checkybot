@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Concerns;
 
+use Illuminate\Database\Eloquent\Builder;
+
 /**
  * Adds a navigation badge that renders "unhealthy/total" in the `danger` color
  * whenever any record exposed by the resource has a `current_status` of
@@ -29,6 +31,11 @@ trait HasUnhealthyNavigationBadge
     protected static function unhealthyNavigationBadgeStatuses(): array
     {
         return ['warning', 'danger'];
+    }
+
+    protected static function scopeUnhealthyNavigationBadgeQuery(Builder $query): Builder
+    {
+        return $query;
     }
 
     public static function getNavigationBadge(): ?string
@@ -74,8 +81,10 @@ trait HasUnhealthyNavigationBadge
         }
 
         $total = (clone $base)->toBase()->count();
-        $unhealthy = (clone $base)
-            ->whereIn('current_status', static::unhealthyNavigationBadgeStatuses())
+        $unhealthyQuery = (clone $base)
+            ->whereIn('current_status', static::unhealthyNavigationBadgeStatuses());
+
+        $unhealthy = static::scopeUnhealthyNavigationBadgeQuery($unhealthyQuery)
             ->toBase()
             ->count();
 

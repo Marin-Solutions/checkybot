@@ -2,10 +2,14 @@
 
 use App\Enums\WebsiteServicesEnum;
 use App\Mail\HealthStatusAlert;
+use App\Mail\ProjectComponentAlertMail;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
+use App\Models\Project;
+use App\Models\ProjectComponent;
 use App\Models\Website;
 use App\Services\HealthEventNotificationService;
+use App\Services\ProjectComponentNotificationService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -59,6 +63,35 @@ test('command clears expired snooze on an api monitor that is still unhealthy an
     Mail::assertSent(HealthStatusAlert::class, 1);
 });
 
+test('command clears expired snooze on a project component that is still unhealthy and re-fires the alert', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $project->created_by,
+        'current_status' => 'danger',
+        'summary' => 'Heartbeat expired.',
+        'is_stale' => true,
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($component->refresh()->silenced_until)->toBeNull();
+
+    Mail::assertSent(ProjectComponentAlertMail::class, 1);
+});
+
 test('command clears expired snooze without notifying when the monitor recovered to healthy', function () {
     Mail::fake();
 
@@ -104,6 +137,33 @@ test('command leaves an active snooze untouched and sends no alert', function ()
 
     expect($website->refresh()->silenced_until)->not->toBeNull()
         ->and($website->silenced_until->isFuture())->toBeTrue();
+
+    Mail::assertNothingSent();
+});
+
+test('command clears expired snooze on a recovered project component without notifying', function () {
+    Mail::fake();
+
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $project->created_by,
+        'current_status' => 'healthy',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->globalScope()
+        ->email()
+        ->create([
+            'user_id' => $project->created_by,
+            'inspection' => WebsiteServicesEnum::APPLICATION_HEALTH,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($component->refresh()->silenced_until)->toBeNull();
 
     Mail::assertNothingSent();
 });
@@ -197,6 +257,31 @@ test('command preserves silenced_until when every channel fails so the next run 
     Log::shouldHaveReceived('warning')->once();
 });
 
+test('command preserves project component silenced_until when every channel fails so the next run retries', function () {
+    Log::spy();
+
+    $project = Project::factory()->create();
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $project->created_by,
+        'current_status' => 'danger',
+        'summary' => 'Heartbeat expired.',
+        'is_stale' => true,
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    $this->mock(ProjectComponentNotificationService::class, function ($mock): void {
+        $mock->shouldReceive('notify')->once()->andReturn(false);
+    });
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($component->refresh()->silenced_until)->not->toBeNull();
+
+    Log::shouldHaveReceived('warning')->once();
+});
+
 test('command clears silenced_until when at least one channel delivered (partial success is success)', function () {
     Log::spy();
 
@@ -244,15 +329,15 @@ test('command skips disabled api monitors but still clears their expired snooze'
     Mail::assertNothingSent();
 });
 
-test('command skips websites with uptime_check disabled even when ssl and outbound checks are on', function () {
+test('command skips websites with only outbound checks enabled because current_status is not refreshed by outbound scans', function () {
     Mail::fake();
 
-    // ssl/outbound checks don't refresh current_status — only uptime does —
-    // so the stored "danger" is frozen from before the toggle change. The
-    // command must not re-fire an alert from that stale state.
+    // Outbound checks don't refresh current_status, so the stored "danger"
+    // is frozen from before the toggle change. The command must not re-fire
+    // an alert from that stale state.
     $website = Website::factory()->create([
         'uptime_check' => false,
-        'ssl_check' => true,
+        'ssl_check' => false,
         'outbound_check' => true,
         'current_status' => 'danger',
         'silenced_until' => now()->subMinute(),
@@ -274,13 +359,68 @@ test('command skips websites with uptime_check disabled even when ssl and outbou
     Mail::assertNothingSent();
 });
 
-test('command alerts on a package-managed website with uptime_check off because MarkStalePackageChecks keeps current_status fresh', function () {
+test('command alerts on a manual ssl-only website because scheduled ssl checks keep current_status fresh', function () {
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'source' => 'manual',
+        'uptime_check' => false,
+        'uptime_interval' => 5,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'status_summary' => 'SSL certificate check failed before an expiry date could be read.',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+    Mail::assertSent(HealthStatusAlert::class, 1);
+});
+
+test('command skips manual ssl-only websites without an interval because scheduled ssl checks do not run', function () {
+    Mail::fake();
+
+    $website = Website::factory()->create([
+        'source' => 'manual',
+        'uptime_check' => false,
+        'uptime_interval' => null,
+        'ssl_check' => true,
+        'current_status' => 'danger',
+        'silenced_until' => now()->subMinute(),
+    ]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->email()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    $this->artisan('app:process-expired-snoozes')
+        ->assertSuccessful();
+
+    expect($website->refresh()->silenced_until)->toBeNull();
+    Mail::assertNothingSent();
+});
+
+test('command alerts on a package-managed ssl website with uptime_check off because scheduled ssl keeps current_status fresh', function () {
     Mail::fake();
 
     // syncSslChecks() creates package SSL websites with uptime_check=false.
-    // LogUptimeSslJob never runs for them, but MarkStalePackageChecks does
-    // and writes current_status='danger' on staleness — so a snooze that
-    // expires while one is unhealthy must still re-fire the alert.
+    // LogUptimeSslJob never runs for them, but the scheduled SSL runner still
+    // writes current_status='danger' — so a snooze that expires while one is
+    // unhealthy must still re-fire the alert.
     $website = Website::factory()->create([
         'source' => 'package',
         'package_interval' => '5m',
@@ -313,6 +453,7 @@ test('command skips snooze_expired alert if uptime_check was toggled off between
     // The helper must observe the toggle and skip the alert; status would
     // be frozen from before the toggle so paging is misleading.
     $website = Website::factory()->create([
+        'ssl_check' => false,
         'current_status' => 'danger',
         'silenced_until' => now()->subMinute(),
     ]);

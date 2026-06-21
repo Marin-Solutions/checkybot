@@ -12,10 +12,18 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
+use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\On;
 
 class SeoIssuesTableWidget extends BaseWidget
 {
+    /**
+     * @var array<string>
+     */
+    public array $discoveredSchemaNames = [];
+
+    public bool $areSchemaStateUpdateHooksDisabledForTesting = false;
+
     protected static ?string $heading = 'SEO Issues';
 
     protected int|string|array $columnSpan = 'full';
@@ -86,7 +94,19 @@ class SeoIssuesTableWidget extends BaseWidget
                     ->badge()
                     ->color(fn (SeoIssue $record): string => $record->getSeverityColor())
                     ->formatStateUsing(fn ($state): string => strtoupper($state->value))
-                    ->sortable(),
+                    ->sortable(query: function (Builder $query, string $direction): Builder {
+                        $direction = $direction === 'desc' ? 'DESC' : 'ASC';
+
+                        // Keep this order aligned with SeoIssueSeverity::getPriority().
+                        return $query->orderByRaw(<<<SQL
+                            CASE severity
+                                WHEN 'error' THEN 1
+                                WHEN 'warning' THEN 2
+                                WHEN 'notice' THEN 3
+                                ELSE 4
+                            END {$direction}
+                        SQL);
+                    }),
                 TextColumn::make('type')
                     ->label('Issue Type')
                     ->badge()

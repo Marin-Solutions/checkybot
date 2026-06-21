@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Filament\MyProfile\PersonalInfoWithTimezone;
 use App\Livewire\FilamentNotificationsCollectionSynth;
+use App\Support\LivewireUpdatePayloadSanitizer;
 use App\Support\UserTimezone;
 use Closure;
 use Filament\Infolists\Components\TextEntry;
@@ -11,6 +12,8 @@ use Filament\Tables\Columns\TextColumn;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 use Livewire\Livewire;
+
+use function Livewire\on;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -28,6 +31,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Livewire::propertySynthesizer(FilamentNotificationsCollectionSynth::class);
+
+        // Filament registers its own Livewire components late in the boot cycle;
+        // re-prepend this synthesizer afterward so notification payloads keep
+        // using the hardened hydrator instead of Livewire's generic wireable one.
+        $this->app->booted(fn () => Livewire::propertySynthesizer(FilamentNotificationsCollectionSynth::class));
+
+        on('request', fn (): \Closure => fn (array $payload): array => app(LivewireUpdatePayloadSanitizer::class)->sanitize($payload));
 
         // Register the timezone-aware profile component under its own alias so
         // Livewire can rehydrate it across requests. Filament's profile page

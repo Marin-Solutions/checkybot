@@ -6,6 +6,7 @@ use App\Enums\RunSource;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use App\Services\IntervalParser;
+use App\Support\HealthStatusLabel;
 use App\Support\UptimeTransportError;
 use Filament\Infolists\Components\IconEntry;
 use Filament\Infolists\Components\RepeatableEntry;
@@ -19,8 +20,8 @@ class WebsiteInfolist
     /** @var \WeakMap<Website, array<int, array<string, mixed>>>|null */
     private static ?\WeakMap $recentFailureCache = null;
 
-    /** @var \WeakMap<Website, array{threshold: Carbon|null, invalid_interval: bool}>|null */
-    private static ?\WeakMap $expectedStaleCache = null;
+    /** @var \WeakMap<Website, array{total: int, broken: int, redirected: int, transport_failed: int, healthy: int}>|null */
+    private static ?\WeakMap $outboundSummaryCache = null;
 
     public static function configure(Schema $schema): Schema
     {
@@ -36,8 +37,8 @@ class WebsiteInfolist
                         TextEntry::make('current_status')
                             ->label('Current Status')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => static::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                         TextEntry::make('status_summary')
                             ->label('Latest Summary')
                             ->placeholder('Awaiting first monitor run')
@@ -59,28 +60,18 @@ class WebsiteInfolist
                             ->color(fn (?string $state): string => $state === 'package' ? 'info' : 'gray'),
                     ])
                     ->columns(2),
-                Section::make('Heartbeat & Freshness')
-                    ->description('When Checkybot last heard from this target, when freshness was due, and when stale status was detected.')
+                Section::make('Check History')
+                    ->description('Recent check timing and response information for this website.')
                     ->schema([
-                        TextEntry::make('last_heartbeat_at')
-                            ->label('Last Heartbeat')
-                            ->state(fn (Website $record): ?string => $record->last_heartbeat_at?->toDayDateTimeString())
+                        TextEntry::make('latest_log_checked_at')
+                            ->label('Last Check')
+                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->toDayDateTimeString())
                             ->default('Never')
-                            ->hint(fn (Website $record): ?string => $record->last_heartbeat_at?->diffForHumans()),
-                        TextEntry::make('expected_stale_at')
-                            ->label('Expected Stale Threshold')
-                            ->state(fn (Website $record): ?string => static::expectedStaleAt($record)?->toDayDateTimeString())
-                            ->default('-')
-                            ->hint(fn (Website $record): ?string => static::expectedStaleHint($record)),
-                        TextEntry::make('stale_at')
-                            ->label('Detected Stale At')
-                            ->state(fn (Website $record): ?string => $record->stale_at?->toDayDateTimeString())
-                            ->default('Not detected')
-                            ->hint(fn (Website $record): ?string => static::detectedStaleHint($record->stale_at)),
+                            ->hint(fn (Website $record): ?string => $record->latestLogHistory?->created_at?->diffForHumans()),
                         TextEntry::make('latest_log_response_time')
-                            ->label('Latest Scheduled Response Time')
-                            ->state(fn (Website $record): ?string => $record->latestScheduledLogHistory?->speed !== null
-                                ? "{$record->latestScheduledLogHistory->speed}ms"
+                            ->label('Latest Response Time')
+                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->speed !== null
+                                ? "{$record->latestLogHistory->speed}ms"
                                 : null)
                             ->default('-'),
                         TextEntry::make('average_response_time_24h')
@@ -113,53 +104,72 @@ class WebsiteInfolist
                                 default => "Every {$state} minutes",
                             }),
                         TextEntry::make('latest_log_http_code')
-                            ->label('Latest Scheduled HTTP Code')
-                            ->state(fn (Website $record): ?int => $record->latestScheduledLogHistory?->http_status_code)
+                            ->label('Latest HTTP Code')
+                            ->state(fn (Website $record): ?int => $record->latestLogHistory?->http_status_code)
                             ->default('-')
                             ->badge()
                             ->color(fn (mixed $state): string => static::httpCodeColor(is_numeric($state) ? (int) $state : null)),
                         TextEntry::make('latest_log_status')
-                            ->label('Latest Scheduled Result')
-                            ->state(fn (Website $record): ?string => $record->latestScheduledLogHistory?->status)
-                            ->default('No scheduled runs recorded')
+                            ->label('Latest Result')
+                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->status)
+                            ->default('No runs recorded')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'No scheduled runs recorded')
+                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'No runs recorded')
                             ->color(fn (?string $state): string => static::statusColor($state)),
                         TextEntry::make('latest_log_run_source')
                             ->label('Evidence Source')
-                            ->state(fn (Website $record): mixed => $record->latestScheduledLogHistory?->run_source)
+                            ->state(fn (Website $record): mixed => $record->latestLogHistory?->run_source)
                             ->badge()
                             ->formatStateUsing(fn (mixed $state): string => RunSource::tryCoerce($state)?->label() ?? '-')
                             ->color(fn (mixed $state): string => RunSource::tryCoerce($state)?->color() ?? 'gray'),
                         TextEntry::make('latest_log_summary')
-                            ->label('Latest Scheduled Summary')
-                            ->state(fn (Website $record): ?string => $record->latestScheduledLogHistory?->summary)
+                            ->label('Latest Summary')
+                            ->state(fn (Website $record): ?string => $record->latestLogHistory?->summary)
                             ->default('-')
                             ->columnSpanFull(),
                         TextEntry::make('latest_log_transport_error')
-                            ->label('Latest Scheduled Transport Error')
-                            ->state(fn (Website $record): ?string => static::transportErrorEvidence($record->latestScheduledLogHistory))
+                            ->label('Latest Transport Error')
+                            ->state(fn (Website $record): ?string => static::transportErrorEvidence($record->latestLogHistory))
                             ->default('-')
                             ->badge()
-                            ->color(fn (Website $record): string => UptimeTransportError::color($record->latestScheduledLogHistory?->transport_error_type))
+                            ->color(fn (Website $record): string => UptimeTransportError::color($record->latestLogHistory?->transport_error_type))
                             ->columnSpanFull(),
                     ])
                     ->columns(2),
-                Section::make('Latest Diagnostic Run')
-                    ->description('Manual run evidence is separate from scheduler-owned live status, dashboards, and alerts.')
-                    ->hidden(fn (Website $record): bool => $record->latestDiagnosticLogHistory === null)
+                Section::make('Latest Manual Run')
+                    ->description('Manual runs use the same live status and alerting path as scheduled runs.')
+                    ->hidden(fn (Website $record): bool => $record->latestDiagnosticLogHistory === null && ! $record->hasQueuedDiagnostic())
                     ->schema([
+                        TextEntry::make('diagnostic_queue_status')
+                            ->label('Manual Run Status')
+                            ->state(fn (Website $record): ?string => $record->hasQueuedDiagnostic() ? 'Queued' : null)
+                            ->hidden(fn (Website $record): bool => ! $record->hasQueuedDiagnostic())
+                            ->badge()
+                            ->color('warning'),
+                        TextEntry::make('diagnostic_queued_at')
+                            ->label('Queued At')
+                            ->state(fn (Website $record): ?string => $record->diagnostic_queued_at?->toDayDateTimeString())
+                            ->hint(fn (Website $record): ?string => $record->diagnostic_queued_at?->diffForHumans())
+                            ->hidden(fn (Website $record): bool => ! $record->hasQueuedDiagnostic()),
                         TextEntry::make('latest_diagnostic_created_at')
                             ->label('Observed At')
                             ->state(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->created_at?->toDayDateTimeString())
+                            ->default('-')
                             ->hint(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->created_at?->diffForHumans()),
                         TextEntry::make('latest_diagnostic_status')
                             ->label('Result')
                             ->state(fn (Website $record): ?string => $record->latestDiagnosticLogHistory?->status)
                             ->default('Unknown')
                             ->badge()
-                            ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                            ->color(fn (?string $state): string => static::statusColor($state)),
+                            ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                            ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
+                        TextEntry::make('latest_diagnostic_freshness_note')
+                            ->label('Freshness')
+                            ->state(fn (Website $record): ?string => static::diagnosticFreshnessNote($record))
+                            ->hidden(fn (Website $record): bool => static::diagnosticFreshnessNote($record) === null)
+                            ->badge()
+                            ->color('warning')
+                            ->columnSpanFull(),
                         TextEntry::make('latest_diagnostic_http_code')
                             ->label('HTTP Code')
                             ->state(fn (Website $record): ?int => $record->latestDiagnosticLogHistory?->http_status_code)
@@ -202,7 +212,7 @@ class WebsiteInfolist
                     ])
                     ->columns(2),
                 Section::make('Outbound Link Check')
-                    ->description('Checkybot verifies external links on this website for broken targets.')
+                    ->description('Current outbound evidence from the latest stored scan, grouped by the outcomes users need to triage first.')
                     ->hidden(fn (Website $record): bool => ! $record->outbound_check)
                     ->schema([
                         TextEntry::make('last_outbound_checked_at')
@@ -210,7 +220,46 @@ class WebsiteInfolist
                             ->state(fn (Website $record): ?string => $record->last_outbound_checked_at?->toDayDateTimeString())
                             ->default('Never')
                             ->hint(fn (Website $record): ?string => $record->last_outbound_checked_at?->diffForHumans()),
-                    ]),
+                        TextEntry::make('outbound_scan_queued_at')
+                            ->label('Scan Pending')
+                            ->state(fn (Website $record): ?string => $record->outbound_scan_queued_at?->toDayDateTimeString())
+                            ->default('No')
+                            ->badge()
+                            ->color(fn (Website $record): string => $record->hasQueuedOutboundScan() ? 'warning' : 'gray')
+                            ->formatStateUsing(fn (?string $state, Website $record): string => $record->hasQueuedOutboundScan() ? 'Queued' : 'No')
+                            ->hint(fn (Website $record): ?string => $record->hasQueuedOutboundScan() ? $record->outbound_scan_queued_at?->diffForHumans() : null),
+                        TextEntry::make('outbound_links_total')
+                            ->label('Links Tracked')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['total'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' total')
+                            ->badge()
+                            ->color('gray'),
+                        TextEntry::make('outbound_links_broken')
+                            ->label('Broken')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['broken'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' broken')
+                            ->badge()
+                            ->color(fn (int $state): string => $state > 0 ? 'danger' : 'success'),
+                        TextEntry::make('outbound_links_redirected')
+                            ->label('Redirected')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['redirected'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' redirected')
+                            ->badge()
+                            ->color(fn (int $state): string => $state > 0 ? 'info' : 'gray'),
+                        TextEntry::make('outbound_links_transport_failed')
+                            ->label('Transport Failed')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['transport_failed'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' transport failed')
+                            ->badge()
+                            ->color(fn (int $state): string => $state > 0 ? 'danger' : 'success'),
+                        TextEntry::make('outbound_links_healthy')
+                            ->label('Healthy')
+                            ->state(fn (Website $record): int => static::outboundSummary($record)['healthy'])
+                            ->formatStateUsing(fn (int $state): string => number_format($state).' healthy')
+                            ->badge()
+                            ->color('success'),
+                    ])
+                    ->columns(3),
                 Section::make('Recent Failures')
                     ->description('Most recent non-healthy monitor runs from the last 7 days.')
                     ->hidden(fn (Website $record): bool => empty(static::recentFailures($record)))
@@ -221,8 +270,8 @@ class WebsiteInfolist
                             ->schema([
                                 TextEntry::make('status')
                                     ->badge()
-                                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : 'Unknown')
-                                    ->color(fn (?string $state): string => static::statusColor($state)),
+                                    ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
+                                    ->color(fn (?string $state): string => HealthStatusLabel::color($state)),
                                 TextEntry::make('http_status_code')
                                     ->label('HTTP')
                                     ->badge()
@@ -291,6 +340,90 @@ class WebsiteInfolist
         $message = filled($log->transport_error_message) ? ': '.$log->transport_error_message : '';
 
         return "{$label}{$code}{$message}";
+    }
+
+    private static function diagnosticFreshnessNote(Website $record): ?string
+    {
+        $diagnosticAt = $record->latestDiagnosticLogHistory?->created_at;
+
+        if ($diagnosticAt === null) {
+            return null;
+        }
+
+        $scheduledAt = $record->latestScheduledLogHistory?->created_at;
+
+        if (static::isPastScheduledComparison($diagnosticAt, $scheduledAt)) {
+            return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans($scheduledAt, true).' older than the latest scheduled run.';
+        }
+
+        $ageSeconds = static::elapsedSecondsSince($diagnosticAt);
+
+        if ($ageSeconds > static::freshnessWindowSeconds($record->package_interval, $record->uptime_interval)) {
+            return 'Manual evidence is stale: '.$diagnosticAt->diffForHumans(null, true).' old.';
+        }
+
+        return null;
+    }
+
+    private static function freshnessWindowSeconds(?string $interval, ?int $fallbackMinutes): int
+    {
+        if (is_string($interval) && filled($interval) && IntervalParser::isValid($interval)) {
+            return max(IntervalParser::toMinutes($interval) * 60, 60 * 60);
+        }
+
+        if ($fallbackMinutes !== null && $fallbackMinutes > 0) {
+            return max($fallbackMinutes * 60, 60 * 60);
+        }
+
+        return 60 * 60;
+    }
+
+    private static function elapsedSecondsSince(mixed $checkedAt): int
+    {
+        if ($checkedAt->isFuture()) {
+            return 0;
+        }
+
+        return $checkedAt->diffInSeconds(now());
+    }
+
+    private static function isPastScheduledComparison(mixed $diagnosticAt, mixed $scheduledAt): bool
+    {
+        return $scheduledAt !== null
+            && ! $scheduledAt->isFuture()
+            && $diagnosticAt->lt($scheduledAt);
+    }
+
+    /**
+     * @return array{total: int, broken: int, redirected: int, transport_failed: int, healthy: int}
+     */
+    private static function outboundSummary(Website $record): array
+    {
+        static::$outboundSummaryCache ??= new \WeakMap;
+
+        return static::$outboundSummaryCache[$record] ??= static::resolveOutboundSummary($record);
+    }
+
+    /**
+     * @return array{total: int, broken: int, redirected: int, transport_failed: int, healthy: int}
+     */
+    private static function resolveOutboundSummary(Website $record): array
+    {
+        $summary = $record->outboundLinks()
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('SUM(CASE WHEN http_status_code BETWEEN 400 AND 599 THEN 1 ELSE 0 END) as broken')
+            ->selectRaw('SUM(CASE WHEN http_status_code BETWEEN 300 AND 399 THEN 1 ELSE 0 END) as redirected')
+            ->selectRaw('SUM(CASE WHEN transport_error_type IS NOT NULL THEN 1 ELSE 0 END) as transport_failed')
+            ->selectRaw('SUM(CASE WHEN http_status_code BETWEEN 200 AND 299 AND transport_error_type IS NULL THEN 1 ELSE 0 END) as healthy')
+            ->first();
+
+        return [
+            'total' => (int) ($summary->total ?? 0),
+            'broken' => (int) ($summary->broken ?? 0),
+            'redirected' => (int) ($summary->redirected ?? 0),
+            'transport_failed' => (int) ($summary->transport_failed ?? 0),
+            'healthy' => (int) ($summary->healthy ?? 0),
+        ];
     }
 
     private static function statusColor(?string $state): string
@@ -382,68 +515,6 @@ class WebsiteInfolist
         $expiry = $expiryDate->copy()->startOfDay();
 
         return (int) round($today->diffInDays($expiry, false));
-    }
-
-    private static function expectedStaleAt(Website $record): ?Carbon
-    {
-        return static::expectedStaleEvidence($record)['threshold'];
-    }
-
-    private static function expectedStaleHint(Website $record): ?string
-    {
-        $evidence = static::expectedStaleEvidence($record);
-
-        if ($evidence['invalid_interval']) {
-            return "Cannot parse package interval {$record->package_interval}";
-        }
-
-        if ($evidence['threshold'] === null) {
-            return null;
-        }
-
-        return $evidence['threshold']->isPast()
-            ? 'Freshness threshold passed '.$evidence['threshold']->diffForHumans()
-            : 'Freshness threshold '.$evidence['threshold']->diffForHumans();
-    }
-
-    /**
-     * @return array{threshold: Carbon|null, invalid_interval: bool}
-     */
-    private static function expectedStaleEvidence(Website $record): array
-    {
-        static::$expectedStaleCache ??= new \WeakMap;
-
-        return static::$expectedStaleCache[$record] ??= static::resolveExpectedStaleEvidence($record);
-    }
-
-    /**
-     * @return array{threshold: Carbon|null, invalid_interval: bool}
-     */
-    private static function resolveExpectedStaleEvidence(Website $record): array
-    {
-        if ($record->last_heartbeat_at === null || blank($record->package_interval)) {
-            return ['threshold' => null, 'invalid_interval' => false];
-        }
-
-        try {
-            return [
-                'threshold' => $record->last_heartbeat_at->copy()->addMinutes(IntervalParser::toMinutes($record->package_interval)),
-                'invalid_interval' => false,
-            ];
-        } catch (\Throwable) {
-            return ['threshold' => null, 'invalid_interval' => true];
-        }
-    }
-
-    private static function detectedStaleHint(?Carbon $staleAt): ?string
-    {
-        if ($staleAt === null) {
-            return null;
-        }
-
-        return $staleAt->isPast()
-            ? 'Detected stale '.$staleAt->diffForHumans()
-            : 'Scheduled detection '.$staleAt->diffForHumans();
     }
 
     private static function toCarbon(mixed $value): ?Carbon
