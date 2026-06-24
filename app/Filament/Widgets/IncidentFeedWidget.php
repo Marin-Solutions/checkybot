@@ -45,6 +45,12 @@ class IncidentFeedWidget extends BaseWidget
 
     protected const NON_INCIDENT_STATUSES = ['healthy', 'unknown'];
 
+    public static function canView(): bool
+    {
+        return static::class !== self::class
+            || ! request()->routeIs('filament.admin.pages.dashboard');
+    }
+
     public function hydrateMountedActions(array $mountedActions): void
     {
         $this->mountedActions = $this->sanitizeMountedActions($mountedActions);

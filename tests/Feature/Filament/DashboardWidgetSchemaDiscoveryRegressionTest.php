@@ -4,6 +4,7 @@ use App\Filament\Resources\Projects\Widgets\ProjectHealthOverviewWidget;
 use App\Filament\Resources\Projects\Widgets\ProjectIncidentFeedWidget;
 use App\Filament\Resources\ServerResource\Widgets\ServerLogTimeframe;
 use App\Filament\Widgets\ApiHealthStatsWidget;
+use App\Filament\Widgets\DashboardHealthOverviewWidget;
 use App\Filament\Widgets\IncidentFeedWidget;
 use App\Filament\Widgets\ProxyPoolStatsWidget;
 use App\Filament\Widgets\SeoDashboardStatsWidget;
@@ -40,6 +41,11 @@ it('keeps dashboard widget schema discovery state updateable across livewire pol
     ],
     'api health stats' => [
         ApiHealthStatsWidget::class,
+        fn (): array => [],
+        'content',
+    ],
+    'dashboard health overview stats' => [
+        DashboardHealthOverviewWidget::class,
         fn (): array => [],
         'content',
     ],

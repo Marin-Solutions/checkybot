@@ -6,7 +6,7 @@ use App\Models\WebsiteLogHistory;
 use Livewire\Attributes\Locked;
 use Livewire\Livewire;
 
-it('dashboard page renders the incident feed widget for a super admin', function () {
+it('dashboard page leaves incident drilldown to the health overview', function () {
     $user = $this->actingAsSuperAdmin();
 
     $website = Website::factory()->create([
@@ -22,7 +22,7 @@ it('dashboard page renders the incident feed widget for a super admin', function
 
     $this->get('/admin')
         ->assertSuccessful()
-        ->assertSeeLivewire(IncidentFeedWidget::class);
+        ->assertDontSeeLivewire(IncidentFeedWidget::class);
 });
 
 it('keeps incident feed schema discovery state updateable across livewire requests', function () {

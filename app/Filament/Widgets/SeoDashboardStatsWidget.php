@@ -21,6 +21,11 @@ class SeoDashboardStatsWidget extends BaseWidget
 
     protected ?string $pollingInterval = '30s';
 
+    public static function canView(): bool
+    {
+        return false;
+    }
+
     protected function getStats(): array
     {
         $userId = auth()->id();

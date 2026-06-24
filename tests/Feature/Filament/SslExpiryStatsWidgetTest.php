@@ -1,5 +1,6 @@
 <?php
 
+use App\Filament\Widgets\DashboardHealthOverviewWidget;
 use App\Filament\Widgets\SslExpiryStatsWidget;
 use App\Models\User;
 use App\Models\Website;
@@ -204,7 +205,7 @@ describe('SslExpiryStatsWidget', function () {
             ->and(sslStat($stats, 'Expiring Within 7 Days')->getValue())->toBe(1);
     });
 
-    it('renders on the dashboard page for a super admin', function () {
+    it('is replaced by the dashboard health overview on the dashboard page', function () {
         Website::factory()->create([
             'created_by' => $this->user->id,
             'ssl_check' => true,
@@ -213,7 +214,8 @@ describe('SslExpiryStatsWidget', function () {
 
         $this->get('/admin')
             ->assertSuccessful()
-            ->assertSeeLivewire(SslExpiryStatsWidget::class);
+            ->assertSeeLivewire(DashboardHealthOverviewWidget::class)
+            ->assertDontSeeLivewire(SslExpiryStatsWidget::class);
     });
 });
 

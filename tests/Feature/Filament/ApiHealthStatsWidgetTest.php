@@ -1,6 +1,7 @@
 <?php
 
 use App\Filament\Widgets\ApiHealthStatsWidget;
+use App\Filament\Widgets\DashboardHealthOverviewWidget;
 use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\User;
@@ -234,7 +235,7 @@ describe('ApiHealthStatsWidget', function () {
             ->assertSee('Pending');
     });
 
-    it('renders on the dashboard page for a super admin', function () {
+    it('is replaced by the dashboard health overview on the dashboard page', function () {
         $monitor = MonitorApis::factory()->create([
             'created_by' => $this->user->id,
             'current_status' => 'healthy',
@@ -245,6 +246,7 @@ describe('ApiHealthStatsWidget', function () {
 
         $this->get('/admin')
             ->assertSuccessful()
-            ->assertSeeLivewire(ApiHealthStatsWidget::class);
+            ->assertSeeLivewire(DashboardHealthOverviewWidget::class)
+            ->assertDontSeeLivewire(ApiHealthStatsWidget::class);
     });
 });
