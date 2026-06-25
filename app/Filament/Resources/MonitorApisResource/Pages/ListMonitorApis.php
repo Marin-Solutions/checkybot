@@ -8,6 +8,7 @@ use App\Models\MonitorApis;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class ListMonitorApis extends ListRecords
 {
@@ -20,6 +21,16 @@ class ListMonitorApis extends ListRecords
         return [
             Actions\CreateAction::make()->label('New API'),
         ];
+    }
+
+    protected function getTableQuery(): Builder
+    {
+        return MonitorApis::query()
+            ->where('created_by', auth()->id())
+            ->with(['latestResult', 'latestScheduledResult', 'latestDiagnosticResult'])
+            ->withoutGlobalScopes([
+                SoftDeletingScope::class,
+            ]);
     }
 
     protected function disabledColumn(): string
@@ -40,6 +51,11 @@ class ListMonitorApis extends ListRecords
     protected function ownerTable(): string
     {
         return 'monitor_apis';
+    }
+
+    protected function countsRecentlyRecoveredTab(): bool
+    {
+        return false;
     }
 
     /**

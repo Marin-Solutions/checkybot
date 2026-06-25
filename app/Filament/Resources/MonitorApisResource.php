@@ -385,7 +385,21 @@ class MonitorApisResource extends Resource
                     ->wrap(),
                 Tables\Columns\TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::displayForApi($record))
+                    ->state(function (MonitorApis $record): ?string {
+                        $latestScheduledResult = $record->latestScheduledResult;
+
+                        if (
+                            $latestScheduledResult === null
+                            || (
+                                ! in_array($latestScheduledResult->status, ['warning', 'danger'], true)
+                                && $latestScheduledResult->is_success !== false
+                            )
+                        ) {
+                            return null;
+                        }
+
+                        return ScheduledFailureStreak::displayForApi($record);
+                    })
                     ->placeholder('-')
                     ->color('danger')
                     ->wrap(),
@@ -432,9 +446,14 @@ class MonitorApisResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('avg_response_time')
                     ->label('Avg Response Time (ms)')
-                    ->default('-')
-                    ->formatStateUsing(fn ($state) => $state === '-' ? '-' : round($state))
-                    ->sortable(),
+                    ->state(function (MonitorApis $record): string {
+                        $average = array_key_exists('avg_response_time', $record->getAttributes())
+                            ? $record->avg_response_time
+                            : $record->results()->scheduled()->avg('response_time_ms');
+
+                        return $average === null ? '-' : (string) round($average);
+                    })
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('created_at')
                     ->dateTimeInUserZone()
                     ->sortable()

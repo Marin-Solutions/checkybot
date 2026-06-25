@@ -751,6 +751,40 @@ test('api monitor list average response time excludes on demand diagnostic runs'
     expect((float) $listedMonitor->avg_response_time)->toBe(200.0);
 });
 
+test('api monitor list default render skips optional history aggregates and recovered counts', function () {
+    $this->createResourcePermissions('MonitorApis');
+
+    $user = $this->actingAsSuperAdmin();
+
+    $monitors = MonitorApis::factory()->count(5)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    foreach ($monitors as $monitor) {
+        MonitorApiResult::factory()->successful()->create([
+            'monitor_api_id' => $monitor->id,
+            'response_time_ms' => 120,
+        ]);
+    }
+
+    $sql = [];
+
+    \DB::listen(function ($query) use (&$sql): void {
+        $sql[] = $query->sql;
+    });
+
+    Livewire::test(ListMonitorApis::class)
+        ->assertSuccessful();
+
+    $joinedSql = implode("\n", $sql);
+
+    expect($joinedSql)
+        ->not->toContain('avg(')
+        ->not->toContain('where exists')
+        ->not->toContain('streak_count');
+});
+
 test('api monitor list shows compact latest result evidence', function () {
     $this->createResourcePermissions('MonitorApis');
 
@@ -2508,8 +2542,7 @@ test('api monitor list tab badges report accurate per-tab counts', function () {
     expect(invade($page)->resolveTabCounts())->toMatchArray([
         'failing' => 3,
         'disabled' => 2,
-        'recently_recovered' => 1,
-    ]);
+    ])->not->toHaveKey('recently_recovered');
 });
 
 test('api monitor list tab badges scope counts to the current user', function () {
