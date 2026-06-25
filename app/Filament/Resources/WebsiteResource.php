@@ -260,7 +260,9 @@ class WebsiteResource extends Resource
                     ->tooltip(fn (Website $record): ?string => static::latestScheduledFailure($record)?->created_at?->toDayDateTimeString()),
                 Tables\Columns\TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::displayForWebsite($record))
+                    ->state(fn (Website $record): ?string => static::latestScheduledFailure($record)
+                        ? ScheduledFailureStreak::displayForWebsite($record)
+                        : null)
                     ->placeholder('-')
                     ->color('danger')
                     ->wrap(),
@@ -383,13 +385,13 @@ class WebsiteResource extends Resource
                 Tables\Columns\TextColumn::make('global_notifications_count')
                     ->label('Global Notifications Channels')
                     ->state(function (Website $record): string {
-                        return $record->globalNotifications->count().'  🌍';
+                        return ((int) $record->global_notifications_count).'  🌍';
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('individual_notifications_count')
                     ->label('Individual Notifications Channels')
                     ->state(function (Website $record): string {
-                        return $record->individualNotifications->count().'  📌';
+                        return ((int) $record->individual_notifications_count).'  📌';
                     })
                     ->sortable(),
                 Tables\Columns\TextColumn::make('created_at')
@@ -890,14 +892,16 @@ class WebsiteResource extends Resource
     {
         return parent::getEloquentQuery()
             ->withAvg('logHistoryLast24h as average_response_time', 'speed')
+            ->withCount([
+                'globalNotifications as global_notifications_count',
+                'individualNotifications as individual_notifications_count',
+            ])
             ->with([
                 'user:id,name',
-                'globalNotifications:id,user_id,website_id,inspection',
-                'individualNotifications:id,website_id,inspection',
                 'latestLogHistory',
                 'latestScheduledLogHistory',
                 'latestDiagnosticLogHistory',
-                'latestSeoCheck:id,website_id,status,started_at,total_urls_crawled,total_crawlable_urls,progress',
+                'latestSeoCheck',
             ])
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([

@@ -405,7 +405,10 @@ class Website extends Model
 
     public function latestSeoCheck(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->hasOne(SeoCheck::class)->latest();
+        return $this->hasOne(SeoCheck::class)->ofMany([
+            'created_at' => 'max',
+            'id' => 'max',
+        ]);
     }
 
     public function seoSchedule(): \Illuminate\Database\Eloquent\Relations\HasOne

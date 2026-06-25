@@ -112,6 +112,36 @@ test('website list shows scheduled failure streak evidence for triage', function
         ->assertSee('First failed 25 minutes ago');
 });
 
+test('website list skips failure streak aggregation for healthy rows', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(15)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    foreach ($websites as $website) {
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'http_status_code' => 200,
+        ]);
+    }
+
+    $streakQueries = 0;
+
+    \DB::listen(function ($query) use (&$streakQueries): void {
+        if (str_contains($query->sql, 'streak_count')) {
+            $streakQueries++;
+        }
+    });
+
+    Livewire::test(ListWebsites::class)
+        ->assertSuccessful();
+
+    expect($streakQueries)->toBe(0);
+});
+
 test('website list failure evidence ignores newer manual runs and clears after scheduled recovery', function () {
     Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
 
