@@ -5,10 +5,12 @@ namespace App\Filament\Resources\WebsiteResource\Pages;
 use App\Filament\Resources\Concerns\HasHealthStatusTabs;
 use App\Filament\Resources\WebsiteResource;
 use App\Models\Website;
+use App\Models\WebsiteLogHistory;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Facades\DB;
 
 class ListWebsites extends ListRecords
 {
@@ -25,17 +27,32 @@ class ListWebsites extends ListRecords
 
     protected function getTableQuery(): Builder
     {
+        $latestScheduledLogIds = WebsiteLogHistory::query()
+            ->selectRaw('website_id, MAX(id) as max_id')
+            ->where('is_on_demand', false)
+            ->groupBy('website_id');
+
         return Website::query()
-            ->withAvg('logHistoryLast24h as average_response_time', 'speed')
+            ->select('websites.*')
+            ->leftJoinSub($latestScheduledLogIds, 'latest_scheduled_log_ids', function ($join): void {
+                $join->on('websites.id', '=', 'latest_scheduled_log_ids.website_id');
+            })
+            ->leftJoin('website_log_history as latest_scheduled_log', 'latest_scheduled_log.id', '=', 'latest_scheduled_log_ids.max_id')
+            ->addSelect([
+                DB::raw('latest_scheduled_log.id as latest_scheduled_log_id'),
+                DB::raw('latest_scheduled_log.status as latest_scheduled_status'),
+                DB::raw('latest_scheduled_log.summary as latest_scheduled_summary'),
+                DB::raw('latest_scheduled_log.transport_error_type as latest_scheduled_transport_error_type'),
+                DB::raw('latest_scheduled_log.http_status_code as latest_scheduled_http_status_code'),
+                DB::raw('latest_scheduled_log.created_at as latest_scheduled_created_at'),
+                DB::raw('latest_scheduled_log.is_on_demand as latest_scheduled_is_on_demand'),
+            ])
             ->withCount([
                 'globalNotifications as global_notifications_count',
                 'individualNotifications as individual_notifications_count',
             ])
             ->with([
                 'user:id,name',
-                'latestScheduledLogHistory',
-                'latestDiagnosticLogHistory',
-                'latestSeoCheck',
             ])
             ->where('created_by', auth()->id())
             ->withoutGlobalScopes([

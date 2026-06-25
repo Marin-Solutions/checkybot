@@ -3,7 +3,6 @@
 use App\Enums\NotificationChannelTypesEnum;
 use App\Enums\NotificationScopesEnum;
 use App\Enums\WebsiteServicesEnum;
-use App\Filament\Resources\SeoCheckResource;
 use App\Filament\Resources\WebsiteResource\Pages\CreateWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\EditWebsite;
 use App\Filament\Resources\WebsiteResource\Pages\ListWebsites;
@@ -12,7 +11,6 @@ use App\Filament\Resources\WebsiteResource\RelationManagers\LogHistoryRelationMa
 use App\Filament\Resources\WebsiteResource\RelationManagers\NotificationSettingsRelationManager;
 use App\Filament\Resources\WebsiteResource\RelationManagers\OutboundLinksRelationManager;
 use App\Jobs\LogUptimeSslJob;
-use App\Jobs\SeoHealthCheckJob;
 use App\Jobs\WebsiteCheckOutboundLinkJob;
 use App\Mail\HealthStatusAlert;
 use App\Models\NotificationChannels;
@@ -24,7 +22,6 @@ use App\Models\SeoSchedule;
 use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
-use App\Services\RobotsSitemapService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
@@ -142,6 +139,48 @@ test('website list skips failure streak aggregation for healthy rows', function 
     expect($streakQueries)->toBe(0);
 });
 
+test('website list default render skips optional history averages and seo details', function () {
+    $user = $this->actingAsSuperAdmin();
+
+    $websites = Website::factory()->count(5)->create([
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    foreach ($websites as $website) {
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'speed' => 120,
+        ]);
+
+        SeoCheck::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'completed',
+        ]);
+    }
+
+    $sql = [];
+
+    \DB::listen(function ($query) use (&$sql): void {
+        $sql[] = $query->sql;
+    });
+
+    Livewire::test(ListWebsites::class)
+        ->assertSuccessful();
+
+    $joinedSql = implode("\n", $sql);
+    $seoQueries = array_filter(
+        $sql,
+        fn (string $query): bool => str_contains($query, 'seo_checks')
+    );
+
+    expect($joinedSql)
+        ->not->toContain('avg(');
+
+    expect($seoQueries)->toHaveCount(0);
+});
+
 test('website list failure evidence ignores newer manual runs and clears after scheduled recovery', function () {
     Carbon::setTestNow(Carbon::parse('2026-05-21 12:00:00'));
 
@@ -247,37 +286,6 @@ test('super admin can search websites', function () {
         ->searchTable('Test Site')
         ->assertCanSeeTableRecords([$website1])
         ->assertCanNotSeeTableRecords([$website2]);
-});
-
-test('website list redirects to new seo check after starting a crawl', function () {
-    Queue::fake();
-
-    $user = $this->actingAsSuperAdmin();
-    $website = Website::factory()->create([
-        'created_by' => $user->id,
-        'name' => 'Redirect crawl site',
-        'url' => 'https://redirect-crawl.example.com',
-    ]);
-
-    $robotsService = $this->mock(RobotsSitemapService::class);
-    $robotsService->shouldReceive('getCrawlableUrls')
-        ->once()
-        ->with($website->url)
-        ->andReturn([$website->url]);
-
-    $component = Livewire::test(ListWebsites::class)
-        ->callTableAction('run_seo_crawl', $website)
-        ->assertHasNoTableActionErrors();
-
-    $seoCheck = SeoCheck::where('website_id', $website->id)->sole();
-
-    $component->assertRedirect(SeoCheckResource::getUrl('view', [
-        'record' => $seoCheck,
-    ]));
-
-    expect($seoCheck->status)->toBe(SeoCheck::STATUS_PENDING);
-
-    Queue::assertPushed(SeoHealthCheckJob::class);
 });
 
 test('super admin can render create page', function () {

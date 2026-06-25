@@ -11,7 +11,6 @@ use App\Jobs\LogUptimeSslJob;
 use App\Models\Project;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
-use App\Services\SeoHealthCheckService;
 use App\Support\HealthStatusLabel;
 use App\Support\ScheduledFailureStreak;
 use App\Support\UptimeTransportError;
@@ -25,6 +24,7 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class WebsiteResource extends Resource
@@ -212,15 +212,7 @@ class WebsiteResource extends Resource
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->translateLabel()
-                    ->searchable()
-                    ->formatStateUsing(function ($state, Website $record) {
-                        $latestCheck = $record->latestSeoCheck;
-                        if ($latestCheck && in_array($latestCheck->status, ['running', 'pending'])) {
-                            return $state.' 🔄';
-                        }
-
-                        return $state;
-                    }),
+                    ->searchable(),
                 Tables\Columns\TextColumn::make('url')
                     ->translateLabel()
                     ->limit(50)
@@ -295,12 +287,14 @@ class WebsiteResource extends Resource
                     ->label('Avg Response (24h)')
                     ->translateLabel()
                     ->state(function (Website $record): string {
-                        $avg = $record->average_response_time;
+                        $avg = array_key_exists('average_response_time', $record->getAttributes())
+                            ? $record->average_response_time
+                            : $record->logHistoryLast24h()->avg('speed');
 
                         return $avg ? round($avg).'ms' : 'N/A';
                     })
-                    ->sortable()
-                    ->alignCenter(),
+                    ->alignCenter()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('user.name')
                     ->label('Created By')
                     ->translateLabel()
@@ -409,78 +403,6 @@ class WebsiteResource extends Resource
                     ->dateTimeInUserZone()
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
-                Tables\Columns\TextColumn::make('latest_seo_check.status')
-                    ->label('SEO Crawl Status')
-                    ->formatStateUsing(function ($state, $record) {
-                        $latestCheck = $record->latestSeoCheck;
-                        if (! $latestCheck) {
-                            return 'Not crawled';
-                        }
-
-                        $status = $latestCheck->status;
-                        $progress = $latestCheck->getProgressPercentage();
-
-                        if ($status === 'running') {
-                            return "Crawling ({$progress}%)";
-                        } elseif ($status === 'failed') {
-                            return 'Failed';
-                        } elseif ($status === 'completed') {
-                            return 'Completed';
-                        }
-
-                        return ucfirst($status);
-                    })
-                    ->badge()
-                    ->color(function ($state) {
-                        if (str_contains($state, 'Not crawled') || str_contains($state, 'Failed')) {
-                            return 'danger';
-                        }
-                        if (str_contains($state, 'Crawling') || str_contains($state, 'Pending')) {
-                            return 'warning';
-                        }
-                        if (str_contains($state, 'Completed')) {
-                            return 'success';
-                        }
-
-                        return 'gray';
-                    })
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('latest_seo_check.started_at')
-                    ->label('Last SEO Crawl')
-                    ->formatStateUsing(function ($state, $record): string {
-                        $latestCheck = $record->latestSeoCheck;
-                        if (! $latestCheck || ! $latestCheck->started_at) {
-                            return 'Never';
-                        }
-
-                        // Custom formatter (rather than ->sinceInUserZone()) is
-                        // needed because of the "Never" fallback when there is
-                        // no related SEO check. The viewer's timezone is not
-                        // applied here because diffForHumans() returns a
-                        // relative string ("5 minutes ago") that is
-                        // timezone-independent by definition.
-                        return $latestCheck->started_at->diffForHumans();
-                    })
-                    ->sortable(),
-                Tables\Columns\TextColumn::make('latest_seo_check.total_urls_crawled')
-                    ->label('URLs Crawled')
-                    ->formatStateUsing(function ($state, $record) {
-                        $latestCheck = $record->latestSeoCheck;
-                        if (! $latestCheck) {
-                            return '-';
-                        }
-
-                        $crawled = $latestCheck->total_urls_crawled;
-                        $total = $latestCheck->total_crawlable_urls;
-                        $status = $latestCheck->status;
-
-                        if ($status === 'running') {
-                            return "{$crawled}/{$total} (running...)";
-                        }
-
-                        return $total > 0 ? "{$crawled}/{$total}" : ($crawled ?: '-');
-                    })
-                    ->sortable(),
                 Tables\Columns\TextColumn::make('deleted_at')
                     ->translateLabel()
                     ->dateTimeInUserZone()
@@ -620,59 +542,6 @@ class WebsiteResource extends Resource
                             ->body('Checkybot will run this website check in the background and add the evidence to diagnostic history.')
                             ->success()
                             ->send();
-                    }),
-                \Filament\Actions\Action::make('view_seo_progress')
-                    ->label('View Progress')
-                    ->icon('heroicon-o-chart-bar')
-                    ->color('warning')
-                    ->url(function (Website $record) {
-                        $latestCheck = $record->latestSeoCheck;
-                        if ($latestCheck) {
-                            return "/admin/seo-checks/{$latestCheck->id}";
-                        }
-
-                        return null;
-                    })
-                    ->openUrlInNewTab()
-                    ->visible(function (Website $record) {
-                        $latestCheck = $record->latestSeoCheck;
-
-                        return $latestCheck && in_array($latestCheck->status, ['running', 'pending']);
-                    }),
-                \Filament\Actions\Action::make('run_seo_crawl')
-                    ->label('Run SEO Check')
-                    ->icon('heroicon-o-magnifying-glass')
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->modalHeading('Start SEO Health Check')
-                    ->modalDescription('This will start a comprehensive SEO health check for this website. The process may take several minutes depending on the site size. The crawler will respect robots.txt and use sitemap.xml if available.')
-                    ->action(function (Website $record, \Filament\Actions\Action $action) {
-                        try {
-                            $seoService = app(SeoHealthCheckService::class);
-                            $seoCheck = $seoService->startManualCheck($record);
-
-                            Notification::make()
-                                ->title('SEO Check Started')
-                                ->body("SEO health check has been started for {$record->name}. You can monitor progress in real-time.")
-                                ->success()
-                                ->send();
-
-                            $action->successRedirectUrl(SeoCheckResource::getUrl('view', [
-                                'record' => $seoCheck,
-                            ]));
-                        } catch (\Exception $e) {
-                            Notification::make()
-                                ->title('Error Starting SEO Check')
-                                ->body('Failed to start SEO check: '.$e->getMessage())
-                                ->danger()
-                                ->send();
-                        }
-                    })
-                    ->visible(function (Website $record) {
-                        $latestCheck = $record->latestSeoCheck;
-
-                        // Show if no check exists or if the latest check is not running/pending
-                        return ! $latestCheck || ! in_array($latestCheck->status, ['running', 'pending']);
                     }),
             ])
             ->bulkActions([
@@ -956,6 +825,25 @@ class WebsiteResource extends Resource
 
     protected static function latestScheduledFailure(Website $record): ?WebsiteLogHistory
     {
+        if (array_key_exists('latest_scheduled_log_id', $record->getAttributes())) {
+            if (! in_array($record->latest_scheduled_status, ['warning', 'danger'], true)) {
+                return null;
+            }
+
+            return (new WebsiteLogHistory)->forceFill([
+                'id' => $record->latest_scheduled_log_id,
+                'website_id' => $record->id,
+                'status' => $record->latest_scheduled_status,
+                'summary' => $record->latest_scheduled_summary,
+                'transport_error_type' => $record->latest_scheduled_transport_error_type,
+                'http_status_code' => $record->latest_scheduled_http_status_code,
+                'created_at' => $record->latest_scheduled_created_at !== null
+                    ? Carbon::parse($record->latest_scheduled_created_at)
+                    : null,
+                'is_on_demand' => (bool) $record->latest_scheduled_is_on_demand,
+            ]);
+        }
+
         $latestScheduledLog = $record->latestScheduledLogHistory;
 
         if (! in_array($latestScheduledLog?->status, ['warning', 'danger'], true)) {
