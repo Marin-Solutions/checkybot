@@ -38,6 +38,11 @@ trait HasUnhealthyNavigationBadge
         return $query;
     }
 
+    protected static function navigationBadgeBaseQuery(): Builder
+    {
+        return static::getEloquentQuery();
+    }
+
     public static function getNavigationBadge(): ?string
     {
         $counts = static::resolveUnhealthyNavigationBadgeCounts();
@@ -67,7 +72,7 @@ trait HasUnhealthyNavigationBadge
             return app($cacheKey);
         }
 
-        $base = static::getEloquentQuery();
+        $base = static::navigationBadgeBaseQuery();
 
         /**
          * Resources that expose a TrashedFilter strip SoftDeletingScope from

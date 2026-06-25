@@ -8,6 +8,7 @@ use App\Models\Website;
 use Filament\Actions;
 use Filament\Resources\Pages\ListRecords;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\SoftDeletingScope;
 
 class ListWebsites extends ListRecords
 {
@@ -20,6 +21,26 @@ class ListWebsites extends ListRecords
         return [
             Actions\CreateAction::make(),
         ];
+    }
+
+    protected function getTableQuery(): Builder
+    {
+        return Website::query()
+            ->withAvg('logHistoryLast24h as average_response_time', 'speed')
+            ->withCount([
+                'globalNotifications as global_notifications_count',
+                'individualNotifications as individual_notifications_count',
+            ])
+            ->with([
+                'user:id,name',
+                'latestScheduledLogHistory',
+                'latestDiagnosticLogHistory',
+                'latestSeoCheck',
+            ])
+            ->where('created_by', auth()->id())
+            ->withoutGlobalScopes([
+                SoftDeletingScope::class,
+            ]);
     }
 
     protected function disabledColumn(): string

@@ -918,6 +918,11 @@ class WebsiteResource extends Resource
         });
     }
 
+    protected static function navigationBadgeBaseQuery(): Builder
+    {
+        return Website::query()->where('created_by', auth()->id());
+    }
+
     public static function getModelLabel(): string
     {
         return __('Website');

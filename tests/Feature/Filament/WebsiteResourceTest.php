@@ -2661,7 +2661,11 @@ test('website navigation badge caches counts between badge and color lookups', f
     \App\Filament\Resources\WebsiteResource::flushUnhealthyNavigationBadgeCache();
 
     $queries = 0;
-    \DB::listen(function ($query) use (&$queries) {
+    $sql = [];
+
+    \DB::listen(function ($query) use (&$queries, &$sql) {
+        $sql[] = $query->sql;
+
         if (str_contains($query->sql, 'websites')) {
             $queries++;
         }
@@ -2673,6 +2677,7 @@ test('website navigation badge caches counts between badge and color lookups', f
     // Exactly 2 website queries: count(*) for total, and count(*) with whereIn
     // for unhealthy. The color lookup reuses the cached result.
     expect($queries)->toBe(2);
+    expect(implode("\n", $sql))->not->toContain('website_log_history');
 });
 
 test('website navigation badge excludes soft-deleted records', function () {

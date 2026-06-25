@@ -67,6 +67,11 @@ class MonitorApisResource extends Resource
         return $query->where('is_enabled', true);
     }
 
+    protected static function navigationBadgeBaseQuery(): Builder
+    {
+        return MonitorApis::query()->where('created_by', auth()->id());
+    }
+
     public static function canRunDiagnostic(MonitorApis $record): bool
     {
         return ! $record->trashed() && (bool) $record->is_enabled;

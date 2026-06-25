@@ -43,6 +43,11 @@ class ProjectComponentResource extends Resource
         return $query->where('is_archived', false);
     }
 
+    protected static function navigationBadgeBaseQuery(): Builder
+    {
+        return ProjectComponent::query()->where('created_by', auth()->id());
+    }
+
     public static function form(Schema $schema): Schema
     {
         return ProjectComponentForm::configure($schema);
