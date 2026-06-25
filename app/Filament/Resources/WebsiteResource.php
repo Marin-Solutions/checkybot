@@ -24,7 +24,6 @@ use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 
 class WebsiteResource extends Resource
@@ -825,25 +824,6 @@ class WebsiteResource extends Resource
 
     protected static function latestScheduledFailure(Website $record): ?WebsiteLogHistory
     {
-        if (array_key_exists('latest_scheduled_log_id', $record->getAttributes())) {
-            if (! in_array($record->latest_scheduled_status, ['warning', 'danger'], true)) {
-                return null;
-            }
-
-            return (new WebsiteLogHistory)->forceFill([
-                'id' => $record->latest_scheduled_log_id,
-                'website_id' => $record->id,
-                'status' => $record->latest_scheduled_status,
-                'summary' => $record->latest_scheduled_summary,
-                'transport_error_type' => $record->latest_scheduled_transport_error_type,
-                'http_status_code' => $record->latest_scheduled_http_status_code,
-                'created_at' => $record->latest_scheduled_created_at !== null
-                    ? Carbon::parse($record->latest_scheduled_created_at)
-                    : null,
-                'is_on_demand' => (bool) $record->latest_scheduled_is_on_demand,
-            ]);
-        }
-
         $latestScheduledLog = $record->latestScheduledLogHistory;
 
         if (! in_array($latestScheduledLog?->status, ['warning', 'danger'], true)) {
