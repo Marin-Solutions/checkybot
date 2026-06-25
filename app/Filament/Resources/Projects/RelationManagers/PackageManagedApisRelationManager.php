@@ -83,7 +83,21 @@ class PackageManagedApisRelationManager extends RelationManager
                     ->default('-'),
                 TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (MonitorApis $record): ?string => ScheduledFailureStreak::displayForApi($record))
+                    ->state(function (MonitorApis $record): ?string {
+                        $latestScheduledResult = $record->latestScheduledResult;
+
+                        if (
+                            $latestScheduledResult === null
+                            || (
+                                ! in_array($latestScheduledResult->status, ['warning', 'danger'], true)
+                                && $latestScheduledResult->is_success !== false
+                            )
+                        ) {
+                            return null;
+                        }
+
+                        return ScheduledFailureStreak::displayForApi($record);
+                    })
                     ->placeholder('-')
                     ->color('danger')
                     ->wrap(),

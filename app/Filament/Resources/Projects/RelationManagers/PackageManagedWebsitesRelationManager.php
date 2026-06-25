@@ -92,7 +92,23 @@ class PackageManagedWebsitesRelationManager extends RelationManager
                     ->default('-'),
                 TextColumn::make('scheduled_failure_streak')
                     ->label('Failure Streak')
-                    ->state(fn (Website $record): ?string => ScheduledFailureStreak::displayForWebsite($record))
+                    ->state(function (Website $record): ?string {
+                        $latestScheduledResult = $record->latestScheduledLogHistory;
+                        $httpStatus = (int) ($latestScheduledResult?->http_status_code ?? 200);
+
+                        if (
+                            $latestScheduledResult === null
+                            || (
+                                ! in_array($latestScheduledResult->status, ['warning', 'danger'], true)
+                                && $httpStatus !== 0
+                                && $httpStatus < 400
+                            )
+                        ) {
+                            return null;
+                        }
+
+                        return ScheduledFailureStreak::displayForWebsite($record);
+                    })
                     ->placeholder('-')
                     ->color('danger')
                     ->wrap(),

@@ -28,15 +28,28 @@ class ProjectComponentsTable
     public static function configure(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn (Builder $query): Builder => $query->with([
-                'activeMonitorApis:id,project_component_id,current_status',
-                'activeWebsites:id,project_component_id,current_status,uptime_check,ssl_check',
-            ])->withCount([
-                'activeMonitorApis as active_failing_monitor_apis_count' => fn (Builder $query): Builder => $query
-                    ->whereIn('current_status', self::FAILING_CHILD_STATUSES),
-                'activeWebsites as active_failing_websites_count' => fn (Builder $query): Builder => $query
-                    ->whereIn('current_status', self::FAILING_CHILD_STATUSES),
-            ]))
+            ->modifyQueryUsing(fn (Builder $query): Builder => $query
+                ->with(['project:id,name'])
+                ->withCount([
+                    'activeMonitorApis as active_monitor_apis_count',
+                    'activeWebsites as active_websites_count',
+                    'activeMonitorApis as active_danger_monitor_apis_count' => fn (Builder $query): Builder => $query
+                        ->where('current_status', 'danger'),
+                    'activeWebsites as active_danger_websites_count' => fn (Builder $query): Builder => $query
+                        ->where('current_status', 'danger'),
+                    'activeMonitorApis as active_warning_monitor_apis_count' => fn (Builder $query): Builder => $query
+                        ->where('current_status', 'warning'),
+                    'activeWebsites as active_warning_websites_count' => fn (Builder $query): Builder => $query
+                        ->where('current_status', 'warning'),
+                    'activeMonitorApis as active_healthy_monitor_apis_count' => fn (Builder $query): Builder => $query
+                        ->where('current_status', 'healthy'),
+                    'activeWebsites as active_healthy_websites_count' => fn (Builder $query): Builder => $query
+                        ->where('current_status', 'healthy'),
+                    'activeMonitorApis as active_failing_monitor_apis_count' => fn (Builder $query): Builder => $query
+                        ->whereIn('current_status', self::FAILING_CHILD_STATUSES),
+                    'activeWebsites as active_failing_websites_count' => fn (Builder $query): Builder => $query
+                        ->whereIn('current_status', self::FAILING_CHILD_STATUSES),
+                ]))
             ->columns([
                 TextColumn::make('name')
                     ->searchable(),
@@ -44,7 +57,7 @@ class ProjectComponentsTable
                     ->label('Application')
                     ->searchable(),
                 TextColumn::make('current_status')
-                    ->state(fn (ProjectComponent $record): string => $record->derivedCurrentStatus())
+                    ->state(fn (ProjectComponent $record): string => self::derivedCurrentStatus($record))
                     ->badge()
                     ->formatStateUsing(fn (?string $state): string => HealthStatusLabel::format($state))
                     ->color(fn (?string $state): string => match ($state) {
@@ -69,7 +82,7 @@ class ProjectComponentsTable
                     ->color(fn (int $state): string => $state > 0 ? 'danger' : 'gray'),
                 TextColumn::make('delivery_state')
                     ->label('Delivery State')
-                    ->state(fn (ProjectComponent $record): string => ProjectComponentDeliveryState::label($record))
+                    ->state(fn (ProjectComponent $record): string => self::deliveryStateLabel($record))
                     ->badge()
                     ->color(fn (string $state): string => ProjectComponentDeliveryState::color($state)),
                 TextColumn::make('silenced_until')
@@ -144,6 +157,68 @@ class ProjectComponentsTable
         return $record->activeWebsites()
             ->whereIn('current_status', self::FAILING_CHILD_STATUSES)
             ->count();
+    }
+
+    private static function derivedCurrentStatus(ProjectComponent $record): string
+    {
+        if (! self::hasStatusRollupCounts($record)) {
+            return $record->derivedCurrentStatus();
+        }
+
+        if ((bool) $record->is_archived) {
+            return 'unknown';
+        }
+
+        $dangerCount = self::countAttribute($record, 'active_danger_monitor_apis_count')
+            + self::countAttribute($record, 'active_danger_websites_count');
+
+        if ($dangerCount > 0) {
+            return 'danger';
+        }
+
+        $warningCount = self::countAttribute($record, 'active_warning_monitor_apis_count')
+            + self::countAttribute($record, 'active_warning_websites_count');
+
+        if ($warningCount > 0) {
+            return 'warning';
+        }
+
+        $activeCount = self::countAttribute($record, 'active_monitor_apis_count')
+            + self::countAttribute($record, 'active_websites_count');
+
+        if ($activeCount === 0) {
+            if ($record->source !== 'package' && in_array($record->current_status, ['healthy', 'warning', 'danger'], true)) {
+                return $record->current_status;
+            }
+
+            return 'pending';
+        }
+
+        $healthyCount = self::countAttribute($record, 'active_healthy_monitor_apis_count')
+            + self::countAttribute($record, 'active_healthy_websites_count');
+
+        return $healthyCount === $activeCount ? 'healthy' : 'pending';
+    }
+
+    private static function deliveryStateLabel(ProjectComponent $record): string
+    {
+        return ProjectComponentDeliveryState::options()[match (true) {
+            $record->is_archived => ProjectComponentDeliveryState::ARCHIVED,
+            $record->isSilenced() => ProjectComponentDeliveryState::SNOOZED,
+            self::derivedCurrentStatus($record) === 'pending' => ProjectComponentDeliveryState::PENDING,
+            default => ProjectComponentDeliveryState::ACTIVE,
+        }];
+    }
+
+    private static function countAttribute(ProjectComponent $record, string $attribute): int
+    {
+        return (int) ($record->getAttribute($attribute) ?? 0);
+    }
+
+    private static function hasStatusRollupCounts(ProjectComponent $record): bool
+    {
+        return array_key_exists('active_monitor_apis_count', $record->getAttributes())
+            && array_key_exists('active_websites_count', $record->getAttributes());
     }
 
     public static function recordActions(bool $includeEdit = true): array

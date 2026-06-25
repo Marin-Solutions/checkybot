@@ -2802,6 +2802,98 @@ test('component tables show active failing api and website child counts', functi
         ->assertTableColumnStateSet('active_failing_websites_count', 1, $component);
 });
 
+test('component list default render derives status from counts without loading child rows', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $component = ProjectComponent::factory()->create([
+        'project_id' => $project->id,
+        'created_by' => $user->id,
+        'current_status' => 'healthy',
+    ]);
+
+    MonitorApis::factory()->count(3)->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    Website::factory()->count(2)->create([
+        'project_id' => $project->id,
+        'project_component_id' => $component->id,
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+
+    $sql = [];
+
+    DB::listen(function ($query) use (&$sql): void {
+        $sql[] = $query->sql;
+    });
+
+    Livewire::test(ListProjectComponents::class)
+        ->assertSuccessful()
+        ->assertSee('Healthy');
+
+    $joinedSql = implode("\n", $sql);
+
+    expect($joinedSql)
+        ->not->toContain('project_component_id" in')
+        ->not->toContain('project_component_id` in');
+});
+
+test('package-managed relation managers skip failure streak aggregates for healthy latest checks', function () {
+    $user = $this->actingAsSuperAdmin();
+    $project = Project::factory()->create(['created_by' => $user->id]);
+
+    $website = Website::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'uptime_check' => true,
+        'ssl_check' => false,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'healthy',
+        'http_status_code' => 200,
+    ]);
+
+    $api = MonitorApis::factory()->create([
+        'project_id' => $project->id,
+        'source' => 'package',
+        'is_enabled' => true,
+        'current_status' => 'healthy',
+        'created_by' => $user->id,
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $api->id,
+    ]);
+
+    $sql = [];
+
+    DB::listen(function ($query) use (&$sql): void {
+        $sql[] = $query->sql;
+    });
+
+    Livewire::test(PackageManagedWebsitesRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])->assertSuccessful();
+
+    Livewire::test(PackageManagedApisRelationManager::class, [
+        'ownerRecord' => $project,
+        'pageClass' => ViewProject::class,
+    ])->assertSuccessful();
+
+    expect(implode("\n", $sql))->not->toContain('streak_count');
+});
+
 test('package-managed child relation managers filter by component', function () {
     $user = $this->actingAsSuperAdmin();
     $project = Project::factory()->create(['created_by' => $user->id]);
