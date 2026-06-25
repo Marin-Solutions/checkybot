@@ -176,7 +176,8 @@ test('website list default render skips optional history averages and seo detail
     );
 
     expect($joinedSql)
-        ->not->toContain('avg(');
+        ->not->toContain('avg(')
+        ->not->toContain('where exists');
 
     expect($seoQueries)->toHaveCount(0);
 });
@@ -2881,11 +2882,12 @@ test('website list tab badges report accurate per-tab counts', function () {
 
     $page = Livewire::test(ListWebsites::class)->instance();
 
-    expect(invade($page)->resolveTabCounts())->toMatchArray([
+    $counts = invade($page)->resolveTabCounts();
+
+    expect($counts)->toMatchArray([
         'failing' => 3,
         'disabled' => 2,
-        'recently_recovered' => 1,
-    ]);
+    ])->not->toHaveKey('recently_recovered');
 });
 
 test('website list tab badges scope counts to the current user', function () {

@@ -103,7 +103,7 @@ trait HasHealthStatusTabs
                 ->icon('heroicon-o-arrow-path')
                 ->badgeColor('success')
                 ->modifyQueryUsing(fn (Builder $query): Builder => $this->scopeRecentlyRecovered($query))
-                ->badge(fn (): ?int => $this->getTabCount('recently_recovered')),
+                ->badge(fn (): ?int => $this->countsRecentlyRecoveredTab() ? $this->getTabCount('recently_recovered') : null),
         ];
     }
 
@@ -144,6 +144,11 @@ trait HasHealthStatusTabs
         return $this->resolveTabCounts()[$key] ?? null;
     }
 
+    protected function countsRecentlyRecoveredTab(): bool
+    {
+        return true;
+    }
+
     /**
      * @return array<string, int>
      */
@@ -155,10 +160,15 @@ trait HasHealthStatusTabs
 
         $base = $this->tabCountBaseQuery();
 
-        return $this->cachedTabCounts = [
+        $counts = [
             'failing' => $this->scopeFailing(clone $base)->count(),
             'disabled' => $this->scopeDisabled(clone $base)->count(),
-            'recently_recovered' => $this->scopeRecentlyRecovered(clone $base)->count(),
         ];
+
+        if ($this->countsRecentlyRecoveredTab()) {
+            $counts['recently_recovered'] = $this->scopeRecentlyRecovered(clone $base)->count();
+        }
+
+        return $this->cachedTabCounts = $counts;
     }
 }

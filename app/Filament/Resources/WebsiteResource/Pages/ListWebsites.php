@@ -74,6 +74,11 @@ class ListWebsites extends ListRecords
         return 'websites';
     }
 
+    protected function countsRecentlyRecoveredTab(): bool
+    {
+        return false;
+    }
+
     /**
      * Lean count query: scoped to the current user, soft-delete aware, and
      * free of the eager loads / aggregates that {@see WebsiteResource::getEloquentQuery()}
