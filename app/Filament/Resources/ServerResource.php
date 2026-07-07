@@ -96,7 +96,9 @@ class ServerResource extends Resource
                     ->sortable(),
                 Tables\Columns\TextColumn::make('ip')
                     ->label('IP')
-                    ->searchable(),
+                    ->searchable()
+                    ->copyable()
+                    ->copyMessage('IP copied to clipboard'),
                 ProgressColumn::make('disk_usage')
                     ->label('Disk Usage')
                     ->translateLabel()
