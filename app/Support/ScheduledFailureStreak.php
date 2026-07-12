@@ -7,8 +7,9 @@ use App\Models\MonitorApis;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Collection;
+use LogicException;
 
 class ScheduledFailureStreak
 {
@@ -72,6 +73,10 @@ class ScheduledFailureStreak
     {
         if ($monitors->isEmpty()) {
             return [];
+        }
+
+        if ($monitors->contains(fn (MonitorApis $monitor): bool => ! $monitor->relationLoaded('latestScheduledNonFailureResult'))) {
+            throw new LogicException('API failure streak boundaries must be eager loaded.');
         }
 
         $query = MonitorApiResult::query()

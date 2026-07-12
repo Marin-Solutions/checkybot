@@ -23,6 +23,7 @@ use App\Support\ProjectComponentDeliveryState;
 use App\Support\ScheduledFailureStreak;
 use Illuminate\Bus\Batch;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Bus;
@@ -228,7 +229,16 @@ class CheckybotControlService
         $project = $this->findProject($user, $projectKey);
 
         $apiChecks = $project->packageManagedApis()
-            ->with(['assertions', 'latestResult', 'latestDiagnosticResult', 'latestScheduledNonFailureResult'])
+            ->with([
+                'assertions',
+                'latestResult',
+                'latestDiagnosticResult',
+                'latestScheduledNonFailureResult' => fn (HasOne $query): HasOne => $query->select([
+                    'monitor_api_results.id',
+                    'monitor_api_results.monitor_api_id',
+                    'monitor_api_results.created_at',
+                ]),
+            ])
             ->orderBy('package_name')
             ->get();
         $apiFailureStreaks = ScheduledFailureStreak::apiPayloads($apiChecks);
