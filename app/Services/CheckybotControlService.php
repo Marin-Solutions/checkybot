@@ -1014,7 +1014,18 @@ class CheckybotControlService
     private function currentApiIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = MonitorApis::query()
-            ->with(['project', 'assertions', 'latestResult', 'latestScheduledResult', 'latestDiagnosticResult'])
+            ->with([
+                'project',
+                'assertions',
+                'latestResult',
+                'latestScheduledResult',
+                'latestDiagnosticResult',
+                'latestScheduledNonFailureResult' => fn (HasOne $query): HasOne => $query->select([
+                    'monitor_api_results.id',
+                    'monitor_api_results.monitor_api_id',
+                    'monitor_api_results.created_at',
+                ]),
+            ])
             ->where('created_by', $user->id)
             ->where('is_enabled', true)
             ->whereIn('current_status', $statuses);
@@ -1023,12 +1034,15 @@ class CheckybotControlService
             $query->where('project_id', $project->id);
         }
 
-        return $query
+        $apiChecks = $query
             ->orderByRaw("CASE current_status WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'pending' THEN 2 WHEN 'unknown' THEN 3 ELSE 4 END")
             ->latest('updated_at')
             ->when($limit !== null, fn (Builder $query): Builder => $query->limit($limit))
-            ->get()
-            ->map(function (MonitorApis $check): array {
+            ->get();
+        $apiFailureStreaks = ScheduledFailureStreak::apiPayloads($apiChecks);
+
+        return $apiChecks
+            ->map(function (MonitorApis $check) use ($apiFailureStreaks): array {
                 $scheduledResult = $check->relationLoaded('latestScheduledResult')
                     ? $check->latestScheduledResult
                     : $check->latestScheduledResult()->first();
@@ -1038,7 +1052,7 @@ class CheckybotControlService
 
                 return $this->currentIssuePayload(
                     $check->project,
-                    $this->checkPayload($check),
+                    $this->checkPayload($check, $apiFailureStreaks[$check->id]),
                     $this->currentApiIssueCause($check),
                     $this->apiManualScheduledDriftPayload($check, $scheduledResult, $diagnosticResult),
                 );
