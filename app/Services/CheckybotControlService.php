@@ -228,13 +228,16 @@ class CheckybotControlService
         $project = $this->findProject($user, $projectKey);
 
         $apiChecks = $project->packageManagedApis()
-            ->with(['assertions', 'latestResult', 'latestDiagnosticResult'])
+            ->with(['assertions', 'latestResult', 'latestDiagnosticResult', 'latestScheduledNonFailureResult'])
             ->orderBy('package_name')
-            ->get()
-            ->map(function (MonitorApis $check) use ($project): array {
+            ->get();
+        $apiFailureStreaks = ScheduledFailureStreak::apiPayloads($apiChecks);
+
+        $apiChecks = $apiChecks
+            ->map(function (MonitorApis $check) use ($project, $apiFailureStreaks): array {
                 $check->setRelation('project', $project);
 
-                return $this->checkPayload($check);
+                return $this->checkPayload($check, $apiFailureStreaks[$check->id]);
             });
 
         $websiteChecks = $project->packageManagedWebsites()
@@ -1962,7 +1965,7 @@ class CheckybotControlService
     /**
      * @return array<string, mixed>
      */
-    private function checkPayload(MonitorApis $check): array
+    private function checkPayload(MonitorApis $check, ?array $scheduledFailureStreak = null): array
     {
         $latestResult = $check->relationLoaded('latestResult') ? $check->latestResult : $check->results()->latest()->first();
         $latestDiagnosticResult = $check->relationLoaded('latestDiagnosticResult')
@@ -1995,7 +1998,7 @@ class CheckybotControlService
             'diagnostic_queued_at' => $check->diagnostic_queued_at?->toISOString(),
             'status' => $check->current_status ?? 'unknown',
             'status_summary' => $check->status_summary,
-            'scheduled_failure_streak' => ScheduledFailureStreak::apiPayload($check),
+            'scheduled_failure_streak' => $scheduledFailureStreak ?? ScheduledFailureStreak::apiPayload($check),
             'last_synced_at' => $check->last_synced_at?->toISOString(),
             'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'headers' => ApiMonitorEvidenceRedactor::redactHeaders($check->headers),

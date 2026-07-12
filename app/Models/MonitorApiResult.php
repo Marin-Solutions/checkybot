@@ -77,6 +77,17 @@ class MonitorApiResult extends Model
         return $query->where('is_on_demand', false);
     }
 
+    public function scopeNonFailure(Builder $query): Builder
+    {
+        return $query
+            ->where(function (Builder $query): void {
+                $query->whereNull('status')->orWhereNotIn('status', ['warning', 'danger']);
+            })
+            ->where(function (Builder $query): void {
+                $query->whereNull('is_success')->orWhere('is_success', '!=', false);
+            });
+    }
+
     public static function recordResult(
         MonitorApis $api,
         array $testResult,
