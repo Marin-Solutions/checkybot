@@ -179,6 +179,16 @@ class MonitorApis extends Model
         );
     }
 
+    public function latestScheduledNonFailureResult(): HasOne
+    {
+        return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->ofMany(
+            ['created_at' => 'max', 'id' => 'max'],
+            fn ($query) => $query
+                ->scheduled()
+                ->nonFailure(),
+        );
+    }
+
     public function latestDiagnosticResult(): HasOne
     {
         return $this->hasOne(MonitorApiResult::class, 'monitor_api_id')->ofMany(

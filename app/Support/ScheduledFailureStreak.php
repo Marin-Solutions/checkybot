@@ -7,7 +7,9 @@ use App\Models\MonitorApis;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Carbon;
+use LogicException;
 
 class ScheduledFailureStreak
 {
@@ -61,6 +63,60 @@ class ScheduledFailureStreak
     public static function apiPayload(MonitorApis $monitor): array
     {
         return self::payload(self::forApi($monitor));
+    }
+
+    /**
+     * @param  Collection<int, MonitorApis>  $monitors
+     * @return array<int, array{count: int, first_failed_at: ?string}>
+     */
+    public static function apiPayloads(Collection $monitors): array
+    {
+        if ($monitors->isEmpty()) {
+            return [];
+        }
+
+        if ($monitors->contains(fn (MonitorApis $monitor): bool => ! $monitor->relationLoaded('latestScheduledNonFailureResult'))) {
+            throw new LogicException('API failure streak boundaries must be eager loaded.');
+        }
+
+        $query = MonitorApiResult::query()
+            ->whereIn('monitor_api_id', $monitors->modelKeys())
+            ->where('is_on_demand', false);
+
+        $query->where(function (Builder $query) use ($monitors): void {
+            foreach ($monitors as $monitor) {
+                $boundary = $monitor->latestScheduledNonFailureResult;
+
+                $query->orWhere(function (Builder $query) use ($monitor, $boundary): void {
+                    $query->where('monitor_api_id', $monitor->id);
+
+                    if ($boundary instanceof MonitorApiResult) {
+                        self::afterBoundary($query, $boundary);
+                    }
+                });
+            }
+        });
+
+        $streaks = $query
+            ->select('monitor_api_id')
+            ->selectRaw('COUNT(*) as streak_count')
+            ->selectRaw('MIN(created_at) as first_failed_at')
+            ->groupBy('monitor_api_id')
+            ->get()
+            ->keyBy('monitor_api_id');
+
+        return $monitors->mapWithKeys(function (MonitorApis $monitor) use ($streaks): array {
+            $aggregate = $streaks->get($monitor->id);
+
+            return [
+                $monitor->id => [
+                    'count' => (int) ($aggregate?->streak_count ?? 0),
+                    'first_failed_at' => filled($aggregate?->first_failed_at)
+                        ? Carbon::parse($aggregate->first_failed_at)->toISOString()
+                        : null,
+                ],
+            ];
+        })->all();
     }
 
     /**
@@ -149,15 +205,7 @@ class ScheduledFailureStreak
     private static function aggregateAfterBoundary(Builder $query, MonitorApiResult|WebsiteLogHistory|null $boundary): array
     {
         if ($boundary instanceof MonitorApiResult || $boundary instanceof WebsiteLogHistory) {
-            $query->where(function (Builder $query) use ($boundary): void {
-                $query
-                    ->where('created_at', '>', $boundary->created_at)
-                    ->orWhere(function (Builder $query) use ($boundary): void {
-                        $query
-                            ->where('created_at', $boundary->created_at)
-                            ->where('id', '>', $boundary->id);
-                    });
-            });
+            self::afterBoundary($query, $boundary);
         }
 
         $aggregate = $query
@@ -175,17 +223,22 @@ class ScheduledFailureStreak
 
     private static function whereApiNonFailure(Builder $query): Builder
     {
-        return $query
-            ->where(function (Builder $query): void {
-                $query
-                    ->whereNull('status')
-                    ->orWhereNotIn('status', ['warning', 'danger']);
-            })
-            ->where(function (Builder $query): void {
-                $query
-                    ->whereNull('is_success')
-                    ->orWhere('is_success', '!=', false);
-            });
+        return $query->nonFailure();
+    }
+
+    private static function afterBoundary(
+        Builder $query,
+        MonitorApiResult|WebsiteLogHistory $boundary,
+    ): void {
+        $query->where(function (Builder $query) use ($boundary): void {
+            $query
+                ->where('created_at', '>', $boundary->created_at)
+                ->orWhere(function (Builder $query) use ($boundary): void {
+                    $query
+                        ->where('created_at', $boundary->created_at)
+                        ->where('id', '>', $boundary->id);
+                });
+        });
     }
 
     private static function whereWebsiteNonFailure(Builder $query): Builder
