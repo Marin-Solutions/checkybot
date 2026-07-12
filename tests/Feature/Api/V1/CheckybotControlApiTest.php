@@ -3045,6 +3045,92 @@ test('mcp list checks resolves api failure streaks with constant result queries'
     $firstResponse->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.count', 1);
 });
 
+test('mcp current issues resolves api failure streaks with constant result queries', function () {
+    $createMonitor = function (string $key): void {
+        $monitor = MonitorApis::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'package_name' => $key,
+            'title' => str($key)->headline(),
+            'current_status' => 'danger',
+            'is_enabled' => true,
+        ]);
+        $boundaryAt = now()->subMinute();
+
+        MonitorApiResult::factory()->successful()->create([
+            'monitor_api_id' => $monitor->id,
+            'created_at' => now()->subMinutes(3),
+        ]);
+        MonitorApiResult::factory()->failed()->onDemand()->create([
+            'monitor_api_id' => $monitor->id,
+            'created_at' => now()->subMinutes(2),
+        ]);
+        MonitorApiResult::factory()->create([
+            'monitor_api_id' => $monitor->id,
+            'is_success' => true,
+            'status' => null,
+            'summary' => "{$key} eligible boundary.",
+            'created_at' => $boundaryAt,
+        ]);
+        MonitorApiResult::factory()->failed()->create([
+            'monitor_api_id' => $monitor->id,
+            'summary' => "{$key} scheduled check failed.",
+            'created_at' => $boundaryAt,
+        ]);
+    };
+
+    $callCurrentIssues = fn () => $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 47,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'type' => 'api',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonMissingPath('error');
+
+    $resultQueries = [];
+    DB::listen(function ($query) use (&$resultQueries): void {
+        $sql = strtolower($query->sql);
+
+        if (str_starts_with($sql, 'select') && str_contains($sql, 'monitor_api_results')) {
+            $resultQueries[] = $sql;
+        }
+    });
+
+    $createMonitor('api-one');
+    $firstResponse = $callCurrentIssues();
+    $singleMonitorQueryCount = count($resultQueries);
+
+    $resultQueries = [];
+    $createMonitor('api-two');
+    $createMonitor('api-three');
+    $createMonitor('api-four');
+    $multipleResponse = $callCurrentIssues();
+
+    expect(count($resultQueries))->toBe($singleMonitorQueryCount)
+        ->and(collect($resultQueries)->contains(fn (string $sql): bool => str_contains($sql, 'limit 1')))->toBeFalse();
+
+    $issues = collect($multipleResponse->json('result.structuredContent'))->keyBy('check.key');
+
+    foreach (['api-one', 'api-two', 'api-three', 'api-four'] as $key) {
+        expect($issues[$key]['check']['latest_result']['summary'])->toBe("{$key} scheduled check failed.")
+            ->and($issues[$key]['check']['scheduled_failure_streak'])->toMatchArray([
+                'count' => 1,
+                'first_failed_at' => $issues[$key]['check']['latest_result']['checked_at'],
+            ]);
+    }
+
+    $firstResponse->assertJsonPath('result.structuredContent.0.check.scheduled_failure_streak.count', 1);
+});
+
 test('mcp disable check accepts type to resolve ambiguous check keys', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
