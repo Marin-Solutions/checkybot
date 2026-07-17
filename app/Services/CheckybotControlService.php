@@ -1104,12 +1104,8 @@ class CheckybotControlService
         $websiteFailureStreaks = ScheduledFailureStreak::websitePayloads($websiteChecks);
 
         return $websiteChecks->map(function (Website $website) use ($websiteFailureStreaks): array {
-            $scheduledResult = $website->relationLoaded('latestScheduledLogHistory')
-                ? $website->latestScheduledLogHistory
-                : $website->latestScheduledLogHistory()->first();
-            $diagnosticResult = $website->relationLoaded('latestDiagnosticLogHistory')
-                ? $website->latestDiagnosticLogHistory
-                : $website->latestDiagnosticLogHistory()->first();
+            $scheduledResult = $website->latestScheduledLogHistory;
+            $diagnosticResult = $website->latestDiagnosticLogHistory;
 
             return $this->currentIssuePayload(
                 $website->project,
@@ -1434,7 +1430,7 @@ class CheckybotControlService
 
     private function currentWebsiteIssueCause(Website $website): ?string
     {
-        $result = $website->relationLoaded('latestLogHistory') ? $website->latestLogHistory : $website->latestLogHistory()->first();
+        $result = $website->latestLogHistory;
 
         if ($this->isStaleSetupIssue($website->getRawOriginal('stale_at'), $website->status_summary)) {
             return 'stale_setup';
