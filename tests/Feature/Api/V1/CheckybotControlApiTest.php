@@ -3340,6 +3340,58 @@ test('mcp current issues resolves website failure streaks with constant history 
     expect($firstResponse->json('result.structuredContent.0.check.scheduled_failure_streak.count'))->toBe(2);
 });
 
+test('mcp list checks uses the newest eligible scheduled history when timestamps tie', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'tied-website',
+        'current_status' => 'danger',
+    ]);
+    $boundaryAt = now()->subMinutes(4);
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => null,
+        'http_status_code' => null,
+        'created_at' => $boundaryAt,
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => null,
+        'http_status_code' => null,
+        'created_at' => $boundaryAt,
+    ]);
+    $firstFailure = WebsiteLogHistory::factory()->transportError('timeout')->create([
+        'website_id' => $website->id,
+        'created_at' => now()->subMinutes(3),
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'status' => 'warning',
+        'created_at' => now()->subMinutes(2),
+    ]);
+    WebsiteLogHistory::factory()->onDemand()->transportError('dns')->create([
+        'website_id' => $website->id,
+        'created_at' => now()->subMinute(),
+    ]);
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 50,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'list_checks',
+                'arguments' => ['project' => 'scrappa'],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.structuredContent.0.key', 'tied-website')
+        ->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.count', 2)
+        ->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.first_failed_at', $firstFailure->created_at->toISOString());
+});
+
 test('mcp disable check accepts type to resolve ambiguous check keys', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
