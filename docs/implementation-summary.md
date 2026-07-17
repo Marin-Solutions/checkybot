@@ -20,4 +20,4 @@ The unrelated `monitor_api_results` optimization was not changed by this impleme
 
 ## Handoff
 
-Work is committed on branch `remediation/checkybot-21370`. This implementation stage does not push or open a PR; the downstream PR/deployment stages should use this branch and complete hosted CI and live Sentry verification.
+Work is committed on branch `pr/checkybot-21370`. The pull request and hosted CI are handled by the downstream PR stage; live Sentry verification remains a deployment-stage concern.
