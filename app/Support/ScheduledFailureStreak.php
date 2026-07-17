@@ -127,6 +127,60 @@ class ScheduledFailureStreak
         return self::payload(self::forWebsite($website));
     }
 
+    /**
+     * @param  Collection<int, Website>  $websites
+     * @return array<int, array{count: int, first_failed_at: ?string}>
+     */
+    public static function websitePayloads(Collection $websites): array
+    {
+        if ($websites->isEmpty()) {
+            return [];
+        }
+
+        if ($websites->contains(fn (Website $website): bool => ! $website->relationLoaded('latestScheduledNonFailureLogHistory'))) {
+            throw new LogicException('Website failure streak boundaries must be eager loaded.');
+        }
+
+        $query = WebsiteLogHistory::query()
+            ->whereIn('website_id', $websites->modelKeys())
+            ->where('is_on_demand', false);
+
+        $query->where(function (Builder $query) use ($websites): void {
+            foreach ($websites as $website) {
+                $boundary = $website->latestScheduledNonFailureLogHistory;
+
+                $query->orWhere(function (Builder $query) use ($website, $boundary): void {
+                    $query->where('website_id', $website->id);
+
+                    if ($boundary instanceof WebsiteLogHistory) {
+                        self::afterBoundary($query, $boundary);
+                    }
+                });
+            }
+        });
+
+        $streaks = $query
+            ->select('website_id')
+            ->selectRaw('COUNT(*) as streak_count')
+            ->selectRaw('MIN(created_at) as first_failed_at')
+            ->groupBy('website_id')
+            ->get()
+            ->keyBy('website_id');
+
+        return $websites->mapWithKeys(function (Website $website) use ($streaks): array {
+            $aggregate = $streaks->get($website->id);
+
+            return [
+                $website->id => [
+                    'count' => (int) ($aggregate?->streak_count ?? 0),
+                    'first_failed_at' => filled($aggregate?->first_failed_at)
+                        ? Carbon::parse($aggregate->first_failed_at)->toISOString()
+                        : null,
+                ],
+            ];
+        })->all();
+    }
+
     public static function displayForApi(MonitorApis $monitor): ?string
     {
         return self::display(self::forApi($monitor));

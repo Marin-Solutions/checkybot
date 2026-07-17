@@ -3131,6 +3131,171 @@ test('mcp current issues resolves api failure streaks with constant result queri
     $firstResponse->assertJsonPath('result.structuredContent.0.check.scheduled_failure_streak.count', 1);
 });
 
+test('mcp website streak payloads preserve eligibility and use constant history queries', function () {
+    $expectedFirstFailedAt = [];
+    $createWebsite = function (string $key) use (&$expectedFirstFailedAt): Website {
+        $website = Website::factory()->create([
+            'project_id' => $this->project->id,
+            'created_by' => $this->user->id,
+            'source' => 'package',
+            'package_name' => $key,
+            'name' => str($key)->headline(),
+            'current_status' => 'danger',
+            'updated_at' => now(),
+        ]);
+        $boundaryAt = now()->subMinutes(20);
+
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'created_at' => now()->subMinutes(30),
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'warning',
+            'http_status_code' => 200,
+            'created_at' => now()->subMinutes(25),
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'http_status_code' => 500,
+            'created_at' => now()->subMinutes(24),
+        ]);
+        WebsiteLogHistory::factory()->onDemand()->create([
+            'website_id' => $website->id,
+            'created_at' => now()->subMinutes(23),
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'http_status_code' => 200,
+            'created_at' => $boundaryAt,
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => null,
+            'http_status_code' => null,
+            'created_at' => $boundaryAt,
+        ]);
+        $firstFailed = WebsiteLogHistory::factory()->transportError('timeout')->create([
+            'website_id' => $website->id,
+            'created_at' => $boundaryAt,
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'warning',
+            'http_status_code' => 200,
+            'created_at' => now()->subMinutes(15),
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'http_status_code' => 500,
+            'created_at' => now()->subMinutes(14),
+        ]);
+        WebsiteLogHistory::factory()->create([
+            'website_id' => $website->id,
+            'status' => 'healthy',
+            'http_status_code' => 0,
+            'created_at' => now()->subMinutes(13),
+        ]);
+        WebsiteLogHistory::factory()->transportError('dns')->create([
+            'website_id' => $website->id,
+            'created_at' => now()->subMinutes(5),
+        ]);
+
+        $expectedFirstFailedAt[$key] = $firstFailed->created_at->toISOString();
+
+        return $website;
+    };
+    $callListChecks = fn () => $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 48,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'list_checks',
+                'arguments' => ['project' => 'scrappa'],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonMissingPath('error');
+    $callCurrentIssues = fn () => $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 49,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+                'arguments' => [
+                    'project' => 'scrappa',
+                    'type' => 'website',
+                ],
+            ],
+        ])
+        ->assertOk()
+        ->assertJsonMissingPath('error');
+
+    $historyQueries = [];
+    DB::listen(function ($query) use (&$historyQueries): void {
+        $sql = strtolower($query->sql);
+
+        if (str_starts_with($sql, 'select') && str_contains($sql, 'website_log_history')) {
+            $historyQueries[] = $sql;
+        }
+    });
+
+    $wasPreventingLazyLoading = Model::preventsLazyLoading();
+    Model::preventLazyLoading();
+
+    try {
+        $createWebsite('website-one');
+        $listOne = $callListChecks();
+        $listOneHistoryQueryCount = count($historyQueries);
+
+        expect(collect($historyQueries)->contains(fn (string $sql): bool => str_contains($sql, 'limit 1')))->toBeFalse();
+
+        $historyQueries = [];
+        $issuesOne = $callCurrentIssues();
+        $issuesOneHistoryQueryCount = count($historyQueries);
+
+        expect(collect($historyQueries)->contains(fn (string $sql): bool => str_contains($sql, 'limit 1')))->toBeFalse();
+
+        $historyQueries = [];
+        $createWebsite('website-two');
+        $createWebsite('website-three');
+        $createWebsite('website-four');
+        $listMany = $callListChecks();
+        $listManyHistoryQueryCount = count($historyQueries);
+
+        expect($listManyHistoryQueryCount)->toBe($listOneHistoryQueryCount);
+
+        $historyQueries = [];
+        $issuesMany = $callCurrentIssues();
+        $issuesManyHistoryQueryCount = count($historyQueries);
+
+        expect($issuesManyHistoryQueryCount)->toBe($issuesOneHistoryQueryCount);
+    } finally {
+        Model::preventLazyLoading($wasPreventingLazyLoading);
+    }
+
+    foreach (['website-one', 'website-two', 'website-three', 'website-four'] as $key) {
+        expect(collect($listMany->json('result.structuredContent'))->keyBy('key')->get($key)['scheduled_failure_streak'])
+            ->toMatchArray([
+                'count' => 5,
+                'first_failed_at' => $expectedFirstFailedAt[$key],
+            ]);
+        expect(collect($issuesMany->json('result.structuredContent'))->keyBy('check.key')->get($key)['check']['scheduled_failure_streak'])
+            ->toMatchArray([
+                'count' => 5,
+                'first_failed_at' => $expectedFirstFailedAt[$key],
+            ]);
+    }
+
+    $listOne->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.count', 5);
+    $issuesOne->assertJsonPath('result.structuredContent.0.check.scheduled_failure_streak.count', 5);
+});
+
 test('mcp disable check accepts type to resolve ambiguous check keys', function () {
     $monitor = MonitorApis::factory()->create([
         'project_id' => $this->project->id,
