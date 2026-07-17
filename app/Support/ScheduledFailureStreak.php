@@ -124,7 +124,6 @@ class ScheduledFailureStreak
         }
 
         $query
-            ->whereIn($foreignKey, $models->modelKeys())
             ->where('is_on_demand', false)
             ->where(function (Builder $query) use ($models, $boundaryRelation, $foreignKey): void {
                 foreach ($models as $model) {
