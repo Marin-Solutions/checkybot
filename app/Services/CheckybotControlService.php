@@ -251,14 +251,24 @@ class CheckybotControlService
             });
 
         $websiteChecks = $project->packageManagedWebsites()
-            ->with(['latestLogHistory', 'latestDiagnosticLogHistory'])
+            ->with([
+                'latestLogHistory',
+                'latestDiagnosticLogHistory',
+                'latestScheduledNonFailureLogHistory' => fn (HasOne $query): HasOne => $query->select([
+                    'website_log_history.id',
+                    'website_log_history.website_id',
+                    'website_log_history.created_at',
+                ]),
+            ])
             ->orderBy('package_name')
-            ->get()
-            ->map(function (Website $website) use ($project): array {
-                $website->setRelation('project', $project);
+            ->get();
+        $websiteFailureStreaks = ScheduledFailureStreak::websitePayloads($websiteChecks);
 
-                return $this->websiteCheckPayload($website);
-            });
+        $websiteChecks = $websiteChecks->map(function (Website $website) use ($project, $websiteFailureStreaks): array {
+            $website->setRelation('project', $project);
+
+            return $this->websiteCheckPayload($website, $websiteFailureStreaks[$website->id]);
+        });
 
         $componentChecks = $project->components()
             ->with([
@@ -1067,7 +1077,17 @@ class CheckybotControlService
     private function currentWebsiteIssues(User $user, ?Project $project, array $statuses, ?int $limit): array
     {
         $query = Website::query()
-            ->with(['project', 'latestLogHistory', 'latestScheduledLogHistory', 'latestDiagnosticLogHistory'])
+            ->with([
+                'project',
+                'latestLogHistory',
+                'latestScheduledLogHistory',
+                'latestDiagnosticLogHistory',
+                'latestScheduledNonFailureLogHistory' => fn (HasOne $query): HasOne => $query->select([
+                    'website_log_history.id',
+                    'website_log_history.website_id',
+                    'website_log_history.created_at',
+                ]),
+            ])
             ->where('created_by', $user->id)
             ->where(fn (Builder $query) => $this->activeWebsiteCheckConstraint($query))
             ->whereIn('current_status', $statuses);
@@ -1076,26 +1096,28 @@ class CheckybotControlService
             $query->where('project_id', $project->id);
         }
 
-        return $query
+        $websiteChecks = $query
             ->orderByRaw("CASE current_status WHEN 'danger' THEN 0 WHEN 'warning' THEN 1 WHEN 'pending' THEN 2 WHEN 'unknown' THEN 3 ELSE 4 END")
             ->latest('updated_at')
             ->when($limit !== null, fn (Builder $query): Builder => $query->limit($limit))
-            ->get()
-            ->map(function (Website $website): array {
-                $scheduledResult = $website->relationLoaded('latestScheduledLogHistory')
-                    ? $website->latestScheduledLogHistory
-                    : $website->latestScheduledLogHistory()->first();
-                $diagnosticResult = $website->relationLoaded('latestDiagnosticLogHistory')
-                    ? $website->latestDiagnosticLogHistory
-                    : $website->latestDiagnosticLogHistory()->first();
+            ->get();
+        $websiteFailureStreaks = ScheduledFailureStreak::websitePayloads($websiteChecks);
 
-                return $this->currentIssuePayload(
-                    $website->project,
-                    $this->websiteCheckPayload($website),
-                    $this->currentWebsiteIssueCause($website),
-                    $this->websiteManualScheduledDriftPayload($website, $scheduledResult, $diagnosticResult),
-                );
-            })
+        return $websiteChecks->map(function (Website $website) use ($websiteFailureStreaks): array {
+            $scheduledResult = $website->relationLoaded('latestScheduledLogHistory')
+                ? $website->latestScheduledLogHistory
+                : $website->latestScheduledLogHistory()->first();
+            $diagnosticResult = $website->relationLoaded('latestDiagnosticLogHistory')
+                ? $website->latestDiagnosticLogHistory
+                : $website->latestDiagnosticLogHistory()->first();
+
+            return $this->currentIssuePayload(
+                $website->project,
+                $this->websiteCheckPayload($website, $websiteFailureStreaks[$website->id]),
+                $this->currentWebsiteIssueCause($website),
+                $this->websiteManualScheduledDriftPayload($website, $scheduledResult, $diagnosticResult),
+            );
+        })
             ->all();
     }
 
@@ -2038,7 +2060,7 @@ class CheckybotControlService
     /**
      * @return array<string, mixed>
      */
-    private function websiteCheckPayload(Website $website): array
+    private function websiteCheckPayload(Website $website, ?array $scheduledFailureStreak = null): array
     {
         $latestResult = $website->relationLoaded('latestLogHistory')
             ? $website->latestLogHistory
@@ -2074,7 +2096,7 @@ class CheckybotControlService
             'diagnostic_queued_at' => $website->diagnostic_queued_at?->toISOString(),
             'status' => $website->current_status ?? 'unknown',
             'status_summary' => $website->status_summary,
-            'scheduled_failure_streak' => ScheduledFailureStreak::websitePayload($website),
+            'scheduled_failure_streak' => $scheduledFailureStreak ?? ScheduledFailureStreak::websitePayload($website),
             'last_synced_at' => $website->last_synced_at?->toISOString(),
             'last_checked_at' => $latestResult?->created_at?->toISOString(),
             'headers' => [],
