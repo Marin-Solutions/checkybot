@@ -8,7 +8,7 @@ PR_NUDGING_PASSED
 
 - Branch: `fix/checkybot-21370-website-history-n-plus-one`
 - Base: `master`
-- Implementation commit: `b0ddbc10`; review-fix commits: `fd201b4b`, pending final minor cleanup.
+- Implementation commit: `b0ddbc10`; review-fix commits: `fd201b4b`, `5a886bfa`.
 - PR: https://github.com/Marin-Solutions/checkybot/pull/459
 - No existing pull request was found for the branch before this stage.
 
@@ -27,4 +27,5 @@ PR_NUDGING_PASSED
 - Automated review feedback was non-blocking; the valid maintenance comments were addressed, and no further actionable feedback remained.
 - On the review-fix head, PHP 8.3, Laravel Pint, Cubic review, and the Claude review rerun all passed.
 - The required `docs/pr-nudging-report.md` artifact is retained despite a reviewer suggesting its removal.
+- Final cleanup head `5a886bfa` passed PHP 8.3, Laravel Pint, Cubic review, and Claude review; PR merge state is clean.
 - This stage did not merge the PR.
