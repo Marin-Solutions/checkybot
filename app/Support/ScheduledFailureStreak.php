@@ -8,6 +8,7 @@ use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use LogicException;
 
@@ -71,52 +72,13 @@ class ScheduledFailureStreak
      */
     public static function apiPayloads(Collection $monitors): array
     {
-        if ($monitors->isEmpty()) {
-            return [];
-        }
-
-        if ($monitors->contains(fn (MonitorApis $monitor): bool => ! $monitor->relationLoaded('latestScheduledNonFailureResult'))) {
-            throw new LogicException('API failure streak boundaries must be eager loaded.');
-        }
-
-        $query = MonitorApiResult::query()
-            ->whereIn('monitor_api_id', $monitors->modelKeys())
-            ->where('is_on_demand', false);
-
-        $query->where(function (Builder $query) use ($monitors): void {
-            foreach ($monitors as $monitor) {
-                $boundary = $monitor->latestScheduledNonFailureResult;
-
-                $query->orWhere(function (Builder $query) use ($monitor, $boundary): void {
-                    $query->where('monitor_api_id', $monitor->id);
-
-                    if ($boundary instanceof MonitorApiResult) {
-                        self::afterBoundary($query, $boundary);
-                    }
-                });
-            }
-        });
-
-        $streaks = $query
-            ->select('monitor_api_id')
-            ->selectRaw('COUNT(*) as streak_count')
-            ->selectRaw('MIN(created_at) as first_failed_at')
-            ->groupBy('monitor_api_id')
-            ->get()
-            ->keyBy('monitor_api_id');
-
-        return $monitors->mapWithKeys(function (MonitorApis $monitor) use ($streaks): array {
-            $aggregate = $streaks->get($monitor->id);
-
-            return [
-                $monitor->id => [
-                    'count' => (int) ($aggregate?->streak_count ?? 0),
-                    'first_failed_at' => filled($aggregate?->first_failed_at)
-                        ? Carbon::parse($aggregate->first_failed_at)->toISOString()
-                        : null,
-                ],
-            ];
-        })->all();
+        return self::bulkPayloads(
+            $monitors,
+            'latestScheduledNonFailureResult',
+            MonitorApiResult::query(),
+            'monitor_api_id',
+            'API failure streak boundaries must be eager loaded.',
+        );
     }
 
     /**
@@ -125,6 +87,78 @@ class ScheduledFailureStreak
     public static function websitePayload(Website $website): array
     {
         return self::payload(self::forWebsite($website));
+    }
+
+    /**
+     * @param  Collection<int, Website>  $websites
+     * @return array<int, array{count: int, first_failed_at: ?string}>
+     */
+    public static function websitePayloads(Collection $websites): array
+    {
+        return self::bulkPayloads(
+            $websites,
+            'latestScheduledNonFailureLogHistory',
+            WebsiteLogHistory::query(),
+            'website_id',
+            'Website failure streak boundaries must be eager loaded.',
+        );
+    }
+
+    /**
+     * @param  Collection<int, Model>  $models
+     * @return array<int, array{count: int, first_failed_at: ?string}>
+     */
+    private static function bulkPayloads(
+        Collection $models,
+        string $boundaryRelation,
+        Builder $query,
+        string $foreignKey,
+        string $missingRelationMessage,
+    ): array {
+        if ($models->isEmpty()) {
+            return [];
+        }
+
+        if ($models->contains(fn (Model $model): bool => ! $model->relationLoaded($boundaryRelation))) {
+            throw new LogicException($missingRelationMessage);
+        }
+
+        $query
+            ->where('is_on_demand', false)
+            ->where(function (Builder $query) use ($models, $boundaryRelation, $foreignKey): void {
+                foreach ($models as $model) {
+                    $boundary = $model->getRelation($boundaryRelation);
+
+                    $query->orWhere(function (Builder $query) use ($model, $boundary, $foreignKey): void {
+                        $query->where($foreignKey, $model->getKey());
+
+                        if ($boundary instanceof MonitorApiResult || $boundary instanceof WebsiteLogHistory) {
+                            self::afterBoundary($query, $boundary);
+                        }
+                    });
+                }
+            });
+
+        $streaks = $query
+            ->select($foreignKey)
+            ->selectRaw('COUNT(*) as streak_count')
+            ->selectRaw('MIN(created_at) as first_failed_at')
+            ->groupBy($foreignKey)
+            ->get()
+            ->keyBy($foreignKey);
+
+        return $models->mapWithKeys(function (Model $model) use ($streaks): array {
+            $aggregate = $streaks->get($model->getKey());
+
+            return [
+                $model->getKey() => [
+                    'count' => (int) ($aggregate?->streak_count ?? 0),
+                    'first_failed_at' => filled($aggregate?->first_failed_at)
+                        ? Carbon::parse($aggregate->first_failed_at)->toISOString()
+                        : null,
+                ],
+            ];
+        })->all();
     }
 
     public static function displayForApi(MonitorApis $monitor): ?string

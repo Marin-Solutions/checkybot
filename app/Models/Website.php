@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasSnooze;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -357,6 +358,31 @@ class Website extends Model
         return $this->hasOne(WebsiteLogHistory::class)->ofMany(
             ['created_at' => 'max', 'id' => 'max'],
             fn ($query) => $query->where('is_on_demand', false),
+        );
+    }
+
+    public function latestScheduledNonFailureLogHistory(): HasOne
+    {
+        return $this->hasOne(WebsiteLogHistory::class)->ofMany(
+            ['created_at' => 'max', 'id' => 'max'],
+            function (Builder $query): Builder {
+                return $query
+                    ->where('is_on_demand', false)
+                    ->where(function (Builder $query): void {
+                        $query
+                            ->whereNull('status')
+                            ->orWhereNotIn('status', ['warning', 'danger']);
+                    })
+                    ->where(function (Builder $query): void {
+                        $query
+                            ->whereNull('http_status_code')
+                            ->orWhere(function (Builder $query): void {
+                                $query
+                                    ->where('http_status_code', '!=', 0)
+                                    ->where('http_status_code', '<', 400);
+                            });
+                    });
+            },
         );
     }
 
