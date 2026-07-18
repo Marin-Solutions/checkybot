@@ -17,8 +17,6 @@ class SyncProjectChecksRequest extends FormRequest
 {
     use ValidatesMonitorApiRegexAssertions;
 
-    public const MAX_API_CHECKS_PER_SYNC = 250;
-
     public function authorize(): bool
     {
         $project = $this->route('project');
@@ -108,7 +106,7 @@ class SyncProjectChecksRequest extends FormRequest
             'ssl_checks.*.enabled' => ['nullable', 'boolean'],
             'ssl_checks.*.component' => ['nullable', 'string', 'max:255'],
 
-            'api_checks' => ['array', 'max:'.self::MAX_API_CHECKS_PER_SYNC],
+            'api_checks' => ['array'],
             'api_checks.*.last_heartbeat_at' => ['prohibited'],
             'api_checks.*.awaiting_heartbeat_since' => ['prohibited'],
             'api_checks.*.stale_at' => ['prohibited'],

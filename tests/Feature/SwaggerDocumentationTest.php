@@ -1,7 +1,5 @@
 <?php
 
-use App\Http\Requests\SyncProjectChecksRequest;
-
 test('swagger documentation can be generated', function () {
     $this->artisan('l5-swagger:generate')
         ->assertSuccessful();
@@ -67,7 +65,7 @@ test('swagger documentation can be generated', function () {
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['ssl_checks']['items']['properties']['component']['type'])->toBe('string')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['ssl_checks']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['interval']['pattern'])->toBe('^(0*[1-9]\d*[smhd]|every_0*[1-9]\d*_(second|seconds|minute|minutes|hour|hours|day|days))$')
-        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['maxItems'])->toBe(SyncProjectChecksRequest::MAX_API_CHECKS_PER_SYNC)
+        ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks'])->not->toHaveKey('maxItems')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['component']['type'])->toBe('string')
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['assertions']['items']['required'])->toBe(['data_path', 'assertion_type'])
         ->and($requestSchema('/v1/projects/{project}/checks/sync')['properties']['api_checks']['items']['properties']['save_failed_response']['type'])->toBe('boolean')
