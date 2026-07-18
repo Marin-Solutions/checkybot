@@ -203,7 +203,6 @@ class CheckybotApiDocumentation
      *             @OA\Property(
      *                 property="api_checks",
      *                 type="array",
-     *                 maxItems=100,
      *
      *                 @OA\Items(
      *                     type="object",

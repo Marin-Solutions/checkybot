@@ -106,7 +106,7 @@ class SyncProjectChecksRequest extends FormRequest
             'ssl_checks.*.enabled' => ['nullable', 'boolean'],
             'ssl_checks.*.component' => ['nullable', 'string', 'max:255'],
 
-            'api_checks' => ['array', 'max:100'],
+            'api_checks' => ['array'],
             'api_checks.*.last_heartbeat_at' => ['prohibited'],
             'api_checks.*.awaiting_heartbeat_since' => ['prohibited'],
             'api_checks.*.stale_at' => ['prohibited'],

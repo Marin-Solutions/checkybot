@@ -257,6 +257,8 @@ curl -X POST https://your-domain.com/api/v1/projects/{project}/checks/sync \
   }'
 ```
 
+Project check syncs are atomic reconciliation manifests. Send the complete manifest in one request; do not split it into chunks, because package-managed checks absent from a request are archived. Each request supports up to 100 uptime checks and 100 SSL checks. API check manifests have no application-level count limit.
+
 ### API Documentation
 
 Full API documentation is available at `/api/documentation` when running the application.
