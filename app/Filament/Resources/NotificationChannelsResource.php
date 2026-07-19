@@ -115,6 +115,13 @@ class NotificationChannelsResource extends Resource
                     ->visible(fn ($get) => $get('is_post_method')),
                 Textarea::make('description')
                     ->columnSpanFull(),
+                Select::make('health_summary_interval_minutes')
+                    ->label('Health summary')
+                    ->placeholder('Disabled')
+                    ->options(collect(NotificationChannels::HEALTH_SUMMARY_INTERVALS)
+                        ->mapWithKeys(fn (int $minutes): array => [$minutes => "Every {$minutes} minutes"])
+                        ->all())
+                    ->helperText('Send a compact overview of API checks, websites, and application components to this channel.'),
             ]);
     }
 
@@ -151,6 +158,10 @@ class NotificationChannelsResource extends Resource
                     ->copyable(fn (NotificationChannels $record): bool => $record->requestBodyForCopy() !== null)
                     ->copyableState(fn (NotificationChannels $record): ?string => $record->requestBodyForCopy()),
                 TextColumn::make('description'),
+                TextColumn::make('health_summary_interval_minutes')
+                    ->label('Health Summary')
+                    ->placeholder('Disabled')
+                    ->formatStateUsing(fn (int $state): string => "Every {$state} minutes"),
                 TextColumn::make('last_delivery_succeeded')
                     ->label('Last Delivery')
                     ->badge()

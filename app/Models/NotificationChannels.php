@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\WebhookHttpMethod;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Client\ConnectionException;
@@ -15,6 +16,8 @@ class NotificationChannels extends Model
 {
     use HasFactory;
 
+    public const HEALTH_SUMMARY_INTERVALS = [5, 10, 15, 20, 30, 45];
+
     private const REDACTED_LOG_VALUE = '[redacted]';
 
     private const REDACTED_DISPLAY_VALUE = '[redacted]';
@@ -24,6 +27,8 @@ class NotificationChannels extends Model
         'method',
         'url',
         'description',
+        'health_summary_interval_minutes',
+        'health_summary_last_attempted_at',
         'request_body',
         'created_by',
         'last_delivery_kind',
@@ -35,9 +40,40 @@ class NotificationChannels extends Model
 
     protected $casts = [
         'request_body' => 'array',
+        'health_summary_interval_minutes' => 'integer',
+        'health_summary_last_attempted_at' => 'datetime',
         'last_delivery_succeeded' => 'boolean',
         'last_delivery_attempted_at' => 'datetime',
     ];
+
+    public function scopeHealthSummaryEnabled(Builder $query): void
+    {
+        $query->whereIn('health_summary_interval_minutes', self::HEALTH_SUMMARY_INTERVALS);
+    }
+
+    public function claimHealthSummaryAttempt(): bool
+    {
+        if (! in_array($this->health_summary_interval_minutes, self::HEALTH_SUMMARY_INTERVALS, true)) {
+            return false;
+        }
+
+        $attemptedAt = now();
+        $dueBefore = $attemptedAt->copy()->subMinutes($this->health_summary_interval_minutes);
+        $claimed = self::query()
+            ->whereKey($this->getKey())
+            ->where(function (Builder $query) use ($dueBefore): void {
+                $query
+                    ->whereNull('health_summary_last_attempted_at')
+                    ->orWhere('health_summary_last_attempted_at', '<=', $dueBefore);
+            })
+            ->update(['health_summary_last_attempted_at' => $attemptedAt]) === 1;
+
+        if ($claimed) {
+            $this->health_summary_last_attempted_at = $attemptedAt;
+        }
+
+        return $claimed;
+    }
 
     public static function testWebhook(array $data): array
     {

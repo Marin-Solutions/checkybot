@@ -24,3 +24,4 @@ Schedule::command('backups:mark-stale')->everyMinute()->withoutOverlapping();
 Schedule::command('proxy-pool:sync-dashboard')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('app:process-expired-snoozes')->everyMinute()->withoutOverlapping();
 Schedule::command('app:purge-server-logs')->hourly()->withoutOverlapping();
+Schedule::command('notifications:send-health-summaries')->everyMinute()->withoutOverlapping();

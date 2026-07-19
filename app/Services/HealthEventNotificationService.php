@@ -10,6 +10,7 @@ use App\Models\Backup;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Models\Website;
+use App\Support\NotificationStatus;
 use App\Traits\ChecksWebhookResponses;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Log;
@@ -382,10 +383,9 @@ class HealthEventNotificationService
 
     private function webhookMessage(string $name, string $event, string $status): string
     {
-        $label = $this->eventLabel($event, $status);
         $eventDescription = $event === 'heartbeat' ? 'check' : $event;
 
-        return "[{$label}] {$name} {$eventDescription}";
+        return NotificationStatus::prefix($event, $status)." {$name} {$eventDescription}";
     }
 
     private function backupName(Backup $backup): string

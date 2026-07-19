@@ -9,6 +9,7 @@ use App\Models\NotificationChannels;
 use App\Models\NotificationSetting;
 use App\Models\ProjectComponent;
 use App\Support\MetricsPayloadFormatter;
+use App\Support\NotificationStatus;
 use App\Support\ProjectComponentDeliveryState;
 use App\Traits\ChecksWebhookResponses;
 use Illuminate\Support\Carbon;
@@ -230,7 +231,7 @@ class ProjectComponentNotificationService
         return [
             'subject' => "Application component {$eventLabel}: {$component->name}",
             'title' => "Application component {$eventLabel}",
-            'message' => "{$component->project->name} / {$component->name} reported {$eventLabel}.",
+            'message' => NotificationStatus::prefix($event, $status)." {$component->project->name} / {$component->name} reported {$eventLabel}.",
             'details' => $this->formatDetails($summary, $evidence),
             'summary' => $summary,
             'project_name' => $component->project->name,

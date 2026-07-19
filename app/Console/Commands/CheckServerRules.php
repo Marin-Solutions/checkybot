@@ -6,6 +6,7 @@ use App\Models\NotificationChannels;
 use App\Models\Server;
 use App\Models\ServerInformationHistory;
 use App\Models\ServerRule;
+use App\Support\NotificationStatus;
 use App\Traits\ChecksWebhookResponses;
 use Illuminate\Console\Command;
 
@@ -167,8 +168,8 @@ class CheckServerRules extends Command
                 ? 'Server Monitoring Recovery'
                 : 'Server Monitoring Alert';
             $message = $eventType === 'recovery'
-                ? "Recovery for {$server->name} ({$server->ip})\n{$metric} is back to {$currentValue}% (threshold: {$rule->operator} {$rule->value}%)"
-                : "Alert for {$server->name} ({$server->ip})\n{$metric} is {$currentValue}% {$rule->operator} {$rule->value}%";
+                ? NotificationStatus::prefix('recovery', 'healthy')." Recovery for {$server->name} ({$server->ip})\n{$metric} is back to {$currentValue}% (threshold: {$rule->operator} {$rule->value}%)"
+                : NotificationStatus::prefix('alert', 'danger')." Alert for {$server->name} ({$server->ip})\n{$metric} is {$currentValue}% {$rule->operator} {$rule->value}%";
 
             $response = $channel->sendWebhookNotification([
                 'message' => $message,

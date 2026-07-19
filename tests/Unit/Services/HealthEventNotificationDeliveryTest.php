@@ -106,6 +106,32 @@ test('notifyWebsite treats non-2xx webhook responses as failed delivery attempts
             && ($context['response_code'] ?? null) === 401);
 });
 
+test('health event webhook messages use clear status emojis', function (string $event, string $status, string $prefix) {
+    Http::fake(['*' => Http::response(['ok' => true], 200)]);
+
+    $website = Website::factory()->create(['silenced_until' => null]);
+
+    NotificationSetting::factory()
+        ->websiteScope()
+        ->webhook()
+        ->create([
+            'user_id' => $website->created_by,
+            'website_id' => $website->id,
+        ]);
+
+    app(HealthEventNotificationService::class)
+        ->notifyWebsite($website, $event, $status, 'Status details.');
+
+    Http::assertSent(fn ($request): bool => str_starts_with(
+        $request->data()['message'] ?? '',
+        $prefix,
+    ));
+})->with([
+    'danger' => ['heartbeat', 'danger', '🔴 [DANGER]'],
+    'warning' => ['heartbeat', 'warning', '🟡 [WARNING]'],
+    'recovered' => ['recovered', 'healthy', '✅ [RECOVERED]'],
+]);
+
 test('notifyWebsite treats orphaned webhook settings as failed delivery attempts', function () {
     Log::spy();
     Http::fake();

@@ -35,6 +35,32 @@ test('super admin can create a post webhook channel with no request body', funct
         ->and($channel->request_body)->toBe([]);
 });
 
+test('super admin can configure a periodic health summary for a webhook channel', function () {
+    $this->createResourcePermissions('NotificationChannels');
+    $user = $this->actingAsSuperAdmin();
+
+    Livewire::test(CreateNotificationChannels::class)
+        ->fillForm([
+            'title' => 'Telegram status updates',
+            'method' => 'POST',
+            'url' => 'https://example.com/webhook',
+            'request_body' => [
+                'message' => '{message}',
+                'description' => '{description}',
+            ],
+            'health_summary_interval_minutes' => 15,
+        ])
+        ->call('create')
+        ->assertHasNoFormErrors()
+        ->assertNotified();
+
+    $this->assertDatabaseHas('notification_channels', [
+        'created_by' => $user->id,
+        'title' => 'Telegram status updates',
+        'health_summary_interval_minutes' => 15,
+    ]);
+});
+
 test('post webhook channel requires a valid http url', function (string $url) {
     $this->createResourcePermissions('NotificationChannels');
     $this->actingAsSuperAdmin();
