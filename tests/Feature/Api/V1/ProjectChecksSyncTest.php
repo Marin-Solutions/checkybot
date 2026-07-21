@@ -1676,11 +1676,21 @@ test('rejects unsupported legacy check families at the request boundary', functi
             ],
         ],
     ],
-    'empty unsupported families' => [
-        [],
-        [],
-    ],
 ]);
+
+test('accepts empty unsupported legacy check families', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson("/api/v1/projects/{$this->project->id}/checks/sync", [
+            'full_manifest' => true,
+            'uptime_checks' => [],
+            'ssl_checks' => [],
+            'api_checks' => [],
+            'link_checks' => [],
+            'open_graph_checks' => [],
+        ]);
+
+    $response->assertOk();
+});
 
 test('validates malformed absolute url format', function () {
     $response = $this->withToken($this->apiKey->key)

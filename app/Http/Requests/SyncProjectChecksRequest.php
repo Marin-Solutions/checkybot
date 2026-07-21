@@ -64,8 +64,8 @@ class SyncProjectChecksRequest extends FormRequest
         return [
             'full_manifest' => ['sometimes', 'boolean'],
 
-            'link_checks' => ['missing'],
-            'open_graph_checks' => ['missing'],
+            'link_checks' => ['array', 'max:0'],
+            'open_graph_checks' => ['array', 'max:0'],
 
             'uptime_checks' => ['array', 'max:100'],
             'uptime_checks.*.last_heartbeat_at' => ['prohibited'],
@@ -148,8 +148,8 @@ class SyncProjectChecksRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'link_checks.missing' => 'link_checks are not supported by project check sync yet.',
-            'open_graph_checks.missing' => 'open_graph_checks are not supported by project check sync yet.',
+            'link_checks.max' => 'link_checks are not supported by project check sync yet.',
+            'open_graph_checks.max' => 'open_graph_checks are not supported by project check sync yet.',
             'uptime_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
             'ssl_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
             'api_checks.*.name.not_regex' => 'Check names cannot contain "/" because they are used as URL path keys.',
