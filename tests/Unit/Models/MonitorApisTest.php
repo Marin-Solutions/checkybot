@@ -322,6 +322,33 @@ test('scheduled api tests cap monitor timeout and retries', function () {
         ->and($result['elapsed_wall_time_ms'])->toBeGreaterThanOrEqual(0);
 });
 
+test('scheduled api tests honor a per-monitor zero retry count', function () {
+    config([
+        'monitor.api_retries' => 3,
+        'monitor.api_scheduled_retries' => 3,
+    ]);
+
+    $attempts = 0;
+
+    Http::fake(function () use (&$attempts) {
+        $attempts++;
+
+        return Http::response(['success' => false], 503);
+    });
+
+    $result = MonitorApis::testApi([
+        'url' => 'https://api.example.test/degraded',
+        'method' => 'GET',
+        'expected_status' => 503,
+        'retry_count' => 0,
+        MonitorApis::SCHEDULED_RUN_KEY => true,
+    ]);
+
+    expect($attempts)->toBe(1)
+        ->and($result['code'])->toBe(503)
+        ->and($result['retry_count'])->toBe(0);
+});
+
 test('test api returns execution evidence on successful requests', function () {
     config([
         'monitor.api_retries' => 3,
