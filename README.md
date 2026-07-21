@@ -251,6 +251,8 @@ curl -X POST https://your-domain.com/api/v1/projects/{project}/checks/sync \
         "name": "login",
         "url": "https://example.com/api/login",
         "interval": "5m",
+        "expected_status": 503,
+        "retry_count": 0,
         "save_failed_response": false
       }
     ]

@@ -240,6 +240,9 @@ class CheckSyncService
                 'timeout_seconds' => array_key_exists('timeout_seconds', $check)
                     ? $check['timeout_seconds']
                     : $monitorApi?->timeout_seconds,
+                'retry_count' => array_key_exists('retry_count', $check)
+                    ? $check['retry_count']
+                    : $monitorApi?->retry_count,
                 'max_response_time_ms' => array_key_exists('max_response_time_ms', $check)
                     ? $check['max_response_time_ms']
                     : $monitorApi?->max_response_time_ms,
@@ -498,6 +501,7 @@ class CheckSyncService
             || $monitorApi->request_body_type != $data['request_body_type']
             || $this->normalizeRequestBodyForComparison($monitorApi->request_body) != $this->normalizeRequestBodyForComparison($data['request_body'])
             || $monitorApi->timeout_seconds != $data['timeout_seconds']
+            || $monitorApi->retry_count != $data['retry_count']
             || $monitorApi->max_response_time_ms != $data['max_response_time_ms']
             || $assertionsChanged;
     }

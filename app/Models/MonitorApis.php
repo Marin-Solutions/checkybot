@@ -51,6 +51,7 @@ class MonitorApis extends Model
         'request_body',
         'expected_status',
         'timeout_seconds',
+        'retry_count',
         'max_response_time_ms',
         'package_schedule',
         'is_enabled',
@@ -73,6 +74,7 @@ class MonitorApis extends Model
         'save_failed_response' => 'boolean',
         'expected_status' => 'integer',
         'timeout_seconds' => 'integer',
+        'retry_count' => 'integer',
         'max_response_time_ms' => 'integer',
         'is_enabled' => 'boolean',
         'project_paused_monitoring' => 'boolean',
@@ -264,6 +266,7 @@ class MonitorApis extends Model
             'http_method' => $this->http_method,
             'expected_status' => $this->expected_status,
             'timeout_seconds' => $this->timeout_seconds,
+            'retry_count' => $this->retry_count,
             'max_response_time_ms' => $this->max_response_time_ms,
             'headers' => $this->headers,
             'request_body_type' => $this->request_body_type,
@@ -461,7 +464,9 @@ class MonitorApis extends Model
     private static function getHttpConfiguration(array $data): array
     {
         $timeout = (int) ($data['timeout_seconds'] ?? config('monitor.api_timeout', 10));
-        $retries = (int) config('monitor.api_retries', 3);
+        $retries = array_key_exists('retry_count', $data) && $data['retry_count'] !== null
+            ? max(0, (int) $data['retry_count'])
+            : (int) config('monitor.api_retries', 3);
 
         if ((bool) ($data[self::INTERACTIVE_RUN_KEY] ?? false)) {
             $interactiveTimeout = max(1, (int) config('monitor.api_interactive_timeout', 5));
