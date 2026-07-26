@@ -9,12 +9,17 @@ use App\Models\NotificationSetting;
 use App\Services\ApiMonitorExecutionService;
 use App\Services\HealthEventNotificationService;
 use Illuminate\Bus\UniqueLock;
-use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+
+beforeEach(function () {
+    config(['cache.stores.redis' => ['driver' => 'array', 'serialize' => false]]);
+    Cache::forgetDriver('redis');
+});
 
 test('run scheduled api monitor job remains unique for its full queued lifetime', function () {
     $monitor = MonitorApis::factory()->create();
@@ -34,7 +39,7 @@ test('run scheduled api monitor job lock does not expire while queued', function
     $monitor = MonitorApis::factory()->create();
     $firstJob = new RunScheduledApiMonitorJob($monitor);
     $secondJob = new RunScheduledApiMonitorJob($monitor);
-    $uniqueLock = new UniqueLock(app(Repository::class));
+    $uniqueLock = new UniqueLock($firstJob->uniqueVia());
 
     expect($uniqueLock->acquire($firstJob))->toBeTrue();
 
