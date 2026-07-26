@@ -211,7 +211,7 @@ return [
             'queue' => ['api-monitor'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
-            'maxProcesses' => 1,
+            'maxProcesses' => 4,
             'maxTime' => 0,
             'maxJobs' => 0,
             'memory' => 128,
@@ -234,7 +234,7 @@ return [
                 'balanceCooldown' => 3,
             ],
             'supervisor-3' => [
-                'maxProcesses' => 1,
+                'maxProcesses' => 4,
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
@@ -265,7 +265,7 @@ return [
                 'maxProcesses' => 3,
             ],
             'supervisor-3' => [
-                'maxProcesses' => 1,
+                'maxProcesses' => 4,
             ],
         ],
     ],
