@@ -5,10 +5,12 @@ namespace App\Jobs;
 use App\Models\MonitorApis;
 use App\Services\ApiMonitorExecutionService;
 use App\Services\HealthEventNotificationService;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Psr\Log\LogLevel;
 use Throwable;
@@ -40,6 +42,11 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
     public function uniqueId(): string
     {
         return "api-monitor:{$this->monitor->getKey()}:scheduled";
+    }
+
+    public function uniqueVia(): Repository
+    {
+        return Cache::store('redis');
     }
 
     public function handle(

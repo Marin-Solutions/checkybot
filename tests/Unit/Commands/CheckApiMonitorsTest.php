@@ -8,11 +8,17 @@ use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
+
+beforeEach(function () {
+    config(['cache.stores.redis' => ['driver' => 'array', 'serialize' => false]]);
+    Cache::forgetDriver('redis');
+});
 
 function seedScheduledApiMonitorResult(MonitorApis $monitor, \Illuminate\Support\Carbon $createdAt): MonitorApiResult
 {
