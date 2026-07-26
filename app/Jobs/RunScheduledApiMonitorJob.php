@@ -25,7 +25,8 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
 
     public bool $failOnTimeout = true;
 
-    public int $uniqueFor = 480;
+    // A zero TTL keeps the lock until Laravel releases it after the job finishes.
+    public int $uniqueFor = 0;
 
     public string $dispatchedAt;
 

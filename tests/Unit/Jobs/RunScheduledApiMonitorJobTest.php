@@ -8,13 +8,15 @@ use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use App\Services\ApiMonitorExecutionService;
 use App\Services\HealthEventNotificationService;
+use Illuminate\Bus\UniqueLock;
+use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
-test('run scheduled api monitor job is unique and queued with enough time for configured retries', function () {
+test('run scheduled api monitor job remains unique for its full queued lifetime', function () {
     $monitor = MonitorApis::factory()->create();
     $job = new RunScheduledApiMonitorJob($monitor);
 
@@ -23,9 +25,28 @@ test('run scheduled api monitor job is unique and queued with enough time for co
         ->and($job->tries)->toBe(1)
         ->and($job->timeout)->toBe(420)
         ->and($job->failOnTimeout)->toBeTrue()
-        ->and($job->uniqueFor)->toBe(480)
+        ->and($job->uniqueFor)->toBe(0)
         ->and($job->queue)->toBe(RunScheduledApiMonitorJob::QUEUE)
         ->and($job->uniqueId())->toBe("api-monitor:{$monitor->id}:scheduled");
+});
+
+test('run scheduled api monitor job lock does not expire while queued', function () {
+    $monitor = MonitorApis::factory()->create();
+    $firstJob = new RunScheduledApiMonitorJob($monitor);
+    $secondJob = new RunScheduledApiMonitorJob($monitor);
+    $uniqueLock = new UniqueLock(app(Repository::class));
+
+    expect($uniqueLock->acquire($firstJob))->toBeTrue();
+
+    $this->travel(7)->days();
+
+    expect($uniqueLock->acquire($secondJob))->toBeFalse();
+
+    $uniqueLock->release($firstJob);
+
+    expect($uniqueLock->acquire($secondJob))->toBeTrue();
+
+    $uniqueLock->release($secondJob);
 });
 
 test('horizon api monitor supervisor timeout sits between job timeout and redis retry lease', function () {
@@ -35,7 +56,7 @@ test('horizon api monitor supervisor timeout sits between job timeout and redis 
 
     expect($supervisor['queue'])->toBe([RunScheduledApiMonitorJob::QUEUE])
         ->and(config('horizon.defaults.supervisor-1.queue'))->not->toContain(RunScheduledApiMonitorJob::QUEUE)
-        ->and($supervisor['maxProcesses'])->toBe(1)
+        ->and($supervisor['maxProcesses'])->toBe(4)
         ->and($supervisor['timeout'])->toBeGreaterThan($job->timeout)
         ->and(config('queue.connections.redis.retry_after'))->toBeGreaterThan($supervisor['timeout']);
 });
