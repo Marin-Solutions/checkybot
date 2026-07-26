@@ -1,5 +1,6 @@
 <?php
 
+use App\Console\Commands\CheckApiMonitors;
 use App\Jobs\RunScheduledApiMonitorJob;
 use App\Mail\HealthStatusAlert;
 use App\Models\MonitorApiAssertion;
@@ -7,8 +8,10 @@ use App\Models\MonitorApiResult;
 use App\Models\MonitorApis;
 use App\Models\NotificationSetting;
 use Illuminate\Contracts\Bus\Dispatcher;
+use Illuminate\Database\ConnectionInterface;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -30,6 +33,21 @@ function seedScheduledApiMonitorResult(MonitorApis $monitor, \Illuminate\Support
             'updated_at' => $createdAt,
         ]);
 }
+
+test('database interval alternatives are grouped before the due timestamp condition', function (string $driver) {
+    $connection = Mockery::mock(ConnectionInterface::class);
+    $connection->shouldReceive('getDriverName')->once()->andReturn($driver);
+    DB::shouldReceive('connection')->once()->andReturn($connection);
+
+    $method = new ReflectionMethod(CheckApiMonitors::class, 'validIntervalSql');
+
+    $predicate = $method->invoke(app(CheckApiMonitors::class));
+
+    expect($predicate)
+        ->toStartWith('(')
+        ->toEndWith(')')
+        ->toContain(' or ');
+})->with(['mysql', 'pgsql']);
 
 test('command checks all active api monitors', function () {
     Http::fake([
