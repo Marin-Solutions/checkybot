@@ -127,12 +127,14 @@ class CheckApiMonitors extends Command
 
     private function validIntervalSql(): string
     {
-        return match (DB::connection()->getDriverName()) {
+        $predicate = match (DB::connection()->getDriverName()) {
             'sqlite' => $this->sqliteValidIntervalSql(),
             'pgsql' => "package_interval ~ '^0*[1-9][0-9]*[smhd]$' or package_interval ~ '^every_0*[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'",
             'sqlsrv' => $this->sqlServerValidIntervalSql(),
             default => "package_interval regexp '^0*[1-9][0-9]*[smhd]$' or package_interval regexp '^every_0*[1-9][0-9]*_(second|seconds|minute|minutes|hour|hours|day|days)$'",
         };
+
+        return "({$predicate})";
     }
 
     private function intervalMinutesSql(): string
