@@ -70,7 +70,7 @@ class CheckApiMonitors extends Command
         $now = now()->startOfMinute();
         $validIntervalSql = $this->validIntervalSql();
         $intervalMinutesSql = $this->intervalMinutesSql();
-        $latestScheduledAtSql = $this->latestScheduledResultAtSql();
+        $latestScheduledAtSql = 'monitor_apis.latest_scheduled_result_at';
 
         return $query
             ->whereNull('package_interval')
@@ -109,19 +109,6 @@ class CheckApiMonitors extends Command
             'pgsql' => "date_trunc('minute', {$anchorSql}) + make_interval(mins => least(({$intervalMinutesSql}), 2147483647)::int) <= ?",
             'sqlsrv' => "DATEADD(minute, ({$intervalMinutesSql}), DATEADD(minute, DATEDIFF(minute, 0, {$anchorSql}), 0)) <= ?",
             default => "DATE_ADD(DATE_FORMAT({$anchorSql}, '%Y-%m-%d %H:%i:00'), INTERVAL ({$intervalMinutesSql}) MINUTE) <= ?",
-        };
-    }
-
-    private function latestScheduledResultAtSql(): string
-    {
-        return '(select max(monitor_api_results.created_at) from monitor_api_results where monitor_api_results.monitor_api_id = monitor_apis.id and '.$this->scheduledRunPredicate('monitor_api_results.is_on_demand').')';
-    }
-
-    private function scheduledRunPredicate(string $column): string
-    {
-        return match (DB::connection()->getDriverName()) {
-            'pgsql' => "({$column} is null or {$column} = false)",
-            default => "({$column} is null or {$column} = 0)",
         };
     }
 

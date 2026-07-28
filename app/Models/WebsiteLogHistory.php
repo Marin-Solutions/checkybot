@@ -39,6 +39,25 @@ class WebsiteLogHistory extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::created(function (WebsiteLogHistory $history): void {
+            if ($history->is_on_demand === true || $history->created_at === null) {
+                return;
+            }
+
+            Website::query()
+                ->whereKey($history->website_id)
+                ->where(function ($query) use ($history): void {
+                    $query
+                        ->whereNull('latest_scheduled_result_at')
+                        ->orWhere('latest_scheduled_result_at', '<', $history->created_at);
+                })
+                ->toBase()
+                ->update(['latest_scheduled_result_at' => $history->created_at]);
+        });
+    }
+
     public function website(): BelongsTo
     {
         return $this->belongsTo(Website::class);

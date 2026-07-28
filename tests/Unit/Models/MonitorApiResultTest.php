@@ -12,6 +12,34 @@ test('monitor api result belongs to monitor api', function () {
     expect($result->monitorApi->id)->toBe($monitor->id);
 });
 
+test('scheduled result advances the parent scheduling timestamp without moving it backwards', function () {
+    $monitor = MonitorApis::factory()->create();
+    $latestAt = now()->subMinute()->startOfSecond();
+
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => $latestAt,
+        'updated_at' => $latestAt,
+    ]);
+    MonitorApiResult::factory()->create([
+        'monitor_api_id' => $monitor->id,
+        'created_at' => $latestAt->copy()->subHour(),
+        'updated_at' => $latestAt->copy()->subHour(),
+    ]);
+
+    expect($monitor->fresh()->latest_scheduled_result_at->equalTo($latestAt))->toBeTrue();
+});
+
+test('on demand result does not advance the parent scheduling timestamp', function () {
+    $monitor = MonitorApis::factory()->create();
+
+    MonitorApiResult::factory()->onDemand()->create([
+        'monitor_api_id' => $monitor->id,
+    ]);
+
+    expect($monitor->fresh()->latest_scheduled_result_at)->toBeNull();
+});
+
 test('monitor api result can be successful', function () {
     $result = MonitorApiResult::factory()->successful()->create();
 

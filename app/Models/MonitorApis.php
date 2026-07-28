@@ -81,6 +81,7 @@ class MonitorApis extends Model
         'last_synced_at' => 'datetime',
         'diagnostic_queued_at' => 'datetime',
         'silenced_until' => 'datetime',
+        'latest_scheduled_result_at' => 'datetime',
     ];
 
     protected static function booted(): void
