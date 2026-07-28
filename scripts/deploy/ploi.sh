@@ -52,8 +52,8 @@ php artisan config:cache
 php artisan route:cache
 php artisan view:cache
 php artisan event:cache
-bring_application_up
 php artisan migrate --force
+bring_application_up
 sudo service php8.3-fpm reload
 php artisan queue:restart
 php artisan horizon:terminate
