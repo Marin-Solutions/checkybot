@@ -1,6 +1,6 @@
 <?php
 
-test('ploi deploy warms all Laravel caches before bringing the app up', function () {
+test('ploi deploy warms all Laravel caches and migrates before bringing the app up', function () {
     $deployScript = file(base_path('scripts/deploy/ploi.sh'), FILE_IGNORE_NEW_LINES);
 
     $commands = array_values(array_filter($deployScript, fn (string $line): bool => str_starts_with($line, 'php artisan ')
@@ -17,6 +17,7 @@ test('ploi deploy warms all Laravel caches before bringing the app up', function
             'php artisan route:cache',
             'php artisan view:cache',
             'php artisan event:cache',
+            'php artisan migrate --force',
             'bring_application_up',
         ]);
 });
