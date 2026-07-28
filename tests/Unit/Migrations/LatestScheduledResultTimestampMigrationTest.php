@@ -46,4 +46,15 @@ test('migration backfills the latest scheduled timestamps and ignores on demand 
         ->and(Schema::hasColumn('monitor_apis', 'latest_scheduled_result_at'))->toBeTrue()
         ->and($website->fresh()->latest_scheduled_result_at->equalTo($scheduledWebsiteAt))->toBeTrue()
         ->and($monitor->fresh()->latest_scheduled_result_at->equalTo($scheduledApiAt))->toBeTrue();
+
+    $newerAt = now()->startOfSecond();
+    DB::table('websites')->where('id', $website->id)->update(['latest_scheduled_result_at' => $newerAt]);
+    DB::table('monitor_apis')->where('id', $monitor->id)->update(['latest_scheduled_result_at' => $newerAt]);
+
+    $backfill = new ReflectionMethod($migration, 'backfill');
+    $backfill->invoke($migration, 'website_log_history', 'website_id', 'websites');
+    $backfill->invoke($migration, 'monitor_api_results', 'monitor_api_id', 'monitor_apis');
+
+    expect($website->fresh()->latest_scheduled_result_at->equalTo($newerAt))->toBeTrue()
+        ->and($monitor->fresh()->latest_scheduled_result_at->equalTo($newerAt))->toBeTrue();
 });

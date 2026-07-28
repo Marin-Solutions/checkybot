@@ -55,6 +55,11 @@ return new class extends Migration
             ->each(function (object $result) use ($foreignKey, $parentTable): void {
                 DB::table($parentTable)
                     ->where('id', $result->{$foreignKey})
+                    ->where(function ($query) use ($result): void {
+                        $query
+                            ->whereNull('latest_scheduled_result_at')
+                            ->orWhere('latest_scheduled_result_at', '<', $result->latest_scheduled_result_at);
+                    })
                     ->update([
                         'latest_scheduled_result_at' => $result->latest_scheduled_result_at,
                     ]);
