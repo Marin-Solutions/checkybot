@@ -186,7 +186,9 @@ test('command logs due query failures and exits successfully', function () {
         'package_interval' => '15m',
     ]);
 
-    Schema::drop('monitor_api_results');
+    Schema::table('monitor_apis', function ($table): void {
+        $table->dropColumn('latest_scheduled_result_at');
+    });
 
     $this->artisan('monitor:check-apis')
         ->expectsOutput('Queued 0 API monitor jobs.')
@@ -197,7 +199,7 @@ test('command logs due query failures and exits successfully', function () {
         ->with(
             'Failed to query due API monitor checks.',
             Mockery::on(fn (array $context): bool => filled($context['exception'] ?? null)
-                && str_contains((string) ($context['message'] ?? ''), 'monitor_api_results'))
+                && str_contains((string) ($context['message'] ?? ''), 'latest_scheduled_result_at'))
         );
 });
 
@@ -262,6 +264,27 @@ test('command does not hydrate enabled api monitors before their polling interva
         ->not->toContain($skippedMonitor->id);
 
     Http::assertSentCount(1);
+});
+
+test('due selection does not query api result history', function () {
+    Queue::fake();
+
+    $monitor = MonitorApis::factory()->create([
+        'url' => 'https://api.example.com/history-free-due-query',
+        'package_interval' => '15m',
+    ]);
+    seedScheduledApiMonitorResult($monitor, now()->subMinutes(16));
+
+    $queries = [];
+    DB::listen(function ($query) use (&$queries): void {
+        $queries[] = $query->sql;
+    });
+
+    $this->artisan('monitor:check-apis')->assertSuccessful();
+
+    expect(implode("\n", $queries))
+        ->toContain('from "monitor_apis"')
+        ->not->toContain('monitor_api_results');
 });
 
 test('command checks interval monitors without a prior heartbeat immediately', function () {

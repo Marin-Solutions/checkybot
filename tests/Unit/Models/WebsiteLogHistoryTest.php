@@ -1,12 +1,41 @@
 <?php
 
 use App\Enums\RunSource;
+use App\Models\Website;
 use App\Models\WebsiteLogHistory;
 
 test('website log history has correct table name', function () {
     $log = new WebsiteLogHistory;
 
     expect($log->getTable())->toBe('website_log_history');
+});
+
+test('scheduled history advances the parent scheduling timestamp without moving it backwards', function () {
+    $website = Website::factory()->create();
+    $latestAt = now()->subMinute()->startOfSecond();
+
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'created_at' => $latestAt,
+        'updated_at' => $latestAt,
+    ]);
+    WebsiteLogHistory::factory()->create([
+        'website_id' => $website->id,
+        'created_at' => $latestAt->copy()->subHour(),
+        'updated_at' => $latestAt->copy()->subHour(),
+    ]);
+
+    expect($website->fresh()->latest_scheduled_result_at->equalTo($latestAt))->toBeTrue();
+});
+
+test('on demand history does not advance the parent scheduling timestamp', function () {
+    $website = Website::factory()->create();
+
+    WebsiteLogHistory::factory()->onDemand()->create([
+        'website_id' => $website->id,
+    ]);
+
+    expect($website->fresh()->latest_scheduled_result_at)->toBeNull();
 });
 
 test('website log history has fillable attributes', function () {

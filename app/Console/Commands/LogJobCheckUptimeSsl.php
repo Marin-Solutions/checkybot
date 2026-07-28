@@ -38,11 +38,12 @@ class LogJobCheckUptimeSsl extends Command
             ->where('uptime_check', true)
             ->whereIn('uptime_interval', $this->intervals)
             ->where(function (Builder $query): void {
-                $latestScheduledAtSql = $this->latestScheduledLogAtSql();
-
                 $query
-                    ->whereRaw("{$latestScheduledAtSql} is null")
-                    ->orWhereRaw($this->dueAtExpression($latestScheduledAtSql), [now()->startOfMinute()->toDateTimeString()]);
+                    ->whereNull('latest_scheduled_result_at')
+                    ->orWhereRaw(
+                        $this->dueAtExpression('websites.latest_scheduled_result_at'),
+                        [now()->startOfMinute()->toDateTimeString()]
+                    );
             })
             ->chunkById(100, function ($websites) use (&$count): void {
                 $websites->each(function (Website $website) use (&$count): void {
@@ -65,19 +66,6 @@ class LogJobCheckUptimeSsl extends Command
             'pgsql' => "date_trunc('minute', {$anchorSql}) + (websites.uptime_interval * interval '1 minute') <= ?",
             'sqlsrv' => "DATEADD(minute, websites.uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, {$anchorSql}), 0)) <= ?",
             default => "DATE_ADD(DATE_FORMAT({$anchorSql}, '%Y-%m-%d %H:%i:00'), INTERVAL websites.uptime_interval MINUTE) <= ?",
-        };
-    }
-
-    private function latestScheduledLogAtSql(): string
-    {
-        return '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and '.$this->scheduledRunPredicate('website_log_history.is_on_demand').')';
-    }
-
-    private function scheduledRunPredicate(string $column): string
-    {
-        return match (Website::query()->getConnection()->getDriverName()) {
-            'pgsql' => "({$column} is null or {$column} = false)",
-            default => "({$column} is null or {$column} = 0)",
         };
     }
 }

@@ -3,6 +3,7 @@
 use App\Jobs\CheckSslExpiryDateJob;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 
 if (! function_exists('seedScheduledWebsiteLog')) {
@@ -195,6 +196,30 @@ test('command does not dispatch manual ssl-only checks before uptime interval is
         ->assertSuccessful();
 
     Queue::assertNotPushed(CheckSslExpiryDateJob::class);
+});
+
+test('ssl due selection does not query website history', function () {
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'ssl_check' => true,
+        'uptime_check' => false,
+        'source' => 'manual',
+        'uptime_interval' => 5,
+        'ssl_expiry_date' => today()->addDays(45)->toDateString(),
+    ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(5));
+
+    $queries = [];
+    DB::listen(function ($query) use (&$queries): void {
+        $queries[] = $query->sql;
+    });
+
+    $this->artisan('ssl:check')->assertSuccessful();
+
+    expect(implode("\n", $queries))
+        ->toContain('from "websites"')
+        ->not->toContain('website_log_history');
 });
 
 test('command dispatches manual ssl-only checks once when interval and reminder day are both due', function () {

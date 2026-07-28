@@ -3,6 +3,7 @@
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 
 beforeEach(function () {
@@ -154,6 +155,27 @@ test('command only dispatches due websites', function () {
     Queue::assertPushed(LogUptimeSslJob::class, function (LogUptimeSslJob $job) use ($dueWebsite): bool {
         return $job->website->is($dueWebsite);
     });
+});
+
+test('due selection does not query website history', function () {
+    Queue::fake();
+
+    $website = Website::factory()->create([
+        'uptime_check' => true,
+        'uptime_interval' => 5,
+    ]);
+    seedScheduledWebsiteLog($website, now()->subMinutes(5));
+
+    $queries = [];
+    DB::listen(function ($query) use (&$queries): void {
+        $queries[] = $query->sql;
+    });
+
+    $this->artisan('website:log-uptime-ssl')->assertSuccessful();
+
+    expect(implode("\n", $queries))
+        ->toContain('from "websites"')
+        ->not->toContain('website_log_history');
 });
 
 test('command does not dispatch jobs for websites with uptime check disabled', function () {

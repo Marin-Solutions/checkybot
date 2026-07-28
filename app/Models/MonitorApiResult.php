@@ -59,6 +59,25 @@ class MonitorApiResult extends Model
         ];
     }
 
+    protected static function booted(): void
+    {
+        static::created(function (MonitorApiResult $result): void {
+            if ($result->is_on_demand === true || $result->created_at === null) {
+                return;
+            }
+
+            MonitorApis::query()
+                ->whereKey($result->monitor_api_id)
+                ->where(function (Builder $query) use ($result): void {
+                    $query
+                        ->whereNull('latest_scheduled_result_at')
+                        ->orWhere('latest_scheduled_result_at', '<', $result->created_at);
+                })
+                ->toBase()
+                ->update(['latest_scheduled_result_at' => $result->created_at]);
+        });
+    }
+
     protected function responseBody(): Attribute
     {
         return Attribute::make(

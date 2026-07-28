@@ -146,23 +146,23 @@ class WriteJobCheckSsl extends Command
     private function wherePackageSslCheckIsDue(Builder $query): void
     {
         [$intervalDueSql, $bindings] = $this->packageIntervalDueExpression();
-        $latestScheduledAtSql = $this->latestScheduledLogAtSql();
 
-        $query->where(function (Builder $query) use ($intervalDueSql, $bindings, $latestScheduledAtSql): void {
+        $query->where(function (Builder $query) use ($intervalDueSql, $bindings): void {
             $query
-                ->whereRaw("{$latestScheduledAtSql} is null")
+                ->whereNull('latest_scheduled_result_at')
                 ->orWhereRaw($intervalDueSql, $bindings);
         });
     }
 
     private function whereManualSslCheckIsDue(Builder $query): void
     {
-        $latestScheduledAtSql = $this->latestScheduledLogAtSql();
-
-        $query->where(function (Builder $query) use ($latestScheduledAtSql): void {
+        $query->where(function (Builder $query): void {
             $query
-                ->whereRaw("{$latestScheduledAtSql} is null")
-                ->orWhereRaw($this->manualIntervalDueExpression($latestScheduledAtSql), [now()->startOfMinute()->toDateTimeString()]);
+                ->whereNull('latest_scheduled_result_at')
+                ->orWhereRaw(
+                    $this->manualIntervalDueExpression('websites.latest_scheduled_result_at'),
+                    [now()->startOfMinute()->toDateTimeString()]
+                );
         });
     }
 
@@ -171,7 +171,10 @@ class WriteJobCheckSsl extends Command
      */
     private function packageIntervalDueExpression(): array
     {
-        return PackageIntervalDueExpression::build(Website::query()->getConnection(), anchorColumn: $this->latestScheduledLogAtSql());
+        return PackageIntervalDueExpression::build(
+            Website::query()->getConnection(),
+            anchorColumn: 'websites.latest_scheduled_result_at'
+        );
     }
 
     private function manualIntervalDueExpression(string $anchorSql): string
@@ -181,19 +184,6 @@ class WriteJobCheckSsl extends Command
             'pgsql' => "date_trunc('minute', {$anchorSql}) + (websites.uptime_interval * interval '1 minute') <= ?",
             'sqlsrv' => "DATEADD(minute, websites.uptime_interval, DATEADD(minute, DATEDIFF(minute, 0, {$anchorSql}), 0)) <= ?",
             default => "DATE_ADD(DATE_FORMAT({$anchorSql}, '%Y-%m-%d %H:%i:00'), INTERVAL websites.uptime_interval MINUTE) <= ?",
-        };
-    }
-
-    private function latestScheduledLogAtSql(): string
-    {
-        return '(select max(website_log_history.created_at) from website_log_history where website_log_history.website_id = websites.id and '.$this->scheduledRunPredicate('website_log_history.is_on_demand').')';
-    }
-
-    private function scheduledRunPredicate(string $column): string
-    {
-        return match (Website::query()->getConnection()->getDriverName()) {
-            'pgsql' => "({$column} is null or {$column} = false)",
-            default => "({$column} is null or {$column} = 0)",
         };
     }
 }
