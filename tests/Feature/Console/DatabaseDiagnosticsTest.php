@@ -108,6 +108,19 @@ test('database diagnostics skips MySQL telemetry on other database drivers', fun
         ->assertSuccessful();
 });
 
+test('database diagnostics describes unsupported drivers accurately in console output', function () {
+    $connection = Mockery::mock(Connection::class);
+    $connection->shouldReceive('getDriverName')->once()->andReturn('pgsql');
+    $connection->shouldReceive('select')->once()->with('SELECT 1')->andReturn([(object) ['result' => 1]]);
+
+    useDatabaseDiagnosticsConnection($connection);
+
+    $this->artisan('app:database-diagnostics')
+        ->expectsOutput('Database: available')
+        ->expectsOutput('Statement diagnostics: unavailable (database driver does not support MySQL statement telemetry)')
+        ->assertSuccessful();
+});
+
 test('database diagnostics fails cleanly for unrelated database errors', function () {
     Log::spy();
 

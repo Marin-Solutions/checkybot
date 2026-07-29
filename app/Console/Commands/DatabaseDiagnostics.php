@@ -140,7 +140,13 @@ class DatabaseDiagnostics extends Command
         $this->info('Database: available');
 
         if ($result['statement_diagnostics']['status'] === 'unavailable') {
-            $this->warn('Statement diagnostics: unavailable (performance_schema SELECT permission denied)');
+            $reason = match ($result['statement_diagnostics']['reason']) {
+                'performance_schema_select_denied' => 'performance_schema SELECT permission denied',
+                'unsupported_database_driver' => 'database driver does not support MySQL statement telemetry',
+                default => 'reason unavailable',
+            };
+
+            $this->warn("Statement diagnostics: unavailable ({$reason})");
 
             return self::SUCCESS;
         }
