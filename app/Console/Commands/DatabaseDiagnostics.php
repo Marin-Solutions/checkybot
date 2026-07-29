@@ -3,8 +3,8 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
-use Illuminate\Database\ConnectionInterface;
-use Illuminate\Database\ConnectionResolverInterface;
+use Illuminate\Database\Connection;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Log;
 
@@ -15,11 +15,24 @@ class DatabaseDiagnostics extends Command
 
     protected $description = 'Inspect database availability and optional MySQL statement telemetry';
 
-    public function handle(ConnectionResolverInterface $connections): int
+    public function handle(DatabaseManager $databases): int
     {
-        $connection = $connections->connection();
+        $connection = $databases->connection();
 
         try {
+            if (! in_array($connection->getDriverName(), ['mysql', 'mariadb'], true)) {
+                $connection->select('SELECT 1');
+
+                return $this->displayResult([
+                    'database' => 'available',
+                    'statement_diagnostics' => [
+                        'status' => 'unavailable',
+                        'reason' => 'unsupported_database_driver',
+                        'statements' => [],
+                    ],
+                ]);
+            }
+
             $statements = $this->statementDiagnostics($connection);
         } catch (QueryException $exception) {
             if ($this->isPerformanceSchemaSelectDenied($exception)) {
@@ -38,9 +51,7 @@ class DatabaseDiagnostics extends Command
                 'exception' => $exception,
             ]);
 
-            $this->error('Database diagnostics failed. Inspect the application log for details.');
-
-            return self::FAILURE;
+            return $this->displayFailure();
         }
 
         return $this->displayResult([
@@ -59,7 +70,7 @@ class DatabaseDiagnostics extends Command
     /**
      * @return array<int, object|array<string, mixed>>
      */
-    private function statementDiagnostics(ConnectionInterface $connection): array
+    private function statementDiagnostics(Connection $connection): array
     {
         return $connection->select(
             'SELECT
@@ -88,6 +99,24 @@ class DatabaseDiagnostics extends Command
                 strtolower($exception->getSql()),
                 'performance_schema.events_statements_summary_by_digest',
             );
+    }
+
+    private function displayFailure(): int
+    {
+        if ($this->option('json')) {
+            $this->line(json_encode([
+                'database' => 'unknown',
+                'statement_diagnostics' => [
+                    'status' => 'error',
+                    'reason' => 'database_query_failed',
+                    'statements' => [],
+                ],
+            ], JSON_THROW_ON_ERROR));
+        } else {
+            $this->error('Database diagnostics failed. Inspect the application log for details.');
+        }
+
+        return self::FAILURE;
     }
 
     /**
