@@ -69,6 +69,7 @@ and intentionally does not use `composer update`, because update-time dependency
 - Production database id: `199162`, name `checkybot`.
 - Staging database id: `249720`, name `staging`.
 - Prefer read-only production database access for inspection, exports, and diagnostics.
+- Use `php artisan app:database-diagnostics --json --no-interaction` for application database diagnostics. It reports optional MySQL statement telemetry as unavailable when the least-privileged application user cannot read `performance_schema`; do not replace it with an unguarded `DB::select()` one-liner.
 - Do not run destructive production database commands manually.
 - Production migrations should only run as part of the reviewed Ploi deployment flow.
 - If a future task requires production data in staging, create a backup or copy first, use read-only production access where possible, and get explicit approval before replacing staging data.
