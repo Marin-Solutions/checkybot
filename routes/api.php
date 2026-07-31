@@ -29,6 +29,9 @@ Route::prefix('v1')->middleware(['api'])->group(function () {
     });
     Route::post('/projects/{project}/checks/sync', [ProjectChecksController::class, 'sync'])->middleware('api.key');
     Route::post('/projects/{project}/components/sync', ProjectComponentsController::class)->middleware('api.key');
+    Route::post('/projects/{project}/components/{componentKey}/status', [ProjectComponentsController::class, 'status'])
+        ->where('componentKey', '[A-Za-z0-9][A-Za-z0-9._-]{0,63}')
+        ->middleware('api.key');
 
     Route::middleware('api.key')->prefix('control')->group(function () {
         Route::get('/me', [CheckybotControlController::class, 'me']);

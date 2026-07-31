@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ProjectComponent extends Model
 {
@@ -36,6 +37,7 @@ class ProjectComponent extends Model
         'interval_minutes',
         'current_status',
         'last_reported_status',
+        'status_observed_at',
         'metrics',
         'is_archived',
         'project_paused_monitoring',
@@ -49,6 +51,7 @@ class ProjectComponent extends Model
     {
         return [
             'metrics' => 'array',
+            'status_observed_at' => 'datetime',
             'is_archived' => 'boolean',
             'project_paused_monitoring' => 'boolean',
             'archived_at' => 'datetime',
@@ -83,6 +86,7 @@ class ProjectComponent extends Model
         return [
             'current_status' => 'unknown',
             'last_reported_status' => 'unknown',
+            'status_observed_at' => null,
             'summary' => $summary,
         ];
     }
@@ -90,6 +94,18 @@ class ProjectComponent extends Model
     public function project(): BelongsTo
     {
         return $this->belongsTo(Project::class);
+    }
+
+    public function heartbeats(): HasMany
+    {
+        return $this->hasMany(ProjectComponentHeartbeat::class)->latest('observed_at');
+    }
+
+    public function latestHeartbeat(): HasOne
+    {
+        return $this->hasOne(ProjectComponentHeartbeat::class)->ofMany(
+            ['observed_at' => 'max', 'id' => 'max'],
+        );
     }
 
     public function monitorApis(): HasMany
@@ -143,6 +159,14 @@ class ProjectComponent extends Model
         }
 
         $statuses = $this->activeChildStatuses();
+        $reportedStatus = $this->status_observed_at !== null
+            && in_array($this->current_status, ['healthy', 'warning', 'danger'], true)
+            ? $this->current_status
+            : null;
+
+        if ($reportedStatus !== null) {
+            $statuses[] = $reportedStatus;
+        }
 
         if ($statuses === []) {
             if ($this->source !== 'package' && in_array($this->current_status, ['healthy', 'warning', 'danger'], true)) {
