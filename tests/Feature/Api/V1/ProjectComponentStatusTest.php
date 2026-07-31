@@ -4,6 +4,7 @@ use App\Models\ApiKey;
 use App\Models\Project;
 use App\Models\ProjectComponent;
 use App\Models\User;
+use Carbon\Carbon;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -35,14 +36,17 @@ test('component status validates the declared component and owner', function () 
     $otherProject = Project::factory()->create(['created_by' => $otherUser->id]);
 
     $this->withToken($this->apiKey->key)
+        ->withHeaders(componentStatusHeaders())
         ->postJson(componentStatusUrl($this->project, 'not-declared'), validComponentStatusPayload())
         ->assertNotFound();
 
     $this->withToken($otherKey->key)
+        ->withHeaders(componentStatusHeaders())
         ->postJson(componentStatusUrl($this->project, $this->component), validComponentStatusPayload())
         ->assertForbidden();
 
     $this->withToken($this->apiKey->key)
+        ->withHeaders(componentStatusHeaders())
         ->postJson(componentStatusUrl($otherProject, 'serp-data-lake'), validComponentStatusPayload())
         ->assertForbidden();
 });
@@ -59,6 +63,7 @@ test('component status persists observations and maps failure to danger', functi
     ];
 
     $this->withToken($this->apiKey->key)
+        ->withHeaders(componentStatusHeaders())
         ->postJson(componentStatusUrl($this->project, $this->component), $payload)
         ->assertOk()
         ->assertJsonPath('message', 'Component status reported successfully')
@@ -83,17 +88,64 @@ test('component status persists observations and maps failure to danger', functi
     ]);
 });
 
+test('component status replays an idempotent request without duplicating history', function () {
+    $payload = validComponentStatusPayload(['status' => 'warning']);
+    $headers = componentStatusHeaders(str_repeat('b', 64));
+
+    $first = $this->withToken($this->apiKey->key)
+        ->withHeaders($headers)
+        ->postJson(componentStatusUrl($this->project, $this->component), $payload)
+        ->assertOk();
+
+    $second = $this->withToken($this->apiKey->key)
+        ->withHeaders($headers)
+        ->postJson(componentStatusUrl($this->project, $this->component), $payload)
+        ->assertOk();
+
+    expect($second->json('component'))->toBe($first->json('component'))
+        ->and($this->component->fresh()->heartbeats()->count())->toBe(1);
+
+    $this->withToken($this->apiKey->key)
+        ->withHeaders($headers)
+        ->postJson(componentStatusUrl($this->project, $this->component), array_replace($payload, ['message' => 'Different payload.']))
+        ->assertStatus(409);
+});
+
+test('component status tolerates bounded clock skew and rejects excessive future timestamps', function () {
+    Carbon::setTestNow(Carbon::parse('2026-07-31T12:00:00Z'));
+
+    try {
+        $this->withToken($this->apiKey->key)
+            ->withHeaders(componentStatusHeaders(str_repeat('c', 64)))
+            ->postJson(componentStatusUrl($this->project, $this->component), validComponentStatusPayload([
+                'observed_at' => '2026-07-31T12:02:00Z',
+            ]))
+            ->assertOk();
+
+        $this->withToken($this->apiKey->key)
+            ->withHeaders(componentStatusHeaders(str_repeat('d', 64)))
+            ->postJson(componentStatusUrl($this->project, $this->component), validComponentStatusPayload([
+                'observed_at' => '2026-07-31T12:02:01Z',
+            ]))
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['observed_at']);
+    } finally {
+        Carbon::setTestNow();
+    }
+});
+
 test('component status preserves healthy and warning states', function () {
     foreach ([
         ['status' => 'healthy', 'stored' => 'healthy', 'at' => '2026-07-31T12:34:56Z'],
         ['status' => 'warning', 'stored' => 'warning', 'at' => '2026-07-31T12:35:56Z'],
-    ] as $case) {
+    ] as $index => $case) {
         $payload = validComponentStatusPayload([
             'status' => $case['status'],
             'observed_at' => $case['at'],
         ]);
 
         $this->withToken($this->apiKey->key)
+            ->withHeaders(componentStatusHeaders(str_pad((string) ($index + 1), 64, '0', STR_PAD_LEFT)))
             ->postJson(componentStatusUrl($this->project, $this->component), $payload)
             ->assertOk()
             ->assertJsonPath('component.status', $case['stored']);
@@ -107,6 +159,12 @@ test('component status rejects declaration-shaped, invalid, and unbounded payloa
     $payload = validComponentStatusPayload();
 
     $this->withToken($this->apiKey->key)
+        ->postJson(componentStatusUrl($this->project, $this->component), $payload)
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['idempotency_key']);
+
+    $this->withToken($this->apiKey->key)
+        ->withHeaders(componentStatusHeaders())
         ->postJson(componentStatusUrl($this->project, $this->component), $payload + ['extra' => true])
         ->assertUnprocessable()
         ->assertJsonValidationErrors(['extra']);
@@ -123,6 +181,7 @@ test('component status rejects declaration-shaped, invalid, and unbounded payloa
         ['metrics' => ['due' => 1_000_000_001]],
     ] as $invalid) {
         $this->withToken($this->apiKey->key)
+            ->withHeaders(componentStatusHeaders())
             ->postJson(componentStatusUrl($this->project, $this->component), array_replace($payload, $invalid))
             ->assertUnprocessable();
     }
@@ -147,6 +206,16 @@ function componentStatusUrl(Project $project, ProjectComponent|string $component
     $componentKey = $component instanceof ProjectComponent ? $component->name : $component;
 
     return "/api/v1/projects/{$project->id}/components/{$componentKey}/status";
+}
+
+/**
+ * @return array{Idempotency-Key: string}
+ */
+function componentStatusHeaders(string $key = ''): array
+{
+    return [
+        'Idempotency-Key' => $key !== '' ? $key : str_repeat('a', 64),
+    ];
 }
 
 /**

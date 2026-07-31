@@ -15,6 +15,13 @@ return new class extends Migration
         }
 
         if (Schema::hasTable('project_component_heartbeats')) {
+            if (! Schema::hasColumn('project_component_heartbeats', 'idempotency_key')) {
+                Schema::table('project_component_heartbeats', function (Blueprint $table): void {
+                    $table->string('idempotency_key', 64)->nullable();
+                    $table->unique(['project_component_id', 'idempotency_key']);
+                });
+            }
+
             return;
         }
 
@@ -27,9 +34,11 @@ return new class extends Migration
             $table->text('summary');
             $table->json('metrics')->nullable();
             $table->timestamp('observed_at');
+            $table->string('idempotency_key', 64)->nullable();
             $table->timestamps();
 
             $table->index(['project_component_id', 'observed_at']);
+            $table->unique(['project_component_id', 'idempotency_key']);
         });
     }
 

@@ -5,7 +5,7 @@ The Laravel package declaration sync and runtime aggregate status reporting are 
 Consumers must install:
 
 ```bash
-composer require marin-solutions/checkybot-laravel:^0.2.0
+composer require marin-solutions/checkybot-laravel:^0.2.1
 ```
 
 ## Endpoint
@@ -23,9 +23,11 @@ The request must use the project API key as a Bearer token and a JSON body with 
 }
 ```
 
+Each request must also include an `Idempotency-Key` header containing exactly 64 hexadecimal characters. Reusing the same key for the same component and payload returns the original observation without creating another history row. Reusing it for that component with a different payload returns `409 Conflict`.
+
 `projectId` must resolve to the API-key owner's project. `componentKey` must match an active, package-sourced component already created by `/components/sync`; the status endpoint does not create or declare components.
 
-`observed_at` must be RFC3339 UTC (`Z` or `+00:00`) and cannot be in the future. Messages are non-empty, control-character-free, and at most 500 bytes. Metrics contain at most 20 scalar values using the allowlist `active`, `configured_pairs`, `count`, `coverage_percent`, `due`, `duration_ms`, `error_count`, `failed`, `failure_count`, `failure_streak`, `healthy`, `latency_ms`, `missing_pairs`, `oldest_overdue_age_minutes`, `overdue`, `stale_claims`, `success_count`, `total`, `unique_keywords`, and `warning`. Numeric values are non-negative integers or finite numbers no greater than 1,000,000,000; booleans are also accepted.
+`observed_at` must be RFC3339 UTC (`Z` or `+00:00`) and may be at most 120 seconds ahead of the server clock to tolerate normal clock skew. Messages are non-empty, control-character-free, and at most 500 bytes. Metrics contain at most 20 scalar values using the allowlist `active`, `configured_pairs`, `count`, `coverage_percent`, `due`, `duration_ms`, `error_count`, `failed`, `failure_count`, `failure_streak`, `healthy`, `latency_ms`, `missing_pairs`, `oldest_overdue_age_minutes`, `overdue`, `stale_claims`, `success_count`, `total`, `unique_keywords`, and `warning`. Numeric values are non-negative integers or finite numbers no greater than 1,000,000,000; booleans are also accepted.
 
 The server stores each accepted observation in `project_component_heartbeats` with `event=status`, updates the latest component snapshot, and maps client `failure` to Checkybot `danger`. Older observations remain history but cannot overwrite a newer live snapshot.
 

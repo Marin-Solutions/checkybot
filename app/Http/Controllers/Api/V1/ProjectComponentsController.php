@@ -44,6 +44,7 @@ class ProjectComponentsController extends Controller
             observedAt: $request->string('observed_at')->toString(),
             message: $request->string('message')->toString(),
             metrics: $request->input('metrics'),
+            idempotencyKey: $request->idempotencyKey(),
         );
 
         return response()->json([

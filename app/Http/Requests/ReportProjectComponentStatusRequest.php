@@ -38,14 +38,27 @@ class ReportProjectComponentStatusRequest extends FormRequest
         ];
     }
 
+    public function idempotencyKey(): string
+    {
+        return (string) $this->header('Idempotency-Key');
+    }
+
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator): void {
+            $this->validateIdempotencyKey($validator);
             $this->validateTopLevelKeys($validator);
             $this->validateObservedAt($validator);
             $this->validateMessage($validator);
             $this->validateMetrics($validator);
         });
+    }
+
+    private function validateIdempotencyKey(Validator $validator): void
+    {
+        if (preg_match('/\A[a-f0-9]{64}\z/i', $this->idempotencyKey()) !== 1) {
+            $validator->errors()->add('idempotency_key', 'The Idempotency-Key header must be exactly 64 hexadecimal characters.');
+        }
     }
 
     private function validateTopLevelKeys(Validator $validator): void
@@ -85,8 +98,10 @@ class ReportProjectComponentStatusRequest extends FormRequest
             return;
         }
 
-        if (Carbon::instance($parsed)->greaterThan(Carbon::now('UTC'))) {
-            $validator->errors()->add('observed_at', 'Observed at cannot be in the future.');
+        if (Carbon::instance($parsed)->greaterThan(
+            Carbon::now('UTC')->addSeconds(ComponentStatusContract::MAX_FUTURE_SKEW_SECONDS)
+        )) {
+            $validator->errors()->add('observed_at', 'Observed at cannot be more than 120 seconds in the future.');
         }
     }
 

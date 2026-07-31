@@ -19,6 +19,7 @@ class ProjectComponentHeartbeat extends Model
         'summary',
         'metrics',
         'observed_at',
+        'idempotency_key',
     ];
 
     protected function casts(): array

@@ -4,6 +4,8 @@ namespace App\Support;
 
 final class ComponentStatusContract
 {
+    public const MAX_FUTURE_SKEW_SECONDS = 120;
+
     public const MAX_MESSAGE_LENGTH = 500;
 
     public const MAX_METRICS = 20;
