@@ -480,6 +480,40 @@ jobs:
             fi
           } >> "$GITHUB_ENV"
 
+      - name: Ensure Codex CLI is available
+        if: ${{ steps.ai-config.outcome == 'success' && (steps.ai-config.outputs.token_type == 'CODEX_AUTH_JSON' || steps.ai-config.outputs.backup_token_type == 'CODEX_AUTH_JSON') }}
+        id: codex-cli
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_version="codex-cli 0.146.0"
+          if command -v codex >/dev/null 2>&1 && [[ "$(codex --version)" == "$expected_version" ]]; then
+            exit 0
+          fi
+
+          case "$(uname -m)" in
+            x86_64) codex_arch=x86_64; codex_archive_sha256=5ba3b9405543953081f661d0854d266f76e2abbe51d41349355a36de7673776a ;;
+            aarch64|arm64) codex_arch=aarch64; codex_archive_sha256=975bac91562abeedeb8f79636d51a86649b31f34a9de6a3bcb059565b6cf1f87 ;;
+            *) echo "::error::Unsupported architecture for Codex CLI: $(uname -m)"; exit 1 ;;
+          esac
+
+          codex_archive="codex-${codex_arch}-unknown-linux-musl.tar.gz"
+          codex_tools_dir="${RUNNER_TEMP}/codex-tools"
+          install -d -m 0700 "$codex_tools_dir"
+          curl -fsSL \
+            -o "${codex_tools_dir}/${codex_archive}" \
+            "https://github.com/openai/codex/releases/download/rust-v0.146.0/${codex_archive}"
+          echo "${codex_archive_sha256}  ${codex_tools_dir}/${codex_archive}" | sha256sum --check --strict
+          tar -xzf "${codex_tools_dir}/${codex_archive}" -C "$codex_tools_dir"
+          install -m 0755 \
+            "${codex_tools_dir}/codex-${codex_arch}-unknown-linux-musl" \
+            "${codex_tools_dir}/codex"
+          echo "$codex_tools_dir" >> "$GITHUB_PATH"
+          export PATH="${codex_tools_dir}:${PATH}"
+          [[ "$(codex --version)" == "$expected_version" ]]
+
       - name: Skip Claude Code Review for workflow update
         if: ${{ steps.review-workflow.outputs.changed == 'true' }}
         shell: bash
@@ -695,6 +729,7 @@ jobs:
             --ephemeral
             --ignore-user-config
             --ignore-rules
+            --enable use_legacy_landlock
             --sandbox read-only
             --add-dir "${{ steps.review-context.outputs.path }}"
             -c 'approval_policy="never"'
@@ -706,7 +741,7 @@ jobs:
 
           if [[ "${{ github.event.pull_request.head.repo.id }}" == "${{ github.event.pull_request.base.repo.id }}" ]]; then
             git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            codex_args+=(review --base "${{ github.event.pull_request.base.sha }}" -)
+            printf '\nReview the changes in the current checkout against base commit %s.\n' "${{ github.event.pull_request.base.sha }}" >> "$prompt_file"
           else
             context_dir="${RUNNER_TEMP}/codex-review-context"
             install -d -m 0700 "$context_dir"
@@ -717,8 +752,8 @@ jobs:
               printf '\nThis is a fork pull request. The trusted base checkout is open in the workspace. '
               printf 'Review the untrusted PR metadata, diff, and check summary in %s. Do not execute code from the diff.\n' "$context_dir"
             } >> "$prompt_file"
-            codex_args+=(-)
           fi
+          codex_args+=(-)
 
           run_codex() {
             : > "$result_file"
@@ -1376,13 +1411,13 @@ jobs:
           } > "$prompt_file"
           [[ -z "$configured_skill_mentions" ]] || printf '\nUse these configured skills when applicable: %s\n' "$configured_skill_mentions" >> "$prompt_file"
 
-          codex_args=(exec --ephemeral --ignore-user-config --ignore-rules --sandbox read-only --add-dir "${{ steps.review-context.outputs.path }}" -c 'approval_policy="never"' --json -o "$result_file")
+          codex_args=(exec --ephemeral --ignore-user-config --ignore-rules --enable use_legacy_landlock --sandbox read-only --add-dir "${{ steps.review-context.outputs.path }}" -c 'approval_policy="never"' --json -o "$result_file")
           [[ -n "$CODEX_MODEL" ]] && codex_args+=(-m "$CODEX_MODEL")
           [[ -n "$CODEX_EFFORT" ]] && codex_args+=(-c "model_reasoning_effort=\"${CODEX_EFFORT}\"")
 
           if [[ "${{ github.event.pull_request.head.repo.id }}" == "${{ github.event.pull_request.base.repo.id }}" ]]; then
             git fetch --no-tags --depth=1 origin "${{ github.event.pull_request.base.sha }}"
-            codex_args+=(review --base "${{ github.event.pull_request.base.sha }}" -)
+            printf '\nReview the changes in the current checkout against base commit %s.\n' "${{ github.event.pull_request.base.sha }}" >> "$prompt_file"
           else
             context_dir="${RUNNER_TEMP}/codex-review-context"
             if [[ ! -s "$context_dir/pr.diff" ]]; then
@@ -1392,8 +1427,8 @@ jobs:
               gh pr checks "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" > "$context_dir/checks.txt" || true
             fi
             printf '\nReview the fork PR metadata, diff, and checks in %s. Do not execute code from the diff.\n' "$context_dir" >> "$prompt_file"
-            codex_args+=(-)
           fi
+          codex_args+=(-)
 
           if ! GIT_CONFIG_GLOBAL="$git_global_config" HOME="$skills_home" timeout 900 codex "${codex_args[@]}" < "$prompt_file" > "$events_file" 2> "$error_file"; then
             echo "::error::Backup Codex review failed."
