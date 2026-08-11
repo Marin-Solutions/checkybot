@@ -115,20 +115,15 @@ function recreateProjectComponentHeartbeatsTable(
 ): void {
     Schema::drop('project_component_heartbeats');
 
-    Schema::create('project_component_heartbeats', function (Blueprint $table) use (
+    $migration = require database_path('migrations/2026_07_31_000001_restore_component_status_observations.php');
+    $migration->up();
+
+    Schema::table('project_component_heartbeats', function (Blueprint $table) use (
         $observedAtIndex,
         $idempotencyIndex
     ): void {
-        $table->id();
-        $table->foreignId('project_component_id')->constrained('project_components')->cascadeOnDelete();
-        $table->string('component_name', 64);
-        $table->string('status', 20);
-        $table->string('event', 20);
-        $table->text('summary');
-        $table->json('metrics')->nullable();
-        $table->timestamp('observed_at');
-        $table->string('idempotency_key', 64)->nullable();
-        $table->timestamps();
+        $table->dropUnique('pch_component_idempotency_uniq');
+        $table->dropIndex('pch_component_observed_idx');
 
         if ($observedAtIndex !== null) {
             $table->index(['project_component_id', 'observed_at'], $observedAtIndex);
