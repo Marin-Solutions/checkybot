@@ -99,9 +99,7 @@ it('returns a successful Livewire response for a descendant update without a mou
         'X-Livewire' => 'true',
     ])->assertOk();
 
-    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
-
-    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+    assertLivewireSnapshotIsUsable($response->json('components.0.snapshot'));
 });
 
 it('returns a successful Livewire response for a string-keyed mounted action update', function () {
@@ -121,9 +119,7 @@ it('returns a successful Livewire response for a string-keyed mounted action upd
         'X-Livewire' => 'true',
     ])->assertOk();
 
-    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
-
-    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+    assertLivewireSnapshotIsUsable($response->json('components.0.snapshot'));
 });
 
 it('returns a successful Livewire response for a scalar mounted action update', function () {
@@ -143,9 +139,7 @@ it('returns a successful Livewire response for a scalar mounted action update', 
         'X-Livewire' => 'true',
     ])->assertOk();
 
-    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
-
-    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+    assertLivewireSnapshotIsUsable($response->json('components.0.snapshot'));
 });
 
 it('returns a successful Livewire response for a whole mounted action replacement with unsigned context', function () {
@@ -172,9 +166,7 @@ it('returns a successful Livewire response for a whole mounted action replacemen
         'X-Livewire' => 'true',
     ])->assertOk();
 
-    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
-
-    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+    assertLivewireSnapshotIsUsable($response->json('components.0.snapshot'));
 });
 
 it('keeps descendant form updates for an action present in the signed snapshot', function () {
@@ -295,7 +287,5 @@ it('returns a successful Livewire response for a nameless login action update', 
         'X-Livewire' => 'true',
     ])->assertOk();
 
-    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
-
-    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+    assertLivewireSnapshotIsUsable($response->json('components.0.snapshot'));
 });

@@ -35,9 +35,7 @@ describe('IncidentFeedWidget', function () {
             'X-Livewire' => 'true',
         ])->assertOk();
 
-        $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
-
-        expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+        assertLivewireSnapshotIsUsable($response->json('components.0.snapshot'));
     });
 
     it('shows an empty state when there are no incidents', function () {
