@@ -6,6 +6,10 @@ use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
+    private const OBSERVED_AT_INDEX = 'pch_component_observed_idx';
+
+    private const IDEMPOTENCY_KEY_INDEX = 'pch_component_idempotency_uniq';
+
     public function up(): void
     {
         if (! Schema::hasColumn('project_components', 'status_observed_at')) {
@@ -18,7 +22,7 @@ return new class extends Migration
             if (! Schema::hasColumn('project_component_heartbeats', 'idempotency_key')) {
                 Schema::table('project_component_heartbeats', function (Blueprint $table): void {
                     $table->string('idempotency_key', 64)->nullable();
-                    $table->unique(['project_component_id', 'idempotency_key']);
+                    $table->unique(['project_component_id', 'idempotency_key'], self::IDEMPOTENCY_KEY_INDEX);
                 });
             }
 
@@ -37,8 +41,8 @@ return new class extends Migration
             $table->string('idempotency_key', 64)->nullable();
             $table->timestamps();
 
-            $table->index(['project_component_id', 'observed_at']);
-            $table->unique(['project_component_id', 'idempotency_key']);
+            $table->index(['project_component_id', 'observed_at'], self::OBSERVED_AT_INDEX);
+            $table->unique(['project_component_id', 'idempotency_key'], self::IDEMPOTENCY_KEY_INDEX);
         });
     }
 

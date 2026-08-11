@@ -6,10 +6,27 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+test('status observation migration creates heartbeat indexes with short names', function () {
+    Schema::drop('project_component_heartbeats');
+
+    $migration = require database_path('migrations/2026_07_31_000001_restore_component_status_observations.php');
+    $migration->up();
+
+    $indexes = collect(Schema::getIndexes('project_component_heartbeats'))->keyBy('name');
+
+    expect($indexes['pch_component_observed_idx']['columns'])->toBe(['project_component_id', 'observed_at'])
+        ->and($indexes['pch_component_observed_idx']['unique'])->toBeFalse()
+        ->and($indexes['pch_component_idempotency_uniq']['columns'])->toBe([
+            'project_component_id',
+            'idempotency_key',
+        ])
+        ->and($indexes['pch_component_idempotency_uniq']['unique'])->toBeTrue();
+});
+
 test('heartbeat index repair migration restores indexes on a partially migrated table', function () {
     Schema::table('project_component_heartbeats', function (Blueprint $table): void {
-        $table->dropUnique('project_component_heartbeats_project_component_id_idempotency_key_unique');
-        $table->dropIndex('project_component_heartbeats_project_component_id_observed_at_index');
+        $table->dropUnique('pch_component_idempotency_uniq');
+        $table->dropIndex('pch_component_observed_idx');
     });
 
     expect(Schema::hasIndex('project_component_heartbeats', ['project_component_id', 'observed_at']))->toBeFalse()
@@ -68,13 +85,20 @@ test('heartbeat index repair migration restores indexes on a partially migrated 
 });
 
 test('heartbeat index repair migration preserves equivalent indexes with alternate names', function () {
+    Schema::table('project_component_heartbeats', function (Blueprint $table): void {
+        $table->dropUnique('pch_component_idempotency_uniq');
+        $table->dropIndex('pch_component_observed_idx');
+        $table->index(['project_component_id', 'observed_at'], 'pch_existing_observed_idx');
+        $table->unique(['project_component_id', 'idempotency_key'], 'pch_existing_idempotency_uniq');
+    });
+
     expect(Schema::hasIndex(
         'project_component_heartbeats',
-        'project_component_heartbeats_project_component_id_observed_at_index'
+        'pch_existing_observed_idx'
     ))->toBeTrue()
         ->and(Schema::hasIndex(
             'project_component_heartbeats',
-            'project_component_heartbeats_project_component_id_idempotency_key_unique'
+            'pch_existing_idempotency_uniq'
         ))->toBeTrue()
         ->and(Schema::hasIndex('project_component_heartbeats', 'pch_component_observed_idx'))->toBeFalse()
         ->and(Schema::hasIndex('project_component_heartbeats', 'pch_component_idempotency_uniq'))->toBeFalse();
