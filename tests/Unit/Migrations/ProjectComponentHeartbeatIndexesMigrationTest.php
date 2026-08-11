@@ -66,3 +66,23 @@ test('heartbeat index repair migration restores indexes on a partially migrated 
     ]))
         ->toThrow(QueryException::class);
 });
+
+test('heartbeat index repair migration preserves equivalent indexes with alternate names', function () {
+    expect(Schema::hasIndex(
+        'project_component_heartbeats',
+        'project_component_heartbeats_project_component_id_observed_at_index'
+    ))->toBeTrue()
+        ->and(Schema::hasIndex(
+            'project_component_heartbeats',
+            'project_component_heartbeats_project_component_id_idempotency_key_unique'
+        ))->toBeTrue()
+        ->and(Schema::hasIndex('project_component_heartbeats', 'pch_component_observed_idx'))->toBeFalse()
+        ->and(Schema::hasIndex('project_component_heartbeats', 'pch_component_idempotency_uniq'))->toBeFalse();
+
+    $indexesBefore = Schema::getIndexes('project_component_heartbeats');
+    $migration = require database_path('migrations/2026_08_11_000001_add_missing_project_component_heartbeat_indexes.php');
+
+    $migration->up();
+
+    expect(Schema::getIndexes('project_component_heartbeats'))->toBe($indexesBefore);
+});
