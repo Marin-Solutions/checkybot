@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use Filament\Actions\Contracts\HasActions;
 use Filament\Notifications\Livewire\Notifications as BaseNotifications;
 use Livewire\Attributes\Locked;
 use Livewire\Mechanisms\ComponentRegistry;
@@ -40,6 +41,8 @@ class LivewireUpdatePayloadSanitizer
     private function sanitizeUpdates(string $componentClass, array $updates): array
     {
         $lockedProperties = $this->lockedPropertiesFor($componentClass);
+        $shouldSanitizeMountedActions = is_a($componentClass, HasActions::class, true)
+            && ! method_exists($componentClass, 'updatedMountedActions');
 
         foreach ($updates as $path => $value) {
             if (! is_string($path)) {
@@ -56,6 +59,12 @@ class LivewireUpdatePayloadSanitizer
                 continue;
             }
 
+            if ($shouldSanitizeMountedActions && $this->hasNamelessMountedAction($path, $value)) {
+                unset($updates[$path]);
+
+                continue;
+            }
+
             if (
                 $property === 'isFilamentNotificationsComponent'
                 && is_a($componentClass, BaseNotifications::class, true)
@@ -66,6 +75,29 @@ class LivewireUpdatePayloadSanitizer
         }
 
         return $updates;
+    }
+
+    private function hasNamelessMountedAction(string $path, mixed $value): bool
+    {
+        if (preg_match('/^mountedActions\.\d+\.name$/', $path) === 1) {
+            return blank($value);
+        }
+
+        if (preg_match('/^mountedActions\.\d+$/', $path) === 1) {
+            return ! is_array($value) || blank($value['name'] ?? null);
+        }
+
+        if ($path !== 'mountedActions' || ! is_array($value)) {
+            return false;
+        }
+
+        foreach ($value as $action) {
+            if (! is_array($action) || blank($action['name'] ?? null)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
