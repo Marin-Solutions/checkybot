@@ -81,13 +81,14 @@ class LivewireUpdatePayloadSanitizer
     }
 
     /**
-     * @param  array<int, true>  $namedMountedActions
+     * @param  array<int, string>  $namedMountedActions
      */
     private function hasInvalidMountedActionUpdate(string $path, mixed $value, array $namedMountedActions): bool
     {
         if (preg_match('/^mountedActions\.(\d+)\.(.+)$/', $path, $matches) === 1) {
             if ($matches[2] === 'name') {
-                return ! is_string($value) || blank($value);
+                return ! is_string($value)
+                    || (($namedMountedActions[(int) $matches[1]] ?? null) !== $value);
             }
 
             if (str_starts_with($matches[2], 'name.')) {
@@ -125,7 +126,7 @@ class LivewireUpdatePayloadSanitizer
     }
 
     /**
-     * @return array<int, true>
+     * @return array<int, string>
      */
     private function namedMountedActionIndexes(?array $snapshot): array
     {
@@ -142,7 +143,7 @@ class LivewireUpdatePayloadSanitizer
             $name = $action['name'] ?? null;
 
             if (is_int($index) && is_string($name) && filled($name)) {
-                $namedMountedActions[$index] = true;
+                $namedMountedActions[$index] = $name;
             }
         }
 
