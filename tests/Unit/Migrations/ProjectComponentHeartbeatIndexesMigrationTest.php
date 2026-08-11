@@ -109,6 +109,21 @@ test('heartbeat index repair migration preserves equivalent indexes with alterna
     expect(Schema::getIndexes('project_component_heartbeats'))->toBe($indexesBefore);
 });
 
+test('heartbeat index repair rollback preserves indexes created by the original migration', function () {
+    Schema::drop('project_component_heartbeats');
+
+    $originalMigration = require database_path('migrations/2026_07_31_000001_restore_component_status_observations.php');
+    $originalMigration->up();
+
+    $indexesBefore = Schema::getIndexes('project_component_heartbeats');
+    $repairMigration = require database_path('migrations/2026_08_11_000001_add_missing_project_component_heartbeat_indexes.php');
+
+    $repairMigration->up();
+    $repairMigration->down();
+
+    expect(Schema::getIndexes('project_component_heartbeats'))->toBe($indexesBefore);
+});
+
 function recreateProjectComponentHeartbeatsTable(
     ?string $observedAtIndex = null,
     ?string $idempotencyIndex = null

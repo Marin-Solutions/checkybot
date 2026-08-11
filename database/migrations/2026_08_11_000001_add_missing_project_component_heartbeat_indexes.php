@@ -29,22 +29,7 @@ return new class extends Migration
         }
     }
 
-    public function down(): void
-    {
-        if (! Schema::hasTable('project_component_heartbeats')) {
-            return;
-        }
-
-        Schema::table('project_component_heartbeats', function (Blueprint $table): void {
-            if (Schema::hasIndex('project_component_heartbeats', self::IDEMPOTENCY_KEY_INDEX)) {
-                $table->dropUnique(self::IDEMPOTENCY_KEY_INDEX);
-            }
-
-            if (Schema::hasIndex('project_component_heartbeats', self::OBSERVED_AT_INDEX)) {
-                $table->dropIndex(self::OBSERVED_AT_INDEX);
-            }
-        });
-    }
+    public function down(): void {}
 
     private function hasUniqueIdempotencyIndex(): bool
     {
