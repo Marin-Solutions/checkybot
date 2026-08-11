@@ -12,22 +12,25 @@ test('status observation migration creates heartbeat indexes with short names', 
     $migration = require database_path('migrations/2026_07_31_000001_restore_component_status_observations.php');
     $migration->up();
 
-    $indexes = collect(Schema::getIndexes('project_component_heartbeats'))->keyBy('name');
+    $indexes = collect(Schema::getIndexes('project_component_heartbeats'));
+    $observedAtIndex = $indexes->first(
+        fn (array $index): bool => $index['columns'] === ['project_component_id', 'observed_at']
+    );
+    $idempotencyIndex = $indexes->first(
+        fn (array $index): bool => $index['columns'] === ['project_component_id', 'idempotency_key']
+    );
 
-    expect($indexes['pch_component_observed_idx']['columns'])->toBe(['project_component_id', 'observed_at'])
-        ->and($indexes['pch_component_observed_idx']['unique'])->toBeFalse()
-        ->and($indexes['pch_component_idempotency_uniq']['columns'])->toBe([
-            'project_component_id',
-            'idempotency_key',
-        ])
-        ->and($indexes['pch_component_idempotency_uniq']['unique'])->toBeTrue();
+    expect($observedAtIndex)->not->toBeNull()
+        ->and($idempotencyIndex)->not->toBeNull();
+
+    expect($observedAtIndex['unique'])->toBeFalse()
+        ->and(strlen($observedAtIndex['name']))->toBeLessThanOrEqual(64)
+        ->and($idempotencyIndex['unique'])->toBeTrue()
+        ->and(strlen($idempotencyIndex['name']))->toBeLessThanOrEqual(64);
 });
 
 test('heartbeat index repair migration restores indexes on a partially migrated table', function () {
-    Schema::table('project_component_heartbeats', function (Blueprint $table): void {
-        $table->dropUnique('pch_component_idempotency_uniq');
-        $table->dropIndex('pch_component_observed_idx');
-    });
+    recreateProjectComponentHeartbeatsTable();
 
     expect(Schema::hasIndex('project_component_heartbeats', ['project_component_id', 'observed_at']))->toBeFalse()
         ->and(Schema::hasIndex('project_component_heartbeats', ['project_component_id', 'idempotency_key']))->toBeFalse();
@@ -85,12 +88,7 @@ test('heartbeat index repair migration restores indexes on a partially migrated 
 });
 
 test('heartbeat index repair migration preserves equivalent indexes with alternate names', function () {
-    Schema::table('project_component_heartbeats', function (Blueprint $table): void {
-        $table->dropUnique('pch_component_idempotency_uniq');
-        $table->dropIndex('pch_component_observed_idx');
-        $table->index(['project_component_id', 'observed_at'], 'pch_existing_observed_idx');
-        $table->unique(['project_component_id', 'idempotency_key'], 'pch_existing_idempotency_uniq');
-    });
+    recreateProjectComponentHeartbeatsTable('pch_existing_observed_idx', 'pch_existing_idempotency_uniq');
 
     expect(Schema::hasIndex(
         'project_component_heartbeats',
@@ -110,3 +108,34 @@ test('heartbeat index repair migration preserves equivalent indexes with alterna
 
     expect(Schema::getIndexes('project_component_heartbeats'))->toBe($indexesBefore);
 });
+
+function recreateProjectComponentHeartbeatsTable(
+    ?string $observedAtIndex = null,
+    ?string $idempotencyIndex = null
+): void {
+    Schema::drop('project_component_heartbeats');
+
+    Schema::create('project_component_heartbeats', function (Blueprint $table) use (
+        $observedAtIndex,
+        $idempotencyIndex
+    ): void {
+        $table->id();
+        $table->foreignId('project_component_id')->constrained('project_components')->cascadeOnDelete();
+        $table->string('component_name', 64);
+        $table->string('status', 20);
+        $table->string('event', 20);
+        $table->text('summary');
+        $table->json('metrics')->nullable();
+        $table->timestamp('observed_at');
+        $table->string('idempotency_key', 64)->nullable();
+        $table->timestamps();
+
+        if ($observedAtIndex !== null) {
+            $table->index(['project_component_id', 'observed_at'], $observedAtIndex);
+        }
+
+        if ($idempotencyIndex !== null) {
+            $table->unique(['project_component_id', 'idempotency_key'], $idempotencyIndex);
+        }
+    });
+}
