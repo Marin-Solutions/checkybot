@@ -85,7 +85,7 @@ class LivewireUpdatePayloadSanitizer
      */
     private function hasInvalidMountedActionUpdate(string $path, mixed $value, array $namedMountedActions): bool
     {
-        if (preg_match('/^mountedActions\.(\d+)\.(.+)$/', $path, $matches) === 1) {
+        if (preg_match('/^mountedActions\.(0|[1-9]\d*)\.(.+)$/', $path, $matches) === 1) {
             if ($matches[2] === 'name') {
                 return ! is_string($value)
                     || (($namedMountedActions[(int) $matches[1]] ?? null) !== $value);
@@ -98,10 +98,14 @@ class LivewireUpdatePayloadSanitizer
             return ! isset($namedMountedActions[(int) $matches[1]]);
         }
 
-        if (preg_match('/^mountedActions\.\d+$/', $path) === 1) {
+        if (preg_match('/^mountedActions\.(0|[1-9]\d*)$/', $path) === 1) {
             return ! is_array($value)
                 || ! is_string($value['name'] ?? null)
                 || blank($value['name']);
+        }
+
+        if (str_starts_with($path, 'mountedActions.')) {
+            return true;
         }
 
         if ($path !== 'mountedActions') {
