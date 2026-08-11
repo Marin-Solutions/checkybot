@@ -153,7 +153,7 @@ class BackupsResource extends Resource
             ])
             ->actions([
                 \Filament\Actions\EditAction::make(),
-                CopyAction::make()
+                CopyAction::make('copy')
                     ->label('Copy Backup Script')
                     ->copyable(fn (Backup $record) => $record->copyCommand($record)),
             ])
