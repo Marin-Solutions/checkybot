@@ -25,7 +25,7 @@ class LivewireUpdatePayloadSanitizer
             $componentClass = $this->resolveComponentClass($snapshot);
 
             if ($componentClass !== null && isset($componentPayload['updates']) && is_array($componentPayload['updates'])) {
-                $componentPayload['updates'] = $this->sanitizeUpdates($componentClass, $componentPayload['updates']);
+                $componentPayload['updates'] = $this->sanitizeUpdates($componentClass, $componentPayload['updates'], $snapshot);
             }
 
             $payload[$index] = $componentPayload;
@@ -38,11 +38,14 @@ class LivewireUpdatePayloadSanitizer
      * @param  array<string, mixed>  $updates
      * @return array<string, mixed>
      */
-    private function sanitizeUpdates(string $componentClass, array $updates): array
+    private function sanitizeUpdates(string $componentClass, array $updates, ?array $snapshot): array
     {
         $lockedProperties = $this->lockedPropertiesFor($componentClass);
         $shouldSanitizeMountedActions = is_a($componentClass, HasActions::class, true)
             && ! method_exists($componentClass, 'updatedMountedActions');
+        $namedMountedActions = $shouldSanitizeMountedActions
+            ? $this->namedMountedActionIndexes($snapshot)
+            : [];
 
         foreach ($updates as $path => $value) {
             if (! is_string($path)) {
@@ -59,7 +62,7 @@ class LivewireUpdatePayloadSanitizer
                 continue;
             }
 
-            if ($shouldSanitizeMountedActions && $this->hasNamelessMountedAction($path, $value)) {
+            if ($shouldSanitizeMountedActions && $this->hasInvalidMountedActionUpdate($path, $value, $namedMountedActions)) {
                 unset($updates[$path]);
 
                 continue;
@@ -77,14 +80,27 @@ class LivewireUpdatePayloadSanitizer
         return $updates;
     }
 
-    private function hasNamelessMountedAction(string $path, mixed $value): bool
+    /**
+     * @param  array<int, true>  $namedMountedActions
+     */
+    private function hasInvalidMountedActionUpdate(string $path, mixed $value, array $namedMountedActions): bool
     {
-        if (preg_match('/^mountedActions\.\d+\.name$/', $path) === 1) {
-            return blank($value);
+        if (preg_match('/^mountedActions\.(\d+)\.(.+)$/', $path, $matches) === 1) {
+            if ($matches[2] === 'name') {
+                return ! is_string($value) || blank($value);
+            }
+
+            if (str_starts_with($matches[2], 'name.')) {
+                return true;
+            }
+
+            return ! isset($namedMountedActions[(int) $matches[1]]);
         }
 
         if (preg_match('/^mountedActions\.\d+$/', $path) === 1) {
-            return ! is_array($value) || blank($value['name'] ?? null);
+            return ! is_array($value)
+                || ! is_string($value['name'] ?? null)
+                || blank($value['name']);
         }
 
         if ($path !== 'mountedActions' || ! is_array($value)) {
@@ -92,12 +108,59 @@ class LivewireUpdatePayloadSanitizer
         }
 
         foreach ($value as $action) {
-            if (! is_array($action) || blank($action['name'] ?? null)) {
+            if (
+                ! is_array($action)
+                || ! is_string($action['name'] ?? null)
+                || blank($action['name'])
+            ) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @return array<int, true>
+     */
+    private function namedMountedActionIndexes(?array $snapshot): array
+    {
+        $mountedActions = $this->unwrapSnapshotArray($snapshot['data']['mountedActions'] ?? null);
+
+        if ($mountedActions === null) {
+            return [];
+        }
+
+        $namedMountedActions = [];
+
+        foreach ($mountedActions as $index => $action) {
+            $action = $this->unwrapSnapshotArray($action);
+            $name = $action['name'] ?? null;
+
+            if (is_int($index) && is_string($name) && filled($name)) {
+                $namedMountedActions[$index] = true;
+            }
+        }
+
+        return $namedMountedActions;
+    }
+
+    private function unwrapSnapshotArray(mixed $value): ?array
+    {
+        if (! is_array($value)) {
+            return null;
+        }
+
+        if (
+            array_is_list($value)
+            && count($value) === 2
+            && is_array($value[0])
+            && (($value[1]['s'] ?? null) === 'arr')
+        ) {
+            return $value[0];
+        }
+
+        return $value;
     }
 
     /**

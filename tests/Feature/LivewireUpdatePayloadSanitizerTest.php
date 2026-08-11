@@ -1,12 +1,25 @@
 <?php
 
 use App\Support\LivewireUpdatePayloadSanitizer;
+use Filament\Actions\Action;
 use Filament\Auth\Pages\Login;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\TextInput;
 use Filament\Livewire\DatabaseNotifications;
 use Filament\Livewire\Notifications;
 use Livewire\Livewire;
 use Livewire\Mechanisms\ComponentRegistry;
+
+class LivewireUpdatePayloadTestLogin extends Login
+{
+    public function editProfileAction(): Action
+    {
+        return Action::make('editProfile')
+            ->schema([
+                TextInput::make('email'),
+            ]);
+    }
+}
 
 it('drops client updates for locked Livewire properties before hydration', function () {
     $name = app(ComponentRegistry::class)->getName(DatabaseNotifications::class);
@@ -64,21 +77,47 @@ it('drops nameless mounted action updates before Filament resolves them', functi
     'action list update with blank name' => [['mountedActions' => [['name' => null]]]],
 ]);
 
-it('keeps valid mounted action form updates', function () {
-    $name = app(ComponentRegistry::class)->getName(Login::class);
+it('returns a successful Livewire response for a descendant update without a mounted login action', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+
+    $snapshot = Livewire::test(Login::class)->snapshot;
+
+    $response = $this->postJson(route('livewire.update'), [
+        'components' => [[
+            'snapshot' => json_encode($snapshot),
+            'updates' => [
+                'mountedActions.0.data.email' => '',
+            ],
+            'calls' => [],
+        ]],
+    ], [
+        'X-Livewire' => 'true',
+    ])->assertOk();
+
+    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
+
+    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+});
+
+it('keeps descendant form updates for an action present in the signed snapshot', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+
+    $snapshot = Livewire::test(LivewireUpdatePayloadTestLogin::class)
+        ->mountAction('editProfile')
+        ->snapshot;
 
     $payload = app(LivewireUpdatePayloadSanitizer::class)->sanitize([
         [
-            'snapshot' => json_encode(['memo' => ['name' => $name]]),
+            'snapshot' => json_encode($snapshot),
             'updates' => [
-                'mountedActions.0.data.email' => '',
+                'mountedActions.0.data.email' => 'updated@example.com',
             ],
             'calls' => [],
         ],
     ]);
 
     expect($payload[0]['updates'])
-        ->toHaveKey('mountedActions.0.data.email', '');
+        ->toHaveKey('mountedActions.0.data.email', 'updated@example.com');
 });
 
 it('returns a successful Livewire response for a nameless login action update', function () {
@@ -86,7 +125,7 @@ it('returns a successful Livewire response for a nameless login action update', 
 
     $snapshot = Livewire::test(Login::class)->snapshot;
 
-    $this->postJson(route('livewire.update'), [
+    $response = $this->postJson(route('livewire.update'), [
         'components' => [[
             'snapshot' => json_encode($snapshot),
             'updates' => [
@@ -96,7 +135,9 @@ it('returns a successful Livewire response for a nameless login action update', 
         ]],
     ], [
         'X-Livewire' => 'true',
-    ])
-        ->assertOk()
-        ->assertJsonPath('components.0.snapshot', fn (string $snapshot): bool => str_contains($snapshot, 'filament.auth.pages.login'));
+    ])->assertOk();
+
+    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
+
+    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
 });
