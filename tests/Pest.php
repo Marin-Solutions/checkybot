@@ -49,8 +49,10 @@ function assertDatabaseMissing(string $table, array $data, ?string $connection =
     test()->assertDatabaseMissing($table, $data, $connection);
 }
 
-function assertLivewireSnapshotIsUsable(string $snapshot): void
+function assertLivewireSnapshotIsUsable(?string $snapshot): void
 {
+    expect($snapshot)->toBeString()->not->toBeEmpty();
+
     test()->postJson(route('livewire.update'), [
         'components' => [[
             'snapshot' => $snapshot,
