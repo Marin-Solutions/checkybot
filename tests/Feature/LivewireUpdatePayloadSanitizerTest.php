@@ -99,6 +99,28 @@ it('returns a successful Livewire response for a descendant update without a mou
     expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
 });
 
+it('returns a successful Livewire response for a scalar mounted action update', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+
+    $snapshot = Livewire::test(Login::class)->snapshot;
+
+    $response = $this->postJson(route('livewire.update'), [
+        'components' => [[
+            'snapshot' => json_encode($snapshot),
+            'updates' => [
+                'mountedActions' => false,
+            ],
+            'calls' => [],
+        ]],
+    ], [
+        'X-Livewire' => 'true',
+    ])->assertOk();
+
+    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
+
+    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+});
+
 it('keeps descendant form updates for an action present in the signed snapshot', function () {
     Filament::setCurrentPanel(Filament::getPanel('admin'));
 

@@ -103,8 +103,12 @@ class LivewireUpdatePayloadSanitizer
                 || blank($value['name']);
         }
 
-        if ($path !== 'mountedActions' || ! is_array($value)) {
+        if ($path !== 'mountedActions') {
             return false;
+        }
+
+        if (! is_array($value)) {
+            return true;
         }
 
         foreach ($value as $action) {
