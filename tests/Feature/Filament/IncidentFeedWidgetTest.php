@@ -20,6 +20,26 @@ describe('IncidentFeedWidget', function () {
             ->assertSuccessful();
     });
 
+    it('returns a successful Livewire response for a scalar mounted action update', function () {
+        $snapshot = Livewire::test(IncidentFeedWidget::class)->snapshot;
+
+        $response = $this->postJson(route('livewire.update'), [
+            'components' => [[
+                'snapshot' => json_encode($snapshot),
+                'updates' => [
+                    'mountedActions' => false,
+                ],
+                'calls' => [],
+            ]],
+        ], [
+            'X-Livewire' => 'true',
+        ])->assertOk();
+
+        $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
+
+        expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+    });
+
     it('shows an empty state when there are no incidents', function () {
         Livewire::test(IncidentFeedWidget::class)
             ->assertSee('All clear');

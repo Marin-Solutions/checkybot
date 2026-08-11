@@ -41,8 +41,7 @@ class LivewireUpdatePayloadSanitizer
     private function sanitizeUpdates(string $componentClass, array $updates, ?array $snapshot): array
     {
         $lockedProperties = $this->lockedPropertiesFor($componentClass);
-        $shouldSanitizeMountedActions = is_a($componentClass, HasActions::class, true)
-            && ! method_exists($componentClass, 'updatedMountedActions');
+        $shouldSanitizeMountedActions = is_a($componentClass, HasActions::class, true);
         $namedMountedActions = $shouldSanitizeMountedActions
             ? $this->namedMountedActionIndexes($snapshot)
             : [];
