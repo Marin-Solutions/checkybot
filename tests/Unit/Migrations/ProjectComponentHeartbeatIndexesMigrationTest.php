@@ -18,13 +18,26 @@ test('heartbeat index repair migration restores indexes on a partially migrated 
     $migration = require database_path('migrations/2026_08_11_000001_add_missing_project_component_heartbeat_indexes.php');
     $migration->up();
 
-    expect(Schema::hasIndex('project_component_heartbeats', 'pch_component_observed_idx'))->toBeTrue()
-        ->and(Schema::hasIndex('project_component_heartbeats', 'pch_component_idempotency_uniq'))->toBeTrue();
+    $indexes = collect(Schema::getIndexes('project_component_heartbeats'));
+    $observedAtIndex = $indexes->first(
+        fn (array $index): bool => $index['columns'] === ['project_component_id', 'observed_at']
+    );
+    $idempotencyIndex = $indexes->first(
+        fn (array $index): bool => $index['columns'] === ['project_component_id', 'idempotency_key']
+    );
 
-    $component = ProjectComponent::factory()->create();
+    expect($observedAtIndex)->not->toBeNull()
+        ->and($idempotencyIndex)->not->toBeNull();
+
+    expect($observedAtIndex['columns'])->toBe(['project_component_id', 'observed_at'])
+        ->and($observedAtIndex['unique'])->toBeFalse()
+        ->and(strlen($observedAtIndex['name']))->toBeLessThanOrEqual(64)
+        ->and($idempotencyIndex['columns'])->toBe(['project_component_id', 'idempotency_key'])
+        ->and($idempotencyIndex['unique'])->toBeTrue()
+        ->and(strlen($idempotencyIndex['name']))->toBeLessThanOrEqual(64);
+
+    [$firstComponent, $secondComponent] = ProjectComponent::factory()->count(2)->create();
     $heartbeat = [
-        'project_component_id' => $component->id,
-        'component_name' => $component->name,
         'status' => 'healthy',
         'event' => 'status',
         'summary' => 'Component is healthy.',
@@ -34,8 +47,22 @@ test('heartbeat index repair migration restores indexes on a partially migrated 
         'updated_at' => now(),
     ];
 
-    DB::table('project_component_heartbeats')->insert($heartbeat);
+    DB::table('project_component_heartbeats')->insert([
+        'project_component_id' => $firstComponent->id,
+        'component_name' => $firstComponent->name,
+        ...$heartbeat,
+    ]);
 
-    expect(fn () => DB::table('project_component_heartbeats')->insert($heartbeat))
+    DB::table('project_component_heartbeats')->insert([
+        'project_component_id' => $secondComponent->id,
+        'component_name' => $secondComponent->name,
+        ...$heartbeat,
+    ]);
+
+    expect(fn () => DB::table('project_component_heartbeats')->insert([
+        'project_component_id' => $firstComponent->id,
+        'component_name' => $firstComponent->name,
+        ...$heartbeat,
+    ]))
         ->toThrow(QueryException::class);
 });
