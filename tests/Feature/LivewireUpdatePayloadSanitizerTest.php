@@ -12,12 +12,17 @@ use Livewire\Mechanisms\ComponentRegistry;
 
 class LivewireUpdatePayloadTestLogin extends Login
 {
+    public bool $editProfileActionCalled = false;
+
     public function editProfileAction(): Action
     {
         return Action::make('editProfile')
             ->schema([
                 TextInput::make('email'),
-            ]);
+            ])
+            ->action(function (): void {
+                $this->editProfileActionCalled = true;
+            });
     }
 }
 
@@ -219,14 +224,19 @@ it('keeps mounted action state resolvable when root and descendant updates are c
         'components' => [[
             'snapshot' => $response->json('components.0.snapshot'),
             'updates' => [],
-            'calls' => [],
+            'calls' => [[
+                'path' => '',
+                'method' => 'callMountedAction',
+                'params' => [],
+            ]],
         ]],
     ], [
         'X-Livewire' => 'true',
     ])->assertOk();
 
-    expect($nextResponse->json('components.0.snapshot'))
-        ->toContain('"name":"editProfile"');
+    $nextSnapshot = json_decode($nextResponse->json('components.0.snapshot'), associative: true);
+
+    expect($nextSnapshot['data']['editProfileActionCalled'])->toBeTrue();
 });
 
 it('returns a successful Livewire response when an action name uses the removal sentinel', function () {
@@ -249,9 +259,23 @@ it('returns a successful Livewire response when an action name uses the removal 
         'X-Livewire' => 'true',
     ])->assertOk();
 
-    expect($response->json('components.0.snapshot'))
-        ->toContain('"name":"editProfile"')
-        ->not->toContain('__rm__');
+    $nextResponse = $this->postJson(route('livewire.update'), [
+        'components' => [[
+            'snapshot' => $response->json('components.0.snapshot'),
+            'updates' => [],
+            'calls' => [[
+                'path' => '',
+                'method' => 'callMountedAction',
+                'params' => [],
+            ]],
+        ]],
+    ], [
+        'X-Livewire' => 'true',
+    ])->assertOk();
+
+    $nextSnapshot = json_decode($nextResponse->json('components.0.snapshot'), associative: true);
+
+    expect($nextSnapshot['data']['editProfileActionCalled'])->toBeTrue();
 });
 
 it('returns a successful Livewire response for a nameless login action update', function () {
