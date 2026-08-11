@@ -62,7 +62,7 @@ class LivewireUpdatePayloadSanitizer
                 continue;
             }
 
-            if ($shouldSanitizeMountedActions && $this->hasInvalidMountedActionUpdate($path, $value, $namedMountedActions)) {
+            if ($shouldSanitizeMountedActions && $this->hasInvalidMountedActionUpdate($path, $namedMountedActions)) {
                 unset($updates[$path]);
 
                 continue;
@@ -83,7 +83,7 @@ class LivewireUpdatePayloadSanitizer
     /**
      * @param  array<int, true>  $namedMountedActions
      */
-    private function hasInvalidMountedActionUpdate(string $path, mixed $value, array $namedMountedActions): bool
+    private function hasInvalidMountedActionUpdate(string $path, array $namedMountedActions): bool
     {
         if (preg_match('/^mountedActions\.(0|[1-9]\d*)\.(.+)$/', $path, $matches) === 1) {
             $statePath = $matches[2];
@@ -100,11 +100,7 @@ class LivewireUpdatePayloadSanitizer
             return true;
         }
 
-        if ($path !== 'mountedActions') {
-            return false;
-        }
-
-        return ! is_array($value) || $value !== [];
+        return $path === 'mountedActions';
     }
 
     /**

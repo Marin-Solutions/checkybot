@@ -194,6 +194,41 @@ it('keeps descendant form updates for an action present in the signed snapshot',
         ->toHaveKey('mountedActions.0.data.email', 'updated@example.com');
 });
 
+it('keeps mounted action state resolvable when root and descendant updates are combined', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+    Livewire::component('livewire-update-payload-test-login', LivewireUpdatePayloadTestLogin::class);
+
+    $snapshot = Livewire::test(LivewireUpdatePayloadTestLogin::class)
+        ->mountAction('editProfile')
+        ->snapshot;
+
+    $response = $this->postJson(route('livewire.update'), [
+        'components' => [[
+            'snapshot' => json_encode($snapshot),
+            'updates' => [
+                'mountedActions' => [],
+                'mountedActions.0.data.email' => 'updated@example.com',
+            ],
+            'calls' => [],
+        ]],
+    ], [
+        'X-Livewire' => 'true',
+    ])->assertOk();
+
+    $nextResponse = $this->postJson(route('livewire.update'), [
+        'components' => [[
+            'snapshot' => $response->json('components.0.snapshot'),
+            'updates' => [],
+            'calls' => [],
+        ]],
+    ], [
+        'X-Livewire' => 'true',
+    ])->assertOk();
+
+    expect($nextResponse->json('components.0.snapshot'))
+        ->toContain('"name":"editProfile"');
+});
+
 it('returns a successful Livewire response when an action name uses the removal sentinel', function () {
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     Livewire::component('livewire-update-payload-test-login', LivewireUpdatePayloadTestLogin::class);
