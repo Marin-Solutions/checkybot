@@ -81,27 +81,19 @@ class LivewireUpdatePayloadSanitizer
     }
 
     /**
-     * @param  array<int, string>  $namedMountedActions
+     * @param  array<int, true>  $namedMountedActions
      */
     private function hasInvalidMountedActionUpdate(string $path, mixed $value, array $namedMountedActions): bool
     {
         if (preg_match('/^mountedActions\.(0|[1-9]\d*)\.(.+)$/', $path, $matches) === 1) {
-            if ($matches[2] === 'name') {
-                return ! is_string($value)
-                    || (($namedMountedActions[(int) $matches[1]] ?? null) !== $value);
-            }
+            $statePath = $matches[2];
 
-            if (str_starts_with($matches[2], 'name.')) {
-                return true;
-            }
-
-            return ! isset($namedMountedActions[(int) $matches[1]]);
+            return ! isset($namedMountedActions[(int) $matches[1]])
+                || ($statePath !== 'data' && ! str_starts_with($statePath, 'data.'));
         }
 
         if (preg_match('/^mountedActions\.(0|[1-9]\d*)$/', $path) === 1) {
-            return ! is_array($value)
-                || ! is_string($value['name'] ?? null)
-                || blank($value['name']);
+            return true;
         }
 
         if (str_starts_with($path, 'mountedActions.')) {
@@ -112,25 +104,11 @@ class LivewireUpdatePayloadSanitizer
             return false;
         }
 
-        if (! is_array($value)) {
-            return true;
-        }
-
-        foreach ($value as $action) {
-            if (
-                ! is_array($action)
-                || ! is_string($action['name'] ?? null)
-                || blank($action['name'])
-            ) {
-                return true;
-            }
-        }
-
-        return false;
+        return ! is_array($value) || $value !== [];
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int, true>
      */
     private function namedMountedActionIndexes(?array $snapshot): array
     {
@@ -147,7 +125,7 @@ class LivewireUpdatePayloadSanitizer
             $name = $action['name'] ?? null;
 
             if (is_int($index) && is_string($name) && filled($name)) {
-                $namedMountedActions[$index] = $name;
+                $namedMountedActions[$index] = true;
             }
         }
 

@@ -143,6 +143,35 @@ it('returns a successful Livewire response for a scalar mounted action update', 
     expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
 });
 
+it('returns a successful Livewire response for a whole mounted action replacement with unsigned context', function () {
+    Filament::setCurrentPanel(Filament::getPanel('admin'));
+
+    $snapshot = Livewire::test(Login::class)->snapshot;
+
+    $response = $this->postJson(route('livewire.update'), [
+        'components' => [[
+            'snapshot' => json_encode($snapshot),
+            'updates' => [
+                'mountedActions' => [[
+                    'name' => 'inventedAction',
+                    'arguments' => [],
+                    'context' => [
+                        'schemaComponent' => 'missing-component',
+                    ],
+                    'data' => [],
+                ]],
+            ],
+            'calls' => [],
+        ]],
+    ], [
+        'X-Livewire' => 'true',
+    ])->assertOk();
+
+    $nextSnapshot = json_decode($response->json('components.0.snapshot'), associative: true);
+
+    expect($nextSnapshot['data']['mountedActions'][0])->toBe([]);
+});
+
 it('keeps descendant form updates for an action present in the signed snapshot', function () {
     Filament::setCurrentPanel(Filament::getPanel('admin'));
     Livewire::component('livewire-update-payload-test-login', LivewireUpdatePayloadTestLogin::class);
