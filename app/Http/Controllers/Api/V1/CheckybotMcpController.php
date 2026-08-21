@@ -13,6 +13,7 @@ use App\Rules\RequestBodyTypeRequired;
 use App\Rules\StructuredRequestBody;
 use App\Services\CheckybotControlService;
 use App\Services\IntervalParser;
+use App\Support\McpToolCallResultNormalizer;
 use App\Support\ValidatesMonitorApiRegexAssertions;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -172,7 +173,7 @@ class CheckybotMcpController extends Controller
             default => throw ValidationException::withMessages(['name' => ['Unknown Checkybot MCP tool.']]),
         };
 
-        return [
+        return McpToolCallResultNormalizer::normalize([
             'content' => [
                 [
                     'type' => 'text',
@@ -180,7 +181,7 @@ class CheckybotMcpController extends Controller
                 ],
             ],
             'structuredContent' => $result,
-        ];
+        ]);
     }
 
     /**

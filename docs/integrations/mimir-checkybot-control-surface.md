@@ -250,6 +250,7 @@ Single-check run triggers accept optional `type=api` or `type=website` in the qu
 - `POST /api/v1/mcp`
 - Auth is the same bearer API key used for the REST control API.
 - Transport is authenticated JSON-RPC over HTTP POST.
+- Tool results always return `structuredContent` as a JSON object per the MCP spec. List-shaped tools (`list_projects`, `list_checks`, `recent_runs`, `latest_failures`, `current_issues`, `list_notification_channels`, `list_notification_settings`) wrap their rows as `{"data": [...]}`, and the first text content item mirrors that wrapped shape.
 
 ### MCP Tools
 
