@@ -2776,6 +2776,245 @@ test('mcp endpoint lists tools and calls the shared control surface', function (
     ]);
 });
 
+test('mcp latest failures tool returns an object structured content with synced text', function () {
+    $website = Website::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'name' => 'App website',
+        'source' => 'package',
+        'package_name' => 'app-uptime',
+        'current_status' => 'danger',
+        'uptime_check' => true,
+    ]);
+    WebsiteLogHistory::factory()->transportError('tls')->create([
+        'website_id' => $website->id,
+        'summary' => 'Website TLS handshake failed.',
+        'created_at' => now()->subMinutes(2),
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'latest_failures',
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect($structuredContent)->toBeArray()
+        ->and(array_is_list($structuredContent))->toBeFalse()
+        ->and(array_keys($structuredContent))->toBe(['data'])
+        ->and(count($structuredContent['data']))->toBe(1)
+        ->and($structuredContent['data'][0]['check']['key'])->toBe('app-uptime')
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp list projects tool returns an object structured content', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'list_projects',
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect($structuredContent)->toBeArray()
+        ->and(array_is_list($structuredContent))->toBeFalse()
+        ->and(array_keys($structuredContent))->toBe(['data'])
+        ->and($structuredContent['data'][0]['key'])->toBe('scrappa')
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp list checks tool returns an object structured content', function () {
+    MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'record-api',
+        'title' => 'Record API',
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'list_checks',
+                'arguments' => [
+                    'project' => 'scrappa',
+                ],
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect($structuredContent)->toBeArray()
+        ->and(array_is_list($structuredContent))->toBeFalse()
+        ->and(array_keys($structuredContent))->toBe(['data'])
+        ->and($structuredContent['data'][0]['key'])->toBe('record-api')
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp recent runs tool returns an object structured content', function () {
+    $monitor = MonitorApis::factory()->create([
+        'project_id' => $this->project->id,
+        'created_by' => $this->user->id,
+        'source' => 'package',
+        'package_name' => 'record-api',
+        'title' => 'Record API',
+    ]);
+    MonitorApiResult::factory()->successful()->create([
+        'monitor_api_id' => $monitor->id,
+        'summary' => 'Record API diagnostic completed.',
+        'created_at' => now(),
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'recent_runs',
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect($structuredContent)->toBeArray()
+        ->and(array_is_list($structuredContent))->toBeFalse()
+        ->and(array_keys($structuredContent))->toBe(['data'])
+        ->and($structuredContent['data'][0]['check']['key'])->toBe('record-api')
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp current issues tool returns an object structured content for empty result sets', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'current_issues',
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect($structuredContent)->toBeArray()
+        ->and(array_is_list($structuredContent))->toBeFalse()
+        ->and(array_keys($structuredContent))->toBe(['data'])
+        ->and($structuredContent['data'])->toBe([])
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp list notification channels tool returns an object structured content', function () {
+    NotificationChannels::factory()->create([
+        'created_by' => $this->user->id,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'list_notification_channels',
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect($structuredContent)->toBeArray()
+        ->and(array_is_list($structuredContent))->toBeFalse()
+        ->and(array_keys($structuredContent))->toBe(['data'])
+        ->and($structuredContent['data'])->toHaveCount(1)
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp list notification settings tool returns an object structured content', function () {
+    NotificationSetting::factory()->create([
+        'user_id' => $this->user->id,
+    ]);
+
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'list_notification_settings',
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect($structuredContent)->toBeArray()
+        ->and(array_is_list($structuredContent))->toBeFalse()
+        ->and(array_keys($structuredContent))->toBe(['data'])
+        ->and($structuredContent['data'])->toHaveCount(1)
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp passes object structured content through untouched', function () {
+    $response = $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'tools/call',
+            'params' => [
+                'name' => 'me',
+            ],
+        ])
+        ->assertOk();
+
+    $structuredContent = $response->json('result.structuredContent');
+
+    expect(array_is_list($structuredContent))->toBeFalse()
+        ->and($structuredContent)->toHaveKeys(['authenticated', 'user', 'api_key', 'app'])
+        ->and($structuredContent)->not->toHaveKey('data')
+        ->and(json_decode($response->json('result.content.0.text'), true))->toBe($structuredContent);
+});
+
+test('mcp responses without structured content are not wrapped', function () {
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 3,
+            'method' => 'ping',
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.ok', true)
+        ->assertJsonMissingPath('result.structuredContent')
+        ->assertJsonMissingPath('result.data');
+
+    $this->withToken($this->apiKey->key)
+        ->postJson('/api/v1/mcp', [
+            'jsonrpc' => '2.0',
+            'id' => 4,
+            'method' => 'tools/list',
+        ])
+        ->assertOk()
+        ->assertJsonPath('result.tools.0.name', 'me')
+        ->assertJsonMissingPath('result.structuredContent')
+        ->assertJsonMissingPath('result.data');
+});
+
 test('mcp create project tool creates projects for later check management', function () {
     $created = $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -2954,11 +3193,11 @@ test('mcp list checks does not lazy load result or component child relations', f
             ])
             ->assertOk()
             ->assertJsonMissingPath('error')
-            ->assertJsonPath('result.structuredContent.0.key', 'api-health')
-            ->assertJsonPath('result.structuredContent.0.latest_result.check.key', 'api-health')
-            ->assertJsonPath('result.structuredContent.2.key', 'website-health')
-            ->assertJsonPath('result.structuredContent.1.key', 'checkout')
-            ->assertJsonPath('result.structuredContent.1.status', 'danger');
+            ->assertJsonPath('result.structuredContent.data.0.key', 'api-health')
+            ->assertJsonPath('result.structuredContent.data.0.latest_result.check.key', 'api-health')
+            ->assertJsonPath('result.structuredContent.data.2.key', 'website-health')
+            ->assertJsonPath('result.structuredContent.data.1.key', 'checkout')
+            ->assertJsonPath('result.structuredContent.data.1.status', 'danger');
     } finally {
         Model::preventLazyLoading($wasPreventingLazyLoading);
     }
@@ -3035,14 +3274,14 @@ test('mcp list checks resolves api failure streaks with constant result queries'
 
     expect(count($resultQueries))->toBe($singleMonitorQueryCount);
 
-    $checks = collect($multipleResponse->json('result.structuredContent'))->keyBy('key');
+    $checks = collect($multipleResponse->json('result.structuredContent.data'))->keyBy('key');
 
     foreach (['api-one', 'api-two', 'api-three', 'api-four'] as $key) {
         expect($checks[$key]['latest_result']['summary'])->toBe("{$key} scheduled check failed.")
             ->and($checks[$key]['scheduled_failure_streak']['count'])->toBe(1);
     }
 
-    $firstResponse->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.count', 1);
+    $firstResponse->assertJsonPath('result.structuredContent.data.0.scheduled_failure_streak.count', 1);
 });
 
 test('mcp current issues resolves api failure streaks with constant result queries', function () {
@@ -3118,7 +3357,7 @@ test('mcp current issues resolves api failure streaks with constant result queri
     expect(count($resultQueries))->toBe($singleMonitorQueryCount)
         ->and(collect($resultQueries)->contains(fn (string $sql): bool => str_contains($sql, 'limit 1')))->toBeFalse();
 
-    $issues = collect($multipleResponse->json('result.structuredContent'))->keyBy('check.key');
+    $issues = collect($multipleResponse->json('result.structuredContent.data'))->keyBy('check.key');
 
     foreach (['api-one', 'api-two', 'api-three', 'api-four'] as $key) {
         expect($issues[$key]['check']['latest_result']['summary'])->toBe("{$key} scheduled check failed.")
@@ -3128,7 +3367,7 @@ test('mcp current issues resolves api failure streaks with constant result queri
             ]);
     }
 
-    $firstResponse->assertJsonPath('result.structuredContent.0.check.scheduled_failure_streak.count', 1);
+    $firstResponse->assertJsonPath('result.structuredContent.data.0.check.scheduled_failure_streak.count', 1);
 });
 
 test('mcp list checks resolves website failure streaks with constant history queries', function () {
@@ -3222,7 +3461,7 @@ test('mcp list checks resolves website failure streaks with constant history que
     expect(count($historyQueries))->toBe($singleWebsiteQueryCount)
         ->and(collect($historyQueries)->contains(fn (string $sql): bool => str_contains($sql, 'limit 1')))->toBeFalse();
 
-    $checks = collect($multipleResponse->json('result.structuredContent'))->keyBy('key');
+    $checks = collect($multipleResponse->json('result.structuredContent.data'))->keyBy('key');
 
     foreach (['website-one', 'website-two', 'website-three', 'website-four'] as $key) {
         expect($checks[$key]['latest_result']['transport_error_type'])->toBe('timeout')
@@ -3232,7 +3471,7 @@ test('mcp list checks resolves website failure streaks with constant history que
             ]);
     }
 
-    expect($firstResponse->json('result.structuredContent.0.scheduled_failure_streak.count'))->toBe(2)
+    expect($firstResponse->json('result.structuredContent.data.0.scheduled_failure_streak.count'))->toBe(2)
         ->and($firstWebsite->exists)->toBeTrue();
 });
 
@@ -3328,7 +3567,7 @@ test('mcp current issues resolves website failure streaks with constant history 
     expect(count($historyQueries))->toBe($singleWebsiteQueryCount)
         ->and(collect($historyQueries)->contains(fn (string $sql): bool => str_contains($sql, 'limit 1')))->toBeFalse();
 
-    $issues = collect($multipleResponse->json('result.structuredContent'))->keyBy('check.key');
+    $issues = collect($multipleResponse->json('result.structuredContent.data'))->keyBy('check.key');
 
     foreach (['website-one', 'website-two', 'website-three', 'website-four'] as $key) {
         expect($issues[$key]['check']['scheduled_failure_streak'])->toMatchArray([
@@ -3337,7 +3576,7 @@ test('mcp current issues resolves website failure streaks with constant history 
         ]);
     }
 
-    expect($firstResponse->json('result.structuredContent.0.check.scheduled_failure_streak.count'))->toBe(2);
+    expect($firstResponse->json('result.structuredContent.data.0.check.scheduled_failure_streak.count'))->toBe(2);
 });
 
 test('mcp list checks uses the newest eligible scheduled history when timestamps tie', function () {
@@ -3387,9 +3626,9 @@ test('mcp list checks uses the newest eligible scheduled history when timestamps
             ],
         ])
         ->assertOk()
-        ->assertJsonPath('result.structuredContent.0.key', 'tied-website')
-        ->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.count', 2)
-        ->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.first_failed_at', $firstFailure->created_at->toISOString());
+        ->assertJsonPath('result.structuredContent.data.0.key', 'tied-website')
+        ->assertJsonPath('result.structuredContent.data.0.scheduled_failure_streak.count', 2)
+        ->assertJsonPath('result.structuredContent.data.0.scheduled_failure_streak.first_failed_at', $firstFailure->created_at->toISOString());
 });
 
 test('mcp disable check accepts type to resolve ambiguous check keys', function () {
@@ -3462,9 +3701,9 @@ test('mcp latest failures tool includes website failures and omits component hea
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.type', 'website')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'app-uptime');
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.type', 'website')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'app-uptime');
 });
 
 test('control api and mcp list current unhealthy issues with filters', function () {
@@ -3533,8 +3772,8 @@ test('control api and mcp list current unhealthy issues with filters', function 
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'billing-health');
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'billing-health');
 });
 
 test('control api current issues flags manual scheduled drift for api and website checks', function () {
@@ -3737,7 +3976,7 @@ test('control api current issues marks older manual diagnostic drift as stale fo
             ],
         ])
         ->assertOk()
-        ->json('result.structuredContent'))
+        ->json('result.structuredContent.data'))
         ->keyBy('check.key');
 
     expect($mcpIssues['booking-search-paris']['manual_scheduled_drift']['manual'])
@@ -4084,9 +4323,9 @@ test('control api and mcp filter current issues by scheduled failure streak', fu
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'billing-health')
-        ->assertJsonPath('result.structuredContent.0.scheduled_failure_streak.count', 3);
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'billing-health')
+        ->assertJsonPath('result.structuredContent.data.0.scheduled_failure_streak.count', 3);
 });
 
 test('control api exposes stale package setup as a project current issue', function () {
@@ -4143,11 +4382,11 @@ test('mcp exposes incomplete package setup as a project current issue', function
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.type', 'project')
-        ->assertJsonPath('result.structuredContent.0.check.setup_verification.state', 'waiting_for_first_sync')
-        ->assertJsonPath('result.structuredContent.0.status', 'warning')
-        ->assertJsonPath('result.structuredContent.0.action', 'Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.');
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.type', 'project')
+        ->assertJsonPath('result.structuredContent.data.0.check.setup_verification.state', 'waiting_for_first_sync')
+        ->assertJsonPath('result.structuredContent.data.0.status', 'warning')
+        ->assertJsonPath('result.structuredContent.data.0.action', 'Run `php artisan checkybot:sync` in the Laravel app and confirm the scheduler is executing `Schedule::command(\'checkybot:sync\')->everyMinute();`.');
 });
 
 test('control api and mcp filter current issues by failure cause', function () {
@@ -4367,10 +4606,10 @@ test('control api and mcp filter current issues by failure cause', function () {
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'healthy-http-bad-payload')
-        ->assertJsonPath('result.structuredContent.0.cause', 'assertion')
-        ->assertJsonPath('result.structuredContent.0.action', 'Compare the latest response body with the saved assertions and update the API or assertion rule.');
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'healthy-http-bad-payload')
+        ->assertJsonPath('result.structuredContent.data.0.cause', 'assertion')
+        ->assertJsonPath('result.structuredContent.data.0.action', 'Compare the latest response body with the saved assertions and update the API or assertion rule.');
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -4387,10 +4626,10 @@ test('control api and mcp filter current issues by failure cause', function () {
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'rate-limited-api')
-        ->assertJsonPath('result.structuredContent.0.cause', 'rate_limit')
-        ->assertJsonPath('result.structuredContent.0.action', 'Check provider quota, Retry-After or reset headers, and adjust the monitor schedule or backoff before rerunning.');
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'rate-limited-api')
+        ->assertJsonPath('result.structuredContent.data.0.cause', 'rate_limit')
+        ->assertJsonPath('result.structuredContent.data.0.action', 'Check provider quota, Retry-After or reset headers, and adjust the monitor schedule or backoff before rerunning.');
 
     $this->withToken($this->apiKey->key)
         ->getJson('/api/v1/control/issues?cause=http')
@@ -4517,8 +4756,8 @@ test('mcp manages notification channels and global notification settings', funct
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.id', $channelId);
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.id', $channelId);
 
     Http::fake([
         'https://hooks.example.test/*' => Http::response(['ok' => true], 200),
@@ -4703,8 +4942,8 @@ test('mcp notification setting tools only manage global settings', function () {
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.id', $globalSetting->id);
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.id', $globalSetting->id);
 
     $this->withToken($this->apiKey->key)
         ->postJson('/api/v1/mcp', [
@@ -4775,9 +5014,9 @@ test('mcp current issues does not hide older unhealthy components behind newer h
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'danger-component')
-        ->assertJsonPath('result.structuredContent.0.status', 'danger');
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'danger-component')
+        ->assertJsonPath('result.structuredContent.data.0.status', 'danger');
 });
 
 test('mcp recent runs tool includes api and website diagnostics only', function () {
@@ -4821,12 +5060,12 @@ test('mcp recent runs tool includes api and website diagnostics only', function 
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(2, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.type', 'website')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'app-uptime')
-        ->assertJsonPath('result.structuredContent.0.summary', 'Website diagnostic completed.')
-        ->assertJsonPath('result.structuredContent.1.check.type', 'api')
-        ->assertJsonPath('result.structuredContent.1.check.key', 'api-health');
+        ->assertJsonCount(2, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.type', 'website')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'app-uptime')
+        ->assertJsonPath('result.structuredContent.data.0.summary', 'Website diagnostic completed.')
+        ->assertJsonPath('result.structuredContent.data.1.check.type', 'api')
+        ->assertJsonPath('result.structuredContent.data.1.check.key', 'api-health');
 });
 
 test('mcp recent runs omits soft deleted checks', function () {
@@ -4886,9 +5125,9 @@ test('mcp recent runs omits soft deleted checks', function () {
             ],
         ])
         ->assertOk()
-        ->assertJsonCount(1, 'result.structuredContent')
-        ->assertJsonPath('result.structuredContent.0.check.key', 'active-api')
-        ->assertJsonMissingPath('result.structuredContent.1');
+        ->assertJsonCount(1, 'result.structuredContent.data')
+        ->assertJsonPath('result.structuredContent.data.0.check.key', 'active-api')
+        ->assertJsonMissingPath('result.structuredContent.data.1');
 });
 
 test('recent run history tables have indexes for newest-first control queries', function () {
