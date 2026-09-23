@@ -4,6 +4,10 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 
+test('temporary uploads use the private local disk in production', function () {
+    expect(config('livewire.temporary_file_upload.disk'))->toBe('local');
+});
+
 test('temporary uploads reject PHP payloads and disguised PHP filenames', function () {
     Storage::fake('tmp-for-tests');
 
