@@ -11,16 +11,23 @@ test('temporary uploads use the private local disk in production', function () {
 test('temporary uploads reject PHP payloads and disguised PHP filenames', function () {
     Storage::fake('tmp-for-tests');
 
-    foreach ([
-        UploadedFile::fake()->createWithContent('shell.php', '<?php echo "unsafe";'),
-        UploadedFile::fake()->image('shell.jpg.php'),
-    ] as $file) {
-        $this->postJson(URL::temporarySignedRoute('livewire.upload-file', now()->addMinutes(5)), [
-            'files' => [$file],
-        ])->assertUnprocessable();
-    }
+    $path = tempnam(sys_get_temp_dir(), 'upload-');
+    file_put_contents($path, '<?php echo "unsafe";');
 
-    expect(Storage::disk('tmp-for-tests')->allFiles('livewire-tmp'))->toBeEmpty();
+    try {
+        foreach ([
+            new UploadedFile($path, 'shell.jpg', test: true),
+            UploadedFile::fake()->image('shell.jpg.php'),
+        ] as $file) {
+            $this->postJson(URL::temporarySignedRoute('livewire.upload-file', now()->addMinutes(5)), [
+                'files' => [$file],
+            ])->assertUnprocessable();
+        }
+
+        expect(Storage::disk('tmp-for-tests')->allFiles('livewire-tmp'))->toBeEmpty();
+    } finally {
+        unlink($path);
+    }
 });
 
 test('temporary uploads accept supported images', function () {
