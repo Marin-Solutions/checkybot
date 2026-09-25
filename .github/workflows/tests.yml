@@ -11,7 +11,7 @@ env:
 
 jobs:
   test:
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["ubuntu-latest"]') }}
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON(vars.CI_RUNS_ON || '["ubuntu-latest"]') }}
 
     name: PHP 8.3
 
@@ -51,7 +51,7 @@ jobs:
         run: vendor/bin/pest --compact --parallel
 
   pint:
-    runs-on: ${{ fromJSON(vars.CI_RUNS_ON || '["ubuntu-latest"]') }}
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-24.04' || fromJSON(vars.CI_RUNS_ON || '["ubuntu-latest"]') }}
 
     name: Laravel Pint
 
