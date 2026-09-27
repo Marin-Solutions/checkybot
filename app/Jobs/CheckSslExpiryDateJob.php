@@ -3,22 +3,19 @@
 namespace App\Jobs;
 
 use App\Enums\RunSource;
-use App\Enums\WebsiteServicesEnum;
-use App\Mail\EmailReminderSsl;
-use App\Models\NotificationSetting;
-use App\Models\User;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Services\CheckerOwnership;
 use App\Services\HealthEventNotificationService;
 use App\Services\IntervalParser;
 use App\Services\PackageHealthStatusService;
 use App\Services\SslCertificateService;
+use App\Services\SslExpiryReminderService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Spatie\SslCertificate\Exceptions\CouldNotDownloadCertificate;
 
 class CheckSslExpiryDateJob implements ShouldQueue
@@ -40,6 +37,25 @@ class CheckSslExpiryDateJob implements ShouldQueue
         $statusService ??= app(PackageHealthStatusService::class);
         $notificationService ??= app(HealthEventNotificationService::class);
 
+        $ownership = app(CheckerOwnership::class);
+        $lockKey = 'ssl:'.$this->website->getKey();
+        $lockToken = $ownership->acquire('ssl', $lockKey, 90);
+        if ($lockToken === null) {
+            return;
+        }
+
+        try {
+            $this->checkCertificate($sslCertificateService, $statusService, $notificationService);
+        } finally {
+            $ownership->release($lockKey, $lockToken);
+        }
+    }
+
+    private function checkCertificate(
+        SslCertificateService $sslCertificateService,
+        PackageHealthStatusService $statusService,
+        HealthEventNotificationService $notificationService,
+    ): void {
         if (! $this->website->ssl_check) {
             return;
         }
@@ -92,102 +108,7 @@ class CheckSslExpiryDateJob implements ShouldQueue
         $this->website->forceFill($attributes)->save();
 
         $this->recordSslOnlyHealth($newExpiryDate, $statusService, $notificationService);
-
-        if (! $this->shouldSendReminder($newExpiryDate)) {
-            return;
-        }
-
-        if ($this->reminderRecentlySent()) {
-            Log::info('SSL expiry reminder throttled for website: '.$this->website->url);
-
-            return;
-        }
-
-        if ($this->reminderDeliverySilenced()) {
-            Log::info('SSL expiry reminder skipped because website is snoozed: '.$this->website->url);
-
-            return;
-        }
-
-        $user = User::find($this->website->created_by);
-
-        if ($user) {
-            $daysLeft = Carbon::now()->diffInDays($newExpiryDate, false);
-
-            $data = [
-                'user' => $user,
-                'daysLeft' => $daysLeft,
-                'url' => $this->website->url,
-            ];
-
-            $delivered = false;
-
-            /* Individual website notification */
-            $individualNotifications = $this->website->notificationChannels()
-                ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name])
-                ->get();
-
-            if ($individualNotifications->isNotEmpty()) {
-                $individualNotifications->each(function (NotificationSetting $notification) use ($data, &$delivered) {
-                    $delivered = $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data) || $delivered;
-                });
-            }
-
-            /* Global Notification */
-            $globalNotifications = $this->website->user->globalNotificationChannels()
-                ->whereIn('inspection', [WebsiteServicesEnum::WEBSITE_CHECK->name, WebsiteServicesEnum::ALL_CHECK->name])
-                ->get();
-
-            if ($globalNotifications->isNotEmpty()) {
-                $globalNotifications->each(function (NotificationSetting $notification) use ($data, &$delivered) {
-                    $delivered = $notification->sendSslNotification('Action Required: Renew Your SSL Certificate.', $data) || $delivered;
-                });
-            } elseif ($individualNotifications->isEmpty()) {
-                Mail::to($user)->send(new EmailReminderSsl($data));
-                $delivered = true;
-            }
-
-            if (! $delivered) {
-                Log::warning('SSL expiry reminder had no successful deliveries for website: '.$this->website->url);
-
-                return;
-            }
-
-            Log::info('SSL expiry reminder sent for website: '.$this->website->url);
-
-            $this->website->forceFill(['ssl_expiry_reminder_sent_at' => now()])->save();
-        } else {
-            Log::warning('User not found for website: '.$this->website->url);
-        }
-    }
-
-    private function shouldSendReminder(CarbonInterface $expiryDate): bool
-    {
-        $daysLeft = Carbon::today()->diffInDays($expiryDate->copy()->startOfDay(), false);
-
-        return in_array((int) $daysLeft, [14, 7, 3, 2, 1, 0], true) || $daysLeft < 0;
-    }
-
-    private function reminderRecentlySent(): bool
-    {
-        if ($this->website->ssl_expiry_reminder_sent_at === null) {
-            return false;
-        }
-
-        return $this->website->ssl_expiry_reminder_sent_at->gt(now()->subDay());
-    }
-
-    private function reminderDeliverySilenced(): bool
-    {
-        if (! $this->website->exists || $this->website->isDirty('silenced_until')) {
-            return $this->website->isSilenced();
-        }
-
-        $silencedUntil = Website::query()
-            ->whereKey($this->website->getKey())
-            ->value('silenced_until');
-
-        return $silencedUntil !== null && Carbon::parse($silencedUntil)->isFuture();
+        app(SslExpiryReminderService::class)->deliverIfDue($this->website, $newExpiryDate);
     }
 
     private function recordSslOnlyHealth(

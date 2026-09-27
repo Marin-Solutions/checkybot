@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\MonitorApis;
 use App\Services\ApiMonitorExecutionService;
+use App\Services\CheckerOwnership;
 use App\Services\HealthEventNotificationService;
 use Illuminate\Bus\Batchable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -20,6 +21,24 @@ class RunApiMonitorDiagnosticJob implements ShouldQueue
     ) {}
 
     public function handle(
+        ApiMonitorExecutionService $executionService,
+        HealthEventNotificationService $notificationService,
+    ): void {
+        $ownership = app(CheckerOwnership::class);
+        $lockKey = 'api:'.$this->monitor->getKey();
+        $lockToken = $ownership->acquire('api', $lockKey, 450);
+        if ($lockToken === null) {
+            return;
+        }
+
+        try {
+            $this->runDiagnostic($executionService, $notificationService);
+        } finally {
+            $ownership->release($lockKey, $lockToken);
+        }
+    }
+
+    private function runDiagnostic(
         ApiMonitorExecutionService $executionService,
         HealthEventNotificationService $notificationService,
     ): void {

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Enums\RunSource;
 use App\Models\Website;
 use App\Models\WebsiteLogHistory;
+use App\Services\CheckerOwnership;
 use App\Services\HealthEventNotificationService;
 use App\Services\PackageHealthStatusService;
 use App\Services\SslCertificateService;
@@ -73,6 +74,22 @@ class LogUptimeSslJob implements ShouldBeUnique, ShouldQueue
      * Execute the job.
      */
     public function handle(SslCertificateService $sslCertificateService): void
+    {
+        $ownership = app(CheckerOwnership::class);
+        $lockKey = 'uptime:'.$this->website->getKey();
+        $lockToken = $ownership->acquire('uptime', $lockKey, 120);
+        if ($lockToken === null) {
+            return;
+        }
+
+        try {
+            $this->performCheck($sslCertificateService);
+        } finally {
+            $ownership->release($lockKey, $lockToken);
+        }
+    }
+
+    private function performCheck(SslCertificateService $sslCertificateService): void
     {
         if ($this->batch()?->cancelled()) {
             $this->clearQueuedDiagnostic();

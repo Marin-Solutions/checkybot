@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\CheckSslExpiryDateJob;
 use App\Models\Website;
+use App\Services\CheckerOwnership;
 use App\Support\PackageIntervalDueExpression;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -32,8 +33,14 @@ class WriteJobCheckSsl extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(CheckerOwnership $ownership): int
     {
+        if ($ownership->goOwns('ssl')) {
+            $this->info('SSL check completed successfully.');
+
+            return Command::SUCCESS;
+        }
+
         $this->sslExpiryDay();
 
         $this->info('SSL check completed successfully.');

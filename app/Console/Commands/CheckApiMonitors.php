@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\RunScheduledApiMonitorJob;
 use App\Models\MonitorApis;
+use App\Services\CheckerOwnership;
 use App\Services\IntervalParser;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
@@ -17,8 +18,14 @@ class CheckApiMonitors extends Command
 
     protected $description = 'Check all API monitors and record their results';
 
-    public function handle(): int
+    public function handle(CheckerOwnership $ownership): int
     {
+        if ($ownership->goOwns('api')) {
+            $this->info('Queued 0 API monitor jobs.');
+
+            return Command::SUCCESS;
+        }
+
         $this->info('Queueing due API monitor checks...');
         $count = 0;
 

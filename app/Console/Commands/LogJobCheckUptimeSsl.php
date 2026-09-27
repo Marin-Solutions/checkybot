@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Jobs\LogUptimeSslJob;
 use App\Models\Website;
+use App\Services\CheckerOwnership;
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -30,8 +31,12 @@ class LogJobCheckUptimeSsl extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): int
+    public function handle(CheckerOwnership $ownership): int
     {
+        if ($ownership->goOwns('uptime')) {
+            return Command::SUCCESS;
+        }
+
         $count = 0;
 
         Website::query()

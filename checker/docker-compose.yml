@@ -1,0 +1,14 @@
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: checker
+      MYSQL_DATABASE: checker_test
+    ports:
+      - "33068:3306"
+    command: ["--performance_schema=ON", "--innodb-lock-wait-timeout=5", "--innodb_use_native_aio=0"]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pchecker"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
