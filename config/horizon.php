@@ -182,7 +182,20 @@ return [
     'defaults' => [
         'supervisor-1' => [
             'connection' => 'redis',
-            'queue' => ['default', 'ssl-check'],
+            'queue' => ['default'],
+            'balance' => 'auto',
+            'autoScalingStrategy' => 'time',
+            'maxProcesses' => 3,
+            'maxTime' => 0,
+            'maxJobs' => 0,
+            'memory' => 128,
+            'tries' => 1,
+            'timeout' => 60,
+            'nice' => 0,
+        ],
+        'supervisor-4' => [
+            'connection' => 'redis',
+            'queue' => ['ssl-check'],
             'balance' => 'auto',
             'autoScalingStrategy' => 'time',
             'maxProcesses' => 3,
@@ -238,12 +251,22 @@ return [
                 'balanceMaxShift' => 1,
                 'balanceCooldown' => 3,
             ],
+            'supervisor-4' => [
+                'maxProcesses' => 3,
+                'balanceMaxShift' => 1,
+                'balanceCooldown' => 3,
+            ],
         ],
 
         'local' => [
             'supervisor-1' => [
                 'connection' => 'redis',
-                'queue' => ['default', 'ssl-check'],
+                'queue' => ['default'],
+                'maxProcesses' => 3,
+            ],
+            'supervisor-4' => [
+                'connection' => 'redis',
+                'queue' => ['ssl-check'],
                 'maxProcesses' => 3,
             ],
             'supervisor-2' => [
@@ -266,6 +289,9 @@ return [
             ],
             'supervisor-3' => [
                 'maxProcesses' => 4,
+            ],
+            'supervisor-4' => [
+                'maxProcesses' => 3,
             ],
         ],
     ],

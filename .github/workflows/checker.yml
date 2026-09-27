@@ -1,0 +1,45 @@
+name: Checker
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - "checker/**"
+      - ".github/workflows/checker.yml"
+  pull_request:
+    paths:
+      - "checker/**"
+      - ".github/workflows/checker.yml"
+
+jobs:
+  test:
+    name: Go checker
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: checker
+          MYSQL_DATABASE: checker_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -pchecker"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          coverage: none
+      - name: Test
+        working-directory: checker
+        env:
+          TEST_MYSQL_DSN: "root:checker@tcp(127.0.0.1:3306)/"
+        run: go test ./...

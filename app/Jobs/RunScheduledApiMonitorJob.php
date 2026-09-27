@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\MonitorApis;
 use App\Services\ApiMonitorExecutionService;
+use App\Services\CheckerOwnership;
 use App\Services\HealthEventNotificationService;
 use Illuminate\Contracts\Cache\Repository;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -53,6 +54,24 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
         ApiMonitorExecutionService $executionService,
         HealthEventNotificationService $notificationService,
     ): void {
+        $ownership = app(CheckerOwnership::class);
+        $lockKey = 'api:'.$this->monitor->getKey();
+        $lockToken = $ownership->acquire('api', $lockKey, 450);
+        if ($lockToken === null) {
+            return;
+        }
+
+        try {
+            $this->runCheck($executionService, $notificationService);
+        } finally {
+            $ownership->release($lockKey, $lockToken);
+        }
+    }
+
+    private function runCheck(
+        ApiMonitorExecutionService $executionService,
+        HealthEventNotificationService $notificationService,
+    ): void {
         try {
             $monitor = $this->monitor->fresh();
 
@@ -88,6 +107,10 @@ class RunScheduledApiMonitorJob implements ShouldBeUnique, ShouldQueue
 
     private function recordQueueFailure(?Throwable $exception, string $message, string $level): void
     {
+        if (app(CheckerOwnership::class)->goOwns('api')) {
+            return;
+        }
+
         $monitor = $this->monitor->fresh(['latestScheduledResult']);
 
         Log::log($level, $message, [
