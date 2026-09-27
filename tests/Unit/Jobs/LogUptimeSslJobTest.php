@@ -200,14 +200,17 @@ test('scheduled job writes heartbeat history before the locked live status trans
         fn (string $query): bool => str_contains($query, 'insert into')
             && str_contains($query, 'website_log_history')
     );
-    $transactionBeginIndex = collect($operations)->search(
-        fn (string $query): bool => str_contains($query, 'begin transaction')
-    );
     $liveStatusUpdateIndex = collect($operations)->search(
         fn (string $query): bool => str_contains($query, 'update')
             && str_contains($query, 'websites')
             && str_contains($query, 'current_status')
     );
+    // The claim lock opens its own transaction before the check. The live
+    // status update is the transaction that starts after the history insert.
+    $transactionBeginIndex = collect($operations)
+        ->take($liveStatusUpdateIndex === false ? 0 : $liveStatusUpdateIndex)
+        ->keys()
+        ->last(fn (int $index): bool => str_contains($operations[$index], 'begin transaction'));
 
     expect($historyInsertIndex)->not->toBeFalse()
         ->and($transactionBeginIndex)->not->toBeFalse()
