@@ -563,11 +563,11 @@ func (s *Store) SaveAPI(ctx context.Context, write APIWrite) error {
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO monitor_api_results (
-			monitor_api_id, is_success, consecutive_count, response_time_ms, max_response_time_ms,
+			monitor_api_id, is_success, response_time_ms, max_response_time_ms,
 			effective_timeout_seconds, retry_count, elapsed_wall_time_ms, http_code, failed_assertions,
 			response_body, status, summary, transport_error_type, transport_error_message,
 			request_headers, response_headers, run_source, is_on_demand, created_at, updated_at
-		) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP())
 	`, write.MonitorID, success, write.ResponseMS, maxMS, write.TimeoutSeconds, write.Attempts, write.ElapsedMS,
 		write.Code, string(failedJSON), bodyJSON, write.Status, write.Summary, transportType, transportMessage,
 		string(reqJSON), string(resJSON), source, onDemand); err != nil {
