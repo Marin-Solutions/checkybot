@@ -97,6 +97,12 @@ func once(ctx context.Context, client *http.Client, req Request) Outcome {
 		return transportOutcome(err)
 	}
 	for key, value := range req.Headers {
+		// net/http ignores Header["Host"]; the override must go on Request.Host,
+		// as Guzzle honoured it, so direct-IP origin checks reach the right vhost.
+		if strings.EqualFold(key, "Host") {
+			httpReq.Host = value
+			continue
+		}
 		httpReq.Header.Set(key, value)
 	}
 	if httpReq.Header.Get("User-Agent") == "" {
