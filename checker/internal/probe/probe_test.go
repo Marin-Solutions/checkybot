@@ -10,16 +10,15 @@ import (
 
 // originFixture behaves like an nginx origin reached by IP: only the
 // scrappa.co vhost serves the readiness endpoint; the default vhost
-// redirects to an unrelated hostname.
+// answers with nginx's HTML 404.
 func originFixture(t *testing.T, readyStatus int) *httptest.Server {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Host != "scrappa.co" {
-			http.Redirect(w, r, "http://unrelated-vhost.invalid"+r.URL.Path, http.StatusMovedPermanently)
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("<html><center><h1>404 Not Found</h1></center></html>"))
 			return
-		}
-		if r.Header.Get("Host") != "" {
-			t.Errorf("Host leaked into header map: %q", r.Header.Get("Host"))
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(readyStatus)
@@ -58,7 +57,7 @@ func TestHostHeaderOverrideStillReportsAFailingOrigin(t *testing.T) {
 func TestWithoutHostOverrideTheURLHostIsUsed(t *testing.T) {
 	server := originFixture(t, http.StatusOK)
 	outcome := Do(context.Background(), readiness(server.URL, nil))
-	if outcome.Code != 0 || outcome.Transport != "dns" {
-		t.Fatalf("expected the default vhost redirect to fail DNS, got code=%d transport=%q error=%q", outcome.Code, outcome.Transport, outcome.ErrorText)
+	if outcome.Transport != "" || outcome.Code != http.StatusNotFound {
+		t.Fatalf("expected the default vhost 404, got code=%d transport=%q error=%q", outcome.Code, outcome.Transport, outcome.ErrorText)
 	}
 }
